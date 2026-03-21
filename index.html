@@ -618,6 +618,97 @@ input:focus, select:focus, textarea:focus { outline: none; }
 .rr-info { flex: 1; font-size: 11px; color: var(--muted); }
 .rr-arr  { font-size: 11px; color: var(--muted); }
 
+/* ── 캠페인 목록 ── */
+.campaigns-section {
+  padding: 0 28px 40px;
+  max-width: 1100px;
+  margin: 0 auto;
+  width: 100%;
+}
+.campaigns-heading {
+  font-size: 10px;
+  letter-spacing: .2em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 14px;
+  padding-top: 28px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.campaign-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+}
+.campaign-card {
+  background: var(--s1);
+  border: 1px solid var(--border);
+  border-radius: var(--rl);
+  padding: 18px;
+  cursor: pointer;
+  transition: var(--t);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.campaign-card:hover { border-color: var(--accent); background: var(--a-dim); }
+.campaign-card .cc-role {
+  font-size: 9px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 3px;
+  width: fit-content;
+}
+.cc-role.gm  { background: rgba(184,154,96,.15); color: var(--accent); border: 1px solid rgba(184,154,96,.3); }
+.cc-role.pl  { background: var(--s3); color: var(--muted); border: 1px solid var(--border2); }
+.campaign-card .cc-title {
+  font-family: var(--font-head);
+  font-style: italic;
+  font-size: 18px;
+  color: var(--text);
+  line-height: 1.2;
+}
+.campaign-card .cc-sys   { font-size: 11px; color: var(--muted); }
+.campaign-card .cc-code  { font-family: var(--font-mono); font-size: 11px; color: var(--dim); letter-spacing: .12em; }
+.campaign-card .cc-enter {
+  margin-top: 4px;
+  background: var(--accent);
+  color: #080808;
+  border: none;
+  border-radius: var(--r);
+  padding: 8px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: var(--t);
+  width: 100%;
+}
+.campaign-card .cc-enter:hover { opacity: .88; }
+.campaign-card .cc-del {
+  position: absolute;
+  top: 12px; right: 12px;
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 5px;
+  border-radius: 4px;
+  transition: var(--t);
+}
+.campaign-card .cc-del:hover { color: var(--red); background: rgba(200,92,92,.1); }
+.campaign-empty {
+  font-size: 13px;
+  color: var(--muted);
+  padding: 24px 0;
+  text-align: center;
+}
+
 /* ══════════════════════════════════════════════════
    SCREEN 3 — GAME
 ══════════════════════════════════════════════════ */
@@ -976,20 +1067,19 @@ input:focus, select:focus, textarea:focus { outline: none; }
     <div id="char-cards-row" style="display:flex;gap:8px;overflow-x:auto;padding-bottom:4px"></div>
   </div>
 
+  <!-- 새 세션 + 방 참가 -->
   <div class="lobby-body">
     <!-- 방 만들기 -->
     <div class="lobby-col" style="animation-delay:.0s">
       <div class="lobby-heading">새 세션</div>
       <div class="lobby-sub">방을 만들고 코드를 파티원에게 공유하세요</div>
-
       <div class="lobby-card">
         <div class="lc-header">
           <div class="lc-title">방 만들기</div>
-          <div class="lc-badge">GM / 플레이어</div>
+          <div class="lc-badge">GM</div>
         </div>
-
         <div style="margin-bottom:10px;font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted)">게임 시스템</div>
-        <div class="system-grid" style="margin-bottom:18px">
+        <div class="system-grid" style="margin-bottom:14px">
           <button class="sys-btn selected" onclick="selectSystem('coc7', this)">
             <span class="sys-name">CoC 7판</span>
             <span class="sys-sub">크툴루의 부름</span>
@@ -1007,6 +1097,10 @@ input:focus, select:focus, textarea:focus { outline: none; }
             <span class="sys-sub">현대 공포</span>
           </button>
         </div>
+        <div class="lobby-field">
+          <label>시나리오 이름 (선택)</label>
+          <input type="text" id="room-title" placeholder="예: 비밀의 저택" maxlength="30">
+        </div>
         <button class="btn-room" onclick="createRoom()">방 만들기 →</button>
       </div>
     </div>
@@ -1015,7 +1109,6 @@ input:focus, select:focus, textarea:focus { outline: none; }
     <div class="lobby-col" style="animation-delay:.08s">
       <div class="lobby-heading">참가</div>
       <div class="lobby-sub">방 코드를 입력해 세션에 합류하세요</div>
-
       <div class="lobby-card">
         <div class="lc-header">
           <div class="lc-title">방 코드 입력</div>
@@ -1027,16 +1120,17 @@ input:focus, select:focus, textarea:focus { outline: none; }
         </div>
         <button class="btn-room secondary" onclick="joinRoom()">참가하기 →</button>
       </div>
+    </div>
+  </div>
 
-      <!-- 최근 방 목록 -->
-      <div id="recent-rooms-section" style="display:none; margin-top:8px">
-        <div class="lobby-card">
-          <div class="lc-header">
-            <div class="lc-title">최근 세션</div>
-          </div>
-          <div class="recent-rooms" id="recent-rooms"></div>
-        </div>
-      </div>
+  <!-- 내 캠페인 목록 (Roll20 스타일) -->
+  <div class="campaigns-section">
+    <div class="campaigns-heading">
+      <span>내 세션 목록</span>
+      <span id="campaign-count" style="color:var(--dim);font-size:10px"></span>
+    </div>
+    <div class="campaign-grid" id="campaign-grid">
+      <div class="campaign-empty" id="campaign-empty">아직 참가한 세션이 없어요.<br>방을 만들거나 코드로 참가해보세요!</div>
     </div>
   </div>
 </div>
@@ -1047,7 +1141,8 @@ input:focus, select:focus, textarea:focus { outline: none; }
 <div id="screen-game">
   <!-- 탑바 -->
   <div class="topbar">
-    <div class="topbar-logo">ITC</div>
+    <div class="topbar-logo" onclick="goToLobby()" title="로비로 돌아가기" style="cursor:pointer">ITC</div>
+    <button class="topbar-btn" onclick="goToLobby()" title="로비로 돌아가기" style="font-size:12px;padding:4px 8px;margin-right:2px">← 로비</button>
     <div class="room-badge" id="topbar-code" onclick="copyRoomCode()" title="클릭해서 복사">······</div>
     <div class="system-badge" id="topbar-system">시스템</div>
     <div id="gm-badge" style="display:none;align-items:center;gap:4px;background:rgba(184,154,96,.15);border:1px solid var(--accent);border-radius:4px;padding:3px 9px;font-size:10px;letter-spacing:.1em;color:var(--accent)">GM</div>
@@ -1208,7 +1303,7 @@ input:focus, select:focus, textarea:focus { outline: none; }
     </div>
 
     <div style="display:flex;gap:8px;margin-top:4px">
-      <button class="btn-primary" style="background:var(--s3);color:var(--text);border:1px solid var(--border2);flex:1" onclick="leaveRoom()">방 나가기</button>
+      <button class="btn-primary" style="background:var(--s3);color:var(--text);border:1px solid var(--border2);flex:1" onclick="goToLobby()">← 로비로</button>
       <button id="btn-end-room" class="btn-primary gm-only" style="display:none;background:rgba(200,92,92,.15);color:var(--red);border:1px solid rgba(200,92,92,.3);flex:1" onclick="endRoom()">방 종료 (GM)</button>
     </div>
   </div>
@@ -1410,11 +1505,12 @@ let selectedSystem = 'coc7';
 
 function showLobby() {
   document.getElementById('screen-auth').style.display  = 'none';
+  document.getElementById('screen-game').style.display  = 'none';
   document.getElementById('screen-lobby').style.display = 'flex';
   document.getElementById('user-name-nav').textContent  = St.myName;
   document.getElementById('user-avatar').textContent    = St.myName[0]?.toUpperCase() || '?';
-  renderRecentRooms();
   loadMyCharacters();
+  loadMyCampaigns();
 }
 
 /* 내 캐릭터 목록 Firebase에서 로드 */
@@ -1514,14 +1610,23 @@ async function createRoom() {
   const code = genCode();
   St.roomCode = code; St.system = selectedSystem;
 
+  const titleInput = document.getElementById('room-title');
+  const roomTitle = titleInput ? titleInput.value.trim() || '무제 세션' : '무제 세션';
+  if (titleInput) titleInput.value = '';
+
   if (window._FB?.CONFIGURED) {
     const { db, ref, set } = window._FB;
     await set(ref(db, `rooms/${code}/meta`), {
       system: selectedSystem, createdAt: Date.now(),
-      createdBy: St.myName, ownerId: St.myId,
+      createdBy: St.myName, ownerId: St.myId, title: roomTitle,
     });
     await set(ref(db, `rooms/${code}/players/${St.myId}`), {
       name: St.myName, joinedAt: Date.now(), uid: St.myId, role: 'gm',
+    });
+    // 내 캠페인 목록에 추가
+    await set(ref(db, `users/${St.myId}/rooms/${code}`), {
+      code, title: roomTitle, system: selectedSystem,
+      role: 'gm', joinedAt: Date.now(),
     });
     setupFirebaseListeners();
   }
@@ -1560,10 +1665,17 @@ async function joinRoom() {
 
     St.system = snap.val().system || 'coc7';
     St.roomCode = code;
-    const role = snap.val().ownerId === St.myId ? 'gm' : 'player';
+    const meta = snap.val();
+    const role = meta.ownerId === St.myId ? 'gm' : 'player';
     St.isGM = (role === 'gm');
     await set(ref(db, `rooms/${code}/players/${St.myId}`), {
       name: St.myName, joinedAt: Date.now(), uid: St.myId, role,
+    });
+    // 내 캠페인 목록에 추가
+    await set(ref(db, `users/${St.myId}/rooms/${code}`), {
+      code, title: meta.title || '무제 세션',
+      system: meta.system || 'coc7',
+      role, joinedAt: Date.now(),
     });
     setupFirebaseListeners();
   } else {
@@ -1587,23 +1699,64 @@ function loadRecentRooms() {
   St.recentRooms = JSON.parse(localStorage.getItem('tt_recent') || '[]');
 }
 
-function renderRecentRooms() {
-  const rooms = JSON.parse(localStorage.getItem('tt_recent') || '[]');
-  const section = document.getElementById('recent-rooms-section');
-  const container = document.getElementById('recent-rooms');
-  if (!rooms.length) { section.style.display = 'none'; return; }
-  section.style.display = 'block';
-  container.innerHTML = rooms.map(r => `
-    <div class="recent-room" onclick="quickJoin('${r.code}')">
-      <span class="rr-code">${r.code}</span>
-      <span class="rr-info">${SYS_LABELS[r.sys] || r.sys}</span>
-      <span class="rr-arr">→</span>
-    </div>`).join('');
-}
-
 async function quickJoin(code) {
   document.getElementById('join-code').value = code;
   await joinRoom();
+}
+
+/* ── 캠페인 목록 (Firebase users/{uid}/rooms) ── */
+let _campaignUnsub = null;
+
+function loadMyCampaigns() {
+  if (!window._FB?.CONFIGURED || !window._currentUser) return;
+  const { db, ref, onValue } = window._FB;
+
+  // 이전 리스너 정리
+  if (_campaignUnsub) { _campaignUnsub(); _campaignUnsub = null; }
+
+  _campaignUnsub = onValue(ref(db, `users/${St.myId}/rooms`), snap => {
+    const rooms = snap.val() || {};
+    renderCampaigns(rooms);
+  });
+}
+
+function renderCampaigns(rooms) {
+  const grid  = document.getElementById('campaign-grid');
+  const empty = document.getElementById('campaign-empty');
+  const count = document.getElementById('campaign-count');
+  if (!grid) return;
+
+  const entries = Object.entries(rooms).sort((a, b) => (b[1].joinedAt||0) - (a[1].joinedAt||0));
+  count.textContent = entries.length ? `${entries.length}개` : '';
+
+  if (!entries.length) {
+    grid.innerHTML = '';
+    grid.appendChild(empty || createEmptyEl());
+    return;
+  }
+
+  grid.innerHTML = entries.map(([key, r]) => `
+    <div class="campaign-card">
+      <div class="cc-role ${r.role === 'gm' ? 'gm' : 'pl'}">${r.role === 'gm' ? 'GM' : '플레이어'}</div>
+      <div class="cc-title">${esc(r.title || '무제 세션')}</div>
+      <div class="cc-sys">${SYS_LABELS[r.system] || r.system || ''}</div>
+      <div class="cc-code"># ${esc(r.code)}</div>
+      <button class="cc-enter" onclick="enterCampaign('${r.code}')">입장 →</button>
+      <button class="cc-del" onclick="removeCampaign(event,'${r.code}','${key}')" title="목록에서 제거">✕</button>
+    </div>`).join('');
+}
+
+async function enterCampaign(code) {
+  document.getElementById('join-code').value = code;
+  await joinRoom();
+}
+
+async function removeCampaign(e, code, key) {
+  e.stopPropagation();
+  if (!confirm('세션 목록에서 제거할까요?
+(방 자체는 삭제되지 않아요)')) return;
+  const { db, ref, remove } = window._FB;
+  await remove(ref(db, `users/${St.myId}/rooms/${key}`));
 }
 
 /* ─────────────────────────────────────────────────
@@ -2263,22 +2416,37 @@ function copyRoomCode() {
   });
 }
 
+/* 로비로 돌아가기 (방은 유지) */
+async function goToLobby() {
+  if (St.roomCode && !confirm('로비로 돌아갈까요?
+방은 유지되며 나중에 다시 입장할 수 있어요.')) return;
+  if (window._FB?.CONFIGURED && St.roomCode) {
+    const { db, ref, update } = window._FB;
+    // 오프라인 상태로 표시만 (방에서 완전히 제거 안 함)
+    await update(ref(db, `rooms/${St.roomCode}/players/${St.myId}`), { online: false });
+  }
+  // 리스너 정리
+  if (_campaignUnsub) { _campaignUnsub(); _campaignUnsub = null; }
+  St.roomCode = ''; St.isGM = false;
+  closeModal('modal-settings');
+  showLobby();
+}
+
 async function leaveRoom() {
-  if (!confirm('방에서 나가시겠습니까?')) return;
+  if (!confirm('방에서 완전히 나가시겠습니까?
+(나중에 코드로 다시 입장할 수 있어요)')) return;
   if (window._FB?.CONFIGURED) {
     const { db, ref, remove, get } = window._FB;
-    // 내 플레이어 데이터 제거
     await remove(ref(db, `rooms/${St.roomCode}/players/${St.myId}`));
-    // 방에 아무도 없으면 방 전체 삭제 (데이터 누적 방지)
     const snap = await get(ref(db, `rooms/${St.roomCode}/players`));
-    if (!snap.exists() || Object.keys(snap.val()).length === 0) {
+    const remaining = snap.exists() ? Object.values(snap.val()).filter(p => p.online !== false) : [];
+    if (remaining.length === 0) {
       await remove(ref(db, `rooms/${St.roomCode}`));
     }
   }
-  St.roomCode = ''; St.system = 'coc7';
-  document.getElementById('screen-game').style.display = 'none';
-  document.getElementById('screen-lobby').style.display = 'flex';
+  St.roomCode = ''; St.isGM = false;
   closeModal('modal-settings');
+  showLobby();
 }
 
 function esc(str) {
