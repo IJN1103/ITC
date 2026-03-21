@@ -64,13 +64,13 @@ import { getDatabase, ref, set, push, onValue, update, remove, get, serverTimest
 
 // ↓↓↓ 여기에 Firebase 설정을 붙여넣으세요 ↓↓↓
 const firebaseConfig = {
-  apiKey:            "AIzaSyCOpAaGDNbfFy7pETmKA6Y2wUf2oj1wQRY",
-  authDomain:        "project-itc-2d34d.firebaseapp.com",
-  databaseURL:       "https://project-itc-2d34d-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId:         "project-itc-2d34d",
-  storageBucket:     "project-itc-2d34d.firebasestorage.app",
-  messagingSenderId: "89572142319",
-  appId:             "1:89572142319:web:fbeb6c7bb8bf279dd0bf1a"
+  apiKey:            "YOUR_API_KEY",
+  authDomain:        "YOUR_PROJECT.firebaseapp.com",
+  databaseURL:       "https://YOUR_PROJECT-default-rtdb.firebaseio.com",
+  projectId:         "YOUR_PROJECT",
+  storageBucket:     "YOUR_PROJECT.appspot.com",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId:             "YOUR_APP_ID"
 };
 // ↑↑↑ 여기까지
 
@@ -1050,11 +1050,12 @@ input:focus, select:focus, textarea:focus { outline: none; }
     <div class="topbar-logo">ITC</div>
     <div class="room-badge" id="topbar-code" onclick="copyRoomCode()" title="클릭해서 복사">······</div>
     <div class="system-badge" id="topbar-system">시스템</div>
+    <div id="gm-badge" style="display:none;align-items:center;gap:4px;background:rgba(184,154,96,.15);border:1px solid var(--accent);border-radius:4px;padding:3px 9px;font-size:10px;letter-spacing:.1em;color:var(--accent)">GM</div>
     <div class="spacer"></div>
     <div class="players-row" id="players-row"></div>
     <button class="topbar-btn" onclick="togglePanel('left')">◀ 시트</button>
     <button class="topbar-btn" onclick="togglePanel('right')">채팅 ▶</button>
-    <button class="topbar-btn" onclick="openModal('modal-token')">+ 토큰</button>
+    <button class="topbar-btn gm-only" onclick="openModal('modal-token')" style="display:none">+ 토큰</button>
     <button class="topbar-btn" onclick="openModal('modal-settings')">⚙</button>
   </div>
 
@@ -1128,7 +1129,7 @@ input:focus, select:focus, textarea:focus { outline: none; }
       <button class="bgm-btn" onclick="bgmNext()">▶▶</button>
     </div>
     <div class="bgm-vol">🔊<input type="range" min="0" max="100" value="60" id="vol-slider" oninput="setVolume(this.value)"></div>
-    <button class="bgm-add" onclick="openModal('modal-bgm')">+ BGM</button>
+    <button class="bgm-add gm-only" onclick="openModal('modal-bgm')" style="display:none">+ BGM</button>
   </div>
 </div>
 
@@ -1196,9 +1197,20 @@ input:focus, select:focus, textarea:focus { outline: none; }
       <b>방 코드</b><br>
       <span id="room-code-disp" style="font-family:var(--font-mono);font-size:22px;color:var(--accent);letter-spacing:.3em"></span><br><br>
       <b>시스템</b> — <span id="system-disp"></span><br>
-      <b>내 닉네임</b> — <span id="myname-disp"></span>
+      <b>내 닉네임</b> — <span id="myname-disp"></span><br>
+      <b>역할</b> — <span id="role-disp"></span>
     </div>
-    <button class="btn-primary" style="background:var(--s3);color:var(--text);border:1px solid var(--border2)" onclick="leaveRoom()">방 나가기</button>
+
+    <!-- GM 전용: 플레이어 목록 & 강퇴 -->
+    <div id="gm-player-mgmt" class="gm-only" style="display:none;border-top:1px solid var(--border);padding-top:12px">
+      <div style="font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);margin-bottom:8px">플레이어 관리</div>
+      <div id="player-mgmt-list" style="display:flex;flex-direction:column;gap:5px"></div>
+    </div>
+
+    <div style="display:flex;gap:8px;margin-top:4px">
+      <button class="btn-primary" style="background:var(--s3);color:var(--text);border:1px solid var(--border2);flex:1" onclick="leaveRoom()">방 나가기</button>
+      <button id="btn-end-room" class="btn-primary gm-only" style="display:none;background:rgba(200,92,92,.15);color:var(--red);border:1px solid rgba(200,92,92,.3);flex:1" onclick="endRoom()">방 종료 (GM)</button>
+    </div>
   </div>
 </div>
 
@@ -1235,8 +1247,35 @@ const St = {
   roomCode: '', system: 'coc7', myName: '', myId: '',
   tokens: {}, playlist: [], currentTrack: -1, isPlaying: false,
   tool: 'select', character: {}, recentRooms: [],
-  selectedCharId: null,   // 현재 선택된 캐릭터 ID (Firebase key)
+  selectedCharId: null,
+  isGM: false,   // 방 만든 사람 = GM
 };
+
+/* 권한 체크 헬퍼 */
+function requireGM(action) {
+  if (!St.isGM) {
+    showToast('GM만 사용할 수 있는 기능이에요.');
+    return false;
+  }
+  return true;
+}
+
+function showToast(msg) {
+  let t = document.getElementById('toast');
+  if (!t) {
+    t = document.createElement('div');
+    t.id = 'toast';
+    t.style.cssText = `position:fixed;bottom:80px;left:50%;transform:translateX(-50%);
+      background:var(--s3);border:1px solid var(--border2);border-radius:var(--r);
+      padding:9px 18px;font-size:13px;color:var(--dim);z-index:999;
+      animation:fadeUp .2s ease;pointer-events:none;white-space:nowrap`;
+    document.body.appendChild(t);
+  }
+  t.textContent = msg;
+  t.style.display = 'block';
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => { t.style.display = 'none'; }, 2200);
+}
 
 const SYS_LABELS = { coc7:'CoC 7판', dx3:'더블크로스 3rd', shinobigami:'시노비가미', insane:'인세인' };
 
@@ -1482,11 +1521,12 @@ async function createRoom() {
       createdBy: St.myName, ownerId: St.myId,
     });
     await set(ref(db, `rooms/${code}/players/${St.myId}`), {
-      name: St.myName, joinedAt: Date.now(), uid: St.myId,
+      name: St.myName, joinedAt: Date.now(), uid: St.myId, role: 'gm',
     });
     setupFirebaseListeners();
   }
 
+  St.isGM = true;
   saveRecentRoom(code, selectedSystem);
   enterGame();
 }
@@ -1520,12 +1560,15 @@ async function joinRoom() {
 
     St.system = snap.val().system || 'coc7';
     St.roomCode = code;
+    const role = snap.val().ownerId === St.myId ? 'gm' : 'player';
+    St.isGM = (role === 'gm');
     await set(ref(db, `rooms/${code}/players/${St.myId}`), {
-      name: St.myName, joinedAt: Date.now(), uid: St.myId,
+      name: St.myName, joinedAt: Date.now(), uid: St.myId, role,
     });
     setupFirebaseListeners();
   } else {
     St.roomCode = code; St.system = selectedSystem;
+    St.isGM = false;
   }
 
   saveRecentRoom(code, St.system);
@@ -1573,6 +1616,14 @@ function setupFirebaseListeners() {
 
   onValue(ref(db, `rooms/${code}/players`), snap => {
     const players = snap.val() || {};
+    // 내가 강퇴됐는지 확인
+    if (!players[St.myId] && St.roomCode) {
+      alert('GM에 의해 방에서 강퇴되었습니다.');
+      St.roomCode = '';
+      document.getElementById('screen-game').style.display = 'none';
+      document.getElementById('screen-lobby').style.display = 'flex';
+      return;
+    }
     renderPlayers(players);
   });
 
@@ -1619,7 +1670,7 @@ async function enterGame() {
   document.getElementById('system-disp').textContent = SYS_LABELS[St.system];
   document.getElementById('myname-disp').textContent = St.myName;
 
-  addPlayerChip(St.myId, St.myName, true);
+  addPlayerChip(St.myId, St.myName, true, St.isGM ? 'gm' : 'player');
   renderDiceButtons(St.system);
   await initCharacter(St.system);
   renderCharacterSheet(St.system);
@@ -1629,19 +1680,20 @@ async function enterGame() {
 /* ─────────────────────────────────────────────────
    PLAYERS
 ───────────────────────────────────────────────── */
-function addPlayerChip(id, name, isMe) {
+function addPlayerChip(id, name, isMe, role) {
   const row = document.getElementById('players-row');
   if (document.getElementById('pchip-' + id)) return;
   const chip = document.createElement('div');
   chip.className = 'p-chip' + (isMe ? ' me' : '');
   chip.id = 'pchip-' + id;
-  chip.innerHTML = `<div class="p-dot"></div><span>${esc(name)}</span>`;
+  const roleTag = role === 'gm' ? `<span style="font-size:9px;color:var(--accent);margin-left:2px">GM</span>` : '';
+  chip.innerHTML = `<div class="p-dot"></div><span>${esc(name)}</span>${roleTag}`;
   row.appendChild(chip);
 }
 
 function renderPlayers(players) {
   document.getElementById('players-row').innerHTML = '';
-  Object.entries(players).forEach(([id, p]) => addPlayerChip(id, p.name, id === St.myId));
+  Object.entries(players).forEach(([id, p]) => addPlayerChip(id, p.name, id === St.myId, p.role));
 }
 
 /* ─────────────────────────────────────────────────
@@ -1974,6 +2026,7 @@ function appendChatMsg(name, text, type) {
    MAP / TOKENS
 ───────────────────────────────────────────────── */
 function addToken() {
+  if (!requireGM('토큰 추가')) return;
   const name = document.getElementById('token-name').value.trim() || '?';
   const type = document.getElementById('token-type').value;
   const id = genId();
@@ -2005,6 +2058,8 @@ function createTokenEl(t) {
 
 function makeDraggable(el, tokenId) {
   el.addEventListener('mousedown', e => {
+    // 플레이어는 드래그 불가 (GM만)
+    if (!St.isGM) { showToast('GM만 토큰을 이동할 수 있어요.'); return; }
     if (St.tool === 'erase') { removeToken(tokenId); return; }
     e.preventDefault();
     const map = document.getElementById('map-area');
@@ -2029,6 +2084,7 @@ function makeDraggable(el, tokenId) {
 }
 
 function removeToken(tokenId) {
+  if (!requireGM('토큰 삭제')) return;
   const el = document.getElementById('tok-' + tokenId);
   if (el) el.remove();
   if (window._FB?.CONFIGURED) {
@@ -2038,9 +2094,11 @@ function removeToken(tokenId) {
 }
 
 function setTool(t) {
+  if (t === 'erase' && !requireGM('지우개 도구')) return;
   St.tool = t;
   document.getElementById('tool-select').classList.toggle('on', t === 'select');
-  document.getElementById('tool-erase').classList.toggle('on', t === 'erase');
+  const eraseBtn = document.getElementById('tool-erase');
+  if (eraseBtn) eraseBtn.classList.toggle('on', t === 'erase');
 }
 
 /* ─────────────────────────────────────────────────
@@ -2074,6 +2132,7 @@ function extractVideoId(url) {
 }
 
 function addBgmTrack() {
+  if (!requireGM('BGM 추가')) return;
   const urlInp  = document.getElementById('yt-url-input').value.trim();
   const nameInp = document.getElementById('yt-name-input').value.trim();
   const vid = extractVideoId(urlInp);
@@ -2106,6 +2165,7 @@ function playTrack(idx) {
 }
 
 function bgmToggle() {
+  if (!requireGM('BGM 재생 제어')) return;
   if (!ytReady || !ytPlayer) { loadYTApi(); return; }
   if (St.isPlaying) { ytPlayer.pauseVideo(); St.isPlaying = false; }
   else {
@@ -2121,8 +2181,8 @@ function updatePlayBtn() {
   btn.classList.toggle('playing', St.isPlaying);
 }
 
-function bgmNext() { if (St.playlist.length) playTrack((St.currentTrack+1) % St.playlist.length); }
-function bgmPrev() { if (St.playlist.length) playTrack(St.currentTrack<=0 ? St.playlist.length-1 : St.currentTrack-1); }
+function bgmNext() { if (!St.isGM) { showToast('GM만 BGM을 제어할 수 있어요.'); return; } if (St.playlist.length) playTrack((St.currentTrack+1) % St.playlist.length); }
+function bgmPrev() { if (!St.isGM) { showToast('GM만 BGM을 제어할 수 있어요.'); return; } if (St.playlist.length) playTrack(St.currentTrack<=0 ? St.playlist.length-1 : St.currentTrack-1); }
 function setVolume(v) { if (ytReady && ytPlayer) ytPlayer.setVolume(parseInt(v)); }
 function removeTrack(i) {
   St.playlist.splice(i,1);
@@ -2134,7 +2194,52 @@ function removeTrack(i) {
 /* ─────────────────────────────────────────────────
    UI HELPERS
 ───────────────────────────────────────────────── */
-function openModal(id)  { document.getElementById(id).classList.add('open'); }
+function openModal(id) {
+  document.getElementById(id).classList.add('open');
+  if (id === 'modal-settings') renderSettingsModal();
+}
+
+function renderSettingsModal() {
+  const roleEl = document.getElementById('role-disp');
+  if (roleEl) roleEl.textContent = St.isGM ? 'GM (방장)' : '플레이어';
+
+  const gmSection = document.getElementById('gm-player-mgmt');
+  const endBtn    = document.getElementById('btn-end-room');
+  if (gmSection) gmSection.style.display = St.isGM ? 'block' : 'none';
+  if (endBtn)    endBtn.style.display    = St.isGM ? '' : 'none';
+
+  if (!St.isGM || !window._FB?.CONFIGURED) return;
+  const { db, ref, get, remove } = window._FB;
+  get(ref(db, `rooms/${St.roomCode}/players`)).then(snap => {
+    const players = snap.val() || {};
+    const list = document.getElementById('player-mgmt-list');
+    if (!list) return;
+    list.innerHTML = Object.entries(players).map(([uid, p]) => `
+      <div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:var(--s2);border-radius:var(--r)">
+        <div style="flex:1;font-size:13px;color:var(--text)">${esc(p.name)}</div>
+        <div style="font-size:10px;color:${p.role==='gm'?'var(--accent)':'var(--muted)'};">${p.role==='gm'?'GM':'플레이어'}</div>
+        ${uid !== St.myId ? `<button onclick="kickPlayer('${uid}','${esc(p.name)}')" style="background:none;border:1px solid rgba(200,92,92,.3);border-radius:4px;color:var(--red);font:inherit;font-size:11px;padding:2px 8px;cursor:pointer">강퇴</button>` : '<span style="font-size:10px;color:var(--muted)">(나)</span>'}
+      </div>`).join('');
+  });
+}
+
+async function kickPlayer(uid, name) {
+  if (!St.isGM) return;
+  if (!confirm(`${name}님을 강퇴하시겠습니까?`)) return;
+  const { db, ref, remove } = window._FB;
+  await remove(ref(db, `rooms/${St.roomCode}/players/${uid}`));
+  // 강퇴 알림 채팅
+  sendMessage('시스템', `${name}님이 GM에 의해 강퇴되었습니다.`, 'sys');
+  renderSettingsModal();
+}
+
+async function endRoom() {
+  if (!St.isGM) return;
+  if (!confirm('방을 종료하면 모든 플레이어가 퇴장됩니다. 계속하시겠습니까?')) return;
+  const { db, ref, remove } = window._FB;
+  await remove(ref(db, `rooms/${St.roomCode}`));
+  location.reload();
+}
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }
 document.querySelectorAll('.overlay').forEach(o => o.addEventListener('click', e => { if (e.target===o) o.classList.remove('open'); }));
 
