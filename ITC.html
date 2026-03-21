@@ -1,0 +1,2049 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ITC</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300;1,400&family=DM+Sans:wght@300;400;500&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<!-- ══════════════════════════════════════════════════════
+  🔥 FIREBASE 설정 — 이 부분만 채우면 바로 사용 가능합니다
+
+  1. https://console.firebase.google.com → 프로젝트 만들기
+  2. Authentication → 시작하기 → 이메일/비밀번호 + Google 사용 설정
+  3. Realtime Database → 만들기 (테스트 모드로 시작)
+  4. 프로젝트 설정 → 웹 앱 추가 → 아래에 붙여넣기
+  5. ★ 보안 규칙 설정 (중요!) ★
+     Realtime Database → 규칙(Rules) 탭 → 아래 내용으로 교체 후 게시:
+
+  {
+    "rules": {
+      "rooms": {
+        "$roomCode": {
+          "meta":       { ".read": "auth != null", ".write": "auth != null" },
+          "players":    { ".read": "auth != null", ".write": "auth != null" },
+          "chat":       { ".read": "auth != null", ".write": "auth != null" },
+          "bgm":        { ".read": "auth != null", ".write": "auth != null" },
+          "tokens":     { ".read": "auth != null", ".write": "auth != null" },
+          "lastRoll":   { ".read": "auth != null", ".write": "auth != null" },
+          "characters": {
+            "$uid": {
+              ".read":  "auth != null",
+              ".write": "auth != null && auth.uid == $uid"
+            }
+          }
+        }
+      }
+    }
+  }
+
+  → 이 규칙의 의미:
+     - 로그인한 사용자만 방 데이터 읽기/쓰기 가능
+     - 캐릭터 시트는 본인 것만 수정 가능 (다른 사람 시트 못 건드림)
+     - 로그인 안 한 외부인은 데이터에 접근 불가
+══════════════════════════════════════════════════════ -->
+<script type="module">
+import { initializeApp }        from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword,
+         updateProfile, onAuthStateChanged, signOut, GoogleAuthProvider, signInWithPopup }
+  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import { getDatabase, ref, set, push, onValue, update, remove, get, serverTimestamp }
+  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+// ↓↓↓ 여기에 Firebase 설정을 붙여넣으세요 ↓↓↓
+const firebaseConfig = {
+  apiKey:            "YOUR_API_KEY",
+  authDomain:        "YOUR_PROJECT.firebaseapp.com",
+  databaseURL:       "https://YOUR_PROJECT-default-rtdb.firebaseio.com",
+  projectId:         "YOUR_PROJECT",
+  storageBucket:     "YOUR_PROJECT.appspot.com",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId:             "YOUR_APP_ID"
+};
+// ↑↑↑ 여기까지
+
+const CONFIGURED = firebaseConfig.apiKey !== "YOUR_API_KEY";
+
+let app, auth, db;
+if (CONFIGURED) {
+  app  = initializeApp(firebaseConfig);
+  auth = getAuth(app);
+  db   = getDatabase(app);
+}
+
+/* ─── 전역 노출 ─── */
+window._FB = {
+  CONFIGURED, auth, db,
+  ref, set, push, onValue, update, remove, get, serverTimestamp,
+  createUserWithEmailAndPassword, signInWithEmailAndPassword,
+  updateProfile, onAuthStateChanged, signOut,
+  GoogleAuthProvider, signInWithPopup,
+};
+
+/* ─── Auth 상태 변화 ─── */
+if (CONFIGURED) {
+  onAuthStateChanged(auth, user => {
+    window._currentUser = user;
+    if (user) {
+      if (window._onAuthReady) window._onAuthReady(user);
+    }
+  });
+}
+</script>
+
+<style>
+/* ══════════════════════════════════════════════════
+   DESIGN TOKENS
+══════════════════════════════════════════════════ */
+:root {
+  --bg:        #080808;
+  --s1:        #101010;
+  --s2:        #161616;
+  --s3:        #1e1e1e;
+  --s4:        #262626;
+  --border:    #1f1f1f;
+  --border2:   #2e2e2e;
+  --text:      #e8e3da;
+  --muted:     #5a5751;
+  --dim:       #8c8882;
+  --accent:    #b89a60;
+  --a-dim:     rgba(184,154,96,.1);
+  --a-glow:    rgba(184,154,96,.22);
+  --red:       #c85c5c;
+  --green:     #5a9e72;
+  --blue:      #5880b8;
+  --r:         6px;
+  --rl:        12px;
+  --t:         .18s ease;
+  --font-head: 'Cormorant Garamond', Georgia, serif;
+  --font-body: 'DM Sans', sans-serif;
+  --font-mono: 'DM Mono', monospace;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--font-body); font-size: 14px; line-height: 1.6; -webkit-font-smoothing: antialiased; }
+*  { scrollbar-width: thin; scrollbar-color: var(--s4) transparent; }
+::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-thumb { background: var(--s4); border-radius: 2px; }
+input, select, textarea, button { font-family: inherit; }
+input:focus, select:focus, textarea:focus { outline: none; }
+.hidden { display: none !important; }
+
+/* ══════════════════════════════════════════════════
+   SCREEN 1 — AUTH  (로그인 / 계정 만들기)
+══════════════════════════════════════════════════ */
+#screen-auth {
+  min-height: 100vh;
+  display: flex;
+  align-items: stretch;
+}
+
+/* 왼쪽 브랜드 패널 */
+.auth-brand {
+  width: 420px;
+  flex-shrink: 0;
+  background: var(--s1);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 52px 48px;
+  position: relative;
+  overflow: hidden;
+}
+.auth-brand::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 70% 55% at 20% 80%, rgba(184,154,96,.06) 0%, transparent 70%),
+    radial-gradient(ellipse 50% 40% at 80% 10%, rgba(184,154,96,.04) 0%, transparent 60%);
+  pointer-events: none;
+}
+
+/* 격자 패턴 */
+.auth-brand::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(var(--border) 1px, transparent 1px),
+    linear-gradient(90deg, var(--border) 1px, transparent 1px);
+  background-size: 52px 52px;
+  opacity: .35;
+  pointer-events: none;
+}
+
+.brand-top { position: relative; z-index: 1; }
+.brand-wordmark {
+  font-family: var(--font-head);
+  font-style: italic;
+  font-weight: 300;
+  font-size: 48px;
+  letter-spacing: .02em;
+  color: var(--accent);
+  line-height: 1;
+  margin-bottom: 10px;
+}
+.brand-sub {
+  font-size: 11px;
+  letter-spacing: .28em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.brand-features {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.brand-feat {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.bf-icon {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border: 1px solid var(--border2);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  background: var(--s2);
+  margin-top: 1px;
+}
+.bf-text .bf-title { font-size: 13px; font-weight: 500; color: var(--text); margin-bottom: 1px; }
+.bf-text .bf-desc  { font-size: 11px; color: var(--muted); line-height: 1.5; }
+
+.brand-bottom {
+  position: relative;
+  z-index: 1;
+  font-size: 11px;
+  color: var(--muted);
+}
+.brand-bottom .sys-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
+.sys-tag {
+  padding: 3px 8px;
+  border: 1px solid var(--border2);
+  border-radius: 3px;
+  font-size: 10px;
+  letter-spacing: .08em;
+  color: var(--dim);
+}
+
+/* 오른쪽 폼 패널 */
+.auth-form-panel {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 24px;
+}
+
+.auth-card {
+  width: min(380px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  animation: fadeUp .4s ease;
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.auth-tabs {
+  display: flex;
+  gap: 0;
+  margin-bottom: 28px;
+  border-bottom: 1px solid var(--border);
+}
+.auth-tab {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  padding: 10px 20px 10px 0;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 400;
+  transition: var(--t);
+  margin-bottom: -1px;
+}
+.auth-tab.on { color: var(--text); border-bottom-color: var(--accent); }
+
+.auth-heading {
+  font-family: var(--font-head);
+  font-style: italic;
+  font-weight: 300;
+  font-size: 30px;
+  color: var(--text);
+  margin-bottom: 6px;
+  line-height: 1;
+}
+.auth-hint {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 28px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+.field label {
+  font-size: 10px;
+  letter-spacing: .2em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.field input {
+  background: var(--s2);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  color: var(--text);
+  padding: 11px 14px;
+  font-size: 14px;
+  transition: var(--t);
+}
+.field input:focus { border-color: var(--accent); background: var(--s3); }
+.field input::placeholder { color: var(--muted); font-size: 13px; }
+.field .field-err { font-size: 11px; color: var(--red); display: none; }
+.field.err input { border-color: var(--red); }
+.field.err .field-err { display: block; }
+
+.btn-primary {
+  width: 100%;
+  background: var(--accent);
+  color: #0b0b0b;
+  border: none;
+  border-radius: var(--r);
+  padding: 13px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  letter-spacing: .04em;
+  transition: var(--t);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+.btn-primary:hover { opacity: .88; }
+.btn-primary:disabled { opacity: .4; cursor: not-allowed; }
+
+.divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 18px 0;
+  font-size: 11px;
+  color: var(--muted);
+}
+.divider::before, .divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.btn-google {
+  width: 100%;
+  background: var(--s2);
+  border: 1px solid var(--border2);
+  border-radius: var(--r);
+  color: var(--dim);
+  padding: 11px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: var(--t);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.btn-google:hover { border-color: var(--border2); color: var(--text); background: var(--s3); }
+
+.google-icon {
+  width: 16px; height: 16px;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Cpath fill='%23FFC107' d='M43.6 20.1H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34 6.6 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.7-.4-3.9z'/%3E%3Cpath fill='%23FF3D00' d='M6.3 14.7l6.6 4.8C14.7 16 19 13 24 13c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34 6.6 29.3 4 24 4 16.3 4 9.7 8.4 6.3 14.7z'/%3E%3Cpath fill='%234CAF50' d='M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.3 26.7 36 24 36c-5.2 0-9.7-3.3-11.3-8H6.4C9.8 35.6 16.4 44 24 44z'/%3E%3Cpath fill='%231976D2' d='M43.6 20.1H42V20H24v8h11.3c-.8 2.2-2.3 4.1-4.1 5.5l6.2 5.2C41.5 35.3 44 30 44 24c0-1.3-.1-2.7-.4-3.9z'/%3E%3C/svg%3E") center/contain no-repeat;
+  flex-shrink: 0;
+}
+
+.auth-err-banner {
+  background: rgba(200, 92, 92, .1);
+  border: 1px solid rgba(200, 92, 92, .3);
+  border-radius: var(--r);
+  padding: 10px 14px;
+  font-size: 12px;
+  color: #d48080;
+  display: none;
+  margin-bottom: 14px;
+  animation: fadeUp .2s ease;
+}
+.auth-err-banner.show { display: block; }
+
+/* 로컬 모드 배너 */
+.local-banner {
+  background: rgba(184,154,96,.1);
+  border: 1px solid rgba(184,154,96,.25);
+  border-radius: var(--r);
+  padding: 12px 14px;
+  font-size: 12px;
+  color: var(--accent);
+  margin-bottom: 20px;
+  line-height: 1.65;
+}
+.local-banner a { color: var(--accent); text-decoration: underline; cursor: pointer; }
+
+/* 스피너 */
+.spinner {
+  width: 16px; height: 16px;
+  border: 2px solid rgba(0,0,0,.2);
+  border-top-color: #0b0b0b;
+  border-radius: 50%;
+  animation: spin .7s linear infinite;
+  display: none;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ══════════════════════════════════════════════════
+   SCREEN 2 — LOBBY  (방 만들기 / 참가)
+══════════════════════════════════════════════════ */
+#screen-lobby {
+  min-height: 100vh;
+  display: none;
+  flex-direction: column;
+}
+
+.lobby-nav {
+  height: 52px;
+  background: var(--s1);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 28px;
+  gap: 16px;
+}
+.nav-logo {
+  font-family: var(--font-head);
+  font-style: italic;
+  font-weight: 300;
+  font-size: 22px;
+  color: var(--accent);
+  letter-spacing: .02em;
+}
+.spacer { flex: 1; }
+.nav-user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--dim);
+}
+.user-avatar {
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  background: var(--s3);
+  border: 1px solid var(--border2);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--accent);
+}
+.btn-signout {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  color: var(--muted);
+  padding: 4px 10px;
+  cursor: pointer;
+  font-size: 11px;
+  transition: var(--t);
+}
+.btn-signout:hover { color: var(--text); border-color: var(--border2); }
+
+.lobby-body {
+  flex: 1;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 60px 24px 80px;
+  gap: 20px;
+}
+
+.lobby-col {
+  width: min(360px, 100%);
+  animation: fadeUp .35s ease;
+}
+
+.lobby-heading {
+  font-family: var(--font-head);
+  font-style: italic;
+  font-weight: 300;
+  font-size: 34px;
+  color: var(--text);
+  margin-bottom: 6px;
+  line-height: 1.1;
+}
+.lobby-sub { font-size: 12px; color: var(--muted); margin-bottom: 32px; }
+
+.lobby-card {
+  background: var(--s1);
+  border: 1px solid var(--border);
+  border-radius: var(--rl);
+  padding: 24px;
+  margin-bottom: 16px;
+  transition: border-color var(--t);
+}
+.lobby-card:hover { border-color: var(--border2); }
+
+.lc-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+.lc-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  letter-spacing: .04em;
+}
+.lc-badge {
+  font-size: 10px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.system-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+  margin-bottom: 18px;
+}
+.sys-btn {
+  background: var(--s2);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 10px 10px 9px;
+  cursor: pointer;
+  text-align: left;
+  transition: var(--t);
+}
+.sys-btn:hover { border-color: var(--border2); }
+.sys-btn.selected { border-color: var(--accent); background: var(--a-dim); }
+.sys-name { display: block; font-size: 13px; font-weight: 500; color: var(--text); margin-bottom: 1px; }
+.sys-sub  { font-size: 10px; color: var(--muted); }
+.sys-btn.selected .sys-name { color: var(--accent); }
+
+.lobby-field { margin-bottom: 14px; }
+.lobby-field label { display: block; font-size: 10px; letter-spacing: .2em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+.lobby-field input {
+  width: 100%;
+  background: var(--s2);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  color: var(--text);
+  padding: 10px 12px;
+  font-size: 14px;
+  transition: var(--t);
+}
+.lobby-field input:focus { border-color: var(--accent); background: var(--s3); }
+.lobby-field input::placeholder { color: var(--muted); font-size: 12px; }
+
+.code-input {
+  font-family: var(--font-mono) !important;
+  font-size: 22px !important;
+  letter-spacing: .45em !important;
+  text-transform: uppercase !important;
+  text-align: center !important;
+}
+
+.btn-room {
+  width: 100%;
+  background: var(--accent);
+  color: #080808;
+  border: none;
+  border-radius: var(--r);
+  padding: 12px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: var(--t);
+  letter-spacing: .04em;
+}
+.btn-room:hover { opacity: .88; }
+.btn-room.secondary {
+  background: var(--s3);
+  color: var(--text);
+  border: 1px solid var(--border2);
+}
+.btn-room.secondary:hover { background: var(--s4); }
+
+/* 최근 방 */
+.recent-rooms { display: flex; flex-direction: column; gap: 6px; margin-bottom: 18px; }
+.recent-room {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px;
+  background: var(--s2);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  cursor: pointer;
+  transition: var(--t);
+}
+.recent-room:hover { border-color: var(--accent); background: var(--a-dim); }
+.rr-code { font-family: var(--font-mono); font-size: 13px; color: var(--accent); letter-spacing: .15em; }
+.rr-info { flex: 1; font-size: 11px; color: var(--muted); }
+.rr-arr  { font-size: 11px; color: var(--muted); }
+
+/* ══════════════════════════════════════════════════
+   SCREEN 3 — GAME
+══════════════════════════════════════════════════ */
+#screen-game {
+  height: 100vh;
+  display: none;
+  flex-direction: column;
+}
+
+/* ── 탑바 ── */
+.topbar {
+  height: 46px;
+  background: var(--s1);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  gap: 10px;
+  flex-shrink: 0;
+}
+.topbar-logo { font-family: var(--font-head); font-style: italic; font-weight: 300; font-size: 20px; color: var(--accent); }
+.room-badge {
+  font-family: var(--font-mono); font-size: 12px;
+  background: var(--s2); border: 1px solid var(--border);
+  border-radius: 4px; padding: 3px 9px; color: var(--muted);
+  letter-spacing: .2em; cursor: pointer; transition: var(--t);
+}
+.room-badge:hover { border-color: var(--border2); color: var(--dim); }
+.system-badge {
+  font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--dim);
+  background: var(--s2); border: 1px solid var(--border); border-radius: 4px; padding: 3px 9px;
+}
+.players-row { display: flex; gap: 5px; align-items: center; }
+.p-chip {
+  height: 26px; padding: 0 8px; border-radius: 13px;
+  border: 1px solid var(--border); background: var(--s2);
+  font-size: 11px; color: var(--dim); display: flex; align-items: center; gap: 5px;
+}
+.p-chip.me { border-color: var(--accent); color: var(--accent); }
+.p-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--muted); }
+.p-chip.me .p-dot { background: var(--accent); }
+.topbar-btn {
+  background: none; border: 1px solid var(--border); border-radius: var(--r);
+  color: var(--dim); padding: 5px 10px; cursor: pointer;
+  font-size: 11px; font-family: inherit; transition: var(--t); letter-spacing: .04em;
+}
+.topbar-btn:hover { border-color: var(--border2); color: var(--text); }
+
+/* ── 게임 바디 ── */
+.game-body { flex: 1; display: flex; overflow: hidden; }
+
+/* ── 왼쪽 패널 ── */
+.panel-left {
+  width: 272px; min-width: 272px;
+  background: var(--s1); border-right: 1px solid var(--border);
+  display: flex; flex-direction: column; overflow: hidden; transition: width .28s ease;
+}
+.panel-left.collapsed { width: 0; min-width: 0; overflow: hidden; }
+.panel-header { padding: 10px 14px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+.panel-header-title { font-size: 10px; letter-spacing: .2em; text-transform: uppercase; color: var(--muted); }
+.panel-tabs { display: flex; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.ptab { flex: 1; background: none; border: none; border-bottom: 2px solid transparent; color: var(--muted); padding: 8px 4px; cursor: pointer; font-family: inherit; font-size: 10px; letter-spacing: .1em; text-transform: uppercase; transition: var(--t); margin-bottom: -1px; }
+.ptab.on { color: var(--accent); border-bottom-color: var(--accent); }
+.panel-body { flex: 1; overflow-y: auto; padding: 12px; }
+
+/* ── 시트 공통 컴포넌트 ── */
+.char-meta { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+.char-meta input { background: none; border: none; border-bottom: 1px solid var(--border); color: var(--text); padding: 4px 0; font-size: 13px; transition: var(--t); width: 100%; }
+.char-meta input:focus { border-color: var(--accent); }
+.char-meta input::placeholder { color: var(--muted); font-size: 12px; }
+.sec { margin-bottom: 16px; }
+.sec-title { font-size: 10px; letter-spacing: .18em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; padding-bottom: 5px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+.stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
+.stat-box { background: var(--s2); border: 1px solid var(--border); border-radius: var(--r); padding: 7px 5px; text-align: center; cursor: pointer; transition: var(--t); }
+.stat-box:hover { border-color: var(--accent); background: var(--a-dim); }
+.stat-box .sn { font-size: 9px; color: var(--muted); letter-spacing: .08em; text-transform: uppercase; }
+.stat-box .sv { font-family: var(--font-mono); font-size: 18px; color: var(--text); line-height: 1.1; }
+.stat-box .sv input { background: none; border: none; color: inherit; font: inherit; text-align: center; width: 100%; padding: 0; }
+.res-row { display: flex; gap: 5px; }
+.res-box { flex: 1; background: var(--s2); border: 1px solid var(--border); border-radius: var(--r); padding: 7px; text-align: center; }
+.res-label { font-size: 9px; color: var(--muted); letter-spacing: .1em; text-transform: uppercase; margin-bottom: 3px; }
+.res-val { font-family: var(--font-mono); font-size: 14px; color: var(--text); display: flex; align-items: center; justify-content: center; gap: 3px; }
+.res-val input { background: none; border: none; color: inherit; font: inherit; text-align: center; width: 34px; }
+.res-val span { color: var(--muted); font-size: 12px; }
+.bar { height: 3px; background: var(--s3); border-radius: 2px; overflow: hidden; margin-top: 4px; }
+.bar-fill { height: 100%; border-radius: 2px; transition: width .4s; }
+.bar-hp .bar-fill  { background: var(--green); }
+.bar-mp .bar-fill  { background: var(--blue); }
+.bar-san .bar-fill { background: var(--accent); }
+.skill-list { display: flex; flex-direction: column; gap: 1px; }
+.skill-row { display: flex; align-items: center; padding: 4px 6px; border-radius: 4px; cursor: pointer; transition: var(--t); gap: 6px; }
+.skill-row:hover { background: var(--s2); }
+.skill-row .sk-n { flex: 1; font-size: 12px; color: var(--dim); }
+.skill-row .sk-v input { background: none; border: none; color: var(--text); font-family: var(--font-mono); font-size: 12px; text-align: right; width: 36px; }
+.skill-row .sk-pct { font-size: 10px; color: var(--muted); }
+.notes-area { width: 100%; min-height: 200px; background: var(--s2); border: 1px solid var(--border); border-radius: var(--r); color: var(--text); padding: 10px; font-size: 13px; resize: vertical; transition: var(--t); font-family: inherit; }
+.notes-area:focus { border-color: var(--accent); }
+.tag { display: inline-block; background: var(--a-dim); border: 1px solid var(--border2); border-radius: 3px; padding: 2px 7px; font-size: 11px; color: var(--accent); margin: 2px; cursor: pointer; transition: var(--t); }
+.tag:hover { background: var(--a-glow); }
+.tag.selected { background: var(--accent); color: #080808; }
+.ninjutsu-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+.ninjutsu-cell { background: var(--s2); border: 1px solid var(--border); border-radius: 4px; padding: 6px; font-size: 11px; cursor: pointer; transition: var(--t); min-height: 44px; display: flex; align-items: center; justify-content: center; text-align: center; color: var(--dim); }
+.ninjutsu-cell:hover { border-color: var(--accent); }
+.ninjutsu-cell input { background: none; border: none; color: var(--text); font: inherit; text-align: center; width: 100%; }
+.insane-skill { background: var(--s2); border: 1px solid var(--border); border-radius: 4px; padding: 5px 4px; text-align: center; color: var(--dim); cursor: pointer; transition: var(--t); font-size: 11px; }
+.insane-skill:hover { border-color: var(--accent); }
+.insane-skill.has { border-color: var(--accent); color: var(--accent); background: var(--a-dim); }
+
+/* ── 센터 ── */
+.panel-center { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+.map-area { flex: 1; position: relative; overflow: hidden; background: var(--s1); background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px); background-size: 44px 44px; }
+.map-token { position: absolute; width: 36px; height: 36px; border-radius: 50%; background: var(--s3); border: 2px solid var(--accent); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 500; cursor: grab; user-select: none; z-index: 10; transition: box-shadow .15s; transform: translate(-50%,-50%); }
+.map-token:hover { box-shadow: 0 0 0 4px var(--a-glow); }
+.map-token.enemy { border-color: var(--red); }
+.map-token.npc   { border-color: var(--blue); }
+.map-toolbar { position: absolute; top: 10px; left: 10px; display: flex; gap: 4px; z-index: 20; }
+.map-tb-btn { width: 28px; height: 28px; background: var(--s2); border: 1px solid var(--border); border-radius: var(--r); color: var(--dim); cursor: pointer; font-size: 13px; display: flex; align-items: center; justify-content: center; transition: var(--t); }
+.map-tb-btn:hover { border-color: var(--accent); color: var(--accent); }
+.map-tb-btn.on { background: var(--accent); border-color: var(--accent); color: #080808; }
+
+/* ── 다이스바 ── */
+.dice-bar { height: 90px; background: var(--s2); border-top: 1px solid var(--border); display: flex; align-items: center; padding: 0 14px; gap: 10px; flex-shrink: 0; }
+.dice-btns { display: flex; gap: 5px; }
+.dice-btn { width: 48px; height: 54px; background: var(--s1); border: 1px solid var(--border); border-radius: var(--r); color: var(--dim); cursor: pointer; font-family: var(--font-mono); font-size: 12px; transition: var(--t); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; }
+.dice-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--a-dim); }
+.dice-btn.rolling { animation: shake .35s ease; border-color: var(--accent); }
+@keyframes shake { 0%{transform:rotate(0)} 20%{transform:rotate(-12deg) scale(1.1)} 55%{transform:rotate(10deg) scale(1.1)} 80%{transform:rotate(-5deg)} 100%{transform:rotate(0)} }
+.d-icon { font-size: 18px; }
+.d-label { font-size: 9px; color: var(--muted); letter-spacing: .06em; }
+.dice-mid { display: flex; flex-direction: column; gap: 6px; }
+.dice-count-row { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); }
+.dice-count-row input { width: 38px; background: var(--s1); border: 1px solid var(--border); border-radius: 4px; color: var(--text); padding: 3px 6px; text-align: center; font-family: var(--font-mono); font-size: 13px; }
+.secret-check { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--muted); cursor: pointer; }
+.secret-check input { accent-color: var(--accent); }
+.dice-result { flex: 1; display: flex; align-items: center; gap: 12px; }
+.roll-num { font-family: var(--font-mono); font-size: 36px; color: var(--accent); min-width: 70px; text-align: center; line-height: 1; transition: opacity .2s ease; }
+.roll-detail-col { display: flex; flex-direction: column; gap: 4px; }
+.roll-dice-str { font-family: var(--font-mono); font-size: 11px; color: var(--muted); }
+.roll-judgment { font-size: 11px; font-weight: 500; letter-spacing: .1em; text-transform: uppercase; padding: 3px 8px; border-radius: 3px; display: inline-block; width: fit-content; }
+.j-exs  { background: rgba(184,154,96,.2); color: var(--accent); }
+.j-succ { background: rgba(90,158,114,.2); color: var(--green); }
+.j-fail { background: rgba(200,92,92,.2); color: var(--red); }
+.j-fumb { background: rgba(200,92,92,.35); color: var(--red); }
+
+/* ── 오른쪽 패널 (채팅) ── */
+.panel-right { width: 250px; min-width: 250px; background: var(--s1); border-left: 1px solid var(--border); display: flex; flex-direction: column; transition: width .28s ease; }
+.panel-right.collapsed { width: 0; min-width: 0; overflow: hidden; }
+.chat-messages { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+.chat-msg { animation: fadeUp .2s ease; }
+.msg-meta { display: flex; align-items: baseline; gap: 6px; margin-bottom: 2px; }
+.msg-name { font-size: 11px; font-weight: 500; color: var(--accent); }
+.msg-time { font-size: 10px; color: var(--muted); font-family: var(--font-mono); }
+.msg-text { font-size: 13px; color: var(--dim); line-height: 1.55; word-break: break-word; }
+.msg-dice .msg-text { background: var(--a-dim); border: 1px solid var(--border2); border-radius: var(--r); padding: 6px 10px; font-family: var(--font-mono); font-size: 12px; color: var(--accent); }
+.msg-sys .msg-text { color: var(--muted); font-size: 11px; font-style: italic; text-align: center; }
+.chat-input-wrap { border-top: 1px solid var(--border); padding: 8px; display: flex; gap: 6px; }
+.chat-input { flex: 1; background: var(--s2); border: 1px solid var(--border); border-radius: var(--r); color: var(--text); padding: 7px 10px; font-size: 13px; resize: none; min-height: 34px; max-height: 100px; transition: var(--t); font-family: inherit; }
+.chat-input:focus { border-color: var(--accent); }
+.send-btn { width: 34px; height: 34px; background: var(--accent); border: none; border-radius: var(--r); color: #080808; cursor: pointer; font-size: 15px; display: flex; align-items: center; justify-content: center; transition: var(--t); flex-shrink: 0; }
+.send-btn:hover { opacity: .85; }
+
+/* ── BGM 바 ── */
+.bgm-bar { height: 50px; background: var(--s1); border-top: 1px solid var(--border); display: flex; align-items: center; padding: 0 14px; gap: 10px; flex-shrink: 0; }
+.bgm-info { flex: 1; min-width: 0; }
+.bgm-np    { font-size: 9px; letter-spacing: .15em; text-transform: uppercase; color: var(--muted); }
+.bgm-title { font-size: 12px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 160px; }
+.bgm-ctrl  { display: flex; gap: 5px; align-items: center; }
+.bgm-btn   { width: 26px; height: 26px; background: none; border: 1px solid var(--border); border-radius: 4px; color: var(--dim); cursor: pointer; font-size: 11px; display: flex; align-items: center; justify-content: center; transition: var(--t); }
+.bgm-btn:hover   { border-color: var(--accent); color: var(--accent); }
+.bgm-btn.playing { background: var(--accent); border-color: var(--accent); color: #080808; }
+.bgm-vol   { display: flex; align-items: center; gap: 5px; font-size: 10px; color: var(--muted); }
+.bgm-vol input[type=range] { width: 55px; accent-color: var(--accent); }
+.bgm-add   { background: none; border: 1px dashed var(--border2); border-radius: var(--r); color: var(--muted); padding: 4px 10px; cursor: pointer; font-family: inherit; font-size: 11px; transition: var(--t); }
+.bgm-add:hover { border-color: var(--accent); color: var(--accent); }
+
+/* ══════════════════════════════════════════════════
+   MODALS
+══════════════════════════════════════════════════ */
+.overlay { position: fixed; inset: 0; background: rgba(0,0,0,.72); display: none; align-items: center; justify-content: center; z-index: 200; backdrop-filter: blur(3px); }
+.overlay.open { display: flex; }
+.modal { background: var(--s1); border: 1px solid var(--border2); border-radius: var(--rl); padding: 24px; width: min(380px, 90vw); max-height: 80vh; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; animation: fadeUp .2s ease; }
+.modal-title { font-size: 15px; font-weight: 500; }
+.modal-row { display: flex; align-items: center; justify-content: space-between; }
+.modal-close { background: none; border: none; color: var(--muted); font-size: 18px; cursor: pointer; padding: 2px; transition: var(--t); }
+.modal-close:hover { color: var(--text); }
+.playlist { display: flex; flex-direction: column; gap: 4px; max-height: 180px; overflow-y: auto; }
+.pl-item { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: var(--r); cursor: pointer; transition: var(--t); }
+.pl-item:hover { background: var(--s2); }
+.pl-item.current { background: var(--a-dim); }
+.pl-name { flex: 1; font-size: 12px; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pl-del  { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 14px; transition: var(--t); }
+.pl-del:hover { color: var(--red); }
+.modal-field { display: flex; flex-direction: column; gap: 6px; }
+.modal-field label { font-size: 10px; letter-spacing: .2em; text-transform: uppercase; color: var(--muted); }
+.modal-field input, .modal-field select { background: var(--s2); border: 1px solid var(--border); border-radius: var(--r); color: var(--text); padding: 10px 12px; font-size: 14px; transition: var(--t); width: 100%; }
+.modal-field input:focus, .modal-field select:focus { border-color: var(--accent); }
+.modal-note { font-size: 11px; color: var(--muted); line-height: 1.65; }
+.modal-info { font-size: 12px; color: var(--dim); line-height: 1.8; }
+.modal-info b { color: var(--text); }
+
+#yt-player { display: none; }
+</style>
+</head>
+<body>
+
+<!-- ╔══════════════════════════════════════════════════╗
+     ║   SCREEN 1 : AUTH                              ║
+     ╚══════════════════════════════════════════════════╝ -->
+<div id="screen-auth">
+
+  <!-- 왼쪽 브랜드 패널 -->
+  <div class="auth-brand">
+    <div class="brand-top">
+      <div class="brand-wordmark">ITC</div>
+      <div class="brand-sub">온라인 TRPG 테이블 · 최대 5인</div>
+    </div>
+
+    <div class="brand-features">
+      <div class="brand-feat">
+        <div class="bf-icon">🎭</div>
+        <div class="bf-text">
+          <div class="bf-title">멀티 시스템 캐릭터 시트</div>
+          <div class="bf-desc">CoC7 · 더블크로스 · 시노비가미 · 인세인<br>전용 시트 자동 저장</div>
+        </div>
+      </div>
+      <div class="brand-feat">
+        <div class="bf-icon">🎲</div>
+        <div class="bf-text">
+          <div class="bf-title">실시간 다이스 & 채팅</div>
+          <div class="bf-desc">시스템별 주사위, 비밀 굴리기, 판정 자동 계산<br>5명 동시 실시간 동기화</div>
+        </div>
+      </div>
+      <div class="brand-feat">
+        <div class="bf-icon">🗺</div>
+        <div class="bf-text">
+          <div class="bf-title">맵 & 토큰</div>
+          <div class="bf-desc">격자 맵 위에 PC · NPC · 적 토큰 배치<br>드래그로 이동</div>
+        </div>
+      </div>
+      <div class="brand-feat">
+        <div class="bf-icon">🎵</div>
+        <div class="bf-text">
+          <div class="bf-title">YouTube BGM 주크박스</div>
+          <div class="bf-desc">플레이리스트 관리, 전원 동기화<br>분위기에 맞는 BGM 설정</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="brand-bottom">
+      <div>지원 시스템</div>
+      <div class="sys-tags">
+        <span class="sys-tag">CoC 7판</span>
+        <span class="sys-tag">더블크로스 3rd</span>
+        <span class="sys-tag">시노비가미</span>
+        <span class="sys-tag">인세인</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 오른쪽 폼 패널 -->
+  <div class="auth-form-panel">
+    <div class="auth-card">
+
+      <!-- Firebase 미연결 시 표시 -->
+      <div class="local-banner" id="local-banner" style="display:none">
+        ⚠️ <strong>Firebase 미연결</strong> — 현재 로컬 모드로 실행 중입니다.<br>
+        Firebase를 연결하면 실제 멀티플레이가 가능합니다.<br>
+        <a onclick="showSetupGuide()">연결 방법 보기 →</a>
+        <br><br>
+        <strong>로컬 모드 계속하기:</strong>
+        <input type="text" id="local-name" placeholder="이름 입력" style="display:block;margin-top:8px;width:100%;background:var(--s2);border:1px solid var(--border);border-radius:var(--r);color:var(--text);padding:8px 12px;font:inherit;font-size:13px">
+        <button onclick="localLogin()" style="display:block;width:100%;margin-top:8px;background:var(--accent);color:#080808;border:none;border-radius:var(--r);padding:10px;font:inherit;font-size:13px;font-weight:500;cursor:pointer">
+          계속하기 →
+        </button>
+      </div>
+
+      <!-- Auth 탭 (Firebase 연결 시) -->
+      <div id="auth-form-main">
+        <div class="auth-tabs">
+          <button class="auth-tab on" onclick="switchAuthTab('signin', this)">로그인</button>
+          <button class="auth-tab"   onclick="switchAuthTab('signup', this)">계정 만들기</button>
+        </div>
+
+        <!-- 로그인 폼 -->
+        <div id="form-signin">
+          <div class="auth-heading">돌아오셨군요</div>
+          <div class="auth-hint">이메일과 비밀번호로 로그인하세요</div>
+          <div class="auth-err-banner" id="signin-err"></div>
+          <div class="field">
+            <label>이메일</label>
+            <input type="email" id="si-email" placeholder="your@email.com" onkeydown="if(event.key==='Enter')doSignIn()">
+          </div>
+          <div class="field">
+            <label>비밀번호</label>
+            <input type="password" id="si-pw" placeholder="비밀번호" onkeydown="if(event.key==='Enter')doSignIn()">
+          </div>
+          <button class="btn-primary" id="si-btn" onclick="doSignIn()">
+            <span class="spinner" id="si-spin"></span>
+            <span id="si-label">로그인</span>
+          </button>
+          <div class="divider">또는</div>
+          <button class="btn-google" onclick="doGoogleSignIn()">
+            <div class="google-icon"></div>
+            Google 계정으로 로그인
+          </button>
+        </div>
+
+        <!-- 계정 만들기 폼 -->
+        <div id="form-signup" class="hidden">
+          <div class="auth-heading">처음 오셨나요</div>
+          <div class="auth-hint">무료 계정을 만들고 바로 시작하세요</div>
+          <div class="auth-err-banner" id="signup-err"></div>
+          <div class="field">
+            <label>닉네임</label>
+            <input type="text" id="su-name" placeholder="표시될 이름" maxlength="12" onkeydown="if(event.key==='Enter')doSignUp()">
+          </div>
+          <div class="field">
+            <label>이메일</label>
+            <input type="email" id="su-email" placeholder="your@email.com" onkeydown="if(event.key==='Enter')doSignUp()">
+          </div>
+          <div class="field">
+            <label>비밀번호 (6자 이상)</label>
+            <input type="password" id="su-pw" placeholder="비밀번호" onkeydown="if(event.key==='Enter')doSignUp()">
+          </div>
+          <button class="btn-primary" id="su-btn" onclick="doSignUp()">
+            <span class="spinner" id="su-spin"></span>
+            <span id="su-label">계정 만들기</span>
+          </button>
+          <div class="divider">또는</div>
+          <button class="btn-google" onclick="doGoogleSignIn()">
+            <div class="google-icon"></div>
+            Google 계정으로 시작
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ╔══════════════════════════════════════════════════╗
+     ║   SCREEN 2 : LOBBY                             ║
+     ╚══════════════════════════════════════════════════╝ -->
+<div id="screen-lobby">
+  <nav class="lobby-nav">
+    <div class="nav-logo">ITC</div>
+    <div class="spacer"></div>
+    <div class="nav-user">
+      <div class="user-avatar" id="user-avatar">?</div>
+      <span id="user-name-nav">—</span>
+      <button class="btn-signout" onclick="doSignOut()">로그아웃</button>
+    </div>
+  </nav>
+
+  <div class="lobby-body">
+    <!-- 방 만들기 -->
+    <div class="lobby-col" style="animation-delay:.0s">
+      <div class="lobby-heading">새 세션</div>
+      <div class="lobby-sub">방을 만들고 코드를 파티원에게 공유하세요</div>
+
+      <div class="lobby-card">
+        <div class="lc-header">
+          <div class="lc-title">방 만들기</div>
+          <div class="lc-badge">GM / 플레이어</div>
+        </div>
+
+        <div style="margin-bottom:10px;font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted)">게임 시스템</div>
+        <div class="system-grid" style="margin-bottom:18px">
+          <button class="sys-btn selected" onclick="selectSystem('coc7', this)">
+            <span class="sys-name">CoC 7판</span>
+            <span class="sys-sub">크툴루의 부름</span>
+          </button>
+          <button class="sys-btn" onclick="selectSystem('dx3', this)">
+            <span class="sys-name">더블크로스</span>
+            <span class="sys-sub">DX3rd</span>
+          </button>
+          <button class="sys-btn" onclick="selectSystem('shinobigami', this)">
+            <span class="sys-name">시노비가미</span>
+            <span class="sys-sub">신격의 바탕</span>
+          </button>
+          <button class="sys-btn" onclick="selectSystem('insane', this)">
+            <span class="sys-name">인세인</span>
+            <span class="sys-sub">현대 공포</span>
+          </button>
+        </div>
+        <button class="btn-room" onclick="createRoom()">방 만들기 →</button>
+      </div>
+    </div>
+
+    <!-- 방 참가 -->
+    <div class="lobby-col" style="animation-delay:.08s">
+      <div class="lobby-heading">참가</div>
+      <div class="lobby-sub">방 코드를 입력해 세션에 합류하세요</div>
+
+      <div class="lobby-card">
+        <div class="lc-header">
+          <div class="lc-title">방 코드 입력</div>
+          <div class="lc-badge">6자리</div>
+        </div>
+        <div class="lobby-field">
+          <label>코드</label>
+          <input type="text" class="code-input" id="join-code" maxlength="6" placeholder="XXXXXX" onkeydown="if(event.key==='Enter')joinRoom()">
+        </div>
+        <button class="btn-room secondary" onclick="joinRoom()">참가하기 →</button>
+      </div>
+
+      <!-- 최근 방 목록 -->
+      <div id="recent-rooms-section" style="display:none; margin-top:8px">
+        <div class="lobby-card">
+          <div class="lc-header">
+            <div class="lc-title">최근 세션</div>
+          </div>
+          <div class="recent-rooms" id="recent-rooms"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ╔══════════════════════════════════════════════════╗
+     ║   SCREEN 3 : GAME                              ║
+     ╚══════════════════════════════════════════════════╝ -->
+<div id="screen-game">
+  <!-- 탑바 -->
+  <div class="topbar">
+    <div class="topbar-logo">ITC</div>
+    <div class="room-badge" id="topbar-code" onclick="copyRoomCode()" title="클릭해서 복사">······</div>
+    <div class="system-badge" id="topbar-system">시스템</div>
+    <div class="spacer"></div>
+    <div class="players-row" id="players-row"></div>
+    <button class="topbar-btn" onclick="togglePanel('left')">◀ 시트</button>
+    <button class="topbar-btn" onclick="togglePanel('right')">채팅 ▶</button>
+    <button class="topbar-btn" onclick="openModal('modal-token')">+ 토큰</button>
+    <button class="topbar-btn" onclick="openModal('modal-settings')">⚙</button>
+  </div>
+
+  <div class="game-body">
+    <!-- 왼쪽: 캐릭터 시트 -->
+    <div class="panel-left" id="panel-left">
+      <div class="panel-header">
+        <span class="panel-header-title">캐릭터 시트</span>
+        <button class="topbar-btn" onclick="saveCharacter()">저장</button>
+      </div>
+      <div class="panel-tabs">
+        <button class="ptab on" onclick="switchPanelTab('sheet', this)">시트</button>
+        <button class="ptab"    onclick="switchPanelTab('notes', this)">노트</button>
+      </div>
+      <div class="panel-body" id="sheet-container"></div>
+    </div>
+
+    <!-- 센터 -->
+    <div class="panel-center">
+      <div class="map-area" id="map-area">
+        <div class="map-toolbar">
+          <button class="map-tb-btn on" id="tool-select" onclick="setTool('select')">↖</button>
+          <button class="map-tb-btn"    id="tool-erase"  onclick="setTool('erase')">✕</button>
+        </div>
+      </div>
+      <div class="dice-bar">
+        <div class="dice-btns" id="dice-btns"></div>
+        <div class="dice-mid">
+          <div class="dice-count-row">
+            <span>개수</span>
+            <input type="number" id="dice-count" value="1" min="1" max="20">
+            <span>개</span>
+          </div>
+          <label class="secret-check">
+            <input type="checkbox" id="secret-roll">
+            <span>비밀 주사위</span>
+          </label>
+        </div>
+        <div class="dice-result">
+          <div class="roll-num" id="roll-num">—</div>
+          <div class="roll-detail-col">
+            <div class="roll-dice-str" id="roll-str"></div>
+            <div id="roll-judgment"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 오른쪽: 채팅 -->
+    <div class="panel-right" id="panel-right">
+      <div class="panel-header">
+        <span class="panel-header-title">채팅</span>
+      </div>
+      <div class="chat-messages" id="chat-messages"></div>
+      <div class="chat-input-wrap">
+        <textarea class="chat-input" id="chat-input" placeholder="메시지 입력 (Enter 전송)" rows="1" onkeydown="chatKeydown(event)"></textarea>
+        <button class="send-btn" onclick="sendChat()">➤</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- BGM 바 -->
+  <div class="bgm-bar">
+    <div class="bgm-info">
+      <div class="bgm-np">♪ Now Playing</div>
+      <div class="bgm-title" id="bgm-title">—</div>
+    </div>
+    <div class="bgm-ctrl">
+      <button class="bgm-btn" onclick="bgmPrev()">◀◀</button>
+      <button class="bgm-btn" id="bgm-playbtn" onclick="bgmToggle()">▶</button>
+      <button class="bgm-btn" onclick="bgmNext()">▶▶</button>
+    </div>
+    <div class="bgm-vol">🔊<input type="range" min="0" max="100" value="60" id="vol-slider" oninput="setVolume(this.value)"></div>
+    <button class="bgm-add" onclick="openModal('modal-bgm')">+ BGM</button>
+  </div>
+</div>
+
+<!-- ═══════ MODALS ═══════ -->
+<div class="overlay" id="modal-bgm">
+  <div class="modal">
+    <div class="modal-row">
+      <div class="modal-title">🎵 YouTube BGM</div>
+      <button class="modal-close" onclick="closeModal('modal-bgm')">✕</button>
+    </div>
+    <div class="modal-field"><label>YouTube URL 또는 영상 ID</label><input type="text" id="yt-url-input" placeholder="https://youtube.com/watch?v=..."></div>
+    <div class="modal-field"><label>트랙 이름 (선택)</label><input type="text" id="yt-name-input" placeholder="예: 전투 BGM"></div>
+    <button class="btn-primary" onclick="addBgmTrack()" style="margin-top:0">+ 플레이리스트에 추가</button>
+    <div style="border-top:1px solid var(--border);padding-top:10px">
+      <div style="font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);margin-bottom:8px">플레이리스트</div>
+      <div class="playlist" id="playlist"></div>
+    </div>
+    <p class="modal-note">BGM은 방 안의 모든 플레이어에게 실시간으로 동기화됩니다.</p>
+  </div>
+</div>
+
+<div class="overlay" id="modal-token">
+  <div class="modal">
+    <div class="modal-row">
+      <div class="modal-title">🪄 토큰 추가</div>
+      <button class="modal-close" onclick="closeModal('modal-token')">✕</button>
+    </div>
+    <div class="modal-field"><label>이름 (1–4자)</label><input type="text" id="token-name" maxlength="4" placeholder="이름"></div>
+    <div class="modal-field"><label>종류</label><select id="token-type"><option value="pc">PC</option><option value="npc">NPC</option><option value="enemy">적</option></select></div>
+    <button class="btn-primary" onclick="addToken()">맵에 추가</button>
+  </div>
+</div>
+
+<div class="overlay" id="modal-settings">
+  <div class="modal">
+    <div class="modal-row">
+      <div class="modal-title">⚙ 방 설정</div>
+      <button class="modal-close" onclick="closeModal('modal-settings')">✕</button>
+    </div>
+    <div class="modal-info">
+      <b>방 코드</b><br>
+      <span id="room-code-disp" style="font-family:var(--font-mono);font-size:22px;color:var(--accent);letter-spacing:.3em"></span><br><br>
+      <b>시스템</b> — <span id="system-disp"></span><br>
+      <b>내 닉네임</b> — <span id="myname-disp"></span>
+    </div>
+    <button class="btn-primary" style="background:var(--s3);color:var(--text);border:1px solid var(--border2)" onclick="leaveRoom()">방 나가기</button>
+  </div>
+</div>
+
+<!-- 설정 가이드 모달 -->
+<div class="overlay" id="modal-setup-guide">
+  <div class="modal" style="max-width:460px">
+    <div class="modal-row">
+      <div class="modal-title">🔧 Firebase 연결 가이드</div>
+      <button class="modal-close" onclick="closeModal('modal-setup-guide')">✕</button>
+    </div>
+    <div class="modal-info" style="line-height:2">
+      <b>1.</b> <a href="https://console.firebase.google.com" target="_blank" style="color:var(--accent)">console.firebase.google.com</a> 접속<br>
+      <b>2.</b> 프로젝트 만들기<br>
+      <b>3.</b> Authentication → 이메일/비밀번호 사용 설정<br>
+      <b>4.</b> Realtime Database → 만들기 (테스트 모드)<br>
+      <b>5.</b> 프로젝트 설정 → 웹 앱 추가 → 설정값 복사<br>
+      <b>6.</b> 이 HTML 파일 상단 &lt;script&gt; 의 firebaseConfig 에 붙여넣기<br>
+      <b>7.</b> 파일 저장 후 다시 열기
+    </div>
+    <p class="modal-note">설정 후 모든 방문자가 계정을 만들고 실시간 멀티플레이를 즐길 수 있습니다.</p>
+  </div>
+</div>
+
+<div id="yt-player"></div>
+
+<!-- ══════════════════════════════════════════════════
+     MAIN SCRIPT
+══════════════════════════════════════════════════ -->
+<script>
+/* ─────────────────────────────────────────────────
+   GLOBAL STATE
+───────────────────────────────────────────────── */
+const St = {
+  roomCode: '', system: 'coc7', myName: '', myId: '',
+  tokens: {}, playlist: [], currentTrack: -1, isPlaying: false,
+  tool: 'select', character: {}, recentRooms: [],
+};
+
+const SYS_LABELS = { coc7:'CoC 7판', dx3:'더블크로스 3rd', shinobigami:'시노비가미', insane:'인세인' };
+
+/* ─────────────────────────────────────────────────
+   AUTH SCREEN
+───────────────────────────────────────────────── */
+function initAuthScreen() {
+  const fb = window._FB;
+  if (!fb?.CONFIGURED) {
+    document.getElementById('auth-form-main').style.display = 'none';
+    document.getElementById('local-banner').style.display = 'block';
+    return;
+  }
+  // 이미 로그인된 경우 처리
+  window._onAuthReady = user => {
+    St.myName = user.displayName || user.email?.split('@')[0] || '플레이어';
+    St.myId   = user.uid;
+    loadRecentRooms();
+    showLobby();
+  };
+  if (window._currentUser) window._onAuthReady(window._currentUser);
+}
+
+function switchAuthTab(tab, btn) {
+  document.querySelectorAll('.auth-tab').forEach(b => b.classList.remove('on'));
+  btn.classList.add('on');
+  document.getElementById('form-signin').classList.toggle('hidden', tab !== 'signin');
+  document.getElementById('form-signup').classList.toggle('hidden', tab !== 'signup');
+}
+
+function setLoading(prefix, on) {
+  document.getElementById(prefix + '-spin').style.display = on ? 'inline-block' : 'none';
+  document.getElementById(prefix + '-label').textContent  = on ? '처리 중...' : (prefix === 'si' ? '로그인' : '계정 만들기');
+  document.getElementById(prefix + '-btn').disabled = on;
+}
+
+function showErr(id, msg) {
+  const el = document.getElementById(id);
+  el.textContent = msg; el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 4000);
+}
+
+const FB_ERR = {
+  'auth/user-not-found':       '등록된 이메일이 없습니다.',
+  'auth/wrong-password':       '비밀번호가 올바르지 않습니다.',
+  'auth/invalid-credential':   '이메일 또는 비밀번호가 올바르지 않습니다.',
+  'auth/email-already-in-use': '이미 사용 중인 이메일입니다.',
+  'auth/weak-password':        '비밀번호는 6자 이상이어야 합니다.',
+  'auth/invalid-email':        '이메일 형식이 올바르지 않습니다.',
+  'auth/popup-closed-by-user': '팝업이 닫혔습니다. 다시 시도해 주세요.',
+};
+function fbErr(code) { return FB_ERR[code] || '오류가 발생했습니다. 다시 시도해 주세요.'; }
+
+async function doSignIn() {
+  const email = document.getElementById('si-email').value.trim();
+  const pw    = document.getElementById('si-pw').value;
+  if (!email || !pw) { showErr('signin-err', '이메일과 비밀번호를 입력해 주세요.'); return; }
+  setLoading('si', true);
+  try {
+    const { auth, signInWithEmailAndPassword } = window._FB;
+    await signInWithEmailAndPassword(auth, email, pw);
+  } catch(e) {
+    setLoading('si', false);
+    showErr('signin-err', fbErr(e.code));
+  }
+}
+
+async function doSignUp() {
+  const name  = document.getElementById('su-name').value.trim();
+  const email = document.getElementById('su-email').value.trim();
+  const pw    = document.getElementById('su-pw').value;
+  if (!name)  { showErr('signup-err', '닉네임을 입력해 주세요.'); return; }
+  if (!email) { showErr('signup-err', '이메일을 입력해 주세요.'); return; }
+  if (!pw)    { showErr('signup-err', '비밀번호를 입력해 주세요.'); return; }
+  setLoading('su', true);
+  try {
+    const { auth, createUserWithEmailAndPassword, updateProfile } = window._FB;
+    const cred = await createUserWithEmailAndPassword(auth, email, pw);
+    await updateProfile(cred.user, { displayName: name });
+    St.myName = name; St.myId = cred.user.uid;
+  } catch(e) {
+    setLoading('su', false);
+    showErr('signup-err', fbErr(e.code));
+  }
+}
+
+async function doGoogleSignIn() {
+  try {
+    const { auth, GoogleAuthProvider, signInWithPopup } = window._FB;
+    const provider = new GoogleAuthProvider();
+    await signInWithPopup(auth, provider);
+  } catch(e) {
+    showErr('signin-err', fbErr(e.code));
+    showErr('signup-err', fbErr(e.code));
+  }
+}
+
+async function doSignOut() {
+  const { auth, signOut } = window._FB;
+  await signOut(auth);
+  location.reload();
+}
+
+function localLogin() {
+  const name = document.getElementById('local-name').value.trim();
+  if (!name) { alert('이름을 입력해 주세요.'); return; }
+  St.myName = name;
+  St.myId   = 'local_' + Math.random().toString(36).slice(2, 8);
+  showLobby();
+}
+
+function showSetupGuide() { openModal('modal-setup-guide'); }
+
+/* ─────────────────────────────────────────────────
+   LOBBY SCREEN
+───────────────────────────────────────────────── */
+let selectedSystem = 'coc7';
+
+function showLobby() {
+  document.getElementById('screen-auth').style.display  = 'none';
+  document.getElementById('screen-lobby').style.display = 'flex';
+  document.getElementById('user-name-nav').textContent  = St.myName;
+  document.getElementById('user-avatar').textContent    = St.myName[0]?.toUpperCase() || '?';
+  renderRecentRooms();
+}
+
+function selectSystem(sys, btn) {
+  selectedSystem = sys;
+  document.querySelectorAll('.sys-btn').forEach(b => b.classList.remove('selected'));
+  btn.classList.add('selected');
+}
+
+function genCode() {
+  const c = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  return Array.from({length:6}, () => c[Math.floor(Math.random()*c.length)]).join('');
+}
+function genId() { return Math.random().toString(36).slice(2, 10); }
+
+async function createRoom() {
+  if (window._FB?.CONFIGURED && !window._currentUser) {
+    alert('방을 만들려면 로그인이 필요합니다.');
+    return;
+  }
+  const code = genCode();
+  St.roomCode = code; St.system = selectedSystem;
+
+  if (window._FB?.CONFIGURED) {
+    const { db, ref, set } = window._FB;
+    await set(ref(db, `rooms/${code}/meta`), {
+      system: selectedSystem, createdAt: Date.now(),
+      createdBy: St.myName, ownerId: St.myId,
+    });
+    await set(ref(db, `rooms/${code}/players/${St.myId}`), {
+      name: St.myName, joinedAt: Date.now(), uid: St.myId,
+    });
+    setupFirebaseListeners();
+  }
+
+  saveRecentRoom(code, selectedSystem);
+  enterGame();
+}
+
+async function joinRoom() {
+  if (window._FB?.CONFIGURED && !window._currentUser) {
+    alert('방에 참가하려면 로그인이 필요합니다.');
+    return;
+  }
+  const code = document.getElementById('join-code').value.trim().toUpperCase();
+  if (code.length !== 6) { alert('방 코드는 6자리입니다.'); return; }
+
+  if (window._FB?.CONFIGURED) {
+    const { db, ref, get, set } = window._FB;
+    let snap;
+    try {
+      snap = await get(ref(db, `rooms/${code}/meta`));
+    } catch(e) {
+      alert('방을 찾는 중 오류가 발생했습니다. 로그인 상태를 확인해 주세요.');
+      return;
+    }
+    if (!snap.exists()) { alert('방을 찾을 수 없습니다. 코드를 다시 확인해 주세요.'); return; }
+
+    // 최대 5인 제한
+    const playersSnap = await get(ref(db, `rooms/${code}/players`));
+    const playerCount = playersSnap.exists() ? Object.keys(playersSnap.val()).length : 0;
+    if (playerCount >= 5) {
+      alert('이 방은 이미 최대 인원(5명)에 도달했습니다.');
+      return;
+    }
+
+    St.system = snap.val().system || 'coc7';
+    St.roomCode = code;
+    await set(ref(db, `rooms/${code}/players/${St.myId}`), {
+      name: St.myName, joinedAt: Date.now(), uid: St.myId,
+    });
+    setupFirebaseListeners();
+  } else {
+    St.roomCode = code; St.system = selectedSystem;
+  }
+
+  saveRecentRoom(code, St.system);
+  enterGame();
+}
+
+/* 최근 방 */
+function saveRecentRoom(code, sys) {
+  const rooms = JSON.parse(localStorage.getItem('tt_recent') || '[]');
+  const filtered = rooms.filter(r => r.code !== code);
+  filtered.unshift({ code, sys, time: Date.now() });
+  localStorage.setItem('tt_recent', JSON.stringify(filtered.slice(0, 5)));
+}
+
+function loadRecentRooms() {
+  St.recentRooms = JSON.parse(localStorage.getItem('tt_recent') || '[]');
+}
+
+function renderRecentRooms() {
+  const rooms = JSON.parse(localStorage.getItem('tt_recent') || '[]');
+  const section = document.getElementById('recent-rooms-section');
+  const container = document.getElementById('recent-rooms');
+  if (!rooms.length) { section.style.display = 'none'; return; }
+  section.style.display = 'block';
+  container.innerHTML = rooms.map(r => `
+    <div class="recent-room" onclick="quickJoin('${r.code}')">
+      <span class="rr-code">${r.code}</span>
+      <span class="rr-info">${SYS_LABELS[r.sys] || r.sys}</span>
+      <span class="rr-arr">→</span>
+    </div>`).join('');
+}
+
+async function quickJoin(code) {
+  document.getElementById('join-code').value = code;
+  await joinRoom();
+}
+
+/* ─────────────────────────────────────────────────
+   FIREBASE LISTENERS
+───────────────────────────────────────────────── */
+function setupFirebaseListeners() {
+  if (!window._FB?.CONFIGURED) return;
+  const { db, ref, onValue } = window._FB;
+  const code = St.roomCode;
+
+  onValue(ref(db, `rooms/${code}/players`), snap => {
+    const players = snap.val() || {};
+    renderPlayers(players);
+  });
+
+  onValue(ref(db, `rooms/${code}/chat`), snap => {
+    const msgs = snap.val() || {};
+    const sorted = Object.values(msgs).sort((a,b) => a.time - b.time);
+    document.getElementById('chat-messages').innerHTML = '';
+    sorted.forEach(m => appendChatMsg(m.name, m.text, m.type || 'normal'));
+  });
+
+  onValue(ref(db, `rooms/${code}/tokens`), snap => {
+    const tokens = snap.val() || {};
+    St.tokens = tokens;
+    renderAllTokens(tokens);
+  });
+
+  onValue(ref(db, `rooms/${code}/bgm`), snap => {
+    const bgm = snap.val();
+    if (!bgm) return;
+    if (bgm.playlist) { St.playlist = bgm.playlist; renderPlaylist(); }
+    if (bgm.currentTrack !== undefined && bgm.currentTrack !== St.currentTrack) {
+      St.currentTrack = bgm.currentTrack;
+      playTrack(St.currentTrack);
+    }
+  });
+
+  onValue(ref(db, `rooms/${code}/lastRoll`), snap => {
+    const roll = snap.val();
+    if (!roll || roll.playerId === St.myId || roll.secret) return;
+    showRollResult(roll);
+  });
+}
+
+/* ─────────────────────────────────────────────────
+   GAME ENTER
+───────────────────────────────────────────────── */
+function enterGame() {
+  document.getElementById('screen-lobby').style.display = 'none';
+  document.getElementById('screen-game').style.display = 'flex';
+
+  document.getElementById('topbar-code').textContent = St.roomCode;
+  document.getElementById('topbar-system').textContent = SYS_LABELS[St.system] || St.system;
+  document.getElementById('room-code-disp').textContent = St.roomCode;
+  document.getElementById('system-disp').textContent = SYS_LABELS[St.system];
+  document.getElementById('myname-disp').textContent = St.myName;
+
+  addPlayerChip(St.myId, St.myName, true);
+  renderCharacterSheet(St.system);
+  renderDiceButtons(St.system);
+  initCharacter(St.system);
+  addLocalMessage('system', '', `${St.myName}님이 입장했습니다 — ${SYS_LABELS[St.system]}`);
+}
+
+/* ─────────────────────────────────────────────────
+   PLAYERS
+───────────────────────────────────────────────── */
+function addPlayerChip(id, name, isMe) {
+  const row = document.getElementById('players-row');
+  if (document.getElementById('pchip-' + id)) return;
+  const chip = document.createElement('div');
+  chip.className = 'p-chip' + (isMe ? ' me' : '');
+  chip.id = 'pchip-' + id;
+  chip.innerHTML = `<div class="p-dot"></div><span>${esc(name)}</span>`;
+  row.appendChild(chip);
+}
+
+function renderPlayers(players) {
+  document.getElementById('players-row').innerHTML = '';
+  Object.entries(players).forEach(([id, p]) => addPlayerChip(id, p.name, id === St.myId));
+}
+
+/* ─────────────────────────────────────────────────
+   CHARACTER SHEETS
+───────────────────────────────────────────────── */
+function initCharacter(sys) {
+  const defaults = {
+    coc7: { name:'', job:'', age:'', str:50,con:50,siz:50,dex:50,app:50,int:50,pow:50,edu:50, hp:10,hpMax:10,mp:10,mpMax:10,san:50,sanMax:50, skills:{ 도서관:20,심리학:10,의학:5,법률:5,역사:5,격투:25,권총:20,회피:25,은신:20,추적:10,설득:15,위협:15,오컬트:5,자연:10,수영:20,응급처치:30 }, notes:'' },
+    dx3:  { name:'', enclave:'', hp:30,hpMax:30,enc:5,encMax:5, notes:'' },
+    shinobigami: { name:'', ryu:'', ninjutsu:Array(9).fill(''), notes:'' },
+    insane: { name:'', job:'', hp:6,hpMax:6, notes:'' },
+  };
+  St.character = JSON.parse(JSON.stringify(defaults[sys] || {}));
+
+  // 로컬 스토리지에서 복원
+  const saved = localStorage.getItem('tt_char_' + St.myId + '_' + sys);
+  if (saved) try { St.character = JSON.parse(saved); } catch(e) {}
+}
+
+function renderCharacterSheet(sys) {
+  const c = document.getElementById('sheet-container');
+
+  if (sys === 'coc7') {
+    c.innerHTML = `
+<div class="char-meta">
+  <input placeholder="조사자 이름" id="ch-name" oninput="ch('name',this.value)" value="${esc(St.character.name||'')}">
+  <input placeholder="직업" id="ch-job" oninput="ch('job',this.value)" value="${esc(St.character.job||'')}">
+  <input placeholder="나이" id="ch-age" oninput="ch('age',this.value)" value="${esc(St.character.age||'')}">
+</div>
+<div class="sec">
+  <div class="sec-title">능력치 <span style="font-size:9px;color:var(--muted)">클릭 → 판정</span></div>
+  <div class="stat-grid">
+    ${['str','con','siz','dex','app','int','pow','edu'].map(s => `
+      <div class="stat-box" onclick="rollSkillCheck('${s.toUpperCase()}', +document.getElementById('ci-${s}').value)">
+        <div class="sn">${s.toUpperCase()}</div>
+        <div class="sv"><input id="ci-${s}" type="number" value="${St.character[s]||50}" min="1" max="99" oninput="ch('${s}',+this.value)"></div>
+      </div>`).join('')}
+  </div>
+</div>
+<div class="sec">
+  <div class="sec-title">자원</div>
+  <div class="res-row">
+    <div class="res-box bar-hp"><div class="res-label">HP</div><div class="res-val"><input id="hp-cur" type="number" value="${St.character.hp||10}" oninput="ch('hp',+this.value);updateBar('hp')"><span>/</span><input id="hp-max" type="number" value="${St.character.hpMax||10}" oninput="ch('hpMax',+this.value);updateBar('hp')"></div><div class="bar"><div class="bar-fill" id="bar-hp"></div></div></div>
+    <div class="res-box bar-mp"><div class="res-label">MP</div><div class="res-val"><input id="mp-cur" type="number" value="${St.character.mp||10}" oninput="ch('mp',+this.value);updateBar('mp')"><span>/</span><input id="mp-max" type="number" value="${St.character.mpMax||10}" oninput="ch('mpMax',+this.value);updateBar('mp')"></div><div class="bar"><div class="bar-fill" id="bar-mp"></div></div></div>
+    <div class="res-box bar-san"><div class="res-label">SAN</div><div class="res-val"><input id="san-cur" type="number" value="${St.character.san||50}" oninput="ch('san',+this.value);updateBar('san')"><span>/</span><input id="san-max" type="number" value="${St.character.sanMax||50}" oninput="ch('sanMax',+this.value);updateBar('san')"></div><div class="bar"><div class="bar-fill" id="bar-san"></div></div></div>
+  </div>
+</div>
+<div class="sec">
+  <div class="sec-title">기술 <span style="font-size:9px;color:var(--muted)">클릭 → 판정</span></div>
+  <div class="skill-list">
+    ${Object.entries(St.character.skills||{}).map(([sk,val]) => `
+      <div class="skill-row" onclick="rollSkillCheck('${sk}',+document.getElementById('sk-${sk}').value)">
+        <span class="sk-n">${sk}</span>
+        <div class="sk-v"><input id="sk-${sk}" type="number" value="${val}" min="1" max="99" oninput="chSkill('${sk}',+this.value)"></div>
+        <span class="sk-pct">%</span>
+      </div>`).join('')}
+  </div>
+</div>`;
+    setTimeout(() => { updateBar('hp'); updateBar('mp'); updateBar('san'); }, 50);
+  }
+
+  else if (sys === 'dx3') {
+    const syns = ['オルクス','バロール','エグザイル','サラマンダー','エンジェルハイロゥ','ノイマン','ブラックドッグ','モルフェウス','ハヌマーン','キュマイラ'];
+    c.innerHTML = `
+<div class="char-meta">
+  <input placeholder="PC 이름" oninput="ch('name',this.value)" value="${esc(St.character.name||'')}">
+  <input placeholder="인클레이브" oninput="ch('enclave',this.value)" value="${esc(St.character.enclave||'')}">
+</div>
+<div class="sec">
+  <div class="sec-title">신드롬 (최대 3개)</div>
+  <div style="display:flex;flex-wrap:wrap;gap:2px;margin-bottom:6px">${syns.map(s=>`<div class="tag" onclick="this.classList.toggle('selected')">${s}</div>`).join('')}</div>
+</div>
+<div class="sec">
+  <div class="sec-title">자원</div>
+  <div class="res-row">
+    <div class="res-box bar-hp"><div class="res-label">HP</div><div class="res-val"><input id="hp-cur" type="number" value="${St.character.hp||30}" oninput="ch('hp',+this.value);updateBar('hp')"><span>/</span><input id="hp-max" type="number" value="${St.character.hpMax||30}" oninput="ch('hpMax',+this.value);updateBar('hp')"></div><div class="bar"><div class="bar-fill" id="bar-hp"></div></div></div>
+    <div class="res-box"><div class="res-label">인카네이션</div><div class="res-val"><input type="number" value="${St.character.enc||5}" oninput="ch('enc',+this.value)"><span>/</span><input type="number" value="${St.character.encMax||5}" oninput="ch('encMax',+this.value)"></div></div>
+  </div>
+</div>
+<div class="sec">
+  <div class="sec-title">능력치</div>
+  <div class="stat-grid">
+    ${['체술','감각','지각','의지','감정','사회','생명'].map(s=>`<div class="stat-box"><div class="sn">${s}</div><div class="sv"><input type="number" value="1" min="0" max="20"></div></div>`).join('')}
+  </div>
+</div>
+<div class="sec">
+  <div class="sec-title">파워 메모</div>
+  <textarea class="notes-area" style="min-height:90px" placeholder="에픽스·파워를 여기에..."></textarea>
+</div>`;
+    setTimeout(() => updateBar('hp'), 50);
+  }
+
+  else if (sys === 'shinobigami') {
+    c.innerHTML = `
+<div class="char-meta">
+  <input placeholder="닌자 이름" oninput="ch('name',this.value)" value="${esc(St.character.name||'')}">
+  <input placeholder="유파" oninput="ch('ryu',this.value)" value="${esc(St.character.ryu||'')}">
+</div>
+<div class="sec">
+  <div class="sec-title">비밀</div>
+  <textarea class="notes-area" style="min-height:60px" placeholder="이 캐릭터의 비밀...">${esc(St.character.secret||'')}</textarea>
+</div>
+<div class="sec">
+  <div class="sec-title">인법</div>
+  <div class="ninjutsu-grid">
+    ${Array.from({length:9},(_,i)=>`<div class="ninjutsu-cell"><input type="text" placeholder="인법 ${i+1}" value="${esc((St.character.ninjutsu||[])[i]||'')}" oninput="chNinjutsu(${i},this.value)"></div>`).join('')}
+  </div>
+</div>
+<div class="sec">
+  <div class="sec-title">자원</div>
+  <div class="res-row">
+    <div class="res-box bar-hp"><div class="res-label">생명력</div><div class="res-val"><input id="hp-cur" type="number" value="${St.character.hp||6}" oninput="ch('hp',+this.value);updateBar('hp')"><span>/</span><input id="hp-max" type="number" value="${St.character.hpMax||6}" oninput="ch('hpMax',+this.value);updateBar('hp')"></div><div class="bar"><div class="bar-fill" id="bar-hp"></div></div></div>
+    <div class="res-box"><div class="res-label">공적점</div><div class="res-val"><input type="number" value="0" min="0"></div></div>
+  </div>
+</div>
+<div class="sec">
+  <div class="sec-title">감정</div>
+  <div class="stat-grid">
+    ${['집착','우정','애정','존경','신뢰','호의','질투','우월','의심','공포','증오','열등'].map(e=>`<div class="stat-box" style="cursor:default"><div class="sn" style="font-size:10px">${e}</div><div style="margin-top:3px"><input type="checkbox" style="accent-color:var(--accent)"></div></div>`).join('')}
+  </div>
+</div>`;
+    setTimeout(() => updateBar('hp'), 50);
+  }
+
+  else if (sys === 'insane') {
+    const areas = [
+      ['폭력','격투','총기','도망','운동','제압','감각'],
+      ['정보','도서관','관찰','추적','은신','교섭','미디어'],
+      ['조사','증거','심리','해부','의학','과학','기억'],
+      ['기술','해킹','기계','운전','폭발','제조','전기'],
+      ['인류','역사','예술','신화','문화','언어','정치'],
+      ['법술','접속','지배','보호','봉인','소환','조율'],
+    ];
+    c.innerHTML = `
+<div class="char-meta">
+  <input placeholder="캐릭터 이름" oninput="ch('name',this.value)" value="${esc(St.character.name||'')}">
+  <input placeholder="직업" oninput="ch('job',this.value)" value="${esc(St.character.job||'')}">
+</div>
+<div class="sec">
+  <div class="sec-title">자원</div>
+  <div class="res-row">
+    <div class="res-box bar-hp"><div class="res-label">생명력</div><div class="res-val"><input id="hp-cur" type="number" value="${St.character.hp||6}" oninput="ch('hp',+this.value);updateBar('hp')"><span>/</span><input id="hp-max" type="number" value="${St.character.hpMax||6}" oninput="ch('hpMax',+this.value);updateBar('hp')"></div><div class="bar"><div class="bar-fill" id="bar-hp"></div></div></div>
+    <div class="res-box"><div class="res-label">정신력</div><div class="res-val"><input type="number" value="6" min="0"><span>/</span><input type="number" value="6" min="1"></div></div>
+    <div class="res-box"><div class="res-label">광기도</div><div class="res-val"><input type="number" value="0" min="0"></div></div>
+  </div>
+</div>
+<div class="sec">
+  <div class="sec-title">특기</div>
+  ${areas.map(row=>`<div style="display:flex;gap:2px;margin-bottom:2px;align-items:center"><span style="font-size:9px;color:var(--muted);width:36px;text-align:right;flex-shrink:0">${row[0]}</span>${row.slice(1).map(sk=>`<div class="insane-skill" onclick="this.classList.toggle('has')">${sk}</div>`).join('')}</div>`).join('')}
+</div>
+<div class="sec">
+  <div class="sec-title">감정</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">
+    ${Array.from({length:4},(_,i)=>`<div class="res-box"><div class="res-label">감정 ${i+1}</div><input type="text" placeholder="+" style="background:none;border:none;border-bottom:1px solid var(--border);color:var(--text);width:100%;font:inherit;font-size:11px;padding:2px 0"></div>`).join('')}
+  </div>
+</div>`;
+    setTimeout(() => updateBar('hp'), 50);
+  }
+}
+
+function ch(key, val) { St.character[key] = val; autoSave(); }
+function chSkill(sk, val) { if (!St.character.skills) St.character.skills = {}; St.character.skills[sk] = val; autoSave(); }
+function chNinjutsu(i, val) { if (!St.character.ninjutsu) St.character.ninjutsu = Array(9).fill(''); St.character.ninjutsu[i] = val; autoSave(); }
+
+function updateBar(type) {
+  const map = { hp:['hp-cur','hp-max','bar-hp'], mp:['mp-cur','mp-max','bar-mp'], san:['san-cur','san-max','bar-san'] };
+  const [ci, mi, bi] = map[type] || [];
+  const cur = document.getElementById(ci), max = document.getElementById(mi), bar = document.getElementById(bi);
+  if (!cur || !max || !bar) return;
+  bar.style.width = Math.max(0, Math.min(100, (cur.value / max.value) * 100)) + '%';
+}
+
+function autoSave() {
+  localStorage.setItem('tt_char_' + St.myId + '_' + St.system, JSON.stringify(St.character));
+  // Firebase: 로그인한 본인 UID로만 저장 (보안 규칙과 일치)
+  if (window._FB?.CONFIGURED && window._currentUser) {
+    const { db, ref, set } = window._FB;
+    set(ref(db, `rooms/${St.roomCode}/characters/${window._currentUser.uid}`), St.character);
+  }
+}
+
+function saveCharacter() {
+  autoSave();
+  const btn = document.querySelector('.panel-header button');
+  if (btn) { btn.textContent = '✓ 저장됨'; setTimeout(() => btn.textContent = '저장', 1500); }
+}
+
+/* ─────────────────────────────────────────────────
+   DICE
+───────────────────────────────────────────────── */
+const DICE_CONFIGS = {
+  coc7: [{l:'D100',s:100,i:'⬡'},{l:'D10',s:10,i:'◆'},{l:'D6',s:6,i:'■'},{l:'D4',s:4,i:'▲'},{l:'D8',s:8,i:'◈'},{l:'D20',s:20,i:'◉'}],
+  dx3:  [{l:'DX',s:10,i:'◆',dx:true},{l:'D6',s:6,i:'■'},{l:'D10',s:10,i:'◆'}],
+  shinobigami: [{l:'D6',s:6,i:'■'},{l:'2D6',s:6,i:'■■',c:2},{l:'D66',s:6,i:'◆◆',d66:true}],
+  insane:      [{l:'D6',s:6,i:'■'},{l:'2D6',s:6,i:'■■',c:2},{l:'D66',s:6,i:'◆◆',d66:true}],
+};
+
+function renderDiceButtons(sys) {
+  const container = document.getElementById('dice-btns');
+  const cfgs = DICE_CONFIGS[sys] || DICE_CONFIGS.coc7;
+  container.innerHTML = cfgs.map((d, i) => `
+    <button class="dice-btn" onclick="rollDice(${i})" id="dBtn-${i}">
+      <div class="d-icon">${d.i}</div>
+      <div>${d.l}</div>
+    </button>`).join('');
+}
+
+function rollDice(ci) {
+  const cfgs = DICE_CONFIGS[St.system] || DICE_CONFIGS.coc7;
+  const d = cfgs[ci];
+  const count = parseInt(document.getElementById('dice-count').value) || 1;
+  const isSecret = document.getElementById('secret-roll').checked;
+
+  const btn = document.getElementById('dBtn-' + ci);
+  if (btn) { btn.classList.add('rolling'); setTimeout(() => btn.classList.remove('rolling'), 400); }
+
+  let rolls = [], total = 0, detail = '';
+
+  if (d.d66) {
+    const a = Math.ceil(Math.random()*6), b = Math.ceil(Math.random()*6);
+    total = a*10+b; rolls = [a,b]; detail = `D66 [${a}][${b}] = ${total}`;
+  } else if (d.dx) {
+    let pool = count, allRolls = [];
+    while (pool > 0) {
+      let next = 0;
+      for (let i = 0; i < pool; i++) { const r = Math.ceil(Math.random()*10); allRolls.push(r); if (r===10) next++; }
+      pool = next;
+    }
+    rolls = allRolls; total = Math.max(...allRolls);
+    detail = `DX [${allRolls.join(',')}] 최고: ${total}`;
+  } else {
+    const n = d.c || count;
+    for (let i = 0; i < n; i++) { const r = Math.ceil(Math.random()*d.s); rolls.push(r); }
+    total = rolls.reduce((a,b)=>a+b,0);
+    detail = `${d.l}${n>1?'×'+n:''}: [${rolls.join('+')}] = ${total}`;
+  }
+
+  const rollObj = { playerId: St.myId, player: St.myName, dice: d.l, total, rolls, detail, secret: isSecret, time: Date.now() };
+  showRollResult(rollObj);
+
+  const chatText = `🎲 ${d.l} → ${total}  (${rolls.join(', ')})`;
+  if (!isSecret) sendMessage(St.myName, chatText, 'dice');
+  else addLocalMessage('dice', St.myName, `🎲 [비밀] ${d.l} → ${total}`);
+
+  if (window._FB?.CONFIGURED && !isSecret) {
+    const { db, ref, set } = window._FB;
+    set(ref(db, `rooms/${St.roomCode}/lastRoll`), rollObj);
+  }
+}
+
+function rollSkillCheck(name, val) {
+  const r = Math.ceil(Math.random()*100);
+  let j = '', jc = '';
+  if (r <= 5 || r <= Math.floor(val/5)) { j='극성공!'; jc='j-exs'; }
+  else if (r <= Math.floor(val/2))       { j='어려운 성공'; jc='j-succ'; }
+  else if (r <= val)                     { j='성공'; jc='j-succ'; }
+  else if (r >= 96)                      { j='치명적 실패!'; jc='j-fumb'; }
+  else                                   { j='실패'; jc='j-fail'; }
+
+  showRollResult({ total:r, detail:`${name}(${val}%): ${r}`, rolls:[r] });
+  document.getElementById('roll-judgment').innerHTML = `<div class="roll-judgment ${jc}">${j}</div>`;
+  sendMessage(St.myName, `🎲 ${name}(${val}%) → ${r} — ${j}`, 'dice');
+}
+
+function showRollResult(roll) {
+  const n = document.getElementById('roll-num');
+  n.style.opacity = '0';
+  setTimeout(() => { n.textContent = roll.total; n.style.opacity = '1'; }, 120);
+  document.getElementById('roll-str').textContent = roll.detail || '';
+}
+
+/* ─────────────────────────────────────────────────
+   CHAT
+───────────────────────────────────────────────── */
+function chatKeydown(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); }
+}
+
+function sendChat() {
+  const inp = document.getElementById('chat-input');
+  const text = inp.value.trim();
+  if (!text) return;
+  inp.value = '';
+  sendMessage(St.myName, text, 'normal');
+}
+
+function sendMessage(name, text, type = 'normal') {
+  const msg = { name, text, type, time: Date.now() };
+  if (window._FB?.CONFIGURED) {
+    const { db, ref, push } = window._FB;
+    push(ref(db, `rooms/${St.roomCode}/chat`), msg);
+  } else {
+    appendChatMsg(name, text, type);
+  }
+}
+
+function addLocalMessage(type, name, text) { appendChatMsg(name, text, type); }
+
+function appendChatMsg(name, text, type) {
+  const container = document.getElementById('chat-messages');
+  const div = document.createElement('div');
+  div.className = `chat-msg msg-${type}`;
+  const now = new Date();
+  const time = `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`;
+  if (type === 'system') {
+    div.innerHTML = `<div class="msg-text">${esc(text)}</div>`;
+  } else {
+    div.innerHTML = `<div class="msg-meta"><span class="msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-text">${esc(text)}</div>`;
+  }
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+}
+
+/* ─────────────────────────────────────────────────
+   MAP / TOKENS
+───────────────────────────────────────────────── */
+function addToken() {
+  const name = document.getElementById('token-name').value.trim() || '?';
+  const type = document.getElementById('token-type').value;
+  const id = genId();
+  const token = { id, name, type, x: 48 + Math.random()*12, y: 48 + Math.random()*12 };
+  if (window._FB?.CONFIGURED) {
+    const { db, ref, set } = window._FB;
+    set(ref(db, `rooms/${St.roomCode}/tokens/${id}`), token);
+  } else { St.tokens[id] = token; renderAllTokens(St.tokens); }
+  closeModal('modal-token');
+  document.getElementById('token-name').value = '';
+}
+
+function renderAllTokens(tokens) {
+  const map = document.getElementById('map-area');
+  map.querySelectorAll('.map-token').forEach(t => t.remove());
+  Object.values(tokens).forEach(t => createTokenEl(t));
+}
+
+function createTokenEl(t) {
+  const map = document.getElementById('map-area');
+  const el = document.createElement('div');
+  el.className = `map-token ${t.type==='enemy'?'enemy':t.type==='npc'?'npc':''}`;
+  el.id = 'tok-' + t.id;
+  el.textContent = t.name;
+  el.style.left = t.x + '%'; el.style.top = t.y + '%';
+  makeDraggable(el, t.id);
+  map.appendChild(el);
+}
+
+function makeDraggable(el, tokenId) {
+  el.addEventListener('mousedown', e => {
+    if (St.tool === 'erase') { removeToken(tokenId); return; }
+    e.preventDefault();
+    const map = document.getElementById('map-area');
+    const rect = map.getBoundingClientRect();
+    const sx = e.clientX, sy = e.clientY;
+    const sl = parseFloat(el.style.left), st = parseFloat(el.style.top);
+    const onMove = e => {
+      el.style.left = Math.max(0,Math.min(100, sl + (e.clientX-sx)/rect.width*100)) + '%';
+      el.style.top  = Math.max(0,Math.min(100, st + (e.clientY-sy)/rect.height*100)) + '%';
+    };
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      if (window._FB?.CONFIGURED) {
+        const { db, ref, update } = window._FB;
+        update(ref(db, `rooms/${St.roomCode}/tokens/${tokenId}`), { x: parseFloat(el.style.left), y: parseFloat(el.style.top) });
+      }
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+}
+
+function removeToken(tokenId) {
+  const el = document.getElementById('tok-' + tokenId);
+  if (el) el.remove();
+  if (window._FB?.CONFIGURED) {
+    const { db, ref, remove } = window._FB;
+    remove(ref(db, `rooms/${St.roomCode}/tokens/${tokenId}`));
+  } else delete St.tokens[tokenId];
+}
+
+function setTool(t) {
+  St.tool = t;
+  document.getElementById('tool-select').classList.toggle('on', t === 'select');
+  document.getElementById('tool-erase').classList.toggle('on', t === 'erase');
+}
+
+/* ─────────────────────────────────────────────────
+   BGM / YOUTUBE
+───────────────────────────────────────────────── */
+let ytPlayer = null, ytReady = false;
+
+window.onYouTubeIframeAPIReady = () => {
+  ytReady = true;
+  ytPlayer = new YT.Player('yt-player', {
+    height:'1', width:'1',
+    playerVars: { autoplay:0, controls:0 },
+    events: {
+      onReady: () => { if (ytPlayer) ytPlayer.setVolume(60); },
+      onStateChange: e => { if (e.data === YT.PlayerState.ENDED) bgmNext(); },
+    }
+  });
+};
+
+function loadYTApi() {
+  if (document.getElementById('yt-api-script')) return;
+  const s = document.createElement('script');
+  s.id = 'yt-api-script'; s.src = 'https://www.youtube.com/iframe_api';
+  document.head.appendChild(s);
+}
+
+function extractVideoId(url) {
+  const patterns = [/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([A-Za-z0-9_-]{11})/, /^([A-Za-z0-9_-]{11})$/];
+  for (const p of patterns) { const m = url.match(p); if (m) return m[1]; }
+  return null;
+}
+
+function addBgmTrack() {
+  const urlInp  = document.getElementById('yt-url-input').value.trim();
+  const nameInp = document.getElementById('yt-name-input').value.trim();
+  const vid = extractVideoId(urlInp);
+  if (!vid) { alert('올바른 YouTube URL 또는 영상 ID를 입력해 주세요.'); return; }
+  const track = { videoId: vid, name: nameInp || `트랙 ${St.playlist.length+1}` };
+  St.playlist.push(track);
+  if (window._FB?.CONFIGURED) { const { db, ref, set } = window._FB; set(ref(db, `rooms/${St.roomCode}/bgm/playlist`), St.playlist); }
+  renderPlaylist();
+  document.getElementById('yt-url-input').value = '';
+  document.getElementById('yt-name-input').value = '';
+  if (!ytReady) loadYTApi();
+}
+
+function renderPlaylist() {
+  document.getElementById('playlist').innerHTML = St.playlist.map((t,i) => `
+    <div class="pl-item ${i===St.currentTrack?'current':''}" onclick="playTrack(${i})">
+      <span class="pl-name">♪ ${esc(t.name)}</span>
+      <button class="pl-del" onclick="event.stopPropagation();removeTrack(${i})">✕</button>
+    </div>`).join('');
+}
+
+function playTrack(idx) {
+  if (idx < 0 || idx >= St.playlist.length) return;
+  St.currentTrack = idx;
+  const t = St.playlist[idx];
+  document.getElementById('bgm-title').textContent = t.name;
+  if (ytReady && ytPlayer) { ytPlayer.loadVideoById(t.videoId); ytPlayer.playVideo(); St.isPlaying = true; updatePlayBtn(); }
+  renderPlaylist();
+  if (window._FB?.CONFIGURED) { const { db, ref, set } = window._FB; set(ref(db, `rooms/${St.roomCode}/bgm/currentTrack`), idx); }
+}
+
+function bgmToggle() {
+  if (!ytReady || !ytPlayer) { loadYTApi(); return; }
+  if (St.isPlaying) { ytPlayer.pauseVideo(); St.isPlaying = false; }
+  else {
+    if (St.currentTrack === -1 && St.playlist.length) playTrack(0);
+    else { ytPlayer.playVideo(); St.isPlaying = true; }
+  }
+  updatePlayBtn();
+}
+
+function updatePlayBtn() {
+  const btn = document.getElementById('bgm-playbtn');
+  btn.textContent = St.isPlaying ? '⏸' : '▶';
+  btn.classList.toggle('playing', St.isPlaying);
+}
+
+function bgmNext() { if (St.playlist.length) playTrack((St.currentTrack+1) % St.playlist.length); }
+function bgmPrev() { if (St.playlist.length) playTrack(St.currentTrack<=0 ? St.playlist.length-1 : St.currentTrack-1); }
+function setVolume(v) { if (ytReady && ytPlayer) ytPlayer.setVolume(parseInt(v)); }
+function removeTrack(i) {
+  St.playlist.splice(i,1);
+  if (St.currentTrack >= i) St.currentTrack = Math.max(-1, St.currentTrack-1);
+  renderPlaylist();
+  if (window._FB?.CONFIGURED) { const { db, ref, set } = window._FB; set(ref(db, `rooms/${St.roomCode}/bgm/playlist`), St.playlist); }
+}
+
+/* ─────────────────────────────────────────────────
+   UI HELPERS
+───────────────────────────────────────────────── */
+function openModal(id)  { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+document.querySelectorAll('.overlay').forEach(o => o.addEventListener('click', e => { if (e.target===o) o.classList.remove('open'); }));
+
+function togglePanel(side) { document.getElementById(`panel-${side}`).classList.toggle('collapsed'); }
+
+function switchPanelTab(tab, btn) {
+  document.querySelectorAll('.ptab').forEach(b => b.classList.remove('on'));
+  btn.classList.add('on');
+  if (tab === 'notes') {
+    document.getElementById('sheet-container').innerHTML = `<textarea class="notes-area" style="min-height:340px;width:100%" placeholder="세션 노트..." oninput="ch('notes',this.value)">${esc(St.character.notes||'')}</textarea>`;
+  } else {
+    renderCharacterSheet(St.system);
+  }
+}
+
+function copyRoomCode() {
+  navigator.clipboard.writeText(St.roomCode).then(() => {
+    const el = document.getElementById('topbar-code');
+    el.textContent = '✓ 복사됨';
+    setTimeout(() => el.textContent = St.roomCode, 1500);
+  });
+}
+
+async function leaveRoom() {
+  if (!confirm('방에서 나가시겠습니까?')) return;
+  if (window._FB?.CONFIGURED) {
+    const { db, ref, remove, get } = window._FB;
+    // 내 플레이어 데이터 제거
+    await remove(ref(db, `rooms/${St.roomCode}/players/${St.myId}`));
+    // 방에 아무도 없으면 방 전체 삭제 (데이터 누적 방지)
+    const snap = await get(ref(db, `rooms/${St.roomCode}/players`));
+    if (!snap.exists() || Object.keys(snap.val()).length === 0) {
+      await remove(ref(db, `rooms/${St.roomCode}`));
+    }
+  }
+  St.roomCode = ''; St.system = 'coc7';
+  document.getElementById('screen-game').style.display = 'none';
+  document.getElementById('screen-lobby').style.display = 'flex';
+  closeModal('modal-settings');
+}
+
+function esc(str) {
+  return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+/* ─────────────────────────────────────────────────
+   BOOT
+───────────────────────────────────────────────── */
+window.addEventListener('DOMContentLoaded', () => {
+  // auth-screen 반응형 처리
+  if (window.innerWidth < 700) {
+    const brand = document.querySelector('.auth-brand');
+    if (brand) brand.style.display = 'none';
+  }
+  initAuthScreen();
+});
+</script>
+</body>
+</html>
