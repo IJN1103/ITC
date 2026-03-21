@@ -1730,8 +1730,7 @@ function renderCampaigns(rooms) {
   count.textContent = entries.length ? `${entries.length}개` : '';
 
   if (!entries.length) {
-    grid.innerHTML = '';
-    grid.appendChild(empty || createEmptyEl());
+    grid.innerHTML = '<div class="campaign-empty">아직 참가한 세션이 없어요.<br>방을 만들거나 코드로 참가해보세요!</div>';
     return;
   }
 
