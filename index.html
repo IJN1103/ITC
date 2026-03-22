@@ -3523,7 +3523,7 @@ function sendMessageAs(journal, text, type = 'speak-as') {
     type,
     uid: St.myId,
     time: Date.now(),
-    speakAsAvatar: journal.avatar || null,
+    speakAsAvatar: journal.avatar || journal.sheet?.avatar || null,
     speakAsJournalId: journal.id || null,
     speakAsName: journal.title || '무제',
   };
@@ -3576,8 +3576,9 @@ function buildSpeakAsDropdown() {
       const item = document.createElement('div');
       item.className = 'sa-dropdown-item' + (St.speakAsJournalId === j.id ? ' selected' : '');
       const initial = (j.title || '?').trim()[0]?.toUpperCase() || '?';
-      const iconHtml = j.avatar
-        ? `<div class="sa-di-icon"><img src="${esc(j.avatar)}" alt=""></div>`
+      const ddAv = j.avatar || j.sheet?.avatar || null;
+      const iconHtml = ddAv
+        ? `<div class="sa-di-icon"><img src="${esc(ddAv)}" alt=""></div>`
         : `<div class="sa-di-icon">${esc(initial)}</div>`;
       item.innerHTML = `${iconHtml}<span>${esc(j.title || '무제 저널')}</span>`;
       item.onclick = () => setSpeakAs(j.id);
@@ -3612,8 +3613,9 @@ function refreshSpeakAsBtn() {
     if (j) {
       btn.classList.add('active');
       nameEl.textContent = j.title || '무제';
-      if (j.avatar) {
-        iconEl.innerHTML = `<img src="${esc(j.avatar)}" alt="">`;
+      const btnAv = j.avatar || j.sheet?.avatar || null;
+      if (btnAv) {
+        iconEl.innerHTML = `<img src="${esc(btnAv)}" alt="">`;
       } else {
         const initial = (j.title || '?').trim()[0]?.toUpperCase() || '?';
         iconEl.innerHTML = initial;
@@ -3767,7 +3769,7 @@ function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJ
       try {
         const journals = loadJournals();
         const j = journals.find(x => x.id === speakAsJournalId);
-        if (j && j.avatar) resolvedAvatar = j.avatar;
+        if (j) resolvedAvatar = j.avatar || j.sheet?.avatar || null;
       } catch(e) {}
     }
     if (!resolvedAvatar && speakAsAvatar) resolvedAvatar = speakAsAvatar;
@@ -4961,15 +4963,17 @@ function saveSheet() {
   });
 
   // 저장
-  // 아바타
-  if (_sheetAvatarData) data.avatar = _sheetAvatarData;
-
   const list = loadJournals();
   const idx  = list.findIndex(j => j.id === _sheetJournalId);
   if (idx >= 0) {
+    // 아바타: 새로 업로드한 게 있으면 그걸 쓰고, 없으면 기존 아바타 유지
+    const resolvedAv = _sheetAvatarData || list[idx].avatar || list[idx].sheet?.avatar || null;
+    if (resolvedAv) {
+      data.avatar          = resolvedAv;   // sheet 내부에도 보존
+      list[idx].avatar     = resolvedAv;   // 최상위에도 보존
+    }
     list[idx].sheet     = data;
     list[idx].title     = data.name || list[idx].title;
-    if (_sheetAvatarData) list[idx].avatar = _sheetAvatarData;
     list[idx].updatedAt = Date.now();
     saveJournals(list);
     renderJournalList();
