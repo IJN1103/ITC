@@ -1222,20 +1222,20 @@ input:focus, select:focus, textarea:focus { outline: none; }
 }
 .jd-del-btn:hover { color: var(--red); border-color: rgba(200,92,92,.35); background: rgba(200,92,92,.08); }
 
-/* 토큰 할당 바 */
-.jd-token-bar{position:relative;padding:6px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-shrink:0}
-.jd-token-assign-btn{background:none;border:1px dashed var(--border2);border-radius:var(--r);color:var(--muted);font:inherit;font-size:11px;padding:4px 10px;cursor:pointer;transition:var(--t)}
-.jd-token-assign-btn:hover{border-color:var(--accent);color:var(--accent)}
-.jd-token-assigned{display:flex;align-items:center;gap:6px}
-.jd-token-chip{display:flex;align-items:center;gap:6px;background:var(--a-dim);border:1px solid var(--accent);border-radius:var(--r);padding:3px 10px 3px 4px;font-size:11px;color:var(--accent)}
-.jd-token-chip-img{width:22px;height:22px;border-radius:4px;object-fit:cover;flex-shrink:0}
-.jd-token-chip-dot{width:22px;height:22px;border-radius:4px;background:var(--s3);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:9px;flex-shrink:0}
-.jd-token-clear{background:none;border:none;color:var(--muted);font-size:12px;cursor:pointer;padding:2px 4px;border-radius:3px;transition:var(--t)}
-.jd-token-clear:hover{color:var(--red);background:rgba(200,92,92,.1)}
-.jd-token-dropdown{position:absolute;top:calc(100% + 2px);left:18px;min-width:220px;max-width:280px;max-height:200px;overflow-y:auto;background:var(--s2);border:1px solid var(--border2);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.4);z-index:210;display:none;flex-direction:column}
-.jd-token-dropdown.open{display:flex}
-.jd-token-dropdown::-webkit-scrollbar{width:4px}
-.jd-token-dropdown::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+/* 토큰 할당 (시트 아바타 하단) */
+.sh-token-assign{position:relative;width:100%;margin-top:2px}
+.sh-token-assign-btn{background:none;border:1px dashed var(--border2);border-radius:var(--r);color:var(--muted);font:inherit;font-size:10px;padding:3px 8px;cursor:pointer;transition:var(--t);width:100%;text-align:center}
+.sh-token-assign-btn:hover{border-color:var(--accent);color:var(--accent)}
+.sh-token-assigned{display:flex;align-items:center;gap:4px;justify-content:center}
+.sh-token-chip{display:flex;align-items:center;gap:4px;background:var(--a-dim);border:1px solid var(--accent);border-radius:var(--r);padding:2px 8px 2px 3px;font-size:10px;color:var(--accent)}
+.sh-token-chip-img{width:18px;height:18px;border-radius:3px;object-fit:cover;flex-shrink:0}
+.sh-token-chip-dot{width:18px;height:18px;border-radius:3px;background:var(--s3);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:8px;flex-shrink:0}
+.sh-token-clear{background:none;border:none;color:var(--muted);font-size:11px;cursor:pointer;padding:1px 3px;border-radius:3px;transition:var(--t)}
+.sh-token-clear:hover{color:var(--red);background:rgba(200,92,92,.1)}
+.sh-token-dropdown{position:absolute;top:calc(100% + 4px);left:50%;transform:translateX(-50%);min-width:200px;max-width:250px;max-height:200px;overflow-y:auto;background:var(--s2);border:1px solid var(--border2);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.4);z-index:210;display:none;flex-direction:column}
+.sh-token-dropdown.open{display:flex}
+.sh-token-dropdown::-webkit-scrollbar{width:4px}
+.sh-token-dropdown::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
 .jtd-header{font-size:10px;color:var(--muted);padding:7px 10px 4px;letter-spacing:.05em}
 .jtd-item{display:flex;align-items:center;gap:8px;padding:7px 10px;cursor:pointer;transition:var(--t);font-size:12px;color:var(--text)}
 .jtd-item:hover{background:var(--a-dim)}
@@ -2031,6 +2031,14 @@ input:focus, select:focus, textarea:focus { outline: none; }
               </div>
               <input type="file" id="sh-avatar-input" accept="image/*" style="display:none" onchange="handleSheetAvatar(this)">
               <span class="sh-avatar-hint">클릭해서 변경</span>
+              <div class="sh-token-assign" id="sh-token-assign">
+                <div class="sh-token-assigned" id="sh-token-assigned" style="display:none">
+                  <div class="sh-token-chip" id="sh-token-chip"></div>
+                  <button class="sh-token-clear" onclick="clearJournalToken()" title="할당 해제">✕</button>
+                </div>
+                <button class="sh-token-assign-btn" id="sh-token-assign-btn" onclick="toggleJournalTokenList(event)">토큰 할당</button>
+                <div class="sh-token-dropdown" id="sh-token-dropdown"></div>
+              </div>
             </div>
             <!-- 필드 그리드 -->
             <div class="sh-grid sh-grid-2" style="flex:1;align-content:start">
@@ -2240,14 +2248,6 @@ input:focus, select:focus, textarea:focus { outline: none; }
     <div class="jd-meta">
       <span id="jd-meta-date">—</span>
       <span id="jd-save-hint" style="color:var(--muted)"></span>
-    </div>
-    <div class="jd-token-bar" id="jd-token-bar">
-      <div class="jd-token-assigned" id="jd-token-assigned" style="display:none">
-        <div class="jd-token-chip" id="jd-token-chip"></div>
-        <button class="jd-token-clear" onclick="clearJournalToken()" title="할당 해제">✕</button>
-      </div>
-      <button class="jd-token-assign-btn" id="jd-token-assign-btn" onclick="toggleJournalTokenList(event)">🎯 토큰 할당</button>
-      <div class="jd-token-dropdown" id="jd-token-dropdown"></div>
     </div>
     <div class="jd-body">
       <textarea class="jd-body-input" id="jd-body" placeholder="내용을 자유롭게 입력하세요…&#10;&#10;메모, 단서, 플레이어 노트 등 무엇이든 기록해두세요."></textarea>
@@ -5232,13 +5232,6 @@ function openJournalEditor(id) {
   }
 
   if (hintEl) hintEl.textContent = '';
-  // 토큰 할당 로드
-  if (id) {
-    const j = loadJournals().find(j => j.id === id);
-    refreshJournalTokenBar(j?.assignedTokenId || null);
-  } else {
-    refreshJournalTokenBar(null);
-  }
   document.getElementById('journal-drawer').classList.add('open');
   setTimeout(() => titleEl.focus(), 100);
 }
@@ -5260,9 +5253,8 @@ function saveJournalFromDrawer() {
   const idx = list.findIndex(j => j.id === _currentJournalId);
   if (idx >= 0) {
     list[idx].title = title; list[idx].body = body; list[idx].updatedAt = Date.now();
-    list[idx].assignedTokenId = _jdAssignedTokenId || null;
   } else {
-    list.push({ id: _currentJournalId, title, body, createdAt: Date.now(), updatedAt: Date.now(), assignedTokenId: _jdAssignedTokenId || null });
+    list.push({ id: _currentJournalId, title, body, createdAt: Date.now(), updatedAt: Date.now() });
   }
   saveJournals(list);
   // 메타 날짜 갱신
@@ -5319,16 +5311,16 @@ function getMyTokens() {
 
 function refreshJournalTokenBar(tokenId) {
   _jdAssignedTokenId = tokenId || null;
-  const assignedEl = document.getElementById('jd-token-assigned');
-  const assignBtn = document.getElementById('jd-token-assign-btn');
-  const chipEl = document.getElementById('jd-token-chip');
+  const assignedEl = document.getElementById('sh-token-assigned');
+  const assignBtn = document.getElementById('sh-token-assign-btn');
+  const chipEl = document.getElementById('sh-token-chip');
 
   if (_jdAssignedTokenId && St.tokens[_jdAssignedTokenId]) {
     const t = St.tokens[_jdAssignedTokenId];
     const imgSrc = t.tokenImg || null;
     const thumb = imgSrc
-      ? `<img class="jd-token-chip-img" src="${imgSrc}" alt="">`
-      : `<div class="jd-token-chip-dot">${esc((t.name||'?')[0])}</div>`;
+      ? `<img class="sh-token-chip-img" src="${imgSrc}" alt="">`
+      : `<div class="sh-token-chip-dot">${esc((t.name||'?')[0])}</div>`;
     chipEl.innerHTML = `${thumb}<span>${esc(t.name)}</span>`;
     assignedEl.style.display = 'flex';
     assignBtn.style.display = 'none';
@@ -5341,7 +5333,7 @@ function refreshJournalTokenBar(tokenId) {
 
 function toggleJournalTokenList(e) {
   e.stopPropagation();
-  const dd = document.getElementById('jd-token-dropdown');
+  const dd = document.getElementById('sh-token-dropdown');
   if (!dd) return;
   const isOpen = dd.classList.contains('open');
   if (isOpen) { dd.classList.remove('open'); return; }
@@ -5350,7 +5342,7 @@ function toggleJournalTokenList(e) {
 }
 
 function renderJournalTokenList() {
-  const dd = document.getElementById('jd-token-dropdown');
+  const dd = document.getElementById('sh-token-dropdown');
   if (!dd) return;
   dd.innerHTML = '';
 
@@ -5394,7 +5386,7 @@ function clearJournalToken() {
 
 // 드롭다운 외부 클릭 시 닫기
 document.addEventListener('click', () => {
-  document.getElementById('jd-token-dropdown')?.classList.remove('open');
+  document.getElementById('sh-token-dropdown')?.classList.remove('open');
 });
 
 /* ─────────────────────────────────────────────────
@@ -5568,6 +5560,9 @@ function openSheet(journalId) {
   if (_sheetAvatarData) saSetAvatar(journalId, _sheetAvatarData);  // 캐시 워밍
   refreshSheetAvatar(_sheetAvatarData, (data.name || j?.title || '?')[0]?.toUpperCase());
 
+  // 토큰 할당 로드
+  refreshJournalTokenBar(j?.assignedTokenId || null);
+
   document.getElementById('sheet-overlay').classList.add('open');
 }
 
@@ -5716,6 +5711,7 @@ function saveSheet() {
     list[idx].sheet     = data;
     list[idx].title     = data.name || list[idx].title;
     list[idx].updatedAt = Date.now();
+    list[idx].assignedTokenId = _jdAssignedTokenId || null;
     saveJournals(list);
     renderJournalList();
   }
