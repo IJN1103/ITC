@@ -410,7 +410,7 @@ to{opacity:1;transform:translateY(0);}
 .vn-dialog{position:absolute;bottom:16px;left:16px;right:16px;z-index:30;display:none;pointer-events:auto}
 .vn-dialog.open{display:block}
 .vn-dialog-inner{position:relative;width:100%}
-.vn-standing{position:absolute;bottom:0;left:12px;z-index:2;pointer-events:none;background:none !important}
+.vn-standing{position:absolute;bottom:100%;left:24px;z-index:2;pointer-events:none;background:none !important}
 .vn-standing img{max-height:420px;max-width:280px;object-fit:contain;background:none !important;background-color:transparent !important;filter:drop-shadow(3px 3px 10px rgba(0,0,0,.7));animation:vnSlideIn .35s ease;image-rendering:auto}
 @keyframes vnSlideIn{from{opacity:0;transform:translateY(16px)}
 to{opacity:1;transform:translateY(0)}
@@ -428,8 +428,7 @@ to{opacity:1}
 }
 .vn-close{position:absolute;top:6px;right:10px;background:none;border:none;color:rgba(184,154,96,.3);font-size:15px;cursor:pointer;z-index:4;padding:2px 6px;transition:color .2s}
 .vn-close:hover{color:rgba(184,154,96,.8)}
-.vn-dialog.has-standing .vn-content{margin-left:220px}
-.vn-dialog.has-standing .vn-name-tag{margin-left:0}
+.vn-dialog.has-standing .vn-name-tag{margin-left:20px}
 .dice-bar{height:90px;background:var(--s2);border-top:1px solid var(--border);display:flex;align-items:center;padding:0 14px;gap:10px;flex-shrink:0;}
 .dice-btns{display:flex;gap:5px;}
 .dice-btn{width:48px;height:54px;background:var(--s1);border:1px solid var(--border);border-radius:var(--r);color:var(--dim);cursor:pointer;font-family:var(--font-mono);font-size:12px;transition:var(--t);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;}
@@ -2967,7 +2966,7 @@ function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJ
     }
     const d2 = document.createElement('div');
     d2.className = 'chat-msg msg-speak-as';
-    d2.innerHTML = `${avHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name sa-msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-text">${esc(text).replace(/\n/g,'<br>')}</div></div>`;
+    d2.innerHTML = `${avHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name sa-msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-text">${esc(text.replace(/@\S+/g,'').trim()).replace(/\n/g,'<br>')}</div></div>`;
     container.appendChild(d2);
     container.scrollTop = container.scrollHeight;
     if (!timestamp || Date.now() - timestamp < 5000) {
