@@ -1883,7 +1883,8 @@ function showLobby() {
   document.getElementById('screen-game').style.display  = 'none';
   document.getElementById('screen-lobby').style.display = 'flex';
   document.getElementById('user-name-nav').textContent  = St.myName;
-  document.getElementById('user-avatar').textContent    = St.myName[0]?.toUpperCase() || '?';
+  // textContent 대신 refreshProfileAvatar로 — 저장된 사진 복원
+  refreshProfileAvatar();
   loadMyCharacters();
   loadMyCampaigns();
 }
@@ -3430,21 +3431,6 @@ function applyCrop() {
 }
 
 
-function refreshProfileAvatar() {
-  const user = window._currentUser;
-  if (!user) return;
-  const bigEl  = document.getElementById('profile-avatar-big');
-  const navEl  = document.getElementById('user-avatar');
-  const saved  = localStorage.getItem('itc_avatar_' + user.uid);
-  if (saved) {
-    if (bigEl) bigEl.innerHTML = `<img src="${saved}" alt="avatar"><div class="av-overlay">📷</div>`;
-    if (navEl) navEl.innerHTML = `<img src="${saved}" alt="avatar">`;
-  } else {
-    const initials = (user.displayName || St.myName || '?')[0].toUpperCase();
-    if (bigEl) bigEl.innerHTML = `<span>${initials}</span><div class="av-overlay">📷</div>`;
-    if (navEl) navEl.textContent = initials;
-  }
-}
 
 
 async function saveNickname() {
