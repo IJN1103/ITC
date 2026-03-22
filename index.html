@@ -691,6 +691,10 @@ to{transform:translateX(0);opacity:1;}
 .sa-dd-sep{height:1px;background:var(--border);margin:2px 0}
 .chat-msg.msg-speak-as{}
 .sa-color-btn{background:none;border:none;font-size:16px;cursor:pointer;padding:2px 4px;transition:var(--t);color:var(--muted)}
+.casual-nick-bar{display:flex;align-items:center;gap:6px;flex:1}
+.casual-nick-name{font-size:12.5px;color:var(--text);font-weight:500}
+.casual-nick-edit{background:none;border:none;color:var(--muted);cursor:pointer;padding:2px;transition:var(--t);display:flex;align-items:center}
+.casual-nick-edit:hover{color:var(--accent)}
 .sa-color-btn:hover{color:var(--accent)}
 .sa-color-popup{display:none;position:absolute;bottom:calc(100% + 6px);right:0;background:var(--s2);border:1px solid var(--border2);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.4);z-index:210;padding:10px;width:180px}
 .sa-color-popup.open{display:block}
@@ -1077,6 +1081,10 @@ to{transform:translateX(0);opacity:1;}
                 <span class="sa-name" id="sa-name">나</span>
               </button>
               <div class="speak-as-dropdown" id="speak-as-dropdown"></div>
+            </div>
+            <div class="casual-nick-bar" id="casual-nick-bar" style="display:none">
+              <span class="casual-nick-name" id="casual-nick-name"></span>
+              <button class="casual-nick-edit" onclick="editCasualNick()" title="잡담 닉네임 변경"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
             </div>
             <div style="margin-left:auto;position:relative" id="sa-color-wrap">
               <button class="sa-color-btn" id="sa-color-btn" onclick="toggleColorPalette(event)" title="채팅 이름 색상 설정"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r="2"/><circle cx="17.5" cy="10.5" r="2"/><circle cx="8.5" cy="7.5" r="2"/><circle cx="6.5" cy="12" r="2"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.9 0 1.5-.7 1.5-1.5 0-.4-.1-.7-.4-1-.3-.3-.4-.7-.4-1.1 0-.8.7-1.5 1.5-1.5H16c3.3 0 6-2.7 6-6 0-5.5-4.5-9-10-9z"/></svg></button>
@@ -2503,6 +2511,7 @@ async function enterGame() {
 
   addLocalMessage('system', '', `${St.myName}님이 입장했습니다 — ${SYS_LABELS[St.system]}`);
   migrateLocalJournals();
+  loadCasualNick();
 }
 
 function addPlayerChip(id, name, isMe, role) {
@@ -2918,17 +2927,19 @@ function sendChat() {
   }
 
   inp.value = '';
+  if (_activeRightTab === 'casual') {
+    sendCasualMsg(_casualNickname || St.myName, raw);
+    return;
+  }
   if (St.speakAsJournalId) {
     const j = loadJournals().find(x => x.id === St.speakAsJournalId);
     if (j) {
-      if (_activeRightTab === 'casual') { saSendCasual(j, raw); return; }
       saSendMessage(j, raw);
       return;
     }
     St.speakAsJournalId = null;
     saRefreshBtn();
   }
-  if (_activeRightTab === 'casual') { sendCasualMsg(St.myName, raw); return; }
   sendMessage(St.myName, raw, 'normal');
 }
 
@@ -2958,6 +2969,26 @@ function sendCasualMsg(name, text) {
   } else {
     appendCasualMsg(name, text, St.myId, msg.time);
   }
+}
+
+function refreshCasualNickDisplay() {
+  const el = document.getElementById('casual-nick-name');
+  if (el) el.textContent = _casualNickname || St.myName;
+}
+
+function editCasualNick() {
+  const current = _casualNickname || St.myName;
+  const newNick = prompt('잡담 닉네임을 입력하세요 (18자 이내)', current);
+  if (newNick === null) return;
+  const trimmed = newNick.trim().slice(0, 18);
+  if (!trimmed) { showToast('닉네임을 입력해주세요.'); return; }
+  _casualNickname = trimmed;
+  try { localStorage.setItem('itc_casual_nick_' + St.myId, trimmed); } catch(e) {}
+  refreshCasualNickDisplay();
+}
+
+function loadCasualNick() {
+  try { _casualNickname = localStorage.getItem('itc_casual_nick_' + St.myId) || ''; } catch(e) {}
 }
 
 function saSendCasual(journal, text) {
@@ -4417,6 +4448,7 @@ function showProfileMsg(text, type) {
 }
 
 let _activeRightTab = 'chat';
+let _casualNickname = '';
 function switchRightTab(tab) {
   _activeRightTab = tab;
   document.querySelectorAll('.rtab').forEach(b => b.classList.remove('on'));
@@ -4425,6 +4457,24 @@ function switchRightTab(tab) {
   document.getElementById('rpane-' + tab).classList.add('on');
   const shared = document.getElementById('shared-input-area');
   if (shared) shared.style.display = (tab === 'journal') ? 'none' : '';
+  const saWrap = document.getElementById('speak-as-wrap');
+  const casualBar = document.getElementById('casual-nick-bar');
+  const colorWrap = document.getElementById('sa-color-wrap');
+  const descBtn = document.getElementById('desc-toggle-btn');
+  const whisperWrap = document.getElementById('whisper-wrap');
+  if (tab === 'casual') {
+    if (saWrap) saWrap.style.display = 'none';
+    if (casualBar) { casualBar.style.display = 'flex'; refreshCasualNickDisplay(); }
+    if (colorWrap) colorWrap.style.display = 'none';
+    if (descBtn) descBtn.style.display = 'none';
+    if (whisperWrap) whisperWrap.style.display = 'none';
+  } else {
+    if (saWrap) saWrap.style.display = '';
+    if (casualBar) casualBar.style.display = 'none';
+    if (colorWrap) colorWrap.style.display = '';
+    if (descBtn) descBtn.style.display = St.isGM ? '' : 'none';
+    if (whisperWrap) whisperWrap.style.display = '';
+  }
   if (tab === 'journal') renderJournalList();
 }
 
