@@ -2401,8 +2401,18 @@ function setupFirebaseListeners() {
   onValue(ref(db, `rooms/${code}/chat`), snap => {
     const msgs = snap.val() || {};
     const sorted = Object.values(msgs).sort((a,b) => a.time - b.time);
-    document.getElementById('chat-messages').innerHTML = '';
-    sorted.forEach(m => appendChatMsg(m.name, m.text, m.type || 'normal', m.uid));
+    const container = document.getElementById('chat-messages');
+
+    // 이미 렌더된 메시지 수 추적 — 새 메시지만 추가
+    const rendered = container.querySelectorAll('.chat-msg').length;
+    const toAdd = sorted.slice(rendered);
+    toAdd.forEach(m => appendChatMsg(m.name, m.text, m.type || 'normal', m.uid));
+
+    // 처음 로드(전체 초기화 필요)할 때만 전체 재렌더
+    if (toAdd.length === 0 && rendered > sorted.length) {
+      container.innerHTML = '';
+      sorted.forEach(m => appendChatMsg(m.name, m.text, m.type || 'normal', m.uid));
+    }
   });
 
   onValue(ref(db, `rooms/${code}/tokens`), snap => {
@@ -2886,38 +2896,12 @@ function appendChatMsg(name, text, type, uid) {
   const avatarHtml = getAvatarHtml(name, uid || (name === St.myName ? St.myId : null));
 
   if (type === 'image') {
-    // ① 순서 유지를 위해 placeholder를 먼저 DOM에 삽입
+    // 완전 동기 삽입 — img 태그를 바로 HTML에 박아서 순서 보장
     const div = document.createElement('div');
     div.className = 'chat-msg msg-image-msg';
-    const body = document.createElement('div');
-    body.className = 'msg-body';
-    body.innerHTML = `<div class="msg-meta"><span class="msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-img-placeholder" style="width:80px;height:48px;background:var(--s3);border-radius:var(--r);margin-top:5px;opacity:.5"></div>`;
-    div.innerHTML = avatarHtml;
-    div.appendChild(body);
-    container.appendChild(div);   // ← 순서 확정
+    div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div><img class="msg-image" src="${esc(text)}" alt="첨부 이미지" style="display:block;max-width:220px;height:auto;margin-top:5px;border-radius:var(--r);border:1px solid var(--border);cursor:zoom-in" onclick="openLightbox(this.src)"></div>`;
+    container.appendChild(div);
     container.scrollTop = container.scrollHeight;
-
-    // ② 이미지 로드 후 placeholder 교체
-    const imgEl = new Image();
-    imgEl.className = 'msg-image';
-    imgEl.alt = '첨부 이미지';
-    imgEl.addEventListener('click', () => openLightbox(imgEl.src));
-
-    imgEl.onload = () => {
-      const ph = body.querySelector('.msg-img-placeholder');
-      if (ph) ph.replaceWith(imgEl);
-      container.scrollTop = container.scrollHeight;
-    };
-
-    imgEl.onerror = () => {
-      const ph = body.querySelector('.msg-img-placeholder');
-      if (ph) {
-        ph.style.cssText = 'font-size:12px;color:var(--muted);padding:4px 0';
-        ph.textContent = '[이미지 로드 실패]';
-      }
-    };
-
-    imgEl.src = text;
     return;
   }
 
