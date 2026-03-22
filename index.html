@@ -28,6 +28,7 @@
           "tokens":     { ".read": "auth != null", ".write": "auth != null" },
           "journals":   { ".read": "auth != null", ".write": "auth != null" },
           "casual":     { ".read": "auth != null", ".write": "auth != null" },
+          "typing":     { ".read": "auth != null", ".write": "auth != null" },
           "lastRoll":   { ".read": "auth != null", ".write": "auth != null" },
           "characters": {
             "$uid": {
@@ -1118,7 +1119,7 @@ to{transform:translateX(0);opacity:1;}
         <div class="chat-input-wrap">
           <button class="chat-attach-btn" onclick="document.getElementById('chat-img-input').click()" title="사진/GIF 첨부">+</button>
           <input type="file" id="chat-img-input" accept="image/png,image/jpeg,image/gif" style="display:none" onchange="handleChatImageUpload(this)">
-          <textarea class="chat-input" id="chat-input" placeholder="메시지 입력 (Enter 전송)" rows="1" onkeydown="chatKeydown(event)"></textarea>
+          <textarea class="chat-input" id="chat-input" placeholder="메시지 입력 (Enter 전송)" rows="1" onkeydown="chatKeydown(event)" oninput="broadcastTyping()"></textarea>
           <button class="send-btn" onclick="sendChat()">➤</button>
         </div>
       </div>
@@ -2877,7 +2878,6 @@ function rollFromFormula(formula) {
 
 function chatKeydown(e) {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); }
-  else { broadcastTyping(); }
 }
 
 function toggleDescMode() {
@@ -2897,6 +2897,7 @@ function sendChat() {
   const inp = document.getElementById('chat-input');
   const raw = inp.value.trim();
   if (!raw) return;
+  clearTypingState();
 
   if (St.descMode && St.isGM) {
     inp.value = '';
@@ -3043,8 +3044,12 @@ function loadCasualNick() {
 }
 
 let _typingTimer = null;
+let _lastTypingBroadcast = 0;
 function broadcastTyping() {
   if (!window._FB?.CONFIGURED || !St.roomCode) return;
+  const now = Date.now();
+  if (now - _lastTypingBroadcast < 1500) return;
+  _lastTypingBroadcast = now;
   const { db, ref, set, remove } = window._FB;
   const tab = _activeRightTab === 'casual' ? 'casual' : 'chat';
   let displayName = St.myName;
@@ -3077,6 +3082,13 @@ function renderTypingIndicator(elId, typingData, tab) {
   if (names.length === 1) el.textContent = `${names[0]} is typing...`;
   else if (names.length === 2) el.textContent = `${names[0]}, ${names[1]} are typing...`;
   else el.textContent = `${names.length}명이 입력 중...`;
+}
+
+function clearTypingState() {
+  if (!window._FB?.CONFIGURED || !St.roomCode) return;
+  const { db, ref, remove } = window._FB;
+  remove(ref(db, `rooms/${St.roomCode}/typing/${St.myId}`));
+  if (_typingTimer) { clearTimeout(_typingTimer); _typingTimer = null; }
 }
 
 function saSendCasual(journal, text) {
