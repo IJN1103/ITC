@@ -1035,21 +1035,8 @@ input:focus, select:focus, textarea:focus { outline: none; }
 .msg-text { font-size: 13px; color: var(--dim); line-height: 1.55; word-break: break-word; display: block; }
 .msg-dice .msg-text { background: var(--a-dim); border: 1px solid var(--border2); border-radius: var(--r); padding: 6px 10px; font-family: var(--font-mono); font-size: 12px; color: var(--accent); }
 .msg-sys .msg-text { color: var(--muted); font-size: 11px; font-style: italic; }
-/* /dsec 지문 스타일 (GM 전용) */
+/* /desc 지문 스타일 (GM 전용) */
 .chat-msg.msg-dsec { text-align: center; margin: 6px 0; }
-.chat-msg.msg-dsec .msg-avatar { display: none; }
-.msg-dsec .msg-text {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--text);
-  line-height: 1.9;
-  letter-spacing: .02em;
-  display: block;
-  text-align: center;
-  padding: 2px 8px;
-}
-/* /dsec 지문 스타일 (GM 전용) */
-.chat-msg.msg-dsec { text-align: center; }
 .chat-msg.msg-dsec .msg-avatar { display: none; }
 .chat-msg.msg-dsec .msg-body { display: block; text-align: center; }
 .chat-msg.msg-dsec .msg-meta { display: none; }
@@ -2839,7 +2826,7 @@ function sendChat() {
   const dsecMatch = raw.match(/^\/desc\s*([\s\S]*)$/i);
   if (dsecMatch) {
     inp.value = '';
-    if (!St.isGM) { showToast('GM만 /dsec를 사용할 수 있어요.'); return; }
+    if (!St.isGM) { showToast('GM만 /desc를 사용할 수 있어요.'); return; }
     const content = dsecMatch[1].trim();
     if (!content) return;
     sendMessage(St.myName, content, 'dsec');
