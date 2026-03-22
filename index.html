@@ -2756,6 +2756,44 @@ function showRollResult(roll) {
   document.getElementById('roll-str').textContent = roll.detail || '';
 }
 
+function rollFromFormula(formula) {
+  formula = formula.replace(/\s/g, '').toLowerCase();
+  const parts = formula.match(/^(\d+)?d(\d+)([+-]\d+)?$/);
+  if (!parts) {
+    const simpleNum = parseInt(formula);
+    if (!isNaN(simpleNum) && simpleNum > 0 && simpleNum <= 1000) {
+      const r = Math.ceil(Math.random() * simpleNum);
+      const rollObj = { total: r, detail: `1d${simpleNum}: [${r}] = ${r}`, rolls: [r] };
+      showRollResult(rollObj);
+      sendMessage(St.myName, `🎲 1d${simpleNum} → ${r}`, 'dice');
+      return;
+    }
+    showToast('올바른 수식이 아니에요. 예: /d1d100, /d2d6+3');
+    return;
+  }
+  const count = parseInt(parts[1] || '1');
+  const sides = parseInt(parts[2]);
+  const mod = parseInt(parts[3] || '0');
+  if (count < 1 || count > 100 || sides < 2 || sides > 10000) {
+    showToast('주사위 범위가 너무 크거나 작아요.');
+    return;
+  }
+  const rolls = [];
+  for (let i = 0; i < count; i++) rolls.push(Math.ceil(Math.random() * sides));
+  const sum = rolls.reduce((a, b) => a + b, 0);
+  const total = sum + mod;
+  const modStr = mod > 0 ? `+${mod}` : mod < 0 ? `${mod}` : '';
+  const detail = `${count}d${sides}${modStr}: [${rolls.join('+')}]${modStr ? modStr : ''} = ${total}`;
+  const label = `${count}d${sides}${modStr}`;
+  const rollObj = { playerId: St.myId, player: St.myName, dice: label, total, rolls, detail, time: Date.now() };
+  showRollResult(rollObj);
+  sendMessage(St.myName, `🎲 ${label} → ${total}  (${rolls.join(', ')})`, 'dice');
+  if (window._FB?.CONFIGURED) {
+    const { db, ref, set } = window._FB;
+    set(ref(db, `rooms/${St.roomCode}/lastRoll`), rollObj);
+  }
+}
+
 function chatKeydown(e) {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); }
 }
@@ -2804,6 +2842,14 @@ function sendChat() {
     const target = Object.entries(players).find(([id, p]) => p.name === targetName);
     if (!target) { showToast(`'${targetName}' 플레이어를 찾을 수 없어요.`); return; }
     sendWhisperMessage(St.myName, whisperText, target[0], targetName);
+    return;
+  }
+
+  const dm = raw.match(/^\/d(.+)$/i);
+  if (dm) {
+    inp.value = '';
+    const formula = dm[1].trim();
+    rollFromFormula(formula);
     return;
   }
 
