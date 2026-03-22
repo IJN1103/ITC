@@ -3631,6 +3631,31 @@ function handleChatImageUpload(input) {
     return;
   }
 
+  // speak-as 저널이 선택된 경우 캡처 (비동기 처리 전에)
+  const saJId = St.speakAsJournalId;
+  const saJournal = saJId ? loadJournals().find(x => x.id === saJId) : null;
+  const saName = saJournal ? (saJournal.title || '무제') : null;
+  const saAvatar = saJId ? saGetAvatar(saJId) : null;
+
+  function sendImg(dataUrl) {
+    if (saJournal) {
+      // speak-as 저널 이미지 메시지
+      const msg = {
+        name: saName, text: dataUrl, type: 'speak-as-image',
+        uid: St.myId, time: Date.now(),
+        speakAsAvatar: saAvatar, speakAsJournalId: saJId
+      };
+      if (window._FB?.CONFIGURED) {
+        const { db, ref, push } = window._FB;
+        push(ref(db, `rooms/${St.roomCode}/chat`), msg);
+      } else {
+        appendChatMsg(msg.name, dataUrl, 'speak-as-image', St.myId, msg.time, saAvatar, saJId);
+      }
+    } else {
+      sendMessage(St.myName, dataUrl, 'image');
+    }
+  }
+
   const reader = new FileReader();
   reader.onload = ev => {
     let dataUrl = ev.target.result;
@@ -3649,12 +3674,12 @@ function handleChatImageUpload(input) {
         canvas.width = w; canvas.height = h;
         canvas.getContext('2d').drawImage(img, 0, 0, w, h);
         const compressed = canvas.toDataURL('image/jpeg', 0.82);
-        sendMessage(St.myName, compressed, 'image');
+        sendImg(compressed);
       };
       img.src = dataUrl;
     } else {
       // GIF는 리사이즈 없이 그대로
-      sendMessage(St.myName, dataUrl, 'image');
+      sendImg(dataUrl);
     }
   };
   reader.readAsDataURL(file);
@@ -3745,6 +3770,25 @@ function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJ
     const d2 = document.createElement('div');
     d2.className = 'chat-msg msg-speak-as';
     d2.innerHTML = `${avHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name sa-msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-text">${esc(text).replace(/\n/g,'<br>')}</div></div>`;
+    container.appendChild(d2);
+    container.scrollTop = container.scrollHeight;
+    return;
+  }
+
+  // speak-as 이미지 메시지
+  if (type === 'speak-as-image') {
+    const r = St.avatarShape === 'circle' ? '50%' : '6px';
+    const sc = St.avatarShape === 'circle' ? 'shape-circle' : 'shape-rounded';
+    const _finalAv = speakAsAvatar || (speakAsJournalId ? saGetAvatar(speakAsJournalId) : null);
+    let avHtml;
+    if (_finalAv) {
+      avHtml = `<div class="msg-avatar ${sc} sa-avatar"><img src="${esc(_finalAv)}" alt="" style="width:26px;height:26px;object-fit:cover;border-radius:${r};display:block"></div>`;
+    } else {
+      avHtml = `<div class="msg-avatar ${sc} sa-avatar"><div class="msg-avatar-inner" style="border-radius:${r}">${esc((name||'?')[0].toUpperCase())}</div></div>`;
+    }
+    const d2 = document.createElement('div');
+    d2.className = 'chat-msg msg-speak-as msg-image-msg';
+    d2.innerHTML = `${avHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name sa-msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div><img class="msg-image" src="${esc(text)}" alt="첨부 이미지" style="display:block;max-width:220px;height:auto;margin-top:5px;border-radius:var(--r);border:1px solid var(--border);cursor:zoom-in" onclick="openLightbox(this.src)"></div>`;
     container.appendChild(d2);
     container.scrollTop = container.scrollHeight;
     return;
