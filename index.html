@@ -457,7 +457,10 @@ to{opacity:1}
 .j-fail{background:rgba(200,92,92,.2);color:var(--red);}
 .j-fumb{background:rgba(200,92,92,.35);color:var(--red);}
 .panel-right{width:250px;min-width:15px;background:var(--s1);border-left:1px solid var(--border);display:flex;flex-direction:column;transition:none;position:relative;}
-.panel-right.collapsed{width:0;min-width:0;overflow:hidden;}
+.panel-right.collapsed{width:36px;min-width:36px;overflow:hidden;}
+.panel-right.collapsed .right-tabs{flex-direction:column;border-bottom:none;}
+.panel-right.collapsed .rtab,.panel-right.collapsed .chat-popout-btn{display:none;}
+.panel-right.collapsed .chat-resize-handle{display:none;}
 .chat-resize-handle{position:absolute;left:0;top:0;bottom:0;width:5px;cursor:col-resize;z-index:30;background:transparent;transition:background .15s;}
 .chat-resize-handle:hover,.chat-resize-handle.dragging{background:var(--accent);opacity:.5;}
 .chat-popout-btn{background:none;border:1px solid var(--border);border-radius:4px;color:var(--muted);width:22px;height:22px;cursor:pointer;font-size:11px;display:flex;align-items:center;justify-content:center;transition:var(--t);flex-shrink:0;}
@@ -485,6 +488,9 @@ to{opacity:1}
 .rtab{flex:1;background:none;border:none;border-bottom:2px solid transparent;color:var(--muted);padding:9px 4px;cursor:pointer;font-family:inherit;font-size:11px;letter-spacing:.08em;text-transform:uppercase;transition:var(--t);margin-bottom:-1px;display:flex;align-items:center;justify-content:center;gap:5px;}
 .rtab.on{color:var(--accent);border-bottom-color:var(--accent);}
 .rtab:hover:not(.on){color:var(--dim);}
+.rtab-toggle{background:none;border:none;color:var(--muted);font-size:13px;cursor:pointer;padding:6px 8px;transition:var(--t);flex-shrink:0;}
+.rtab-toggle:hover{color:var(--accent);}
+.panel-right.collapsed .rtab-toggle{transform:rotate(180deg);}
 .right-pane{display:none;flex:1;flex-direction:column;overflow:hidden;}
 .right-pane.on{display:flex;}
 .journal-pane{display:flex;flex-direction:column;height:100%;overflow:hidden;}
@@ -956,33 +962,14 @@ to{transform:translateX(0);opacity:1;}
     <div id="gm-badge" style="display:none;align-items:center;gap:4px;background:rgba(184,154,96,.15);border:1px solid var(--accent);border-radius:4px;padding:3px 9px;font-size:10px;letter-spacing:.1em;color:var(--accent)">GM</div>
     <div class="spacer"></div>
     <div class="players-row" id="players-row"></div>
-    <button class="topbar-btn" onclick="togglePanel('left')">◀ 시트</button>
-    <button class="topbar-btn" onclick="togglePanel('right')">채팅 ▶</button>
 
     <button class="topbar-btn" onclick="openModal('modal-settings')">⚙</button>
   </div>
 
   <div class="game-body">
-    <!-- 왼쪽: 캐릭터 시트 -->
-    <div class="panel-left" id="panel-left">
-      <div class="panel-header">
-        <span class="panel-header-title">캐릭터 시트</span>
-        <button class="topbar-btn" onclick="saveCharacter()">저장</button>
-      </div>
-      <div class="panel-tabs">
-        <button class="ptab on" onclick="switchPanelTab('sheet', this)">시트</button>
-        <button class="ptab"    onclick="switchPanelTab('notes', this)">노트</button>
-      </div>
-      <div class="panel-body" id="sheet-container"></div>
-    </div>
-
     <!-- 센터 -->
     <div class="panel-center">
       <div class="map-area" id="map-area">
-        <div class="map-toolbar">
-          <button class="map-tb-btn on" id="tool-select" onclick="setTool('select')">↖</button>
-          <button class="map-tb-btn"    id="tool-erase"  onclick="setTool('erase')">✕</button>
-        </div>
         <button class="map-add-token gm-only" id="map-add-token" onclick="openModal('modal-token')" style="display:none">+ 토큰</button>
         <!-- VN 대사창 -->
         <div class="vn-dialog" id="vn-dialog" onclick="hideDialogueBox()">
@@ -1029,6 +1016,7 @@ to{transform:translateX(0);opacity:1;}
 
       <!-- 탭 헤더 -->
       <div class="right-tabs">
+        <button class="rtab-toggle" id="chat-toggle-btn" onclick="toggleChatPanel()" title="채팅 접기/펼치기">◀</button>
         <button class="rtab on" id="rtab-chat" onclick="switchRightTab('chat')">채팅</button>
         <button class="rtab" id="rtab-journal" onclick="switchRightTab('journal')">저널</button>
         <button class="chat-popout-btn" onclick="popoutChat()" title="채팅을 새 탭으로 분리" style="margin-left:auto;margin-right:6px">⤢</button>
@@ -3605,6 +3593,13 @@ function closeModal(id) { document.getElementById(id).classList.remove('open'); 
 document.querySelectorAll('.overlay').forEach(o => o.addEventListener('click', e => { if (e.target===o) o.classList.remove('open'); }));
 
 function togglePanel(side) { document.getElementById(`panel-${side}`).classList.toggle('collapsed'); }
+
+function toggleChatPanel() {
+  const panel = document.getElementById('panel-right');
+  panel.classList.toggle('collapsed');
+  const btn = document.getElementById('chat-toggle-btn');
+  if (btn) btn.textContent = panel.classList.contains('collapsed') ? '▶' : '◀';
+}
 
 function switchPanelTab(tab, btn) {
   document.querySelectorAll('.ptab').forEach(b => b.classList.remove('on'));
