@@ -2406,12 +2406,12 @@ function setupFirebaseListeners() {
     // 이미 렌더된 메시지 수 추적 — 새 메시지만 추가
     const rendered = container.querySelectorAll('.chat-msg').length;
     const toAdd = sorted.slice(rendered);
-    toAdd.forEach(m => appendChatMsg(m.name, m.text, m.type || 'normal', m.uid));
+    toAdd.forEach(m => appendChatMsg(m.name, m.text, m.type || 'normal', m.uid, m.time));
 
     // 처음 로드(전체 초기화 필요)할 때만 전체 재렌더
     if (toAdd.length === 0 && rendered > sorted.length) {
       container.innerHTML = '';
-      sorted.forEach(m => appendChatMsg(m.name, m.text, m.type || 'normal', m.uid));
+      sorted.forEach(m => appendChatMsg(m.name, m.text, m.type || 'normal', m.uid, m.time));
     }
   });
 
@@ -2879,10 +2879,11 @@ function getAvatarHtml(name, uid) {
   return `<div class="msg-avatar ${shape_class}"><div class="msg-avatar-inner" style="border-radius:${r}">${esc(initial)}</div></div>`;
 }
 
-function appendChatMsg(name, text, type, uid) {
+function appendChatMsg(name, text, type, uid, timestamp) {
   const container = document.getElementById('chat-messages');
-  const now = new Date();
-  const time = `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`;
+  // timestamp가 있으면 실제 메시지 시간, 없으면 현재 시간
+  const d = timestamp ? new Date(timestamp) : new Date();
+  const time = `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
 
   if (type === 'system' || type === 'sys') {
     const div = document.createElement('div');
