@@ -510,6 +510,8 @@ to{opacity:1}
 .msg-act-btn{background:var(--s3);border:1px solid var(--border);border-radius:3px;color:var(--muted);font-size:10px;cursor:pointer;padding:1px 5px;transition:var(--t);font-family:inherit}
 .msg-act-btn:hover{color:var(--accent);border-color:var(--accent)}
 .msg-act-btn.danger:hover{color:var(--red);border-color:rgba(200,92,92,.4)}
+.msg-text.editing{outline:none;background:var(--s3);border:1px solid rgba(184,154,96,.3);border-radius:6px;padding:6px 10px;color:var(--text);caret-color:var(--accent);min-height:20px}
+.msg-text.editing:focus{border-color:var(--accent);box-shadow:0 0 0 2px rgba(184,154,96,.1)}
 .p-chip.online .p-dot{background:var(--accent);box-shadow:0 0 4px var(--accent)}
 .p-chip.online span{color:var(--accent)}
 .p-chip.offline .p-dot{background:var(--muted)}
@@ -5834,9 +5836,7 @@ function editMsg(div) {
 
   textEl.textContent = oldText;
   textEl.contentEditable = 'true';
-  textEl.style.outline = '1px solid var(--accent)';
-  textEl.style.borderRadius = '4px';
-  textEl.style.padding = '2px 4px';
+  textEl.classList.add('editing');
   textEl.focus();
 
   const range = document.createRange();
@@ -5848,9 +5848,7 @@ function editMsg(div) {
 
   function finishEdit() {
     textEl.contentEditable = 'false';
-    textEl.style.outline = '';
-    textEl.style.borderRadius = '';
-    textEl.style.padding = '';
+    textEl.classList.remove('editing');
     const newText = textEl.textContent.trim();
     if (!newText) { textEl.innerHTML = fmtText(oldText); showToast('빈 메시지는 입력할 수 없어요.'); return; }
     if (newText === oldText) { textEl.innerHTML = fmtText(oldText); return; }
@@ -5864,7 +5862,7 @@ function editMsg(div) {
 
   textEl.onkeydown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); finishEdit(); }
-    if (e.key === 'Escape') { textEl.innerHTML = fmtText(oldText); textEl.contentEditable = 'false'; textEl.style.outline = ''; textEl.style.borderRadius = ''; textEl.style.padding = ''; }
+    if (e.key === 'Escape') { textEl.innerHTML = fmtText(oldText); textEl.contentEditable = 'false'; textEl.classList.remove('editing'); }
   };
   textEl.onblur = () => finishEdit();
 }
