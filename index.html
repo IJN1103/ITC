@@ -1757,6 +1757,7 @@ const St = {
   whisperTo: null,
   whisperToName: null,
   whisperToJournal: null,
+  myNameColor: '',
   players: {},
   avatarShape: localStorage.getItem('itc_avatar_shape') || 'rounded',
 };
@@ -2537,6 +2538,7 @@ async function enterGame() {
   addLocalMessage('system', '', `${St.myName}님이 입장했습니다 — ${SYS_LABELS[St.system]}`);
   migrateLocalJournals();
   loadCasualNick();
+  loadMyNameColor();
 }
 
 function addPlayerChip(id, name, isMe, role, online) {
@@ -2973,11 +2975,12 @@ function sendChat() {
 
 function sendMessage(name, text, type = 'normal') {
   const msg = { name, text, type, uid: St.myId, time: Date.now() };
+  if (type === 'normal' && St.myNameColor) msg.nameColor = St.myNameColor;
   if (window._FB?.CONFIGURED) {
     const { db, ref, push } = window._FB;
     push(ref(db, `rooms/${St.roomCode}/chat`), msg);
   } else {
-    appendChatMsg(name, text, type, St.myId);
+    appendChatMsg(name, text, type, St.myId, null, null, null, null, null, msg.nameColor || null);
   }
 }
 
@@ -3038,6 +3041,20 @@ function loadCasualNick() {
         _casualNickname = val;
         try { localStorage.setItem('itc_casual_nick_' + St.myId, val); } catch(e) {}
         refreshCasualNickDisplay();
+      }
+    }).catch(() => {});
+  }
+}
+
+function loadMyNameColor() {
+  try { St.myNameColor = localStorage.getItem('itc_name_color_' + St.myId) || ''; } catch(e) {}
+  if (window._FB?.CONFIGURED && St.roomCode) {
+    const { db, ref, get } = window._FB;
+    get(ref(db, `rooms/${St.roomCode}/players/${St.myId}/nameColor`)).then(snap => {
+      const val = snap.val();
+      if (val) {
+        St.myNameColor = val;
+        try { localStorage.setItem('itc_name_color_' + St.myId, val); } catch(e) {}
       }
     }).catch(() => {});
   }
@@ -3311,18 +3328,19 @@ function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJ
 
   const div = document.createElement('div');
   div.className = `chat-msg msg-${type}`;
+  const _nc = nameColor ? ` style="color:${nameColor}"` : '';
   if (type === 'dice') {
     const diceMatch = text.match(/🎲\s*(.+?)\s*→\s*(\d+)\s*\(([^)]+)\)/);
     if (diceMatch) {
       const formula = diceMatch[1].trim();
       const result = diceMatch[2];
       const rolls = diceMatch[3].trim();
-      div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-text">${esc(text)}</div><div class="dice-card"><div class="dice-card-formula">${esc(formula)}</div><div class="dice-card-result">${esc(result)}</div><div class="dice-card-rolls">${esc(rolls)}</div></div></div>`;
+      div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name"${_nc}>${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-text">${esc(text)}</div><div class="dice-card"><div class="dice-card-formula">${esc(formula)}</div><div class="dice-card-result">${esc(result)}</div><div class="dice-card-rolls">${esc(rolls)}</div></div></div>`;
     } else {
-      div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-text">${esc(text)}</div></div>`;
+      div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name"${_nc}>${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-text">${esc(text)}</div></div>`;
     }
   } else {
-    div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-text">${esc(text)}</div></div>`;
+    div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name"${_nc}>${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-text">${esc(text)}</div></div>`;
   }
   container.appendChild(div);
   container.scrollTop = container.scrollHeight;
@@ -5586,7 +5604,7 @@ function saRefreshBtn() {
   }
   btn.classList.remove('active');
   nameEl.textContent = '나';
-  nameEl.style.color = '';
+  nameEl.style.color = St.myNameColor || '';
   iconEl.innerHTML = `<svg width="11" height="11" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="5" r="3" stroke="currentColor" stroke-width="1.5"/><path d="M2 12c0-2.21 2.239-4 5-4s5 1.79 5 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`;
   if (inp && !St.descMode) inp.placeholder = '메시지 입력 (Enter 전송)';
 }
@@ -5620,27 +5638,40 @@ function toggleColorPalette(e) {
   if (popup.classList.contains('open')) { popup.classList.remove('open'); return; }
   const jId = St.speakAsJournalId;
   const j = jId ? loadJournals().find(x => x.id === jId) : null;
-  const currentColor = j?.nameColor || '#b89a60';
+  let currentColor;
+  if (j) {
+    currentColor = j.nameColor || '#b89a60';
+  } else {
+    currentColor = St.myNameColor || '#b89a60';
+  }
   popup.innerHTML = '<div class="sa-color-popup-title">채팅 이름 색상</div><div class="sa-color-grid"></div>';
   const grid = popup.querySelector('.sa-color-grid');
   SA_COLORS.forEach(color => {
     const swatch = document.createElement('div');
     swatch.className = 'sa-color-swatch' + (currentColor === color ? ' active' : '');
     swatch.style.background = color;
-    swatch.onclick = (ev) => { ev.stopPropagation(); setJournalNameColor(color); popup.classList.remove('open'); };
+    swatch.onclick = (ev) => { ev.stopPropagation(); setNameColor(color); popup.classList.remove('open'); };
     grid.appendChild(swatch);
   });
   popup.classList.add('open');
 }
 
-function setJournalNameColor(color) {
+function setNameColor(color) {
   const jId = St.speakAsJournalId;
-  if (!jId) { showToast('저널을 먼저 선택해주세요.'); return; }
-  const j = _allJournals.find(x => x.id === jId);
-  if (!j) return;
-  j.nameColor = color;
-  saveJournalFB(j);
-  saRefreshBtn();
+  if (jId) {
+    const j = _allJournals.find(x => x.id === jId);
+    if (!j) return;
+    j.nameColor = color;
+    saveJournalFB(j);
+    saRefreshBtn();
+  } else {
+    St.myNameColor = color;
+    try { localStorage.setItem('itc_name_color_' + St.myId, color); } catch(e) {}
+    if (window._FB?.CONFIGURED && St.roomCode) {
+      const { db, ref, update } = window._FB;
+      update(ref(db, `rooms/${St.roomCode}/players/${St.myId}`), { nameColor: color });
+    }
+  }
   showToast('이름 색상이 변경됐어요.');
 }
 
