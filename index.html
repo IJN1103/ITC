@@ -2596,43 +2596,89 @@ function popoutChat() {
 
   if (!_popoutWin) { showToast('팝업 차단을 해제해 주세요!'); return; }
 
-  const html = `<!DOCTYPE html><html><head>
-<title>ITC 채팅 — ${esc(St.roomCode)}</title>
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500&family=DM+Mono:wght@400&display=swap" rel="stylesheet">
-<style>
-*{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'DM Sans',sans-serif;background:#101010;color:#e8e3da;font-size:14px;height:100vh;display:flex;flex-direction:column}
-.ph{padding:10px 14px;background:#131313;border-bottom:1px solid #1f1f1f;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
-.ph-title{font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:#5a5751}
-.ph-code{font-family:'DM Mono',monospace;font-size:12px;color:#b89a60;letter-spacing:.15em}
-.msgs{flex:1;overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:8px}
-.msgs::-webkit-scrollbar{width:4px}.msgs::-webkit-scrollbar-thumb{background:#262626;border-radius:2px}
-.mn{display:flex;align-items:baseline;gap:6px;margin-bottom:2px}
-.nn{font-size:11px;font-weight:500;color:#b89a60}
-.tm{font-size:10px;color:#5a5751;font-family:'DM Mono',monospace}
-.mt{font-size:13px;color:#8c8882;line-height:1.55;word-break:break-word}
-.md .mt{background:rgba(184,154,96,.1);border:1px solid #2e2e2e;border-radius:6px;padding:6px 10px;font-family:'DM Mono',monospace;font-size:12px;color:#b89a60}
-.ms .mt{color:#5a5751;font-size:11px;font-style:italic;text-align:center}
-.iw{border-top:1px solid #1f1f1f;padding:8px;display:flex;gap:6px}
-textarea{flex:1;background:#161616;border:1px solid #1f1f1f;border-radius:6px;color:#e8e3da;padding:7px 10px;font-size:13px;resize:none;min-height:34px;font-family:inherit;outline:none}
-textarea:focus{border-color:#b89a60}
-.sb{width:34px;height:34px;background:#b89a60;border:none;border-radius:6px;color:#080808;cursor:pointer;font-size:15px;flex-shrink:0}
-</style></head><body>
-<div class="ph"><span class="ph-title">채팅</span><span class="ph-code">${esc(St.roomCode)}</span></div>
-<div class="msgs" id="pm"></div>
-<div class="iw">
-  <textarea id="pi" placeholder="메시지 입력 (Enter 전송)" rows="1"
-    onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();send()}"></textarea>
-  <button class="sb" onclick="send()">➤</button>
-</div>
-<scr'+'ipt>
-function send(){const i=document.getElementById('pi');const t=i.value.trim();if(!t)return;i.value='';window.opener&&window.opener.sendChatFromPopout&&window.opener.sendChatFromPopout(t);}
-function addMsg(name,text,type){const c=document.getElementById('pm');const d=document.createElement('div');d.className=type==='dice'?'md':type==='sys'?'ms':'';const now=new Date();const ts=now.getHours().toString().padStart(2,'0')+':'+now.getMinutes().toString().padStart(2,'0');const e=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');if(type==='sys'){d.innerHTML='<div class="mt">'+e(text)+'</div>';}else{d.innerHTML='<div class="mn"><span class="nn">'+e(name)+'</span><span class="tm">'+ts+'</span></div><div class="mt">'+e(text)+'</div>';}c.appendChild(d);c.scrollTop=c.scrollHeight;}
-window._popReady=true;
-</scr'+'ipt></body></html>`;
+  // document.write 없이 DOM API로 직접 구성 (script 태그 충돌 방지)
+  const d = _popoutWin.document;
+  d.title = `ITC 채팅 — ${St.roomCode}`;
 
-  _popoutWin.document.write(html);
-  _popoutWin.document.close();
+  // CSS
+  const style = d.createElement('style');
+  style.textContent = [
+    '*{box-sizing:border-box;margin:0;padding:0}',
+    "body{font-family:'DM Sans',sans-serif;background:#101010;color:#e8e3da;font-size:14px;height:100vh;display:flex;flex-direction:column}",
+    '.ph{padding:10px 14px;background:#131313;border-bottom:1px solid #1f1f1f;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}',
+    '.ph-title{font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:#5a5751}',
+    ".ph-code{font-family:'DM Mono',monospace;font-size:12px;color:#b89a60;letter-spacing:.15em}",
+    '.msgs{flex:1;overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:8px}',
+    '.msgs::-webkit-scrollbar{width:4px}.msgs::-webkit-scrollbar-thumb{background:#262626;border-radius:2px}',
+    '.mn{display:flex;align-items:baseline;gap:6px;margin-bottom:2px}',
+    '.nn{font-size:11px;font-weight:500;color:#b89a60}',
+    ".tm{font-size:10px;color:#5a5751;font-family:'DM Mono',monospace}",
+    '.mt{font-size:13px;color:#8c8882;line-height:1.55;word-break:break-word}',
+    '.md .mt{background:rgba(184,154,96,.1);border:1px solid #2e2e2e;border-radius:6px;padding:6px 10px;font-size:12px;color:#b89a60}',
+    '.ms .mt{color:#5a5751;font-size:11px;font-style:italic;text-align:center}',
+    '.iw{border-top:1px solid #1f1f1f;padding:8px;display:flex;gap:6px}',
+    "textarea{flex:1;background:#161616;border:1px solid #1f1f1f;border-radius:6px;color:#e8e3da;padding:7px 10px;font-size:13px;resize:none;min-height:34px;font-family:inherit;outline:none}",
+    'textarea:focus{border-color:#b89a60}',
+    '.sb{width:34px;height:34px;background:#b89a60;border:none;border-radius:6px;color:#080808;cursor:pointer;font-size:15px;flex-shrink:0}',
+  ].join('');
+  d.head.appendChild(style);
+
+  // 구글 폰트
+  const link = d.createElement('link');
+  link.rel = 'stylesheet';
+  link.href = 'https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500&family=DM+Mono:wght@400&display=swap';
+  d.head.appendChild(link);
+
+  // 헤더
+  const popHeader = d.createElement('div');
+  popHeader.className = 'ph';
+  popHeader.innerHTML = `<span class="ph-title">채팅</span><span class="ph-code">${esc(St.roomCode)}</span>`;
+  d.body.appendChild(popHeader);
+
+  // 메시지 영역
+  const msgs = d.createElement('div');
+  msgs.className = 'msgs';
+  msgs.id = 'pm';
+  d.body.appendChild(msgs);
+
+  // 입력창
+  const iw = d.createElement('div');
+  iw.className = 'iw';
+  iw.innerHTML = '<textarea id="pi" placeholder="메시지 입력 (Enter 전송)" rows="1"></textarea><button class="sb">➤</button>';
+  d.body.appendChild(iw);
+
+  // JS 함수들을 script 엘리먼트로 주입
+  const sc = d.createElement('script');
+  sc.textContent = `
+    function send() {
+      const i = document.getElementById('pi');
+      const t = i.value.trim();
+      if (!t) return;
+      i.value = '';
+      if (window.opener && window.opener.sendChatFromPopout) window.opener.sendChatFromPopout(t);
+    }
+    function addMsg(name, text, type) {
+      const c = document.getElementById('pm');
+      const div = document.createElement('div');
+      div.className = type === 'dice' ? 'md' : type === 'sys' ? 'ms' : '';
+      const now = new Date();
+      const ts = now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0');
+      const e = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      if (type === 'sys') {
+        div.innerHTML = '<div class="mt">' + e(text) + '</div>';
+      } else {
+        div.innerHTML = '<div class="mn"><span class="nn">' + e(name) + '</span><span class="tm">' + ts + '</span></div><div class="mt">' + e(text) + '</div>';
+      }
+      c.appendChild(div);
+      c.scrollTop = c.scrollHeight;
+    }
+    document.querySelector('.sb').addEventListener('click', send);
+    document.getElementById('pi').addEventListener('keydown', function(e) {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+    });
+    window._popReady = true;
+  `;
+  d.body.appendChild(sc);
 
   // 기존 메시지 복사
   setTimeout(() => {
@@ -2644,7 +2690,7 @@ window._popReady=true;
                  : m.classList.contains('msg-sys')  ? 'sys' : 'normal';
       if (textEl) _popoutWin.addMsg(nameEl?.textContent || '', textEl.textContent, type);
     });
-  }, 600);
+  }, 400);
 
   showToast('채팅이 새 창으로 분리됐어요!');
 }
