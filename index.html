@@ -719,15 +719,54 @@ input:focus, select:focus, textarea:focus { outline: none; }
   background: var(--s1);
   border: 1px solid var(--border);
   border-radius: var(--rl);
-  padding: 18px;
+  overflow: hidden;
   cursor: pointer;
   transition: var(--t);
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 8px;
 }
-.campaign-card:hover { border-color: var(--accent); background: var(--a-dim); }
+.campaign-card:hover { border-color: var(--accent); }
+.campaign-card:hover .cc-thumb-overlay { opacity: 1; }
+
+/* 썸네일 영역 (16:9) */
+.cc-thumb {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: var(--s2);
+  position: relative;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.cc-thumb img {
+  width: 100%; height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: transform .3s ease;
+}
+.campaign-card:hover .cc-thumb img { transform: scale(1.04); }
+.cc-thumb-placeholder {
+  width: 100%; height: 100%;
+  display: flex; align-items: center; justify-content: center;
+  flex-direction: column; gap: 6px;
+  color: var(--muted); font-size: 11px; letter-spacing: .08em;
+  background: linear-gradient(135deg, var(--s2) 0%, var(--s3) 100%);
+}
+.cc-thumb-placeholder .cc-ph-icon { font-size: 22px; opacity: .4; }
+/* GM만 보이는 이미지 업로드 오버레이 */
+.cc-thumb-overlay {
+  position: absolute; inset: 0;
+  background: rgba(0,0,0,.55);
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; transition: opacity .2s;
+  font-size: 12px; color: #fff; letter-spacing: .06em;
+  gap: 6px;
+}
+/* 카드 본문 */
+.cc-body {
+  padding: 14px;
+  display: flex; flex-direction: column; gap: 6px;
+}
 .campaign-card .cc-role {
   font-size: 9px;
   letter-spacing: .14em;
@@ -765,16 +804,33 @@ input:focus, select:focus, textarea:focus { outline: none; }
 .campaign-card .cc-del {
   position: absolute;
   top: 12px; right: 12px;
-  background: none;
-  border: none;
+  background: var(--s2);
+  border: 1px solid var(--border);
   color: var(--muted);
   cursor: pointer;
-  font-size: 14px;
-  padding: 2px 5px;
+  font-size: 13px;
+  padding: 3px 6px;
   border-radius: 4px;
   transition: var(--t);
+  line-height: 1;
 }
-.campaign-card .cc-del:hover { color: var(--red); background: rgba(200,92,92,.1); }
+.campaign-card .cc-del:hover { color: var(--red); border-color: rgba(200,92,92,.4); background: rgba(200,92,92,.08); }
+
+/* 편집 아이콘 버튼 (GM 전용) */
+.campaign-card .cc-edit {
+  position: absolute;
+  top: 12px; right: 44px;
+  background: var(--s2);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 3px 6px;
+  border-radius: 4px;
+  transition: var(--t);
+  line-height: 1;
+}
+.campaign-card .cc-edit:hover { color: var(--accent); border-color: var(--accent); background: var(--a-dim); }
 .campaign-empty {
   font-size: 13px;
   color: var(--muted);
@@ -1362,6 +1418,67 @@ input:focus, select:focus, textarea:focus { outline: none; }
   </div>
 </div>
 
+<!-- 세션 편집 모달 -->
+<div class="overlay" id="modal-session-edit">
+  <div class="modal" style="width:min(400px,94vw)">
+    <div class="modal-row">
+      <div class="modal-title">세션 설정</div>
+      <button class="modal-close" onclick="closeModal('modal-session-edit')">✕</button>
+    </div>
+
+    <!-- 썸네일 미리보기 + 변경 -->
+    <div style="margin-bottom:4px;font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted)">커버 이미지</div>
+    <div id="se-thumb-preview" style="
+      width:100%;aspect-ratio:16/9;background:var(--s2);border:1px solid var(--border);
+      border-radius:var(--r);overflow:hidden;position:relative;cursor:pointer;margin-bottom:6px
+    " onclick="document.getElementById('se-cover-input').click()">
+      <div id="se-thumb-img" style="width:100%;height:100%"></div>
+      <div style="
+        position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+        gap:6px;font-size:12px;color:#fff;background:rgba(0,0,0,.45);
+        opacity:0;transition:.18s;border-radius:var(--r)
+      " id="se-thumb-hover">📷 이미지 변경</div>
+    </div>
+    <input type="file" id="se-cover-input" accept="image/*" style="display:none" onchange="handleSessionCoverUpload(this)">
+    <p style="font-size:11px;color:var(--muted);margin-bottom:14px">클릭해서 이미지 선택 (16:9 자동 크롭)</p>
+
+    <!-- 세션 이름 -->
+    <div style="margin-bottom:6px;font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted)">세션 이름</div>
+    <div class="modal-field" style="margin-bottom:14px">
+      <input type="text" id="se-title-input" placeholder="세션 이름" maxlength="30">
+    </div>
+
+    <div class="profile-msg" id="se-msg"></div>
+    <button class="profile-save-btn" onclick="saveSessionEdit()">저장</button>
+  </div>
+</div>
+
+<!-- 세션 편집 모달 -->
+<div class="overlay" id="modal-session-edit">
+  <div class="modal" style="width:min(400px,94vw)">
+    <div class="modal-row">
+      <div class="modal-title">세션 설정</div>
+      <button class="modal-close" onclick="closeModal('modal-session-edit')">✕</button>
+    </div>
+    <div style="margin-bottom:4px;font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted)">커버 이미지</div>
+    <div id="se-thumb-preview" style="width:100%;aspect-ratio:16/9;background:var(--s2);border:1px solid var(--border);border-radius:var(--r);overflow:hidden;position:relative;cursor:pointer;margin-bottom:6px"
+      onclick="document.getElementById('se-cover-input').click()"
+      onmouseover="document.getElementById('se-thumb-hover').style.opacity='1'"
+      onmouseout="document.getElementById('se-thumb-hover').style.opacity='0'">
+      <div id="se-thumb-img" style="width:100%;height:100%"></div>
+      <div id="se-thumb-hover" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;gap:6px;font-size:12px;color:#fff;background:rgba(0,0,0,.45);opacity:0;transition:.18s">📷 이미지 변경</div>
+    </div>
+    <input type="file" id="se-cover-input" accept="image/*" style="display:none" onchange="handleSessionCoverUpload(this)">
+    <p style="font-size:11px;color:var(--muted);margin-bottom:14px">클릭해서 이미지 선택 — 어떤 비율이든 16:9로 자동 크롭</p>
+    <div style="margin-bottom:6px;font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted)">세션 이름</div>
+    <div class="modal-field" style="margin-bottom:14px">
+      <input type="text" id="se-title-input" placeholder="세션 이름" maxlength="30">
+    </div>
+    <div class="profile-msg" id="se-msg"></div>
+    <button class="profile-save-btn" onclick="saveSessionEdit()">저장</button>
+  </div>
+</div>
+
 <!-- 새 캐릭터 모달 -->
 <div class="overlay" id="modal-new-char">
   <div class="modal">
@@ -1891,7 +2008,6 @@ function loadMyCampaigns() {
 
 function renderCampaigns(rooms) {
   const grid  = document.getElementById('campaign-grid');
-  const empty = document.getElementById('campaign-empty');
   const count = document.getElementById('campaign-count');
   if (!grid) return;
 
@@ -1903,15 +2019,40 @@ function renderCampaigns(rooms) {
     return;
   }
 
-  grid.innerHTML = entries.map(([key, r]) => `
-    <div class="campaign-card">
-      <div class="cc-role ${r.role === 'gm' ? 'gm' : 'pl'}">${r.role === 'gm' ? 'GM' : '플레이어'}</div>
-      <div class="cc-title">${esc(r.title || '무제 세션')}</div>
-      <div class="cc-sys">${SYS_LABELS[r.system] || r.system || ''}</div>
-      <div class="cc-code"># ${esc(r.code)}</div>
-      <button class="cc-enter" onclick="enterCampaign('${r.code}')">입장 →</button>
+  grid.innerHTML = entries.map(([key, r]) => {
+    const imgKey  = 'itc_cover_' + r.code;
+    const imgData = localStorage.getItem(imgKey);
+    const isGM    = r.role === 'gm';
+
+    const thumbHtml = imgData
+      ? `<img src="${imgData}" alt="커버">`
+      : `<div class="cc-thumb-placeholder"><div class="cc-ph-icon">🎲</div><span>${esc(SYS_LABELS[r.system] || r.system || '')}</span></div>`;
+
+    const overlayHtml = isGM
+      ? `<label class="cc-thumb-overlay" title="커버 이미지 변경" onclick="event.stopPropagation()">
+           📷 커버 변경
+           <input type="file" accept="image/*" style="display:none"
+             onchange="handleCoverUpload(event,'${r.code}','${key}')">
+         </label>`
+      : '';
+
+    return `
+    <div class="campaign-card" onclick="enterCampaign('${r.code}')">
+      <div class="cc-thumb">
+        ${thumbHtml}
+        ${overlayHtml}
+      </div>
+      <div class="cc-body">
+        <div class="cc-role ${isGM ? 'gm' : 'pl'}">${isGM ? 'GM' : '플레이어'}</div>
+        <div class="cc-title">${esc(r.title || '무제 세션')}</div>
+        <div class="cc-sys">${SYS_LABELS[r.system] || r.system || ''}</div>
+        <div class="cc-code"># ${esc(r.code)}</div>
+        <button class="cc-enter" onclick="event.stopPropagation();enterCampaign('${r.code}')">입장 →</button>
+      </div>
+      ${isGM ? `<button class="cc-edit" onclick="openSessionEdit(event,'${r.code}','${key}','${esc(r.title||'무제 세션')}')" title="세션 설정">✎</button>` : ''}
       <button class="cc-del" onclick="removeCampaign(event,'${r.code}','${key}')" title="목록에서 제거">✕</button>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
 
 async function enterCampaign(code) {
@@ -1919,11 +2060,179 @@ async function enterCampaign(code) {
   await joinRoom();
 }
 
+/* ─── 세션 편집 모달 열기 ─── */
+function openSessionEdit(e, code, key, title) {
+  e.stopPropagation();
+  // 현재 편집 대상 저장
+  window._editSession = { code, key };
+
+  // 제목 채우기
+  const titleEl = document.getElementById('se-title-input');
+  if (titleEl) titleEl.value = title;
+
+  // 썸네일 미리보기
+  const imgContainer = document.getElementById('se-thumb-img');
+  const saved = localStorage.getItem('itc_cover_' + code);
+  if (imgContainer) {
+    if (saved) {
+      imgContainer.innerHTML = `<img src="${saved}" style="width:100%;height:100%;object-fit:cover;display:block">`;
+    } else {
+      imgContainer.innerHTML = `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:6px;color:var(--muted);font-size:12px;background:var(--s2)"><span style="font-size:24px;opacity:.4">🎲</span><span>커버 없음</span></div>`;
+    }
+  }
+
+  // 메시지 초기화
+  const msgEl = document.getElementById('se-msg');
+  if (msgEl) { msgEl.textContent = ''; msgEl.className = 'profile-msg'; }
+
+  openModal('modal-session-edit');
+}
+
+/* ─── 세션 편집 모달 내 커버 업로드 ─── */
+function handleSessionCoverUpload(input) {
+  const file = input.files[0];
+  if (!file) return;
+  if (file.size > 8 * 1024 * 1024) {
+    const m = document.getElementById('se-msg');
+    if (m) { m.textContent = '이미지는 8MB 이하여야 해요.'; m.className = 'profile-msg err'; }
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const W = 960, H = 540;
+      canvas.width = W; canvas.height = H;
+      const ctx = canvas.getContext('2d');
+      const srcR = img.width / img.height;
+      const dstR = 16 / 9;
+      let sx, sy, sw, sh;
+      if (srcR > dstR) {
+        sh = img.height; sw = Math.round(sh * dstR);
+        sx = Math.round((img.width - sw) / 2); sy = 0;
+      } else {
+        sw = img.width; sh = Math.round(sw / dstR);
+        sx = 0; sy = Math.round((img.height - sh) / 2);
+      }
+      ctx.drawImage(img, sx, sy, sw, sh, 0, 0, W, H);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
+
+      // 미리보기 즉시 반영
+      const imgCont = document.getElementById('se-thumb-img');
+      if (imgCont) imgCont.innerHTML = `<img src="${dataUrl}" style="width:100%;height:100%;object-fit:cover;display:block">`;
+
+      // 임시 저장 (saveSessionEdit에서 최종 저장)
+      if (window._editSession) window._editSession.pendingCover = dataUrl;
+    };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+  input.value = '';
+}
+
+/* ─── 세션 편집 저장 ─── */
+async function saveSessionEdit() {
+  const sess = window._editSession;
+  if (!sess) return;
+
+  const title  = document.getElementById('se-title-input')?.value.trim();
+  const msgEl  = document.getElementById('se-msg');
+
+  if (!title) {
+    if (msgEl) { msgEl.textContent = '세션 이름을 입력해 주세요.'; msgEl.className = 'profile-msg err'; }
+    return;
+  }
+
+  // 커버 저장
+  if (sess.pendingCover) {
+    localStorage.setItem('itc_cover_' + sess.code, sess.pendingCover);
+    if (window._FB?.CONFIGURED) {
+      const { db, ref, update } = window._FB;
+      await update(ref(db, `rooms/${sess.code}/meta`),            { cover: sess.pendingCover });
+      await update(ref(db, `users/${St.myId}/rooms/${sess.key}`), { cover: sess.pendingCover });
+    }
+  }
+
+  // 이름 저장
+  if (window._FB?.CONFIGURED) {
+    const { db, ref, update } = window._FB;
+    await update(ref(db, `rooms/${sess.code}/meta`),            { title });
+    await update(ref(db, `users/${St.myId}/rooms/${sess.key}`), { title });
+  }
+
+  if (msgEl) { msgEl.textContent = '저장됐어요!'; msgEl.className = 'profile-msg ok'; }
+  setTimeout(() => closeModal('modal-session-edit'), 900);
+
+  window._editSession = null;
+  loadMyCampaigns(); // 카드 목록 갱신
+}
+
 async function removeCampaign(e, code, key) {
   e.stopPropagation();
   if (!confirm('세션 목록에서 제거할까요?\n(방 자체는 삭제되지 않아요)')) return;
   const { db, ref, remove } = window._FB;
   await remove(ref(db, `users/${St.myId}/rooms/${key}`));
+}
+
+function handleCoverUpload(e, code, key) {
+  e.stopPropagation();
+  const file = e.target.files[0];
+  if (!file) return;
+  if (file.size > 8 * 1024 * 1024) {
+    showToast('이미지는 8MB 이하여야 해요.');
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = ev => {
+    // 16:9 비율로 크롭 후 저장
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      // 출력 해상도: 960×540 (16:9, 용량 절약)
+      const OUT_W = 960, OUT_H = 540;
+      canvas.width  = OUT_W;
+      canvas.height = OUT_H;
+      const ctx = canvas.getContext('2d');
+
+      // 16:9 기준으로 중앙 크롭
+      const srcRatio = img.width / img.height;
+      const dstRatio = 16 / 9;
+      let sx, sy, sw, sh;
+      if (srcRatio > dstRatio) {
+        // 원본이 더 넓음 → 좌우 잘라냄
+        sh = img.height;
+        sw = Math.round(img.height * dstRatio);
+        sx = Math.round((img.width - sw) / 2);
+        sy = 0;
+      } else {
+        // 원본이 더 높음 → 상하 잘라냄
+        sw = img.width;
+        sh = Math.round(img.width / dstRatio);
+        sx = 0;
+        sy = Math.round((img.height - sh) / 2);
+      }
+      ctx.drawImage(img, sx, sy, sw, sh, 0, 0, OUT_W, OUT_H);
+
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
+      localStorage.setItem('itc_cover_' + code, dataUrl);
+
+      // Firebase에도 저장 (rooms/{code}/meta.cover)
+      if (window._FB?.CONFIGURED) {
+        const { db, ref, update } = window._FB;
+        update(ref(db, `rooms/${code}/meta`), { cover: dataUrl });
+        // 내 캠페인 목록도 업데이트
+        update(ref(db, `users/${St.myId}/rooms/${key}`), { cover: dataUrl });
+      }
+
+      // 카드 즉시 갱신
+      loadMyCampaigns();
+      showToast('커버 이미지가 업데이트됐어요!');
+    };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+  e.target.value = '';
 }
 
 /* ─────────────────────────────────────────────────
