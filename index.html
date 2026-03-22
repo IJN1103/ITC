@@ -957,9 +957,10 @@ input:focus, select:focus, textarea:focus { outline: none; }
 /* ── 센터 ── */
 .panel-center { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
 .map-area { flex: 1; position: relative; overflow: hidden; background: var(--s1); background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px); background-size: 44px 44px; }
-.map-token { position: absolute; width: 36px; height: 36px; border-radius: 50%; background: var(--s3); border: 2px solid var(--accent); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 500; cursor: grab; user-select: none; z-index: 10; transition: box-shadow .15s; transform: translate(-50%,-50%); }
+.map-token { position: absolute; width: 36px; height: 36px; border-radius: 50%; background-color: var(--s3); border: 2px solid var(--accent); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 500; cursor: grab; user-select: none; z-index: 10; transition: box-shadow .15s; transform: translate(-50%,-50%); }
 .map-token:hover { box-shadow: 0 0 0 4px var(--a-glow); }
-.map-token.has-img { background-size: cover; background-position: center; background-color: transparent; border: none; font-size: 0; }
+.map-token.has-img { background-color: transparent; background-size: cover; background-position: center; border: none; border-radius: 0; font-size: 0; }
+.map-token.has-img:hover { box-shadow: none; }
 .map-token .token-hp-bar { position:absolute;bottom:-4px;left:10%;width:80%;height:3px;background:rgba(0,0,0,.4);border-radius:2px;overflow:hidden }
 .map-token .token-hp-fill { height:100%;background:var(--green,#4caf50);border-radius:2px;transition:width .3s }
 .map-token.enemy { border-color: var(--red); }
@@ -1032,6 +1033,8 @@ input:focus, select:focus, textarea:focus { outline: none; }
 .map-tb-btn { width: 28px; height: 28px; background: var(--s2); border: 1px solid var(--border); border-radius: var(--r); color: var(--dim); cursor: pointer; font-size: 13px; display: flex; align-items: center; justify-content: center; transition: var(--t); }
 .map-tb-btn:hover { border-color: var(--accent); color: var(--accent); }
 .map-tb-btn.on { background: var(--accent); border-color: var(--accent); color: #080808; }
+.map-add-token { position: absolute; top: 10px; right: 10px; z-index: 20; background: var(--s2); border: 1px solid var(--border); border-radius: var(--r); color: var(--dim); cursor: pointer; font-size: 11px; padding: 4px 10px; transition: var(--t); font-family: inherit; }
+.map-add-token:hover { border-color: var(--accent); color: var(--accent); background: var(--a-dim); }
 
 /* ── 다이스바 ── */
 .dice-bar { height: 90px; background: var(--s2); border-top: 1px solid var(--border); display: flex; align-items: center; padding: 0 14px; gap: 10px; flex-shrink: 0; }
@@ -1856,7 +1859,7 @@ input:focus, select:focus, textarea:focus { outline: none; }
     <div class="players-row" id="players-row"></div>
     <button class="topbar-btn" onclick="togglePanel('left')">◀ 시트</button>
     <button class="topbar-btn" onclick="togglePanel('right')">채팅 ▶</button>
-    <button class="topbar-btn gm-only" onclick="openModal('modal-token')" style="display:none">+ 토큰</button>
+
     <button class="topbar-btn" onclick="openModal('modal-settings')">⚙</button>
   </div>
 
@@ -1881,6 +1884,7 @@ input:focus, select:focus, textarea:focus { outline: none; }
           <button class="map-tb-btn on" id="tool-select" onclick="setTool('select')">↖</button>
           <button class="map-tb-btn"    id="tool-erase"  onclick="setTool('erase')">✕</button>
         </div>
+        <button class="map-add-token gm-only" id="map-add-token" onclick="openModal('modal-token')" style="display:none">+ 토큰</button>
       </div>
       <div class="dice-bar">
         <div class="dice-btns" id="dice-btns"></div>
@@ -4249,7 +4253,7 @@ function teHandleTokenImg(input) {
       if (w > MAX || h > MAX) { const r = Math.min(MAX/w, MAX/h); w = Math.round(w*r); h = Math.round(h*r); }
       const c = document.createElement('canvas'); c.width = w; c.height = h;
       c.getContext('2d').drawImage(img, 0, 0, w, h);
-      _teTokenImgData = c.toDataURL('image/jpeg', 0.8);
+      _teTokenImgData = c.toDataURL('image/png');
       teRefreshTokenImgPreview();
     };
     img.src = ev.target.result;
