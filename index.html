@@ -2416,8 +2416,7 @@ function copyRoomCode() {
 
 /* 로비로 돌아가기 (방은 유지) */
 async function goToLobby() {
-  if (St.roomCode && !confirm('로비로 돌아갈까요?
-방은 유지되며 나중에 다시 입장할 수 있어요.')) return;
+  if (St.roomCode && !confirm('로비로 돌아갈까요?\n방은 유지되며 나중에 다시 입장할 수 있어요.')) return;
   if (window._FB?.CONFIGURED && St.roomCode) {
     const { db, ref, update } = window._FB;
     // 오프라인 상태로 표시만 (방에서 완전히 제거 안 함)
@@ -2431,8 +2430,7 @@ async function goToLobby() {
 }
 
 async function leaveRoom() {
-  if (!confirm('방에서 완전히 나가시겠습니까?
-(나중에 코드로 다시 입장할 수 있어요)')) return;
+  if (!confirm('방에서 완전히 나가시겠습니까?\n(나중에 코드로 다시 입장할 수 있어요)')) return;
   if (window._FB?.CONFIGURED) {
     const { db, ref, remove, get } = window._FB;
     await remove(ref(db, `rooms/${St.roomCode}/players/${St.myId}`));
