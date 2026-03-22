@@ -316,7 +316,9 @@ to{opacity:1;transform:translateY(0);}
 .insane-skill:hover{border-color:var(--accent);}
 .insane-skill.has{border-color:var(--accent);color:var(--accent);background:var(--a-dim);}
 .panel-center{flex:1;display:flex;flex-direction:column;overflow:hidden;}
-.map-area{flex:1;position:relative;overflow:hidden;background:var(--s1);background-image:linear-gradient(var(--border) 1px,transparent 1px),linear-gradient(90deg,var(--border) 1px,transparent 1px);background-size:44px 44px;}
+.map-area{flex:1;position:relative;overflow:hidden;background:var(--s1);cursor:grab;}
+.map-area.panning{cursor:grabbing;}
+.map-inner{position:absolute;width:100%;height:100%;background-image:linear-gradient(var(--border) 1px,transparent 1px),linear-gradient(90deg,var(--border) 1px,transparent 1px);background-size:44px 44px;transform-origin:0 0;}
 .map-token{position:absolute;width:36px;height:36px;border-radius:50%;background-color:var(--s3);border:2px solid var(--accent);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:500;cursor:grab;user-select:none;z-index:10;transition:box-shadow .15s;transform:translate(-50%,-50%);}
 .map-token:hover{box-shadow:0 0 0 4px var(--a-glow);}
 .map-token.has-img{background-color:transparent;border:none;border-radius:0;font-size:0;overflow:visible;display:flex;align-items:flex-end;justify-content:center;}
@@ -973,6 +975,7 @@ to{transform:translateX(0);opacity:1;}
     <!-- 센터 -->
     <div class="panel-center">
       <div class="map-area" id="map-area">
+        <div class="map-inner" id="map-inner"></div>
         <button class="map-add-token gm-only" id="map-add-token" onclick="openModal('modal-token')" style="display:none">+ 토큰</button>
         <!-- 줌 컨트롤 -->
         <div class="map-zoom" id="map-zoom">
@@ -3016,25 +3019,55 @@ function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJ
 }
 
 let _mapScale = 1;
-function mapZoom(dir) {
-  _mapScale = Math.max(0.3, Math.min(3, _mapScale + dir * 0.2));
+let _mapPanX = 0, _mapPanY = 0;
+
+function applyMapTransform() {
+  const inner = document.getElementById('map-inner');
+  if (inner) inner.style.transform = `translate(${_mapPanX}px,${_mapPanY}px) scale(${_mapScale})`;
+}
+
+function mapZoom(dir, cx, cy) {
   const map = document.getElementById('map-area');
   if (!map) return;
-  const gridSize = Math.round(44 * _mapScale);
-  map.style.backgroundSize = `${gridSize}px ${gridSize}px`;
-  map.querySelectorAll('.map-token').forEach(el => {
-    el.style.transformOrigin = 'center center';
-    const hasImg = el.classList.contains('has-img');
-    const rot = el.style.transform?.match(/rotate\([^)]+\)/)?.[0] || '';
-    el.style.transform = `translate(-50%,-50%) scale(${_mapScale}) ${rot}`;
-  });
+  const rect = map.getBoundingClientRect();
+  if (cx === undefined) { cx = rect.width / 2; cy = rect.height / 2; }
+  const prevScale = _mapScale;
+  _mapScale = Math.max(0.2, Math.min(4, _mapScale + dir * 0.15));
+  const ratio = _mapScale / prevScale;
+  _mapPanX = cx - ratio * (cx - _mapPanX);
+  _mapPanY = cy - ratio * (cy - _mapPanY);
+  applyMapTransform();
 }
 
 document.addEventListener('DOMContentLoaded', () => {
   const mapEl = document.getElementById('map-area');
-  if (mapEl) mapEl.addEventListener('wheel', e => {
-    if (e.ctrlKey || e.metaKey) { e.preventDefault(); mapZoom(e.deltaY < 0 ? 1 : -1); }
+  if (!mapEl) return;
+
+  mapEl.addEventListener('wheel', e => {
+    e.preventDefault();
+    const rect = mapEl.getBoundingClientRect();
+    mapZoom(e.deltaY < 0 ? 1 : -1, e.clientX - rect.left, e.clientY - rect.top);
   }, { passive: false });
+
+  let isPanning = false, panStartX, panStartY, panOriginX, panOriginY;
+  mapEl.addEventListener('mousedown', e => {
+    if (e.target.closest('.map-token') || e.target.closest('.map-zoom') || e.target.closest('.map-add-token') || e.target.closest('.vn-dialog')) return;
+    if (e.button !== 0) return;
+    isPanning = true;
+    panStartX = e.clientX; panStartY = e.clientY;
+    panOriginX = _mapPanX; panOriginY = _mapPanY;
+    mapEl.classList.add('panning');
+    e.preventDefault();
+  });
+  document.addEventListener('mousemove', e => {
+    if (!isPanning) return;
+    _mapPanX = panOriginX + (e.clientX - panStartX);
+    _mapPanY = panOriginY + (e.clientY - panStartY);
+    applyMapTransform();
+  });
+  document.addEventListener('mouseup', () => {
+    if (isPanning) { isPanning = false; mapEl.classList.remove('panning'); }
+  });
 });
 
 function addToken() {
@@ -3052,18 +3085,17 @@ function addToken() {
 }
 
 function renderAllTokens(tokens) {
-  const map = document.getElementById('map-area');
-  map.querySelectorAll('.map-token').forEach(t => t.remove());
+  const inner = document.getElementById('map-inner');
+  if (inner) inner.querySelectorAll('.map-token').forEach(t => t.remove());
   Object.values(tokens).forEach(t => createTokenEl(t));
 }
 
 function createTokenEl(t) {
-  const map = document.getElementById('map-area');
+  const inner = document.getElementById('map-inner');
   const el = document.createElement('div');
   el.className = `map-token ${t.type==='enemy'?'enemy':t.type==='npc'?'npc':''}`;
   el.id = 'tok-' + t.id;
   el.style.left = t.x + '%'; el.style.top = t.y + '%';
-  if (_mapScale !== 1) el.style.transform = `translate(-50%,-50%) scale(${_mapScale})`;
   const sz = (t.tokenSize || 1);
   let tokenImgSrc = null;
   if (t.standingAsToken && t.standings && t.standings.length > 0) {
@@ -3103,7 +3135,7 @@ function createTokenEl(t) {
   }
   el.addEventListener('contextmenu', e => { e.preventDefault(); e.stopPropagation(); showTokenCtx(e, t.id); });
   makeDraggable(el, t.id);
-  map.appendChild(el);
+  inner.appendChild(el);
 }
 
 function makeDraggable(el, tokenId) {
@@ -3111,13 +3143,16 @@ function makeDraggable(el, tokenId) {
     if (!St.isGM) { showToast('GM만 토큰을 이동할 수 있어요.'); return; }
     if (St.tool === 'erase') { removeToken(tokenId); return; }
     e.preventDefault();
+    e.stopPropagation();
     const map = document.getElementById('map-area');
-    const rect = map.getBoundingClientRect();
+    const inner = document.getElementById('map-inner');
+    const rect = inner.getBoundingClientRect();
     const sx = e.clientX, sy = e.clientY;
     const sl = parseFloat(el.style.left), st = parseFloat(el.style.top);
+    const natW = map.offsetWidth, natH = map.offsetHeight;
     const onMove = e => {
-      el.style.left = Math.max(0,Math.min(100, sl + (e.clientX-sx)/rect.width*100)) + '%';
-      el.style.top  = Math.max(0,Math.min(100, st + (e.clientY-sy)/rect.height*100)) + '%';
+      el.style.left = Math.max(0,Math.min(100, sl + (e.clientX-sx)/(natW*_mapScale)*100)) + '%';
+      el.style.top  = Math.max(0,Math.min(100, st + (e.clientY-sy)/(natH*_mapScale)*100)) + '%';
     };
     const onUp = () => {
       document.removeEventListener('mousemove', onMove);
