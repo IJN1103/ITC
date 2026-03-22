@@ -1182,10 +1182,41 @@ input:focus, select:focus, textarea:focus { outline: none; }
 .journal-item {
   background: var(--s2); border: 1px solid var(--border); border-radius: var(--r);
   padding: 10px 12px; cursor: pointer; transition: var(--t);
+  display: flex; align-items: center; gap: 10px;
 }
 .journal-item:hover { border-color: var(--accent); background: var(--a-dim); }
+.journal-avatar {
+  width: 38px; height: 38px; border-radius: 8px; flex-shrink: 0;
+  background: var(--s3); border: 1px solid var(--border2);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 15px; font-weight: 600; color: var(--accent);
+  overflow: hidden;
+}
+.journal-avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: 8px; }
+.journal-item-body { flex: 1; min-width: 0; }
 .journal-item-title { font-size: 13px; color: var(--text); font-weight: 500; margin-bottom: 3px; }
 .journal-item-meta { font-size: 10px; color: var(--muted); display: flex; align-items: center; justify-content: space-between; }
+/* 시트 헤더 프로필 */
+.sh-avatar-wrap {
+  display: flex; flex-direction: column; align-items: center;
+  gap: 6px; padding: 14px 16px 14px 4px;
+}
+.sh-avatar {
+  width: 64px; height: 64px; border-radius: 10px;
+  background: var(--s3); border: 1px solid var(--border2);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 22px; font-weight: 600; color: var(--accent);
+  overflow: hidden; cursor: pointer; position: relative; transition: var(--t);
+}
+.sh-avatar:hover { border-color: var(--accent); }
+.sh-avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: 10px; }
+.sh-avatar-hint { font-size: 10px; color: var(--muted); letter-spacing: .04em; }
+.sh-avatar .av-ov {
+  position: absolute; inset: 0; background: rgba(0,0,0,.5);
+  display: none; align-items: center; justify-content: center;
+  border-radius: 10px; font-size: 16px;
+}
+.sh-avatar:hover .av-ov { display: flex; }
 .journal-add-bar { padding: 8px; border-top: 1px solid var(--border); flex-shrink: 0; }
 .journal-add-btn {
   width: 100%; padding: 8px; background: none; border: 1px dashed var(--border2);
@@ -1767,14 +1798,26 @@ input:focus, select:focus, textarea:focus { outline: none; }
         <!-- 탐사자 정보 -->
         <div class="sh-sec">
           <div class="sh-sec-title">탐사자 정보</div>
-          <div class="sh-grid sh-grid-2">
-            <div class="sh-field"><div class="sh-label">이름</div><input class="sh-input" id="sh-name" placeholder="캐릭터 이름"></div>
+          <div style="display:flex;align-items:flex-start;gap:10px">
+            <!-- 프로필 아바타 -->
+            <div class="sh-avatar-wrap">
+              <div class="sh-avatar" id="sh-avatar" onclick="document.getElementById('sh-avatar-input').click()" title="프로필 이미지 변경">
+                <span id="sh-avatar-text">?</span>
+                <div class="av-ov">📷</div>
+              </div>
+              <input type="file" id="sh-avatar-input" accept="image/*" style="display:none" onchange="handleSheetAvatar(this)">
+              <span class="sh-avatar-hint">클릭해서 변경</span>
+            </div>
+            <div class="sh-grid sh-grid-2" style="flex:1">
+            <div class="sh-field"><div class="sh-label">이름</div><input class="sh-input" id="sh-name" placeholder="캐릭터 이름" oninput="if(!_sheetAvatarData) refreshSheetAvatar(null, this.value.trim()[0]?.toUpperCase()||'?')"></div>
             <div class="sh-field"><div class="sh-label">플레이어</div><input class="sh-input" id="sh-player" placeholder="플레이어 이름"></div>
             <div class="sh-field"><div class="sh-label">직업</div><input class="sh-input" id="sh-job" placeholder="탐사자 직업"></div>
             <div class="sh-field"><div class="sh-label">나이 / 성별</div><input class="sh-input" id="sh-age" placeholder="예: 28 / 남성"></div>
             <div class="sh-field"><div class="sh-label">거주지</div><input class="sh-input" id="sh-residence" placeholder="현재 거주지"></div>
             <div class="sh-field"><div class="sh-label">출생지</div><input class="sh-input" id="sh-birthplace" placeholder="출생지"></div>
           </div>
+            </div><!-- /sh-grid flex -->
+          </div><!-- /avatar flex -->
         </div>
         <!-- 특성치 -->
         <div class="sh-sec">
@@ -4298,8 +4341,15 @@ function renderJournalList() {
     const d   = new Date(j.updatedAt || j.createdAt);
     const ds  = `${d.getMonth()+1}/${d.getDate()} ${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
     const pre = (j.body || '').replace(/\n/g,' ').slice(0,40) || '내용 없음';
-    div.innerHTML = `<div class="journal-item-title">${esc(j.title||'무제 저널')}</div>
-      <div class="journal-item-meta"><span style="color:var(--dim);font-size:11px">${esc(pre)}${(j.body||'').length>40?'…':''}</span><span>${ds}</span></div>`;
+    const initials = (j.title || '저').trim()[0]?.toUpperCase() || '?';
+    const imgSrc    = j.avatar || '';
+    const avatarHtml = imgSrc
+      ? `<div class="journal-avatar"><img src="${imgSrc}" alt="avatar"></div>`
+      : `<div class="journal-avatar">${esc(initials)}</div>`;
+    div.innerHTML = `${avatarHtml}<div class="journal-item-body">
+      <div class="journal-item-title">${esc(j.title||'무제 저널')}</div>
+      <div class="journal-item-meta"><span style="color:var(--dim);font-size:11px">${esc(pre)}${(j.body||'').length>40?'…':''}</span><span>${ds}</span></div>
+    </div>`;
     container.appendChild(div);
   });
 }
@@ -4531,6 +4581,10 @@ function openSheet(journalId) {
   const hint = document.getElementById('sheet-hint');
   if (hint) hint.textContent = '';
 
+  // 아바타
+  _sheetAvatarData = null;
+  refreshSheetAvatar(data.avatar || null, (data.name || j?.title || '?')[0]?.toUpperCase());
+
   document.getElementById('sheet-overlay').classList.add('open');
 }
 
@@ -4540,6 +4594,43 @@ function closeSheet() {
 }
 
 let _combatRowCount = 0;
+let _sheetAvatarData = null;
+
+function handleSheetAvatar(input) {
+  const file = input.files[0];
+  if (!file) return;
+  if (file.size > 3 * 1024 * 1024) { showToast('이미지는 3MB 이하여야 해요.'); return; }
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const SIZE = 128;
+      canvas.width = canvas.height = SIZE;
+      const ctx = canvas.getContext('2d');
+      const min = Math.min(img.width, img.height);
+      ctx.drawImage(img, (img.width-min)/2, (img.height-min)/2, min, min, 0, 0, SIZE, SIZE);
+      _sheetAvatarData = canvas.toDataURL('image/jpeg', 0.82);
+      refreshSheetAvatar();
+    };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+  input.value = '';
+}
+
+function refreshSheetAvatar(src, initials) {
+  const el = document.getElementById('sh-avatar');
+  if (!el) return;
+  const imgSrc = src || _sheetAvatarData;
+  if (imgSrc) {
+    el.innerHTML = `<img src="${imgSrc}" alt="avatar"><div class="av-ov">📷</div>`;
+  } else {
+    const letter = initials || document.getElementById('sh-name')?.value?.trim()[0]?.toUpperCase() || '?';
+    el.innerHTML = `<span>${letter}</span><div class="av-ov">📷</div>`;
+  }
+}
+
 
 function addCombatRow() {
   const tbody = document.getElementById('sh-combat-rows');
@@ -4616,11 +4707,15 @@ function saveSheet() {
   });
 
   // 저장
+  // 아바타
+  if (_sheetAvatarData) data.avatar = _sheetAvatarData;
+
   const list = loadJournals();
   const idx  = list.findIndex(j => j.id === _sheetJournalId);
   if (idx >= 0) {
     list[idx].sheet     = data;
     list[idx].title     = data.name || list[idx].title;
+    if (_sheetAvatarData) list[idx].avatar = _sheetAvatarData;
     list[idx].updatedAt = Date.now();
     saveJournals(list);
     renderJournalList();
