@@ -2339,6 +2339,8 @@ const St = {
   isGM: false,
   descMode: false,
   avatarShape: localStorage.getItem('itc_avatar_shape') || 'rounded',
+  speakAsJournalId: null,
+  speakAsAvatar: null,   // 선택된 저널 아바타 즉시 캐시
 };
 
 /* 권한 체크 헬퍼 */
@@ -3494,10 +3496,13 @@ function sendChat() {
     const journals = loadJournals();
     const j = journals.find(x => x.id === St.speakAsJournalId);
     if (j) {
-      sendMessageAs(j, raw, 'speak-as');
+      // St.speakAsAvatar 캐시 우선, 없으면 j에서 직접 읽기
+      const av = St.speakAsAvatar || j.avatar || j.sheet?.avatar || null;
+      sendMessageAs(j, raw, 'speak-as', av);
       return;
     }
     St.speakAsJournalId = null;
+    St.speakAsAvatar = null;
     refreshSpeakAsBtn();
   }
   sendMessage(St.myName, raw, 'normal');
@@ -3523,7 +3528,7 @@ function sendMessageAs(journal, text, type = 'speak-as') {
     type,
     uid: St.myId,
     time: Date.now(),
-    speakAsAvatar: journal.avatar || journal.sheet?.avatar || null,
+    speakAsAvatar: localStorage.getItem('itc_av_' + journal.id) || journal.avatar || journal.sheet?.avatar || null,
     speakAsJournalId: journal.id || null,
     speakAsName: journal.title || '무제',
   };
@@ -3576,7 +3581,7 @@ function buildSpeakAsDropdown() {
       const item = document.createElement('div');
       item.className = 'sa-dropdown-item' + (St.speakAsJournalId === j.id ? ' selected' : '');
       const initial = (j.title || '?').trim()[0]?.toUpperCase() || '?';
-      const ddAv = j.avatar || j.sheet?.avatar || null;
+      const ddAv = localStorage.getItem('itc_av_' + j.id) || j.avatar || j.sheet?.avatar || null;
       const iconHtml = ddAv
         ? `<div class="sa-di-icon"><img src="${esc(ddAv)}" alt=""></div>`
         : `<div class="sa-di-icon">${esc(initial)}</div>`;
@@ -3594,6 +3599,16 @@ function buildSpeakAsDropdown() {
 
 function setSpeakAs(journalId) {
   St.speakAsJournalId = journalId;
+  // 아바타를 즉시 캐시 — localStorage 재조회 없이 전송에 바로 사용
+  if (journalId) {
+    const jList = loadJournals();
+    const jFound = jList.find(x => x.id === journalId);
+    St.speakAsAvatar = jFound
+      ? (jFound.avatar || jFound.sheet?.avatar || null)
+      : null;
+  } else {
+    St.speakAsAvatar = null;
+  }
   const dd = document.getElementById('speak-as-dropdown');
   if (dd) dd.classList.remove('open');
   refreshSpeakAsBtn();
@@ -3613,7 +3628,7 @@ function refreshSpeakAsBtn() {
     if (j) {
       btn.classList.add('active');
       nameEl.textContent = j.title || '무제';
-      const btnAv = j.avatar || j.sheet?.avatar || null;
+      const btnAv = localStorage.getItem('itc_av_' + j.id) || j.avatar || j.sheet?.avatar || null;
       if (btnAv) {
         iconEl.innerHTML = `<img src="${esc(btnAv)}" alt="">`;
       } else {
@@ -3766,12 +3781,18 @@ function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJ
     // 3) 이니셜 폴백
     let resolvedAvatar = null;
     if (speakAsJournalId) {
-      try {
-        const journals = loadJournals();
-        const j = journals.find(x => x.id === speakAsJournalId);
-        if (j) resolvedAvatar = j.avatar || j.sheet?.avatar || null;
-      } catch(e) {}
+      // 1순위: 별도 심플 키 (roomCode/myId 무관, 가장 신뢰도 높음)
+      resolvedAvatar = localStorage.getItem('itc_av_' + speakAsJournalId) || null;
+      // 2순위: 저널 오브젝트
+      if (!resolvedAvatar) {
+        try {
+          const journals = loadJournals();
+          const j = journals.find(x => x.id === speakAsJournalId);
+          if (j) resolvedAvatar = j.avatar || j.sheet?.avatar || null;
+        } catch(e) {}
+      }
     }
+    // 3순위: 메시지 페이로드 (타인 메시지)
     if (!resolvedAvatar && speakAsAvatar) resolvedAvatar = speakAsAvatar;
 
     let avatarHtml;
@@ -4585,7 +4606,7 @@ function renderJournalList() {
     const ds  = `${d.getMonth()+1}/${d.getDate()} ${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
     const pre = (j.body || '').replace(/\n/g,' ').slice(0,40) || '내용 없음';
     const initials = (j.title || '저').trim()[0]?.toUpperCase() || '?';
-    const imgSrc    = j.avatar || '';
+    const imgSrc    = localStorage.getItem('itc_av_' + j.id) || j.avatar || '';
     const avatarHtml = imgSrc
       ? `<div class="journal-avatar"><img src="${imgSrc}" alt="avatar"></div>`
       : `<div class="journal-avatar">${esc(initials)}</div>`;
@@ -4837,9 +4858,15 @@ function openSheet(journalId) {
   const hint = document.getElementById('sheet-hint');
   if (hint) hint.textContent = '';
 
-  // 아바타
-  _sheetAvatarData = null;
-  refreshSheetAvatar(data.avatar || null, (data.name || j?.title || '?')[0]?.toUpperCase());
+  // 아바타: j.avatar(최상위) 또는 j.sheet.avatar 중 있는 것 사용
+  const existingAvatar = (j && j.avatar) ? j.avatar : (data.avatar || null);
+  _sheetAvatarData = existingAvatar;   // 기존 아바타를 _sheetAvatarData에 세팅해 재저장 시 보존
+  refreshSheetAvatar(existingAvatar, (data.name || j?.title || '?')[0]?.toUpperCase());
+  // speak-as 선택 중인 저널이 이 저널이면 캐시도 갱신
+  if (St.speakAsJournalId === journalId && existingAvatar) {
+    St.speakAsAvatar = existingAvatar;
+    refreshSpeakAsBtn();
+  }
 
   document.getElementById('sheet-overlay').classList.add('open');
 }
@@ -4868,16 +4895,17 @@ function handleSheetAvatar(input) {
       ctx.drawImage(img, (img.width-min)/2, (img.height-min)/2, min, min, 0, 0, SIZE, SIZE);
       _sheetAvatarData = canvas.toDataURL('image/jpeg', 0.82);
       refreshSheetAvatar();
-      // 아바타 업로드 즉시 j.avatar에 저장 (저장 버튼을 누르지 않아도 반영)
+      // 아바타 업로드 즉시 → 별도 심플 키에 저장 (roomCode/myId 무관)
       if (_sheetJournalId) {
+        localStorage.setItem('itc_av_' + _sheetJournalId, _sheetAvatarData);
+        // 저널 리스트에도 동기화
         const avList = loadJournals();
-        const avIdx  = avList.findIndex(j => j.id === _sheetJournalId);
+        const avIdx  = avList.findIndex(jj => jj.id === _sheetJournalId);
         if (avIdx >= 0) {
           avList[avIdx].avatar = _sheetAvatarData;
-          if (avList[avIdx].sheet) avList[avIdx].sheet.avatar = _sheetAvatarData;
           saveJournals(avList);
-          refreshSpeakAsToolbar(); // speak-as 버튼/드롭다운도 즉시 갱신
         }
+        refreshSpeakAsToolbar();
       }
     };
     img.src = ev.target.result;
@@ -4977,11 +5005,16 @@ function saveSheet() {
   const list = loadJournals();
   const idx  = list.findIndex(j => j.id === _sheetJournalId);
   if (idx >= 0) {
-    // 아바타: 새로 업로드한 게 있으면 그걸 쓰고, 없으면 기존 아바타 유지
-    const resolvedAv = _sheetAvatarData || list[idx].avatar || list[idx].sheet?.avatar || null;
+    // 아바타: 새 업로드 > 별도키 > 기존 journal.avatar > 기존 sheet.avatar 순
+    const resolvedAv = _sheetAvatarData
+      || localStorage.getItem('itc_av_' + _sheetJournalId)
+      || list[idx].avatar
+      || list[idx].sheet?.avatar
+      || null;
     if (resolvedAv) {
-      data.avatar          = resolvedAv;   // sheet 내부에도 보존
-      list[idx].avatar     = resolvedAv;   // 최상위에도 보존
+      data.avatar          = resolvedAv;
+      list[idx].avatar     = resolvedAv;
+      localStorage.setItem('itc_av_' + _sheetJournalId, resolvedAv); // 별도 키에도 저장
     }
     list[idx].sheet     = data;
     list[idx].title     = data.name || list[idx].title;
