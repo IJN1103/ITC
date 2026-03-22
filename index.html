@@ -3627,7 +3627,7 @@ function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJ
     }
     const d2 = document.createElement('div');
     d2.className = 'chat-msg msg-speak-as';
-    d2.innerHTML = `${avHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name sa-msg-name">${esc(name)}</span><span class="sa-badge">캐릭터</span><span class="msg-time">${time}</span></div><div class="msg-text">${esc(text).replace(/\n/g,'<br>')}</div></div>`;
+    d2.innerHTML = `${avHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name sa-msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-text">${esc(text).replace(/\n/g,'<br>')}</div></div>`;
     container.appendChild(d2);
     container.scrollTop = container.scrollHeight;
     return;
