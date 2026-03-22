@@ -1802,12 +1802,25 @@ async function loadUserProfile(user) {
   const { db, ref, get, set } = window._FB;
   const snap = await get(ref(db, `users/${user.uid}/profile`));
   if (!snap.exists()) {
-    // 최초 가입 시 프로필 생성
     await set(ref(db, `users/${user.uid}/profile`), {
       name: user.displayName || user.email?.split('@')[0] || '플레이어',
       email: user.email || '',
       createdAt: Date.now(),
     });
+  } else {
+    const profile = snap.val();
+    // Firebase에 저장된 아바타를 localStorage에 복원
+    if (profile.avatar) {
+      localStorage.setItem('itc_avatar_' + user.uid, profile.avatar);
+    }
+    // Firebase에 없는데 localStorage에 있으면 Firebase에 업로드
+    else {
+      const local = localStorage.getItem('itc_avatar_' + user.uid);
+      if (local && window._FB?.CONFIGURED) {
+        const { update } = window._FB;
+        update(ref(db, `users/${user.uid}/profile`), { avatar: local });
+      }
+    }
   }
 }
 
@@ -2464,13 +2477,37 @@ function addPlayerChip(id, name, isMe, role) {
 
 function renderPlayers(players) {
   document.getElementById('players-row').innerHTML = '';
-  // 아바타 캐시 갱신: 타 플레이어 아바타도 표시 가능하도록
   if (!window._avatarCache) window._avatarCache = {};
+
   Object.entries(players).forEach(([id, p]) => {
     addPlayerChip(id, p.name, id === St.myId, p.role);
-    // 해당 플레이어의 아바타가 localStorage에 있으면 캐시에 저장
-    const av = localStorage.getItem('itc_avatar_' + id);
-    if (av) window._avatarCache[p.name] = av;
+
+    // 본인: localStorage 우선
+    if (id === St.myId) {
+      const myAv = localStorage.getItem('itc_avatar_' + id);
+      if (myAv) window._avatarCache[p.name] = myAv;
+      return;
+    }
+
+    // 타인: localStorage에 없으면 Firebase에서 로드
+    const cached = localStorage.getItem('itc_avatar_' + id);
+    if (cached) {
+      window._avatarCache[p.name] = cached;
+    } else if (window._FB?.CONFIGURED) {
+      const { db, ref, get } = window._FB;
+      get(ref(db, `users/${id}/profile`)).then(snap => {
+        if (snap.exists() && snap.val().avatar) {
+          const av = snap.val().avatar;
+          // localStorage에도 캐시
+          localStorage.setItem('itc_avatar_' + id, av);
+          window._avatarCache[p.name] = av;
+          // 이미 렌더된 채팅 아바타 갱신
+          document.querySelectorAll(`[data-uid="${id}"] img.avatar-img`).forEach(img => {
+            img.src = av;
+          });
+        }
+      });
+    }
   });
 }
 
@@ -3502,7 +3539,19 @@ function applyCrop() {
   ctx.drawImage(s.img, x, y, sw, sh);
 
   const dataUrl = out.toDataURL('image/jpeg', 0.85);
-  localStorage.setItem('itc_avatar_' + window._currentUser.uid, dataUrl);
+  const uid = window._currentUser.uid;
+  localStorage.setItem('itc_avatar_' + uid, dataUrl);
+
+  // Firebase에도 저장 → 다른 플레이어가 볼 수 있도록
+  if (window._FB?.CONFIGURED) {
+    const { db, ref, update } = window._FB;
+    update(ref(db, `users/${uid}/profile`), { avatar: dataUrl });
+  }
+
+  // 내 채팅 아바타 캐시 갱신
+  if (!window._avatarCache) window._avatarCache = {};
+  window._avatarCache[St.myName] = dataUrl;
+
   refreshProfileAvatar();
   document.getElementById('crop-zone').style.display = 'none';
   window._crop = null;
