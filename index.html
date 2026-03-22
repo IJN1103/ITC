@@ -1044,6 +1044,55 @@ input:focus, select:focus, textarea:focus { outline: none; }
 .chat-input:focus { border-color: var(--accent); }
 .send-btn { width: 34px; height: 34px; background: var(--accent); border: none; border-radius: var(--r); color: #080808; cursor: pointer; font-size: 15px; display: flex; align-items: center; justify-content: center; transition: var(--t); flex-shrink: 0; }
 .send-btn:hover { opacity: .85; }
+.chat-attach-btn {
+  width: 34px; height: 34px; flex-shrink: 0;
+  background: none; border: 1px solid var(--border);
+  border-radius: var(--r); color: var(--muted);
+  cursor: pointer; font-size: 18px; font-weight: 300;
+  display: flex; align-items: center; justify-content: center;
+  transition: var(--t);
+}
+.chat-attach-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--a-dim); }
+.msg-image {
+  max-width: 100%; max-height: 260px;
+  border-radius: var(--r); display: block;
+  margin-top: 4px; cursor: zoom-in;
+  border: 1px solid var(--border);
+}
+.img-lightbox {
+  position: fixed; inset: 0; z-index: 500;
+  background: rgba(0,0,0,.88);
+  display: flex; align-items: center; justify-content: center;
+  cursor: zoom-out; animation: fadeUp .15s ease;
+}
+.img-lightbox img { max-width: 92vw; max-height: 88vh; border-radius: var(--rl); object-fit: contain; }
+.chat-attach-btn {
+  width: 34px; height: 34px; flex-shrink: 0;
+  background: none; border: 1px solid var(--border);
+  border-radius: var(--r); color: var(--muted);
+  cursor: pointer; font-size: 16px; font-weight: 300;
+  display: flex; align-items: center; justify-content: center;
+  transition: var(--t); line-height: 1;
+}
+.chat-attach-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--a-dim); }
+.msg-image {
+  max-width: 100%; max-height: 260px;
+  border-radius: var(--r); display: block;
+  margin-top: 4px; cursor: zoom-in;
+  border: 1px solid var(--border);
+}
+/* 이미지 확대 오버레이 */
+.img-lightbox {
+  position: fixed; inset: 0; z-index: 500;
+  background: rgba(0,0,0,.88);
+  display: flex; align-items: center; justify-content: center;
+  cursor: zoom-out;
+  animation: fadeUp .15s ease;
+}
+.img-lightbox img {
+  max-width: 92vw; max-height: 88vh;
+  border-radius: var(--rl); object-fit: contain;
+}
 
 /* ── BGM 바 ── */
 .bgm-bar { height: 50px; background: var(--s1); border-top: 1px solid var(--border); display: flex; align-items: center; padding: 0 14px; gap: 10px; flex-shrink: 0; }
@@ -1386,6 +1435,8 @@ input:focus, select:focus, textarea:focus { outline: none; }
       </div>
       <div class="chat-messages" id="chat-messages"></div>
       <div class="chat-input-wrap">
+        <button class="chat-attach-btn" onclick="document.getElementById('chat-img-input').click()" title="사진/GIF 첨부">+</button>
+        <input type="file" id="chat-img-input" accept="image/png,image/jpeg,image/gif" style="display:none" onchange="handleChatImageUpload(this)">
         <textarea class="chat-input" id="chat-input" placeholder="메시지 입력 (Enter 전송)" rows="1" onkeydown="chatKeydown(event)"></textarea>
         <button class="send-btn" onclick="sendChat()">➤</button>
       </div>
@@ -2737,6 +2788,56 @@ function sendMessage(name, text, type = 'normal') {
   }
 }
 
+function handleChatImageUpload(input) {
+  const file = input.files[0];
+  if (!file) return;
+
+  const isGif = file.type === 'image/gif';
+  const maxSize = isGif ? 5 * 1024 * 1024 : 3 * 1024 * 1024;
+  if (file.size > maxSize) {
+    showToast(isGif ? 'GIF는 5MB 이하만 가능해요.' : '이미지는 3MB 이하만 가능해요.');
+    input.value = '';
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = ev => {
+    let dataUrl = ev.target.result;
+
+    if (!isGif) {
+      // PNG/JPG → 최대 800px 리사이즈
+      const img = new Image();
+      img.onload = () => {
+        const MAX = 800;
+        let w = img.width, h = img.height;
+        if (w > MAX || h > MAX) {
+          const r = Math.min(MAX/w, MAX/h);
+          w = Math.round(w*r); h = Math.round(h*r);
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        const compressed = canvas.toDataURL('image/jpeg', 0.82);
+        sendMessage(St.myName, compressed, 'image');
+      };
+      img.src = dataUrl;
+    } else {
+      // GIF는 리사이즈 없이 그대로
+      sendMessage(St.myName, dataUrl, 'image');
+    }
+  };
+  reader.readAsDataURL(file);
+  input.value = '';
+}
+
+function openLightbox(src) {
+  const lb = document.createElement('div');
+  lb.className = 'img-lightbox';
+  lb.innerHTML = `<img src="${src}" alt="이미지">`;
+  lb.addEventListener('click', () => lb.remove());
+  document.body.appendChild(lb);
+}
+
 function addLocalMessage(type, name, text) { appendChatMsg(name, text, type); }
 
 function getAvatarHtml(name, uid) {
@@ -2768,6 +2869,10 @@ function appendChatMsg(name, text, type, uid) {
 
   if (type === 'system' || type === 'sys') {
     div.innerHTML = `<div class="msg-text">${esc(text)}</div>`;
+  } else if (type === 'image') {
+    const avatarHtml = getAvatarHtml(name, uid || (name === St.myName ? St.myId : null));
+    // text가 data URL 또는 http URL
+    div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div><img class="msg-image" src="${text}" alt="첨부 이미지" onclick="openLightbox(this.src)"></div>`;
   } else {
     const avatarHtml = getAvatarHtml(name, uid || (name === St.myName ? St.myId : null));
     div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-text">${esc(text)}</div></div>`;
