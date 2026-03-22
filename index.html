@@ -483,6 +483,79 @@ input:focus, select:focus, textarea:focus { outline: none; }
 }
 .btn-signout:hover { color: var(--text); border-color: var(--border2); }
 
+/* ── 프로필 버튼 ── */
+.nav-profile-btn {
+  display: flex; align-items: center; gap: 8px;
+  background: none; border: none; cursor: pointer;
+  padding: 3px 6px; border-radius: var(--r);
+  transition: var(--t);
+}
+.nav-profile-btn:hover { background: var(--s3); }
+.nav-profile-btn .user-name { font-size: 12px; color: var(--dim); }
+.nav-profile-btn:hover .user-name { color: var(--text); }
+
+/* ── 프로필 아바타 (이미지 지원) ── */
+.user-avatar {
+  width: 28px; height: 28px; border-radius: 50%;
+  background: var(--s3); border: 1px solid var(--border2);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 500; color: var(--accent);
+  overflow: hidden; flex-shrink: 0;
+}
+.user-avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
+
+/* ── 프로필 모달 전용 ── */
+.profile-avatar-wrap {
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  padding: 16px 0 8px;
+}
+.profile-avatar-big {
+  width: 72px; height: 72px; border-radius: 50%;
+  background: var(--s3); border: 2px solid var(--border2);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 26px; font-weight: 500; color: var(--accent);
+  overflow: hidden; cursor: pointer; position: relative;
+  transition: var(--t);
+}
+.profile-avatar-big:hover { border-color: var(--accent); }
+.profile-avatar-big img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
+.profile-avatar-big .av-overlay {
+  position: absolute; inset: 0; background: rgba(0,0,0,.5);
+  display: none; align-items: center; justify-content: center;
+  border-radius: 50%; font-size: 18px;
+}
+.profile-avatar-big:hover .av-overlay { display: flex; }
+.profile-edit-hint { font-size: 11px; color: var(--muted); }
+.profile-section-title {
+  font-size: 10px; letter-spacing: .18em; text-transform: uppercase;
+  color: var(--muted); margin: 8px 0 10px;
+  padding-top: 14px; border-top: 1px solid var(--border);
+}
+.profile-info-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 0; border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.profile-info-row .pir-label { color: var(--muted); font-size: 11px; }
+.profile-info-row .pir-val   { color: var(--text); }
+.profile-save-btn {
+  width: 100%; background: var(--accent); color: #080808;
+  border: none; border-radius: var(--r); padding: 11px;
+  font: inherit; font-size: 13px; font-weight: 500; cursor: pointer;
+  transition: var(--t); margin-top: 4px;
+}
+.profile-save-btn:hover { opacity: .88; }
+.profile-save-btn.secondary {
+  background: var(--s3); color: var(--text);
+  border: 1px solid var(--border2); margin-top: 0;
+}
+.profile-msg {
+  font-size: 12px; text-align: center; padding: 4px 0;
+  border-radius: var(--r); display: none;
+}
+.profile-msg.ok  { color: var(--green); background: rgba(90,158,114,.1); display: block; }
+.profile-msg.err { color: var(--red);   background: rgba(200,92,92,.1);   display: block; }
+
 .lobby-body {
   flex: 1;
   display: flex;
@@ -1078,8 +1151,10 @@ input:focus, select:focus, textarea:focus { outline: none; }
     <div class="nav-logo">ITC</div>
     <div class="spacer"></div>
     <div class="nav-user">
-      <div class="user-avatar" id="user-avatar">?</div>
-      <span id="user-name-nav">—</span>
+      <button class="nav-profile-btn" onclick="openModal('modal-profile')" title="프로필 수정">
+        <div class="user-avatar" id="user-avatar">?</div>
+        <span class="user-name" id="user-name-nav">—</span>
+      </button>
       <button class="btn-signout" onclick="doSignOut()">로그아웃</button>
     </div>
   </nav>
@@ -1339,6 +1414,102 @@ input:focus, select:focus, textarea:focus { outline: none; }
 </div>
 
 <!-- 설정 가이드 모달 -->
+<!-- 프로필 모달 -->
+<div class="overlay" id="modal-profile">
+  <div class="modal" style="width:min(360px,90vw)">
+    <div class="modal-row">
+      <div class="modal-title">내 프로필</div>
+      <button class="modal-close" onclick="closeModal('modal-profile')">✕</button>
+    </div>
+
+    <!-- 아바타 -->
+    <div class="profile-avatar-wrap">
+      <div class="profile-avatar-big" id="profile-avatar-big" onclick="document.getElementById('avatar-file-input').click()">
+        <span id="profile-avatar-text">?</span>
+        <div class="av-overlay">📷</div>
+      </div>
+      <input type="file" id="avatar-file-input" accept="image/*" style="display:none" onchange="handleAvatarUpload(this)">
+      <div class="profile-edit-hint">클릭해서 사진 변경</div>
+    </div>
+
+    <!-- 메시지 -->
+    <div class="profile-msg" id="profile-msg"></div>
+
+    <!-- 닉네임 수정 -->
+    <div class="profile-section-title">닉네임</div>
+    <div class="modal-field" style="margin-bottom:10px">
+      <input type="text" id="profile-nickname" placeholder="닉네임" maxlength="12">
+    </div>
+    <button class="profile-save-btn" onclick="saveNickname()">닉네임 저장</button>
+
+    <!-- 계정 정보 -->
+    <div class="profile-section-title">계정 정보</div>
+    <div class="profile-info-row">
+      <span class="pir-label">이메일</span>
+      <span class="pir-val" id="profile-email">—</span>
+    </div>
+
+    <!-- 비밀번호 변경 -->
+    <div class="profile-section-title">비밀번호 변경</div>
+    <div class="modal-field" style="margin-bottom:8px">
+      <label style="font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);display:block;margin-bottom:6px">현재 비밀번호</label>
+      <input type="password" id="profile-pw-current" placeholder="현재 비밀번호">
+    </div>
+    <div class="modal-field" style="margin-bottom:8px">
+      <label style="font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);display:block;margin-bottom:6px">새 비밀번호 (6자 이상)</label>
+      <input type="password" id="profile-pw-new" placeholder="새 비밀번호">
+    </div>
+    <div class="modal-field" style="margin-bottom:10px">
+      <label style="font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);display:block;margin-bottom:6px">새 비밀번호 확인</label>
+      <input type="password" id="profile-pw-confirm" placeholder="새 비밀번호 확인">
+    </div>
+    <button class="profile-save-btn secondary" onclick="savePassword()">비밀번호 변경</button>
+  </div>
+</div>
+
+<!-- 프로필 모달 -->
+<div class="overlay" id="modal-profile">
+  <div class="modal" style="width:min(360px,90vw)">
+    <div class="modal-row">
+      <div class="modal-title">내 프로필</div>
+      <button class="modal-close" onclick="closeModal('modal-profile')">✕</button>
+    </div>
+    <div class="profile-avatar-wrap">
+      <div class="profile-avatar-big" id="profile-avatar-big" onclick="document.getElementById('avatar-file-input').click()">
+        <span id="profile-avatar-text">?</span>
+        <div class="av-overlay">📷</div>
+      </div>
+      <input type="file" id="avatar-file-input" accept="image/*" style="display:none" onchange="handleAvatarUpload(this)">
+      <div class="profile-edit-hint">클릭해서 사진 변경</div>
+    </div>
+    <div class="profile-msg" id="profile-msg"></div>
+    <div class="profile-section-title">닉네임</div>
+    <div class="modal-field" style="margin-bottom:10px">
+      <input type="text" id="profile-nickname" placeholder="닉네임" maxlength="12">
+    </div>
+    <button class="profile-save-btn" onclick="saveNickname()">닉네임 저장</button>
+    <div class="profile-section-title">계정 정보</div>
+    <div class="profile-info-row">
+      <span class="pir-label">이메일</span>
+      <span class="pir-val" id="profile-email">—</span>
+    </div>
+    <div class="profile-section-title">비밀번호 변경</div>
+    <div class="modal-field" style="margin-bottom:8px">
+      <label style="font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);display:block;margin-bottom:6px">현재 비밀번호</label>
+      <input type="password" id="profile-pw-current" placeholder="현재 비밀번호">
+    </div>
+    <div class="modal-field" style="margin-bottom:8px">
+      <label style="font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);display:block;margin-bottom:6px">새 비밀번호 (6자 이상)</label>
+      <input type="password" id="profile-pw-new" placeholder="새 비밀번호">
+    </div>
+    <div class="modal-field" style="margin-bottom:10px">
+      <label style="font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);display:block;margin-bottom:6px">새 비밀번호 확인</label>
+      <input type="password" id="profile-pw-confirm" placeholder="새 비밀번호 확인">
+    </div>
+    <button class="profile-save-btn secondary" onclick="savePassword()">비밀번호 변경</button>
+  </div>
+</div>
+
 <div class="overlay" id="modal-setup-guide">
   <div class="modal" style="max-width:460px">
     <div class="modal-row">
@@ -2378,6 +2549,7 @@ function removeTrack(i) {
 function openModal(id) {
   document.getElementById(id).classList.add('open');
   if (id === 'modal-settings') renderSettingsModal();
+  if (id === 'modal-profile')  initProfileModal();
 }
 
 function renderSettingsModal() {
@@ -2694,6 +2866,269 @@ appendChatMsg = function(name, text, type) {
     _popoutWin.addMsg(name, text, type);
   }
 };
+
+/* ─────────────────────────────────────────────────
+   프로필
+───────────────────────────────────────────────── */
+function initProfileModal() {
+  const user = window._currentUser;
+  if (!user) return;
+
+  // 이메일
+  document.getElementById('profile-email').textContent = user.email || '—';
+
+  // 닉네임
+  const nickInput = document.getElementById('profile-nickname');
+  if (nickInput) nickInput.value = user.displayName || St.myName || '';
+
+  // 아바타
+  refreshProfileAvatar();
+
+  // 메시지 초기화
+  showProfileMsg('', '');
+
+  // 비밀번호 입력 초기화
+  ['profile-pw-current','profile-pw-new','profile-pw-confirm'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+}
+
+function refreshProfileAvatar() {
+  const user = window._currentUser;
+  if (!user) return;
+
+  const bigEl   = document.getElementById('profile-avatar-big');
+  const textEl  = document.getElementById('profile-avatar-text');
+  const navEl   = document.getElementById('user-avatar');
+
+  // Firebase Storage 대신 localStorage에 base64 저장
+  const saved = localStorage.getItem('itc_avatar_' + user.uid);
+
+  if (saved) {
+    // 아바타 큰 이미지
+    bigEl.innerHTML = `<img src="${saved}" alt="avatar"><div class="av-overlay">📷</div>`;
+    // 네비 아바타
+    navEl.innerHTML = `<img src="${saved}" alt="avatar">`;
+  } else {
+    const initials = (user.displayName || St.myName || '?')[0].toUpperCase();
+    bigEl.innerHTML = `<span>${initials}</span><div class="av-overlay">📷</div>`;
+    navEl.textContent = initials;
+  }
+}
+
+function handleAvatarUpload(input) {
+  const file = input.files[0];
+  if (!file) return;
+  if (file.size > 2 * 1024 * 1024) {
+    showProfileMsg('이미지는 2MB 이하여야 해요.', 'err');
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = e => {
+    // 리사이즈 후 저장
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const size = 128;
+      canvas.width = canvas.height = size;
+      const ctx = canvas.getContext('2d');
+      // 중앙 크롭
+      const min = Math.min(img.width, img.height);
+      const sx = (img.width  - min) / 2;
+      const sy = (img.height - min) / 2;
+      ctx.drawImage(img, sx, sy, min, min, 0, 0, size, size);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+      localStorage.setItem('itc_avatar_' + window._currentUser.uid, dataUrl);
+      refreshProfileAvatar();
+      showProfileMsg('프로필 사진이 업데이트됐어요!', 'ok');
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+  input.value = '';
+}
+
+async function saveNickname() {
+  const user = window._currentUser;
+  if (!user) return;
+  const nick = document.getElementById('profile-nickname').value.trim();
+  if (!nick) { showProfileMsg('닉네임을 입력해 주세요.', 'err'); return; }
+  if (nick.length > 12) { showProfileMsg('닉네임은 12자 이하로 입력해 주세요.', 'err'); return; }
+
+  try {
+    const { updateProfile } = window._FB;
+    await updateProfile(user, { displayName: nick });
+    St.myName = nick;
+    document.getElementById('user-name-nav').textContent = nick;
+    // Firebase users 경로도 업데이트
+    if (window._FB?.CONFIGURED) {
+      const { db, ref, update } = window._FB;
+      await update(ref(db, `users/${user.uid}/profile`), { name: nick });
+    }
+    showProfileMsg('닉네임이 저장됐어요!', 'ok');
+  } catch(e) {
+    showProfileMsg('저장 중 오류가 발생했어요.', 'err');
+  }
+}
+
+async function savePassword() {
+  const user = window._currentUser;
+  if (!user) return;
+
+  const current = document.getElementById('profile-pw-current').value;
+  const next    = document.getElementById('profile-pw-new').value;
+  const confirm = document.getElementById('profile-pw-confirm').value;
+
+  if (!current) { showProfileMsg('현재 비밀번호를 입력해 주세요.', 'err'); return; }
+  if (!next)    { showProfileMsg('새 비밀번호를 입력해 주세요.', 'err'); return; }
+  if (next.length < 6) { showProfileMsg('새 비밀번호는 6자 이상이어야 해요.', 'err'); return; }
+  if (next !== confirm) { showProfileMsg('새 비밀번호가 일치하지 않아요.', 'err'); return; }
+
+  try {
+    // 재인증 후 비밀번호 변경
+    const { EmailAuthProvider, reauthenticateWithCredential, updatePassword } =
+      await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
+    const cred = EmailAuthProvider.credential(user.email, current);
+    await reauthenticateWithCredential(user, cred);
+    await updatePassword(user, next);
+
+    // 입력 초기화
+    ['profile-pw-current','profile-pw-new','profile-pw-confirm'].forEach(id => {
+      document.getElementById(id).value = '';
+    });
+    showProfileMsg('비밀번호가 변경됐어요!', 'ok');
+  } catch(e) {
+    const msgs = {
+      'auth/wrong-password': '현재 비밀번호가 올바르지 않아요.',
+      'auth/too-many-requests': '요청이 너무 많아요. 잠시 후 다시 시도해 주세요.',
+    };
+    showProfileMsg(msgs[e.code] || '변경 중 오류가 발생했어요.', 'err');
+  }
+}
+
+function showProfileMsg(text, type) {
+  const el = document.getElementById('profile-msg');
+  if (!el) return;
+  el.textContent = text;
+  el.className = 'profile-msg' + (type ? ' ' + type : '');
+}
+
+/* ─────────────────────────────────────────────────
+   프로필
+───────────────────────────────────────────────── */
+function initProfileModal() {
+  const user = window._currentUser;
+  if (!user) return;
+  document.getElementById('profile-email').textContent = user.email || '—';
+  const nickInput = document.getElementById('profile-nickname');
+  if (nickInput) nickInput.value = user.displayName || St.myName || '';
+  refreshProfileAvatar();
+  showProfileMsg('', '');
+  ['profile-pw-current','profile-pw-new','profile-pw-confirm'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+}
+
+function refreshProfileAvatar() {
+  const user = window._currentUser;
+  if (!user) return;
+  const bigEl  = document.getElementById('profile-avatar-big');
+  const navEl  = document.getElementById('user-avatar');
+  const saved  = localStorage.getItem('itc_avatar_' + user.uid);
+  if (saved) {
+    if (bigEl) bigEl.innerHTML = `<img src="${saved}" alt="avatar"><div class="av-overlay">📷</div>`;
+    if (navEl) navEl.innerHTML = `<img src="${saved}" alt="avatar">`;
+  } else {
+    const initials = (user.displayName || St.myName || '?')[0].toUpperCase();
+    if (bigEl) bigEl.innerHTML = `<span>${initials}</span><div class="av-overlay">📷</div>`;
+    if (navEl) navEl.textContent = initials;
+  }
+}
+
+function handleAvatarUpload(input) {
+  const file = input.files[0];
+  if (!file) return;
+  if (file.size > 2 * 1024 * 1024) { showProfileMsg('이미지는 2MB 이하여야 해요.', 'err'); return; }
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const size = 128;
+      canvas.width = canvas.height = size;
+      const ctx = canvas.getContext('2d');
+      const min = Math.min(img.width, img.height);
+      ctx.drawImage(img, (img.width-min)/2, (img.height-min)/2, min, min, 0, 0, size, size);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+      localStorage.setItem('itc_avatar_' + window._currentUser.uid, dataUrl);
+      refreshProfileAvatar();
+      showProfileMsg('프로필 사진이 업데이트됐어요!', 'ok');
+    };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+  input.value = '';
+}
+
+async function saveNickname() {
+  const user = window._currentUser;
+  if (!user) return;
+  const nick = document.getElementById('profile-nickname').value.trim();
+  if (!nick)       { showProfileMsg('닉네임을 입력해 주세요.', 'err'); return; }
+  if (nick.length > 12) { showProfileMsg('닉네임은 12자 이하로 입력해 주세요.', 'err'); return; }
+  try {
+    const { updateProfile } = window._FB;
+    await updateProfile(user, { displayName: nick });
+    St.myName = nick;
+    document.getElementById('user-name-nav').textContent = nick;
+    if (window._FB?.CONFIGURED) {
+      const { db, ref, update } = window._FB;
+      await update(ref(db, `users/${user.uid}/profile`), { name: nick });
+    }
+    showProfileMsg('닉네임이 저장됐어요!', 'ok');
+  } catch(e) {
+    showProfileMsg('저장 중 오류가 발생했어요.', 'err');
+  }
+}
+
+async function savePassword() {
+  const user = window._currentUser;
+  if (!user) return;
+  const current = document.getElementById('profile-pw-current').value;
+  const next    = document.getElementById('profile-pw-new').value;
+  const confirm = document.getElementById('profile-pw-confirm').value;
+  if (!current) { showProfileMsg('현재 비밀번호를 입력해 주세요.', 'err'); return; }
+  if (!next)    { showProfileMsg('새 비밀번호를 입력해 주세요.', 'err'); return; }
+  if (next.length < 6) { showProfileMsg('새 비밀번호는 6자 이상이어야 해요.', 'err'); return; }
+  if (next !== confirm) { showProfileMsg('새 비밀번호가 일치하지 않아요.', 'err'); return; }
+  try {
+    const { EmailAuthProvider, reauthenticateWithCredential, updatePassword } =
+      await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
+    const cred = EmailAuthProvider.credential(user.email, current);
+    await reauthenticateWithCredential(user, cred);
+    await updatePassword(user, next);
+    ['profile-pw-current','profile-pw-new','profile-pw-confirm'].forEach(id => {
+      document.getElementById(id).value = '';
+    });
+    showProfileMsg('비밀번호가 변경됐어요!', 'ok');
+  } catch(e) {
+    const msgs = {
+      'auth/wrong-password':    '현재 비밀번호가 올바르지 않아요.',
+      'auth/invalid-credential':'현재 비밀번호가 올바르지 않아요.',
+      'auth/too-many-requests': '잠시 후 다시 시도해 주세요.',
+    };
+    showProfileMsg(msgs[e.code] || '변경 중 오류가 발생했어요.', 'err');
+  }
+}
+
+function showProfileMsg(text, type) {
+  const el = document.getElementById('profile-msg');
+  if (!el) return;
+  el.textContent = text;
+  el.className = 'profile-msg' + (type ? ' ' + type : '');
+}
 
 function esc(str) {
   return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
