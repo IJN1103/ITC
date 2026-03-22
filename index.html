@@ -2956,7 +2956,7 @@ function sendChat() {
     if (options.length < 2) { showToast('선택지를 2개 이상 입력해주세요.'); return; }
     const picked = options[Math.floor(Math.random() * options.length)];
     const senderName = St.speakAsJournalId ? (loadJournals().find(x=>x.id===St.speakAsJournalId)?.title || St.myName) : St.myName;
-    sendMessage(senderName, `🎯 Choice [${options.join(', ')}] → ${picked}`, 'dice');
+    sendMessage(senderName, `🎯 Choice [${options.join(', ')}] → ${picked}`, 'normal');
     return;
   }
 
