@@ -3020,11 +3020,26 @@ function editCasualNick() {
   if (!trimmed) { showToast('닉네임을 입력해주세요.'); return; }
   _casualNickname = trimmed;
   try { localStorage.setItem('itc_casual_nick_' + St.myId, trimmed); } catch(e) {}
+  if (window._FB?.CONFIGURED && St.roomCode) {
+    const { db, ref, update } = window._FB;
+    update(ref(db, `rooms/${St.roomCode}/players/${St.myId}`), { casualNick: trimmed });
+  }
   refreshCasualNickDisplay();
 }
 
 function loadCasualNick() {
   try { _casualNickname = localStorage.getItem('itc_casual_nick_' + St.myId) || ''; } catch(e) {}
+  if (window._FB?.CONFIGURED && St.roomCode) {
+    const { db, ref, get } = window._FB;
+    get(ref(db, `rooms/${St.roomCode}/players/${St.myId}/casualNick`)).then(snap => {
+      const val = snap.val();
+      if (val) {
+        _casualNickname = val;
+        try { localStorage.setItem('itc_casual_nick_' + St.myId, val); } catch(e) {}
+        refreshCasualNickDisplay();
+      }
+    }).catch(() => {});
+  }
 }
 
 let _typingTimer = null;
