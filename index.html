@@ -1312,28 +1312,36 @@ input:focus, select:focus, textarea:focus { outline: none; }
 .resource-input:focus { border-color: var(--accent); }
 .resource-sep { color: var(--muted); font-size: 12px; }
 /* 스킬 테이블 */
-.skill-table { display: flex; flex-direction: column; gap: 2px; }
+/* 스킬 테이블 - 3단 그리드 */
+.skill-table-wrap {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0 12px;
+}
+.skill-col-wrap { display: flex; flex-direction: column; }
+.skill-col-head {
+  display: grid; grid-template-columns: 16px 1fr 32px 36px 36px;
+  gap: 3px; padding: 4px 4px 5px;
+  font-size: 9px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted);
+  border-bottom: 1px solid var(--border); margin-bottom: 3px; text-align: center;
+}
+.skill-col-head span:nth-child(2) { text-align: left; }
 .skill-row {
-  display: grid; grid-template-columns: 18px 1fr 44px 36px 36px;
-  align-items: center; gap: 4px;
-  padding: 3px 6px; border-radius: 4px; transition: background .12s;
+  display: grid; grid-template-columns: 16px 1fr 32px 36px 36px;
+  align-items: center; gap: 3px;
+  padding: 2px 4px; border-radius: 3px; transition: background .1s;
 }
 .skill-row:hover { background: var(--s2); }
-.skill-check { width: 14px; height: 14px; accent-color: var(--accent); cursor: pointer; }
-.skill-name { font-size: 12px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.skill-base { font-family: var(--font-mono); font-size: 11px; color: var(--muted); text-align: center; }
+.skill-check { width: 13px; height: 13px; accent-color: var(--accent); cursor: pointer; flex-shrink: 0; }
+.skill-name { font-size: 11px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.skill-base { font-family: var(--font-mono); font-size: 10px; color: var(--muted); text-align: center; }
 .skill-input {
   background: var(--s2); border: 1px solid var(--border); border-radius: 3px;
-  color: var(--accent); font-family: var(--font-mono); font-size: 12px;
-  text-align: center; outline: none; padding: 2px 0; width: 100%;
+  color: var(--accent); font-family: var(--font-mono); font-size: 11px;
+  text-align: center; outline: none; padding: 1px 0; width: 100%;
 }
+.skill-input.half-val { color: var(--dim); }
 .skill-input:focus { border-color: var(--accent); }
-.skill-col-head {
-  display: grid; grid-template-columns: 18px 1fr 44px 36px 36px;
-  gap: 4px; padding: 0 6px 4px;
-  font-size: 9px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted);
-  border-bottom: 1px solid var(--border); margin-bottom: 4px;
-}
 /* 저장 바 */
 .sheet-footer {
   display: flex; align-items: center; gap: 10px;
@@ -1827,10 +1835,9 @@ input:focus, select:focus, textarea:focus { outline: none; }
       <!-- 탐사자 기능 -->
       <div class="sh-sec">
         <div class="sh-sec-title">탐사자 기능</div>
-        <div class="skill-col-head">
-          <span></span><span>기능명</span><span style="text-align:center">기본값</span><span style="text-align:center">현재값</span><span style="text-align:center">성공율</span>
+        <div class="skill-table-wrap" id="sh-skills-wrap">
+          <!-- JS로 3단 렌더 -->
         </div>
-        <div class="skill-table" id="sh-skills"></div>
       </div>
 
       <!-- 메모 -->
@@ -4320,19 +4327,36 @@ function initSheetUI() {
     grid.appendChild(div);
   });
 
-  // 스킬 테이블 렌더
-  const table = document.getElementById('sh-skills');
-  if (!table || table.children.length) return;
-  COC_SKILLS.forEach((sk, i) => {
-    const row = document.createElement('div');
-    row.className = 'skill-row';
-    row.innerHTML = `
-      <input type="checkbox" class="skill-check" id="sk-check-${i}">
-      <span class="skill-name">${sk.name}</span>
-      <span class="skill-base">${sk.base}</span>
-      <input class="skill-input" id="sk-val-${i}" type="number" min="0" max="99" placeholder="${sk.base}">
-      <input class="skill-input" id="sk-half-${i}" type="number" min="0" max="99" placeholder="${Math.floor(sk.base/2)}" style="color:var(--dim)">`;
-    table.appendChild(row);
+  // 스킬 테이블 - 3단 컬럼으로 렌더
+  const wrap = document.getElementById('sh-skills-wrap');
+  if (!wrap || wrap.querySelector('.skill-col-wrap')) return;
+  wrap.innerHTML = '';
+
+  const colHead = () => {
+    const h = document.createElement('div');
+    h.className = 'skill-col-head';
+    h.innerHTML = '<span></span><span>기능명</span><span>기본</span><span>현재</span><span>½값</span>';
+    return h;
+  };
+
+  const perCol = Math.ceil(COC_SKILLS.length / 3);
+  [0, 1, 2].forEach(ci => {
+    const col = document.createElement('div');
+    col.className = 'skill-col-wrap';
+    col.appendChild(colHead());
+    COC_SKILLS.slice(ci * perCol, (ci + 1) * perCol).forEach((sk, li) => {
+      const i = ci * perCol + li;
+      const row = document.createElement('div');
+      row.className = 'skill-row';
+      row.innerHTML = `
+        <input type="checkbox" class="skill-check" id="sk-check-${i}">
+        <span class="skill-name" title="${sk.name}">${sk.name}</span>
+        <span class="skill-base">${sk.base}</span>
+        <input class="skill-input" id="sk-val-${i}" type="number" min="0" max="99" value="${sk.base}">
+        <input class="skill-input half-val" id="sk-half-${i}" type="number" min="0" max="99" value="${Math.floor(sk.base / 2)}">`;
+      col.appendChild(row);
+    });
+    wrap.appendChild(col);
   });
 }
 
@@ -4343,6 +4367,9 @@ function updateStatHalf(key) {
 }
 
 function openSheet(journalId) {
+  // 스킬 wrap 초기화 (재진입 시 재렌더 허용)
+  const existingWrap = document.getElementById('sh-skills-wrap');
+  if (existingWrap) existingWrap.innerHTML = '';
   initSheetUI();
   _sheetJournalId = journalId;
   const list = loadJournals();
