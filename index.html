@@ -1416,40 +1416,50 @@ input:focus, select:focus, textarea:focus { outline: none; }
 <!-- 설정 가이드 모달 -->
 <!-- 프로필 모달 -->
 <div class="overlay" id="modal-profile">
-  <div class="modal" style="width:min(360px,90vw)">
+  <div class="modal" style="width:min(380px,94vw);max-height:90vh;overflow-y:auto">
     <div class="modal-row">
       <div class="modal-title">내 프로필</div>
       <button class="modal-close" onclick="closeModal('modal-profile')">✕</button>
     </div>
 
-    <!-- 아바타 -->
+    <!-- 아바타 미리보기 -->
     <div class="profile-avatar-wrap">
-      <div class="profile-avatar-big" id="profile-avatar-big" onclick="document.getElementById('avatar-file-input').click()">
+      <div class="profile-avatar-big" id="profile-avatar-big" onclick="document.getElementById('avatar-file-input').click()" title="클릭해서 사진 선택">
         <span id="profile-avatar-text">?</span>
         <div class="av-overlay">📷</div>
       </div>
       <input type="file" id="avatar-file-input" accept="image/*" style="display:none" onchange="handleAvatarUpload(this)">
-      <div class="profile-edit-hint">클릭해서 사진 변경</div>
+      <div class="profile-edit-hint">클릭해서 사진 선택</div>
     </div>
 
-    <!-- 메시지 -->
+    <!-- 크롭 편집 영역 -->
+    <div id="crop-zone" style="display:none;margin-bottom:14px">
+      <div style="font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);margin-bottom:10px">위치 드래그 · 슬라이더로 크기 조절</div>
+      <div id="crop-viewport" style="width:220px;height:220px;margin:0 auto 14px;border-radius:50%;overflow:hidden;border:2px solid var(--accent);background:var(--s2);position:relative;cursor:grab;user-select:none">
+        <canvas id="crop-canvas" style="position:absolute;top:0;left:0;pointer-events:none"></canvas>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+        <span style="font-size:13px;color:var(--muted)">🔍</span>
+        <input type="range" id="crop-scale" min="50" max="300" value="100" style="flex:1;accent-color:var(--accent)" oninput="onCropScale(this.value)">
+        <span id="crop-scale-val" style="font-size:11px;color:var(--dim);width:34px;text-align:right">100%</span>
+      </div>
+      <button class="profile-save-btn" onclick="applyCrop()">이 이미지로 적용 ✓</button>
+    </div>
+
     <div class="profile-msg" id="profile-msg"></div>
 
-    <!-- 닉네임 수정 -->
     <div class="profile-section-title">닉네임</div>
     <div class="modal-field" style="margin-bottom:10px">
       <input type="text" id="profile-nickname" placeholder="닉네임" maxlength="12">
     </div>
     <button class="profile-save-btn" onclick="saveNickname()">닉네임 저장</button>
 
-    <!-- 계정 정보 -->
     <div class="profile-section-title">계정 정보</div>
     <div class="profile-info-row">
       <span class="pir-label">이메일</span>
       <span class="pir-val" id="profile-email">—</span>
     </div>
 
-    <!-- 비밀번호 변경 -->
     <div class="profile-section-title">비밀번호 변경</div>
     <div class="modal-field" style="margin-bottom:8px">
       <label style="font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);display:block;margin-bottom:6px">현재 비밀번호</label>
@@ -1468,47 +1478,6 @@ input:focus, select:focus, textarea:focus { outline: none; }
 </div>
 
 <!-- 프로필 모달 -->
-<div class="overlay" id="modal-profile">
-  <div class="modal" style="width:min(360px,90vw)">
-    <div class="modal-row">
-      <div class="modal-title">내 프로필</div>
-      <button class="modal-close" onclick="closeModal('modal-profile')">✕</button>
-    </div>
-    <div class="profile-avatar-wrap">
-      <div class="profile-avatar-big" id="profile-avatar-big" onclick="document.getElementById('avatar-file-input').click()">
-        <span id="profile-avatar-text">?</span>
-        <div class="av-overlay">📷</div>
-      </div>
-      <input type="file" id="avatar-file-input" accept="image/*" style="display:none" onchange="handleAvatarUpload(this)">
-      <div class="profile-edit-hint">클릭해서 사진 변경</div>
-    </div>
-    <div class="profile-msg" id="profile-msg"></div>
-    <div class="profile-section-title">닉네임</div>
-    <div class="modal-field" style="margin-bottom:10px">
-      <input type="text" id="profile-nickname" placeholder="닉네임" maxlength="12">
-    </div>
-    <button class="profile-save-btn" onclick="saveNickname()">닉네임 저장</button>
-    <div class="profile-section-title">계정 정보</div>
-    <div class="profile-info-row">
-      <span class="pir-label">이메일</span>
-      <span class="pir-val" id="profile-email">—</span>
-    </div>
-    <div class="profile-section-title">비밀번호 변경</div>
-    <div class="modal-field" style="margin-bottom:8px">
-      <label style="font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);display:block;margin-bottom:6px">현재 비밀번호</label>
-      <input type="password" id="profile-pw-current" placeholder="현재 비밀번호">
-    </div>
-    <div class="modal-field" style="margin-bottom:8px">
-      <label style="font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);display:block;margin-bottom:6px">새 비밀번호 (6자 이상)</label>
-      <input type="password" id="profile-pw-new" placeholder="새 비밀번호">
-    </div>
-    <div class="modal-field" style="margin-bottom:10px">
-      <label style="font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);display:block;margin-bottom:6px">새 비밀번호 확인</label>
-      <input type="password" id="profile-pw-confirm" placeholder="새 비밀번호 확인">
-    </div>
-    <button class="profile-save-btn secondary" onclick="savePassword()">비밀번호 변경</button>
-  </div>
-</div>
 
 <div class="overlay" id="modal-setup-guide">
   <div class="modal" style="max-width:460px">
@@ -2920,33 +2889,135 @@ function refreshProfileAvatar() {
 function handleAvatarUpload(input) {
   const file = input.files[0];
   if (!file) return;
-  if (file.size > 2 * 1024 * 1024) {
-    showProfileMsg('이미지는 2MB 이하여야 해요.', 'err');
-    return;
-  }
+  if (file.size > 5 * 1024 * 1024) { showProfileMsg('이미지는 5MB 이하여야 해요.', 'err'); return; }
   const reader = new FileReader();
-  reader.onload = e => {
-    // 리사이즈 후 저장
+  reader.onload = ev => {
     const img = new Image();
     img.onload = () => {
-      const canvas = document.createElement('canvas');
-      const size = 128;
-      canvas.width = canvas.height = size;
-      const ctx = canvas.getContext('2d');
-      // 중앙 크롭
-      const min = Math.min(img.width, img.height);
-      const sx = (img.width  - min) / 2;
-      const sy = (img.height - min) / 2;
-      ctx.drawImage(img, sx, sy, min, min, 0, 0, size, size);
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
-      localStorage.setItem('itc_avatar_' + window._currentUser.uid, dataUrl);
-      refreshProfileAvatar();
-      showProfileMsg('프로필 사진이 업데이트됐어요!', 'ok');
+      // 크롭 상태 초기화
+      window._cropState = {
+        img,
+        scale: 1,
+        offsetX: 0,
+        offsetY: 0,
+        dragging: false,
+        lastX: 0,
+        lastY: 0,
+      };
+      document.getElementById('crop-scale').value = 100;
+      document.getElementById('crop-scale-val').textContent = '100%';
+      document.getElementById('crop-zone').style.display = 'block';
+      initCropCanvas();
+      drawCrop();
+      initCropDrag();
     };
-    img.src = e.target.result;
+    img.src = ev.target.result;
   };
   reader.readAsDataURL(file);
   input.value = '';
+}
+
+function initCropCanvas() {
+  const vp = document.getElementById('crop-viewport');
+  const canvas = document.getElementById('crop-canvas');
+  const size = 220;
+  canvas.width  = size;
+  canvas.height = size;
+  canvas.style.width  = size + 'px';
+  canvas.style.height = size + 'px';
+}
+
+function drawCrop() {
+  const st = window._cropState;
+  if (!st) return;
+  const canvas = document.getElementById('crop-canvas');
+  const ctx = canvas.getContext('2d');
+  const size = 220;
+  ctx.clearRect(0, 0, size, size);
+
+  const scaledW = st.img.width  * st.scale;
+  const scaledH = st.img.height * st.scale;
+
+  // 중앙 기준 + 오프셋
+  const x = (size - scaledW) / 2 + st.offsetX;
+  const y = (size - scaledH) / 2 + st.offsetY;
+
+  ctx.drawImage(st.img, x, y, scaledW, scaledH);
+}
+
+function onCropScale(val) {
+  const st = window._cropState;
+  if (!st) return;
+  st.scale = parseInt(val) / 100;
+  document.getElementById('crop-scale-val').textContent = val + '%';
+  drawCrop();
+}
+
+function initCropDrag() {
+  const vp = document.getElementById('crop-viewport');
+  // 기존 리스너 제거
+  vp.replaceWith(vp.cloneNode(true));
+  const newVp = document.getElementById('crop-viewport');
+
+  function getXY(e) {
+    if (e.touches) return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    return { x: e.clientX, y: e.clientY };
+  }
+
+  function onDown(e) {
+    const st = window._cropState;
+    if (!st) return;
+    e.preventDefault();
+    st.dragging = true;
+    const { x, y } = getXY(e);
+    st.lastX = x; st.lastY = y;
+    newVp.style.cursor = 'grabbing';
+  }
+  function onMove(e) {
+    const st = window._cropState;
+    if (!st || !st.dragging) return;
+    e.preventDefault();
+    const { x, y } = getXY(e);
+    st.offsetX += x - st.lastX;
+    st.offsetY += y - st.lastY;
+    st.lastX = x; st.lastY = y;
+    drawCrop();
+  }
+  function onUp() {
+    const st = window._cropState;
+    if (st) st.dragging = false;
+    newVp.style.cursor = 'grab';
+  }
+  newVp.addEventListener('mousedown', onDown);
+  newVp.addEventListener('touchstart', onDown, { passive: false });
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('touchmove', onMove, { passive: false });
+  document.addEventListener('mouseup', onUp);
+  document.addEventListener('touchend', onUp);
+}
+
+function applyCrop() {
+  const st = window._cropState;
+  if (!st) return;
+  const size = 220;
+  const out = document.createElement('canvas');
+  out.width = out.height = 256; // 저장 해상도
+  const ctx = out.getContext('2d');
+
+  const ratio = 256 / size;
+  const scaledW = st.img.width  * st.scale * ratio;
+  const scaledH = st.img.height * st.scale * ratio;
+  const x = (256 - scaledW) / 2 + st.offsetX * ratio;
+  const y = (256 - scaledH) / 2 + st.offsetY * ratio;
+
+  ctx.drawImage(st.img, x, y, scaledW, scaledH);
+
+  const dataUrl = out.toDataURL('image/jpeg', 0.85);
+  localStorage.setItem('itc_avatar_' + window._currentUser.uid, dataUrl);
+  refreshProfileAvatar();
+  document.getElementById('crop-zone').style.display = 'none';
+  window._cropState = null;
+  showProfileMsg('프로필 사진이 업데이트됐어요!', 'ok');
 }
 
 async function saveNickname() {
@@ -3047,30 +3118,6 @@ function refreshProfileAvatar() {
   }
 }
 
-function handleAvatarUpload(input) {
-  const file = input.files[0];
-  if (!file) return;
-  if (file.size > 2 * 1024 * 1024) { showProfileMsg('이미지는 2MB 이하여야 해요.', 'err'); return; }
-  const reader = new FileReader();
-  reader.onload = ev => {
-    const img = new Image();
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      const size = 128;
-      canvas.width = canvas.height = size;
-      const ctx = canvas.getContext('2d');
-      const min = Math.min(img.width, img.height);
-      ctx.drawImage(img, (img.width-min)/2, (img.height-min)/2, min, min, 0, 0, size, size);
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
-      localStorage.setItem('itc_avatar_' + window._currentUser.uid, dataUrl);
-      refreshProfileAvatar();
-      showProfileMsg('프로필 사진이 업데이트됐어요!', 'ok');
-    };
-    img.src = ev.target.result;
-  };
-  reader.readAsDataURL(file);
-  input.value = '';
-}
 
 async function saveNickname() {
   const user = window._currentUser;
