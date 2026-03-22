@@ -1015,8 +1015,8 @@ input:focus, select:focus, textarea:focus { outline: none; }
   flex-shrink: 0;
 }
 .chat-popout-btn:hover { border-color: var(--accent); color: var(--accent); }
-.chat-messages { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
-.chat-msg { animation: fadeUp .2s ease; display: flex; gap: 7px; align-items: flex-start; }
+.chat-messages { flex: 1; overflow-y: auto; padding: 10px; display: block; }
+.chat-msg { animation: fadeUp .2s ease; display: flex; gap: 7px; align-items: flex-start; margin-bottom: 8px; }
 .chat-msg.msg-sys { justify-content: center; }
 .chat-msg.msg-sys .msg-avatar { display: none; }
 .msg-avatar {
@@ -1032,7 +1032,7 @@ input:focus, select:focus, textarea:focus { outline: none; }
 .msg-avatar.shape-circle  { border-radius: 50%; }
 .msg-avatar.shape-rounded { border-radius: 6px; }
 .msg-avatar img { width: 100%; height: 100%; object-fit: cover; }
-.msg-body { flex: 1; min-width: 0; overflow: hidden; }
+.msg-body { flex: 1; min-width: 0; }
 .msg-meta { display: flex; align-items: baseline; gap: 6px; margin-bottom: 2px; }
 .msg-name { font-size: 11px; font-weight: 500; color: var(--accent); }
 .msg-time { font-size: 10px; color: var(--muted); font-family: var(--font-mono); }
@@ -1058,9 +1058,10 @@ input:focus, select:focus, textarea:focus { outline: none; }
   width: auto; height: auto;
   max-width: 100%; max-height: 260px;
   border-radius: var(--r);
-  margin-top: 6px; cursor: zoom-in;
+  margin-top: 6px;
+  margin-bottom: 2px;
+  cursor: zoom-in;
   border: 1px solid var(--border);
-  flex-shrink: 0;
 }
 .img-lightbox {
   position: fixed; inset: 0; z-index: 500;
@@ -2870,8 +2871,7 @@ function appendChatMsg(name, text, type, uid) {
   } else if (type === 'image') {
     const avatarHtml = getAvatarHtml(name, uid || (name === St.myName ? St.myId : null));
     // text가 data URL 또는 http URL
-    div.style.alignItems = 'flex-start';
-    div.innerHTML = `${avatarHtml}<div class="msg-body" style="display:flex;flex-direction:column"><div class="msg-meta"><span class="msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div><img class="msg-image" src="${text}" alt="첨부 이미지" onclick="openLightbox(this.src)" style="display:block;max-width:100%;height:auto;margin-top:6px;border-radius:var(--r);border:1px solid var(--border);cursor:zoom-in;max-height:260px"></div>`;
+    div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div><img class="msg-image" src="${text}" alt="첨부 이미지" onclick="openLightbox(this.src)"></div>`;
   } else {
     const avatarHtml = getAvatarHtml(name, uid || (name === St.myName ? St.myId : null));
     div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-text">${esc(text)}</div></div>`;
