@@ -2353,6 +2353,13 @@ function setupFirebaseListeners() {
   const { db, ref, onValue } = window._FB;
   const code = St.roomCode;
 
+  // 채팅 렌더링 추적 키 리셋
+  const chatContainer = document.getElementById('chat-messages');
+  if (chatContainer) {
+    chatContainer.innerHTML = '';
+    chatContainer._renderedKeys = new Set();
+  }
+
   onValue(ref(db, `rooms/${code}/players`), snap => {
     const players = snap.val() || {};
     // 내가 강퇴됐는지 확인
@@ -2368,19 +2375,19 @@ function setupFirebaseListeners() {
 
   onValue(ref(db, `rooms/${code}/chat`), snap => {
     const msgs = snap.val() || {};
-    const sorted = Object.values(msgs).sort((a,b) => a.time - b.time);
     const container = document.getElementById('chat-messages');
 
-    // 이미 렌더된 메시지 수 추적 — 새 메시지만 추가
-    const rendered = container.querySelectorAll('.chat-msg').length;
-    const toAdd = sorted.slice(rendered);
-    toAdd.forEach(m => appendChatMsg(m.name, m.text, m.type || 'normal', m.uid, m.time));
+    // 이미 렌더된 Firebase key 목록으로 추적 (로컬 메시지와 섞이지 않도록)
+    if (!container._renderedKeys) container._renderedKeys = new Set();
 
-    // 처음 로드(전체 초기화 필요)할 때만 전체 재렌더
-    if (toAdd.length === 0 && rendered > sorted.length) {
-      container.innerHTML = '';
-      sorted.forEach(m => appendChatMsg(m.name, m.text, m.type || 'normal', m.uid, m.time));
-    }
+    const sorted = Object.entries(msgs).sort((a, b) => a[1].time - b[1].time);
+
+    sorted.forEach(([key, m]) => {
+      if (!container._renderedKeys.has(key)) {
+        container._renderedKeys.add(key);
+        appendChatMsg(m.name, m.text, m.type || 'normal', m.uid, m.time);
+      }
+    });
   });
 
   onValue(ref(db, `rooms/${code}/tokens`), snap => {
