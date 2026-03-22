@@ -2836,7 +2836,7 @@ function sendChat() {
   if (!raw) return;
 
   // /dsec 지문 명령어 (GM 전용) — 공백 여부 무관하게 인식
-  const dsecMatch = raw.match(/^\/dsec\s*([\s\S]*)$/i);
+  const dsecMatch = raw.match(/^\/desc\s*([\s\S]*)$/i);
   if (dsecMatch) {
     inp.value = '';
     if (!St.isGM) { showToast('GM만 /dsec를 사용할 수 있어요.'); return; }
