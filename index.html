@@ -803,34 +803,38 @@ input:focus, select:focus, textarea:focus { outline: none; }
 .campaign-card .cc-enter:hover { opacity: .88; }
 .campaign-card .cc-del {
   position: absolute;
-  top: 12px; right: 12px;
-  background: var(--s2);
-  border: 1px solid var(--border);
-  color: var(--muted);
+  top: 8px; right: 8px;
+  background: rgba(10,10,10,.72);
+  border: 1px solid var(--border2);
+  color: var(--text);
   cursor: pointer;
   font-size: 13px;
-  padding: 3px 6px;
+  padding: 4px 7px;
   border-radius: 4px;
   transition: var(--t);
   line-height: 1;
+  z-index: 20;
+  backdrop-filter: blur(4px);
 }
-.campaign-card .cc-del:hover { color: var(--red); border-color: rgba(200,92,92,.4); background: rgba(200,92,92,.08); }
+.campaign-card .cc-del:hover { color: var(--red); border-color: rgba(200,92,92,.4); background: rgba(200,92,92,.15); }
 
 /* 편집 아이콘 버튼 (GM 전용) */
 .campaign-card .cc-edit {
   position: absolute;
-  top: 12px; right: 44px;
-  background: var(--s2);
-  border: 1px solid var(--border);
-  color: var(--muted);
+  top: 8px; right: 40px;
+  background: rgba(10,10,10,.72);
+  border: 1px solid var(--border2);
+  color: var(--text);
   cursor: pointer;
   font-size: 13px;
-  padding: 3px 6px;
+  padding: 4px 7px;
   border-radius: 4px;
   transition: var(--t);
   line-height: 1;
+  z-index: 20;
+  backdrop-filter: blur(4px);
 }
-.campaign-card .cc-edit:hover { color: var(--accent); border-color: var(--accent); background: var(--a-dim); }
+.campaign-card .cc-edit:hover { color: var(--accent); border-color: var(--accent); background: rgba(184,154,96,.2); }
 .campaign-empty {
   font-size: 13px;
   color: var(--muted);
@@ -1912,7 +1916,7 @@ async function createRoom() {
     // 내 캠페인 목록에 추가
     await set(ref(db, `users/${St.myId}/rooms/${code}`), {
       code, title: roomTitle, system: selectedSystem,
-      role: 'gm', joinedAt: Date.now(),
+      role: 'gm', ownerId: St.myId, joinedAt: Date.now(),
     });
     setupFirebaseListeners();
   }
@@ -1961,7 +1965,7 @@ async function joinRoom() {
     await set(ref(db, `users/${St.myId}/rooms/${code}`), {
       code, title: meta.title || '무제 세션',
       system: meta.system || 'coc7',
-      role, joinedAt: Date.now(),
+      role, ownerId: meta.ownerId || '', joinedAt: Date.now(),
     });
     setupFirebaseListeners();
   } else {
@@ -2022,7 +2026,7 @@ function renderCampaigns(rooms) {
   grid.innerHTML = entries.map(([key, r]) => {
     const imgKey  = 'itc_cover_' + r.code;
     const imgData = localStorage.getItem(imgKey);
-    const isGM    = r.role === 'gm';
+    const isGM    = r.role === 'gm' || r.ownerId === St.myId;
 
     const thumbHtml = imgData
       ? `<img src="${imgData}" alt="커버">`
