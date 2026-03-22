@@ -4453,21 +4453,22 @@ const COC_SKILLS = [
 let _sheetJournalId = null;
 
 function initSheetUI() {
-  // 특성치 그리드 렌더
+  // 특성치 그리드 — 한 번만 렌더 (이미 있으면 스킵)
   const grid = document.getElementById('sh-stats-grid');
-  if (!grid || grid.children.length) return;
-  COC_STATS.forEach(s => {
-    const div = document.createElement('div');
-    div.className = 'stat-card';
-    div.innerHTML = `<div class="stat-name">${s.name}</div>
-      <input class="stat-val" id="sh-${s.key}" type="number" min="0" max="99" placeholder="0" oninput="updateStatHalf('${s.key}')">
-      <div class="stat-half" id="sh-${s.key}-half">½ — / ⅕ —</div>`;
-    grid.appendChild(div);
-  });
+  if (grid && !grid.children.length) {
+    COC_STATS.forEach(s => {
+      const div = document.createElement('div');
+      div.className = 'stat-card';
+      div.innerHTML = `<div class="stat-name">${s.name}</div>
+        <input class="stat-val" id="sh-${s.key}" type="number" min="0" max="99" placeholder="0" oninput="updateStatHalf('${s.key}')">
+        <div class="stat-half" id="sh-${s.key}-half">½ — / ⅕ —</div>`;
+      grid.appendChild(div);
+    });
+  }
 
-  // 스킬 테이블 - 3단 컬럼으로 렌더
+  // 스킬 테이블 — 항상 새로 렌더 (openSheet에서 wrap을 비운 뒤 호출)
   const wrap = document.getElementById('sh-skills-wrap');
-  if (!wrap || wrap.querySelector('.skill-col-wrap')) return;
+  if (!wrap) return;
   wrap.innerHTML = '';
 
   const colHead = () => {
