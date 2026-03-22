@@ -4868,6 +4868,17 @@ function handleSheetAvatar(input) {
       ctx.drawImage(img, (img.width-min)/2, (img.height-min)/2, min, min, 0, 0, SIZE, SIZE);
       _sheetAvatarData = canvas.toDataURL('image/jpeg', 0.82);
       refreshSheetAvatar();
+      // 아바타 업로드 즉시 j.avatar에 저장 (저장 버튼을 누르지 않아도 반영)
+      if (_sheetJournalId) {
+        const avList = loadJournals();
+        const avIdx  = avList.findIndex(j => j.id === _sheetJournalId);
+        if (avIdx >= 0) {
+          avList[avIdx].avatar = _sheetAvatarData;
+          if (avList[avIdx].sheet) avList[avIdx].sheet.avatar = _sheetAvatarData;
+          saveJournals(avList);
+          refreshSpeakAsToolbar(); // speak-as 버튼/드롭다운도 즉시 갱신
+        }
+      }
     };
     img.src = ev.target.result;
   };
