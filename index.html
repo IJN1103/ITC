@@ -2588,23 +2588,23 @@ let _popoutWin = null;
 function popoutChat() {
   if (_popoutWin && !_popoutWin.closed) { _popoutWin.focus(); return; }
 
-  const pw = 360, ph = 600;
-  const pl = window.screen.width - pw - 20;
-  const pt = Math.floor((window.screen.height - ph) / 2);
-  _popoutWin = window.open('', 'ITC_Chat',
-    `width=${pw},height=${ph},left=${pl},top=${pt},resizable=yes`);
+  // 팝아웃 HTML을 Blob으로 만들어서 깔끔하게 열기
+  const roomCode = St.roomCode;
 
-  if (!_popoutWin) { showToast('팝업 차단을 해제해 주세요!'); return; }
+  const _sc_open  = '<scri' + 'pt>';
+  const _sc_close = '</scri' + 'pt>';
+  const _popRoomCode = St.roomCode;
 
-  // document.write 없이 DOM API로 직접 구성 (script 태그 충돌 방지)
-  const d = _popoutWin.document;
-  d.title = `ITC 채팅 — ${St.roomCode}`;
-
-  // CSS
-  const style = d.createElement('style');
-  style.textContent = [
+  const popParts = [
+    '<!DOCTYPE html><html lang="ko"><head>',
+    '<meta charset="UTF-8">',
+    '<meta name="viewport" content="width=device-width,initial-scale=1">',
+    '<title>ITC \ucc44\ud305 \u2014 ' + _popRoomCode + '</title>',
+    '<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500&family=DM+Mono:wght@400&display=swap" rel="stylesheet">',
+    '<style>',
     '*{box-sizing:border-box;margin:0;padding:0}',
-    "body{font-family:'DM Sans',sans-serif;background:#101010;color:#e8e3da;font-size:14px;height:100vh;display:flex;flex-direction:column}",
+    'html,body{height:100%;overflow:hidden}',
+    "body{font-family:'DM Sans',sans-serif;background:#101010;color:#e8e3da;font-size:14px;display:flex;flex-direction:column;height:100vh}",
     '.ph{padding:10px 14px;background:#131313;border-bottom:1px solid #1f1f1f;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}',
     '.ph-title{font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:#5a5751}',
     ".ph-code{font-family:'DM Mono',monospace;font-size:12px;color:#b89a60;letter-spacing:.15em}",
@@ -2616,72 +2616,52 @@ function popoutChat() {
     '.mt{font-size:13px;color:#8c8882;line-height:1.55;word-break:break-word}',
     '.md .mt{background:rgba(184,154,96,.1);border:1px solid #2e2e2e;border-radius:6px;padding:6px 10px;font-size:12px;color:#b89a60}',
     '.ms .mt{color:#5a5751;font-size:11px;font-style:italic;text-align:center}',
-    '.iw{border-top:1px solid #1f1f1f;padding:8px;display:flex;gap:6px}',
-    "textarea{flex:1;background:#161616;border:1px solid #1f1f1f;border-radius:6px;color:#e8e3da;padding:7px 10px;font-size:13px;resize:none;min-height:34px;font-family:inherit;outline:none}",
+    '.iw{border-top:1px solid #1f1f1f;padding:8px;display:flex;gap:6px;flex-shrink:0}',
+    "textarea{flex:1;background:#161616;border:1px solid #1f1f1f;border-radius:6px;color:#e8e3da;padding:7px 10px;font-size:13px;resize:none;height:34px;font-family:inherit;outline:none}",
     'textarea:focus{border-color:#b89a60}',
     '.sb{width:34px;height:34px;background:#b89a60;border:none;border-radius:6px;color:#080808;cursor:pointer;font-size:15px;flex-shrink:0}',
-  ].join('');
-  d.head.appendChild(style);
+    '</style></head><body>',
+    '<div class="ph"><span class="ph-title">\ucc44\ud305</span><span class="ph-code">' + _popRoomCode + '</span></div>',
+    '<div class="msgs" id="pm"></div>',
+    '<div class="iw">',
+    '  <textarea id="pi" placeholder="\uba54\uc2dc\uc9c0 \uc785\ub825 (Enter \uc804\uc1a1)" rows="1"></textarea>',
+    '  <button class="sb" id="sb">&#x27A4;</button>',
+    '</div>',
+    _sc_open,
+    '(function(){',
+    "  function send(){var i=document.getElementById('pi');var t=i.value.trim();if(!t)return;i.value='';if(window.opener&&window.opener.sendChatFromPopout)window.opener.sendChatFromPopout(t);}",
+    "  function addMsg(name,text,type){var c=document.getElementById('pm');var div=document.createElement('div');div.className=type==='dice'?'md':type==='sys'?'ms':'';var now=new Date();var ts=now.getHours().toString().padStart(2,'0')+':'+now.getMinutes().toString().padStart(2,'0');var e=function(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');};if(type==='sys'){div.innerHTML='<div class=\"mt\">'+e(text)+'</div>';}else{div.innerHTML='<div class=\"mn\"><span class=\"nn\">'+e(name)+'</span><span class=\"tm\">'+ts+'</span></div><div class=\"mt\">'+e(text)+'</div>';}c.appendChild(div);c.scrollTop=c.scrollHeight;}",
+    "  document.getElementById('sb').addEventListener('click',send);",
+    "  document.getElementById('pi').addEventListener('keydown',function(ev){if(ev.key==='Enter'&&!ev.shiftKey){ev.preventDefault();send();}});",
+    '  window.addMsg=addMsg;',
+    '  window._popReady=true;',
+    '})();',
+    _sc_close,
+    '</body></html>',
+  ];
+  const popHtml = popParts.join('\n');
 
-  // 구글 폰트
-  const link = d.createElement('link');
-  link.rel = 'stylesheet';
-  link.href = 'https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500&family=DM+Mono:wght@400&display=swap';
-  d.head.appendChild(link);
+  // Blob URL로 열기
+  const blob = new Blob([popHtml], { type: 'text/html;charset=utf-8' });
+  const blobUrl = URL.createObjectURL(blob);
 
-  // 헤더
-  const popHeader = d.createElement('div');
-  popHeader.className = 'ph';
-  popHeader.innerHTML = `<span class="ph-title">채팅</span><span class="ph-code">${esc(St.roomCode)}</span>`;
-  d.body.appendChild(popHeader);
+  const pw = 360, ph2 = 600;
+  const pl = window.screen.width - pw - 20;
+  const pt = Math.floor((window.screen.height - ph2) / 2);
+  _popoutWin = window.open(blobUrl, 'ITC_Chat',
+    `width=${pw},height=${ph2},left=${pl},top=${pt},resizable=yes`);
 
-  // 메시지 영역
-  const msgs = d.createElement('div');
-  msgs.className = 'msgs';
-  msgs.id = 'pm';
-  d.body.appendChild(msgs);
+  if (!_popoutWin) {
+    URL.revokeObjectURL(blobUrl);
+    showToast('팝업 차단을 해제해 주세요!');
+    return;
+  }
 
-  // 입력창
-  const iw = d.createElement('div');
-  iw.className = 'iw';
-  iw.innerHTML = '<textarea id="pi" placeholder="메시지 입력 (Enter 전송)" rows="1"></textarea><button class="sb">➤</button>';
-  d.body.appendChild(iw);
+  // Blob URL 해제 (창 열린 후 불필요)
+  setTimeout(() => URL.revokeObjectURL(blobUrl), 3000);
 
-  // JS 함수들을 script 엘리먼트로 주입
-  const sc = d.createElement('script');
-  sc.textContent = `
-    function send() {
-      const i = document.getElementById('pi');
-      const t = i.value.trim();
-      if (!t) return;
-      i.value = '';
-      if (window.opener && window.opener.sendChatFromPopout) window.opener.sendChatFromPopout(t);
-    }
-    function addMsg(name, text, type) {
-      const c = document.getElementById('pm');
-      const div = document.createElement('div');
-      div.className = type === 'dice' ? 'md' : type === 'sys' ? 'ms' : '';
-      const now = new Date();
-      const ts = now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0');
-      const e = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-      if (type === 'sys') {
-        div.innerHTML = '<div class="mt">' + e(text) + '</div>';
-      } else {
-        div.innerHTML = '<div class="mn"><span class="nn">' + e(name) + '</span><span class="tm">' + ts + '</span></div><div class="mt">' + e(text) + '</div>';
-      }
-      c.appendChild(div);
-      c.scrollTop = c.scrollHeight;
-    }
-    document.querySelector('.sb').addEventListener('click', send);
-    document.getElementById('pi').addEventListener('keydown', function(e) {
-      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
-    });
-    window._popReady = true;
-  `;
-  d.body.appendChild(sc);
-
-  // 기존 메시지 복사
-  setTimeout(() => {
+  // 기존 메시지 복사 (창 로드 후)
+  const copyMsgs = () => {
     if (!_popoutWin || _popoutWin.closed || !_popoutWin._popReady) return;
     document.querySelectorAll('#chat-messages > div').forEach(m => {
       const nameEl = m.querySelector('.msg-name');
@@ -2690,7 +2670,16 @@ function popoutChat() {
                  : m.classList.contains('msg-sys')  ? 'sys' : 'normal';
       if (textEl) _popoutWin.addMsg(nameEl?.textContent || '', textEl.textContent, type);
     });
-  }, 400);
+  };
+  // 최대 2초 대기 후 복사
+  let tries = 0;
+  const t = setInterval(() => {
+    tries++;
+    if ((_popoutWin && _popoutWin._popReady) || tries > 10) {
+      clearInterval(t);
+      copyMsgs();
+    }
+  }, 200);
 
   showToast('채팅이 새 창으로 분리됐어요!');
 }
