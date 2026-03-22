@@ -1016,7 +1016,23 @@ input:focus, select:focus, textarea:focus { outline: none; }
 }
 .chat-popout-btn:hover { border-color: var(--accent); color: var(--accent); }
 .chat-messages { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
-.chat-msg { animation: fadeUp .2s ease; }
+.chat-msg { animation: fadeUp .2s ease; display: flex; gap: 7px; align-items: flex-start; }
+.chat-msg.msg-sys { justify-content: center; }
+.chat-msg.msg-sys .msg-avatar { display: none; }
+.msg-avatar {
+  width: 26px; height: 26px;
+  flex-shrink: 0; margin-top: 1px;
+  background: var(--s3);
+  border: 1px solid var(--border2);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: 500; color: var(--accent);
+  overflow: hidden;
+  transition: border-radius .25s ease;
+}
+.msg-avatar.shape-circle  { border-radius: 50%; }
+.msg-avatar.shape-rounded { border-radius: 6px; }
+.msg-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.msg-body { flex: 1; min-width: 0; }
 .msg-meta { display: flex; align-items: baseline; gap: 6px; margin-bottom: 2px; }
 .msg-name { font-size: 11px; font-weight: 500; color: var(--accent); }
 .msg-time { font-size: 10px; color: var(--muted); font-family: var(--font-mono); }
@@ -1521,6 +1537,23 @@ input:focus, select:focus, textarea:focus { outline: none; }
       <b>역할</b> — <span id="role-disp"></span>
     </div>
 
+    <!-- 채팅 아바타 도형 설정 -->
+    <div style="border-top:1px solid var(--border);padding-top:12px">
+      <div style="font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);margin-bottom:10px">채팅 아바타 도형</div>
+      <div style="display:flex;gap:10px">
+        <button id="shape-btn-rounded" onclick="setAvatarShape('rounded')"
+          style="flex:1;padding:10px 8px;border-radius:var(--r);border:1px solid var(--border);background:var(--s2);color:var(--dim);cursor:pointer;font:inherit;font-size:12px;transition:var(--t);display:flex;flex-direction:column;align-items:center;gap:8px">
+          <div style="width:28px;height:28px;border-radius:6px;background:var(--accent);opacity:.7"></div>
+          <span>둥근 네모</span>
+        </button>
+        <button id="shape-btn-circle" onclick="setAvatarShape('circle')"
+          style="flex:1;padding:10px 8px;border-radius:var(--r);border:1px solid var(--border);background:var(--s2);color:var(--dim);cursor:pointer;font:inherit;font-size:12px;transition:var(--t);display:flex;flex-direction:column;align-items:center;gap:8px">
+          <div style="width:28px;height:28px;border-radius:50%;background:var(--accent);opacity:.7"></div>
+          <span>원형</span>
+        </button>
+      </div>
+    </div>
+
     <!-- GM 전용: 플레이어 목록 & 강퇴 -->
     <div id="gm-player-mgmt" class="gm-only" style="display:none;border-top:1px solid var(--border);padding-top:12px">
       <div style="font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);margin-bottom:8px">플레이어 관리</div>
@@ -1633,7 +1666,8 @@ const St = {
   tokens: {}, playlist: [], currentTrack: -1, isPlaying: false,
   tool: 'select', character: {}, recentRooms: [],
   selectedCharId: null,
-  isGM: false,   // 방 만든 사람 = GM
+  isGM: false,
+  avatarShape: localStorage.getItem('itc_avatar_shape') || 'rounded', // 'circle' | 'rounded'
 };
 
 /* 권한 체크 헬퍼 */
@@ -1643,6 +1677,57 @@ function requireGM(action) {
     return false;
   }
   return true;
+}
+
+function setAvatarShape(shape) {
+  St.avatarShape = shape;
+  localStorage.setItem('itc_avatar_shape', shape);
+  updateShapeBtns();
+  // 이미 렌더된 채팅창 아바타 도형 즉시 갱신
+  document.querySelectorAll('.msg-avatar').forEach(el => {
+    el.classList.remove('shape-circle', 'shape-rounded');
+    el.classList.add(shape === 'circle' ? 'shape-circle' : 'shape-rounded');
+  });
+  showToast(shape === 'circle' ? '원형으로 변경됐어요' : '둥근 네모로 변경됐어요');
+}
+
+function updateShapeBtns() {
+  const shape = St.avatarShape;
+  const btnR = document.getElementById('shape-btn-rounded');
+  const btnC = document.getElementById('shape-btn-circle');
+  if (!btnR || !btnC) return;
+  const activeStyle  = `border-color:var(--accent);background:var(--a-dim);color:var(--accent)`;
+  const normalStyle  = `border-color:var(--border);background:var(--s2);color:var(--dim)`;
+  btnR.style.cssText += ';' + (shape === 'rounded' ? activeStyle : normalStyle);
+  btnC.style.cssText += ';' + (shape === 'circle'  ? activeStyle : normalStyle);
+}
+
+function setAvatarShape(shape) {
+  St.avatarShape = shape;
+  localStorage.setItem('itc_avatar_shape', shape);
+  updateShapeBtns();
+  // 이미 렌더된 채팅 아바타 도형 즉시 갱신
+  document.querySelectorAll('.msg-avatar').forEach(el => {
+    el.classList.remove('shape-circle', 'shape-rounded');
+    el.classList.add(shape === 'circle' ? 'shape-circle' : 'shape-rounded');
+  });
+  showToast(shape === 'circle' ? '원형으로 변경됐어요' : '둥근 네모로 변경됐어요');
+}
+
+function updateShapeBtns() {
+  const shape = St.avatarShape;
+  const btnR = document.getElementById('shape-btn-rounded');
+  const btnC = document.getElementById('shape-btn-circle');
+  if (!btnR || !btnC) return;
+  const on  = 'border-color:var(--accent);background:var(--a-dim);color:var(--accent)';
+  const off = 'border-color:var(--border);background:var(--s2);color:var(--dim)';
+  // 버튼 인라인 스타일의 색상 부분만 교체
+  [btnR, btnC].forEach((btn, i) => {
+    const isActive = (i === 0 && shape === 'rounded') || (i === 1 && shape === 'circle');
+    btn.style.borderColor  = isActive ? 'var(--accent)' : 'var(--border)';
+    btn.style.background   = isActive ? 'var(--a-dim)'  : 'var(--s2)';
+    btn.style.color        = isActive ? 'var(--accent)' : 'var(--dim)';
+  });
 }
 
 function showToast(msg) {
@@ -2264,7 +2349,7 @@ function setupFirebaseListeners() {
     const msgs = snap.val() || {};
     const sorted = Object.values(msgs).sort((a,b) => a.time - b.time);
     document.getElementById('chat-messages').innerHTML = '';
-    sorted.forEach(m => appendChatMsg(m.name, m.text, m.type || 'normal'));
+    sorted.forEach(m => appendChatMsg(m.name, m.text, m.type || 'normal', m.uid));
   });
 
   onValue(ref(db, `rooms/${code}/tokens`), snap => {
@@ -2327,7 +2412,14 @@ function addPlayerChip(id, name, isMe, role) {
 
 function renderPlayers(players) {
   document.getElementById('players-row').innerHTML = '';
-  Object.entries(players).forEach(([id, p]) => addPlayerChip(id, p.name, id === St.myId, p.role));
+  // 아바타 캐시 갱신: 타 플레이어 아바타도 표시 가능하도록
+  if (!window._avatarCache) window._avatarCache = {};
+  Object.entries(players).forEach(([id, p]) => {
+    addPlayerChip(id, p.name, id === St.myId, p.role);
+    // 해당 플레이어의 아바타가 localStorage에 있으면 캐시에 저장
+    const av = localStorage.getItem('itc_avatar_' + id);
+    if (av) window._avatarCache[p.name] = av;
+  });
 }
 
 /* ─────────────────────────────────────────────────
@@ -2630,27 +2722,47 @@ function sendChat() {
 }
 
 function sendMessage(name, text, type = 'normal') {
-  const msg = { name, text, type, time: Date.now() };
+  const msg = { name, text, type, uid: St.myId, time: Date.now() };
   if (window._FB?.CONFIGURED) {
     const { db, ref, push } = window._FB;
     push(ref(db, `rooms/${St.roomCode}/chat`), msg);
   } else {
-    appendChatMsg(name, text, type);
+    appendChatMsg(name, text, type, St.myId);
   }
 }
 
 function addLocalMessage(type, name, text) { appendChatMsg(name, text, type); }
 
-function appendChatMsg(name, text, type) {
+function getAvatarHtml(name, uid) {
+  // uid 기반으로 아바타 이미지 가져오기 (본인이면 localStorage, 타인이면 캐시)
+  const shape = St.avatarShape === 'circle' ? 'shape-circle' : 'shape-rounded';
+  let imgSrc = null;
+  if (uid) {
+    imgSrc = localStorage.getItem('itc_avatar_' + uid);
+  }
+  if (!imgSrc) {
+    // 이름 기반으로 캐시된 아바타 확인
+    imgSrc = window._avatarCache?.[name];
+  }
+  const initial = (name || '?')[0].toUpperCase();
+  const inner = imgSrc
+    ? `<img src="${imgSrc}" alt="${esc(initial)}">`
+    : `<span>${esc(initial)}</span>`;
+  return `<div class="msg-avatar ${shape}">${inner}</div>`;
+}
+
+function appendChatMsg(name, text, type, uid) {
   const container = document.getElementById('chat-messages');
   const div = document.createElement('div');
   div.className = `chat-msg msg-${type}`;
   const now = new Date();
   const time = `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`;
-  if (type === 'system') {
+
+  if (type === 'system' || type === 'sys') {
     div.innerHTML = `<div class="msg-text">${esc(text)}</div>`;
   } else {
-    div.innerHTML = `<div class="msg-meta"><span class="msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-text">${esc(text)}</div>`;
+    const avatarHtml = getAvatarHtml(name, uid || (name === St.myName ? St.myId : null));
+    div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-text">${esc(text)}</div></div>`;
   }
   container.appendChild(div);
   container.scrollTop = container.scrollHeight;
@@ -2842,6 +2954,9 @@ function renderSettingsModal() {
   const endBtn    = document.getElementById('btn-end-room');
   if (gmSection) gmSection.style.display = St.isGM ? 'block' : 'none';
   if (endBtn)    endBtn.style.display    = St.isGM ? '' : 'none';
+
+  // 도형 버튼 활성화 상태
+  updateShapeBtns();
 
   if (!St.isGM || !window._FB?.CONFIGURED) return;
   const { db, ref, get, remove } = window._FB;
