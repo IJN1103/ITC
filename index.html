@@ -2832,20 +2832,22 @@ function chatKeydown(e) {
 
 function sendChat() {
   const inp = document.getElementById('chat-input');
-  const text = inp.value.trim();
-  if (!text) return;
-  inp.value = '';
+  const raw = inp.value.trim();
+  if (!raw) return;
 
-  // /dsec 지문 명령어 (GM 전용)
-  if (text.startsWith('/dsec ') || text === '/dsec') {
+  // /dsec 지문 명령어 (GM 전용) — 공백 여부 무관하게 인식
+  const dsecMatch = raw.match(/^\/dsec\s*([\s\S]*)$/i);
+  if (dsecMatch) {
+    inp.value = '';
     if (!St.isGM) { showToast('GM만 /dsec를 사용할 수 있어요.'); return; }
-    const content = text.slice(6).trim();
+    const content = dsecMatch[1].trim();
     if (!content) return;
     sendMessage(St.myName, content, 'dsec');
     return;
   }
 
-  sendMessage(St.myName, text, 'normal');
+  inp.value = '';
+  sendMessage(St.myName, raw, 'normal');
 }
 
 function sendMessage(name, text, type = 'normal') {
