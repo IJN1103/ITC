@@ -1840,10 +1840,98 @@ input:focus, select:focus, textarea:focus { outline: none; }
         </div>
       </div>
 
-      <!-- 메모 -->
+      <!-- 전투 -->
       <div class="sh-sec">
-        <div class="sh-sec-title">메모 / 배경</div>
-        <textarea class="sh-input" id="sh-notes" placeholder="캐릭터 배경, 소지품, 특기사항 등…" style="min-height:80px;resize:vertical;padding:8px;background:var(--s2);border:1px solid var(--border);border-radius:var(--r);line-height:1.6"></textarea>
+        <div class="sh-sec-title">전투</div>
+        <div style="overflow-x:auto">
+          <table style="width:100%;border-collapse:collapse;font-size:12px">
+            <thead>
+              <tr style="border-bottom:1px solid var(--border)">
+                <th style="text-align:left;padding:5px 8px;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:400;width:22%">무기</th>
+                <th style="text-align:left;padding:5px 8px;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:400;width:18%">기능</th>
+                <th style="text-align:center;padding:5px 8px;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:400;width:10%">피해</th>
+                <th style="text-align:center;padding:5px 8px;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:400;width:10%">사거리</th>
+                <th style="text-align:center;padding:5px 8px;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:400;width:12%">공격 횟수</th>
+                <th style="text-align:center;padding:5px 8px;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:400;width:10%">탄약</th>
+                <th style="text-align:center;padding:5px 8px;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:400;width:10%">고장</th>
+              </tr>
+              <tr style="border-bottom:1px solid var(--border);background:var(--s2)">
+                <td style="padding:4px 8px;color:var(--muted);font-size:11px">비무장</td>
+                <td style="padding:4px 8px"><input class="sh-input" id="sh-unarmed-skill" value="근접전(격투)" style="font-size:11px;color:var(--dim)"></td>
+                <td style="padding:4px 8px;text-align:center"><input class="sh-input" id="sh-unarmed-dmg" value="1d3+db" style="font-size:11px;text-align:center"></td>
+                <td style="padding:4px 8px;text-align:center;color:var(--muted);font-size:11px">—</td>
+                <td style="padding:4px 8px;text-align:center;color:var(--muted);font-size:11px">1</td>
+                <td style="padding:4px 8px;text-align:center;color:var(--muted);font-size:11px">—</td>
+                <td style="padding:4px 8px;text-align:center;color:var(--muted);font-size:11px">—</td>
+              </tr>
+              <tbody id="sh-combat-rows"></tbody>
+            </thead>
+          </table>
+          <button onclick="addCombatRow()" style="margin-top:6px;background:none;border:1px dashed var(--border2);border-radius:var(--r);color:var(--muted);font:inherit;font-size:11px;padding:4px 12px;cursor:pointer;transition:var(--t);width:100%" onmouseover="this.style.borderColor='var(--accent)';this.style.color='var(--accent)'" onmouseout="this.style.borderColor='var(--border2)';this.style.color='var(--muted)'">+ 무기 추가</button>
+        </div>
+      </div>
+
+      <!-- 장비와 소지품 / 현금과 자산 -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <div class="sh-sec">
+          <div class="sh-sec-title">장비와 소지품</div>
+          <textarea class="sh-input" id="sh-equipment" placeholder="소지 장비 및 아이템 목록…" style="min-height:120px;resize:vertical;padding:10px;background:var(--s2);border:1px solid var(--border);border-radius:var(--r);line-height:1.7;font-size:13px"></textarea>
+        </div>
+        <div class="sh-sec">
+          <div class="sh-sec-title">현금과 자산</div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <div class="sh-field"><div class="sh-label">소비 수준</div><input class="sh-input" id="sh-spending" placeholder="예: 중산층"></div>
+            <div class="sh-field"><div class="sh-label">현금</div><input class="sh-input" id="sh-cash" placeholder="소지 현금"></div>
+            <div class="sh-field"><div class="sh-label">자산</div><input class="sh-input" id="sh-assets" placeholder="재산 / 자산 목록"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 백스토리 -->
+      <div class="sh-sec">
+        <div class="sh-sec-title">백스토리</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div class="sh-sec" style="gap:4px">
+            <div style="font-size:11px;color:var(--dim);margin-bottom:4px">겉보기</div>
+            <textarea class="sh-input" id="sh-bs-appearance" placeholder="" style="min-height:70px;resize:vertical;padding:8px;background:var(--s2);border:1px solid var(--border);border-radius:var(--r);line-height:1.65;font-size:12px"></textarea>
+          </div>
+          <div class="sh-sec" style="gap:4px">
+            <div style="font-size:11px;color:var(--dim);margin-bottom:4px">성격</div>
+            <textarea class="sh-input" id="sh-bs-personality" placeholder="" style="min-height:70px;resize:vertical;padding:8px;background:var(--s2);border:1px solid var(--border);border-radius:var(--r);line-height:1.65;font-size:12px"></textarea>
+          </div>
+          <div class="sh-sec" style="gap:4px">
+            <div style="font-size:11px;color:var(--dim);margin-bottom:4px">사상 / 신념</div>
+            <textarea class="sh-input" id="sh-bs-ideology" placeholder="" style="min-height:70px;resize:vertical;padding:8px;background:var(--s2);border:1px solid var(--border);border-radius:var(--r);line-height:1.65;font-size:12px"></textarea>
+          </div>
+          <div class="sh-sec" style="gap:4px">
+            <div style="font-size:11px;color:var(--dim);margin-bottom:4px">부상과 흉터</div>
+            <textarea class="sh-input" id="sh-bs-wounds" placeholder="" style="min-height:70px;resize:vertical;padding:8px;background:var(--s2);border:1px solid var(--border);border-radius:var(--r);line-height:1.65;font-size:12px"></textarea>
+          </div>
+          <div class="sh-sec" style="gap:4px">
+            <div style="font-size:11px;color:var(--dim);margin-bottom:4px">중요한 사람들</div>
+            <textarea class="sh-input" id="sh-bs-people" placeholder="" style="min-height:70px;resize:vertical;padding:8px;background:var(--s2);border:1px solid var(--border);border-radius:var(--r);line-height:1.65;font-size:12px"></textarea>
+          </div>
+          <div class="sh-sec" style="gap:4px">
+            <div style="font-size:11px;color:var(--dim);margin-bottom:4px">공포증과 집착증</div>
+            <textarea class="sh-input" id="sh-bs-phobias" placeholder="" style="min-height:70px;resize:vertical;padding:8px;background:var(--s2);border:1px solid var(--border);border-radius:var(--r);line-height:1.65;font-size:12px"></textarea>
+          </div>
+          <div class="sh-sec" style="gap:4px">
+            <div style="font-size:11px;color:var(--dim);margin-bottom:4px">의미 있는 장소들</div>
+            <textarea class="sh-input" id="sh-bs-places" placeholder="" style="min-height:70px;resize:vertical;padding:8px;background:var(--s2);border:1px solid var(--border);border-radius:var(--r);line-height:1.65;font-size:12px"></textarea>
+          </div>
+          <div class="sh-sec" style="gap:4px">
+            <div style="font-size:11px;color:var(--dim);margin-bottom:4px">신화서, 주문, 유물</div>
+            <textarea class="sh-input" id="sh-bs-tomes" placeholder="" style="min-height:70px;resize:vertical;padding:8px;background:var(--s2);border:1px solid var(--border);border-radius:var(--r);line-height:1.65;font-size:12px"></textarea>
+          </div>
+          <div class="sh-sec" style="gap:4px">
+            <div style="font-size:11px;color:var(--dim);margin-bottom:4px">소중한 물건들</div>
+            <textarea class="sh-input" id="sh-bs-treasures" placeholder="" style="min-height:70px;resize:vertical;padding:8px;background:var(--s2);border:1px solid var(--border);border-radius:var(--r);line-height:1.65;font-size:12px"></textarea>
+          </div>
+          <div class="sh-sec" style="gap:4px">
+            <div style="font-size:11px;color:var(--dim);margin-bottom:4px">기이한 존재들과의 만남</div>
+            <textarea class="sh-input" id="sh-bs-encounters" placeholder="" style="min-height:70px;resize:vertical;padding:8px;background:var(--s2);border:1px solid var(--border);border-radius:var(--r);line-height:1.65;font-size:12px"></textarea>
+          </div>
+        </div>
       </div>
 
     </div>
@@ -4405,9 +4493,39 @@ function openSheet(journalId) {
     if (hlf) hlf.value     = d.half !== undefined ? d.half : Math.floor(sk.base/2);
   });
 
-  // 메모
+  // 메모 (구버전 호환)
   const notes = document.getElementById('sh-notes');
   if (notes) notes.value = data.notes || '';
+
+  // 전투
+  document.getElementById('sh-unarmed-skill').value = data.unarmed_skill || '근접전(격투)';
+  document.getElementById('sh-unarmed-dmg').value   = data.unarmed_dmg   || '1d3+db';
+  _combatRowCount = 0;
+  const tbody = document.getElementById('sh-combat-rows');
+  if (tbody) tbody.innerHTML = '';
+  (data.combat_rows || []).forEach(row => {
+    addCombatRow();
+    const i = _combatRowCount - 1;
+    document.getElementById('sh-w-name-'+i).value  = row.name  || '';
+    document.getElementById('sh-w-skill-'+i).value = row.skill || '';
+    document.getElementById('sh-w-dmg-'+i).value   = row.dmg   || '';
+    document.getElementById('sh-w-range-'+i).value = row.range || '';
+    document.getElementById('sh-w-atk-'+i).value   = row.atk   || '';
+    document.getElementById('sh-w-ammo-'+i).value  = row.ammo  || '';
+    document.getElementById('sh-w-mal-'+i).value   = row.mal   || '';
+  });
+
+  // 장비 / 현금
+  const eq = document.getElementById('sh-equipment'); if (eq) eq.value = data.equipment || '';
+  const sp = document.getElementById('sh-spending');  if (sp) sp.value = data.spending  || '';
+  const ca = document.getElementById('sh-cash');      if (ca) ca.value = data.cash      || '';
+  const as = document.getElementById('sh-assets');    if (as) as.value = data.assets    || '';
+
+  // 백스토리
+  ['appearance','personality','ideology','wounds','people','phobias','places','tomes','treasures','encounters'].forEach(k => {
+    const el = document.getElementById('sh-bs-'+k);
+    if (el) el.value = data['bs_'+k] || '';
+  });
 
   // 힌트 초기화
   const hint = document.getElementById('sheet-hint');
@@ -4419,6 +4537,25 @@ function openSheet(journalId) {
 function closeSheet() {
   document.getElementById('sheet-overlay').classList.remove('open');
   _sheetJournalId = null;
+}
+
+let _combatRowCount = 0;
+
+function addCombatRow() {
+  const tbody = document.getElementById('sh-combat-rows');
+  if (!tbody) return;
+  const i = _combatRowCount++;
+  const tr = document.createElement('tr');
+  tr.style.borderBottom = '1px solid var(--border)';
+  tr.innerHTML = `
+    <td style="padding:3px 4px"><input class="sh-input" id="sh-w-name-${i}" placeholder="무기명" style="font-size:12px"></td>
+    <td style="padding:3px 4px"><input class="sh-input" id="sh-w-skill-${i}" placeholder="기능명" style="font-size:12px"></td>
+    <td style="padding:3px 4px"><input class="sh-input" id="sh-w-dmg-${i}" placeholder="1d6" style="font-size:12px;text-align:center"></td>
+    <td style="padding:3px 4px"><input class="sh-input" id="sh-w-range-${i}" placeholder="—" style="font-size:12px;text-align:center"></td>
+    <td style="padding:3px 4px"><input class="sh-input" id="sh-w-atk-${i}" placeholder="1" style="font-size:12px;text-align:center"></td>
+    <td style="padding:3px 4px"><input class="sh-input" id="sh-w-ammo-${i}" placeholder="—" style="font-size:12px;text-align:center"></td>
+    <td style="padding:3px 4px"><input class="sh-input" id="sh-w-mal-${i}" placeholder="—" style="font-size:12px;text-align:center"></td>`;
+  tbody.appendChild(tr);
 }
 
 function saveSheet() {
@@ -4435,7 +4572,7 @@ function saveSheet() {
     data[s.key] = parseInt(document.getElementById('sh-'+s.key)?.value) || 0;
   });
 
-  // 자원 (- → _ 변환)
+  // 자원
   ['hp','hp-max','san','san-max','mp','mp-max','luck','db','build'].forEach(k => {
     const key = k.replace('-','_');
     data[key] = document.getElementById('sh-'+k)?.value || '';
@@ -4448,8 +4585,35 @@ function saveSheet() {
     half: parseInt(document.getElementById('sk-half-'+i)?.value) ?? Math.floor(sk.base/2),
   }));
 
-  // 메모
-  data.notes = document.getElementById('sh-notes')?.value || '';
+  // 전투
+  data.unarmed_skill = document.getElementById('sh-unarmed-skill')?.value || '';
+  data.unarmed_dmg   = document.getElementById('sh-unarmed-dmg')?.value   || '';
+  const rows = [];
+  for (let i = 0; i < _combatRowCount; i++) {
+    const n = document.getElementById('sh-w-name-'+i);
+    if (!n) continue;
+    rows.push({
+      name:  n?.value || '',
+      skill: document.getElementById('sh-w-skill-'+i)?.value || '',
+      dmg:   document.getElementById('sh-w-dmg-'+i)?.value   || '',
+      range: document.getElementById('sh-w-range-'+i)?.value  || '',
+      atk:   document.getElementById('sh-w-atk-'+i)?.value    || '',
+      ammo:  document.getElementById('sh-w-ammo-'+i)?.value   || '',
+      mal:   document.getElementById('sh-w-mal-'+i)?.value    || '',
+    });
+  }
+  data.combat_rows = rows;
+
+  // 장비 / 현금
+  data.equipment = document.getElementById('sh-equipment')?.value || '';
+  data.spending   = document.getElementById('sh-spending')?.value  || '';
+  data.cash       = document.getElementById('sh-cash')?.value      || '';
+  data.assets     = document.getElementById('sh-assets')?.value    || '';
+
+  // 백스토리
+  ['appearance','personality','ideology','wounds','people','phobias','places','tomes','treasures','encounters'].forEach(k => {
+    data['bs_'+k] = document.getElementById('sh-bs-'+k)?.value || '';
+  });
 
   // 저장
   const list = loadJournals();
