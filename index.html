@@ -3153,6 +3153,9 @@ function appendCasualMsg(name, text, uid, timestamp, msgKey) {
   addMsgActions(div, uid, msgKey, 'casual', text, 'normal');
   container.appendChild(div);
   container.scrollTop = container.scrollHeight;
+  if (typeof _popoutWins !== 'undefined') {
+    _popoutWins.filter(w => w && !w.closed).forEach(w => { if (w.addMsg) w.addMsg(name, text, 'normal', 'casual', ''); });
+  }
 }
 
 function sendWhisperMessage(senderName, text, targetUid, targetName) {
@@ -4273,111 +4276,150 @@ function initChatResize() {
   }
 }
 
-let _popoutWin = null;
+let _popoutWins = [];
 
 function popoutChat() {
-  if (_popoutWin && !_popoutWin.closed) { _popoutWin.focus(); return; }
-
-  const roomCode = St.roomCode;
+  _popoutWins = _popoutWins.filter(w => w && !w.closed);
+  if (_popoutWins.length >= 3) { showToast('최대 3개까지 분리할 수 있어요.'); return; }
 
   const _sc_open  = '<scri' + 'pt>';
   const _sc_close = '</scri' + 'pt>';
-  const _popRoomCode = St.roomCode;
+  const rc = esc(St.roomCode);
 
-  const popParts = [
-    '<!DOCTYPE html><html lang="ko"><head>',
-    '<meta charset="UTF-8">',
-    '<meta name="viewport" content="width=device-width,initial-scale=1">',
-    '<title>ITC \ucc44\ud305 \u2014 ' + _popRoomCode + '</title>',
-    '<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500&family=DM+Mono:wght@400&display=swap" rel="stylesheet">',
-    '<style>',
-    '*{box-sizing:border-box;margin:0;padding:0}',
-    'html,body{height:100%;overflow:hidden}',
-    "body{font-family:'DM Sans',sans-serif;background:#101010;color:#e8e3da;font-size:14px;display:flex;flex-direction:column;height:100vh}",
-    '.ph{padding:10px 14px;background:#131313;border-bottom:1px solid #1f1f1f;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}',
-    '.ph-title{font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:#5a5751}',
-    ".ph-code{font-family:'DM Mono',monospace;font-size:12px;color:#b89a60;letter-spacing:.15em}",
-    '.msgs{flex:1;overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:8px}',
-    '.msgs::-webkit-scrollbar{width:4px}.msgs::-webkit-scrollbar-thumb{background:#262626;border-radius:2px}',
-    '.mn{display:flex;align-items:baseline;gap:6px;margin-bottom:2px}',
-    '.nn{font-size:11px;font-weight:500;color:#b89a60}',
-    ".tm{font-size:10px;color:#5a5751;font-family:'DM Mono',monospace}",
-    '.mt{font-size:13px;color:#8c8882;line-height:1.55;word-break:break-word}',
-    '.md .mt{background:rgba(184,154,96,.1);border:1px solid #2e2e2e;border-radius:6px;padding:6px 10px;font-size:12px;color:#b89a60}',
-    '.ms .mt{color:#5a5751;font-size:11px;font-style:italic;text-align:center}',
-    '.iw{border-top:1px solid #1f1f1f;padding:8px;display:flex;gap:6px;flex-shrink:0}',
-    "textarea{flex:1;background:#161616;border:1px solid #1f1f1f;border-radius:6px;color:#e8e3da;padding:7px 10px;font-size:13px;resize:none;height:34px;font-family:inherit;outline:none}",
-    'textarea:focus{border-color:#b89a60}',
-    '.sb{width:34px;height:34px;background:#b89a60;border:none;border-radius:6px;color:#080808;cursor:pointer;font-size:15px;flex-shrink:0}',
-    '</style></head><body>',
-    '<div class="ph"><span class="ph-title">\ucc44\ud305</span><span class="ph-code">' + _popRoomCode + '</span></div>',
-    '<div class="msgs" id="pm"></div>',
-    '<div class="iw">',
-    '  <textarea id="pi" placeholder="\uba54\uc2dc\uc9c0 \uc785\ub825 (Enter \uc804\uc1a1)" rows="1"></textarea>',
-    '  <button class="sb" id="sb">&#x27A4;</button>',
-    '</div>',
-    _sc_open,
-    '(function(){',
-    "  function send(){var i=document.getElementById('pi');var t=i.value.trim();if(!t)return;i.value='';if(window.opener&&window.opener.sendChatFromPopout)window.opener.sendChatFromPopout(t);}",
-    "  function addMsg(name,text,type){var c=document.getElementById('pm');var div=document.createElement('div');div.className=type==='dice'?'md':type==='sys'?'ms':'';var now=new Date();var ts=now.getHours().toString().padStart(2,'0')+':'+now.getMinutes().toString().padStart(2,'0');var e=function(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');};if(type==='sys'){div.innerHTML='<div class=\"mt\">'+e(text)+'</div>';}else{div.innerHTML='<div class=\"mn\"><span class=\"nn\">'+e(name)+'</span><span class=\"tm\">'+ts+'</span></div><div class=\"mt\">'+e(text)+'</div>';}c.appendChild(div);c.scrollTop=c.scrollHeight;}",
-    "  document.getElementById('sb').addEventListener('click',send);",
-    "  document.getElementById('pi').addEventListener('keydown',function(ev){if(ev.key==='Enter'&&!ev.shiftKey){ev.preventDefault();send();}});",
-    '  window.addMsg=addMsg;',
-    '  window._popReady=true;',
-    '})();',
-    _sc_close,
-    '</body></html>',
-  ];
-  const popHtml = popParts.join('\n');
+  const popHtml = `<!DOCTYPE html><html lang="ko"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ITC \u2014 ${rc}</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden}
+body{font-family:'DM Sans',sans-serif;background:#101010;color:#e8e3da;font-size:14px;display:flex;flex-direction:column;height:100vh}
+.tabs{display:flex;border-bottom:1px solid #1f1f1f;flex-shrink:0;background:#131313}
+.tab{flex:1;background:none;border:none;border-bottom:2px solid transparent;color:#5a5751;padding:9px 4px;cursor:pointer;font-family:inherit;font-size:11px;letter-spacing:.08em;text-transform:uppercase;text-align:center;transition:.18s ease}
+.tab.on{color:#b89a60;border-bottom-color:#b89a60}
+.tab:hover:not(.on){color:#8c8882}
+.pane{display:none;flex:1;flex-direction:column;overflow:hidden}
+.pane.on{display:flex}
+.msgs{flex:1;overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:10px}
+.msgs::-webkit-scrollbar{width:4px}.msgs::-webkit-scrollbar-thumb{background:#262626;border-radius:2px}
+.mn{display:flex;align-items:baseline;gap:6px;margin-bottom:3px}
+.nn{font-size:13.5px;font-weight:600;color:#b89a60}
+.tm{font-size:9px;color:#5a5751;font-family:'DM Mono',monospace}
+.mt{font-size:14.5px;color:#8c8882;line-height:1.65;word-break:break-word}
+.md .mt{display:none}
+.dice-card{background:rgba(184,154,96,.1);border:1px solid rgba(184,154,96,.2);border-radius:8px;padding:10px 14px;text-align:center;margin-top:4px;max-width:70%}
+.dice-card-formula{font-size:10px;color:#5a5751;font-family:'DM Mono',monospace;letter-spacing:.08em;margin-bottom:4px}
+.dice-card-result{font-size:34px;font-weight:800;color:#b89a60;font-family:'DM Mono',monospace;line-height:1.2}
+.dice-card-rolls{font-size:14px;color:#8c8882;font-family:'DM Mono',monospace;margin-top:4px}
+.ms .mt{color:#5a5751;font-size:12px;font-style:italic;text-align:center}
+.j-list{flex:1;overflow-y:auto;padding:10px}
+.j-item{padding:8px 10px;border:1px solid #1f1f1f;border-radius:6px;margin-bottom:6px}
+.j-item-title{font-size:13px;color:#e8e3da;font-weight:500}
+.iw{border-top:1px solid #1f1f1f;padding:8px;display:flex;gap:6px;flex-shrink:0}
+textarea{flex:1;background:#161616;border:1px solid #1f1f1f;border-radius:6px;color:#e8e3da;padding:7px 10px;font-size:13px;resize:none;height:34px;font-family:inherit;outline:none}
+textarea:focus{border-color:#b89a60}
+.sb{width:34px;height:34px;background:#b89a60;border:none;border-radius:6px;color:#080808;cursor:pointer;font-size:15px;flex-shrink:0}
+</style></head><body>
+<div class="tabs">
+  <button class="tab on" data-tab="chat" onclick="switchTab('chat')">채팅</button>
+  <button class="tab" data-tab="casual" onclick="switchTab('casual')">잡담</button>
+  <button class="tab" data-tab="journal" onclick="switchTab('journal')">저널</button>
+</div>
+<div class="pane on" id="p-chat"><div class="msgs" id="pm-chat"></div></div>
+<div class="pane" id="p-casual"><div class="msgs" id="pm-casual"></div></div>
+<div class="pane" id="p-journal"><div class="j-list" id="pm-journal"></div></div>
+<div class="iw" id="pop-iw">
+  <textarea id="pi" placeholder="메시지 입력 (Enter 전송)" rows="1"></textarea>
+  <button class="sb" id="sb">&#x27A4;</button>
+</div>
+${_sc_open}
+(function(){
+  var activeTab='chat';
+  function e(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+  function fmt(s){var r=e(s);r=r.replace(/\\*\\*\\*(.+?)\\*\\*\\*/g,'<b><i>$$1</i></b>');r=r.replace(/\\*\\*(.+?)\\*\\*/g,'<i>$$1</i>');r=r.replace(/\\*(.+?)\\*/g,'<b>$$1</b>');return r.replace(/\\n/g,'<br>');}
+  window.switchTab=function(t){
+    activeTab=t;
+    document.querySelectorAll('.tab').forEach(function(b){b.classList.toggle('on',b.dataset.tab===t);});
+    document.querySelectorAll('.pane').forEach(function(p){p.classList.toggle('on',p.id==='p-'+t);});
+    var iw=document.getElementById('pop-iw');
+    if(t==='journal'){iw.style.display='none';}else{iw.style.display='';}
+  };
+  window.addMsg=function(name,text,type,channel,nameColor){
+    var ch=channel||'chat';
+    var c=document.getElementById('pm-'+ch);
+    if(!c)c=document.getElementById('pm-chat');
+    var div=document.createElement('div');
+    var now=new Date();var ts=now.getHours().toString().padStart(2,'0')+':'+now.getMinutes().toString().padStart(2,'0');
+    var nc=nameColor?' style="color:'+nameColor+'"':'';
+    if(type==='sys'||type==='system'){div.className='ms';div.innerHTML='<div class="mt">'+fmt(text)+'</div>';}
+    else if(type==='dice'){
+      div.className='md';
+      var dm=String(text).match(/[\\u{1F3B2}\\u{1F3AF}]\\s*(.+?)\\s*\\u2192\\s*(\\d+)\\s*\\(([^)]+)\\)/u);
+      if(dm){div.innerHTML='<div class="mn"><span class="nn"'+nc+'>'+e(name)+'</span><span class="tm">'+ts+'</span></div><div class="mt">'+e(text)+'</div><div class="dice-card"><div class="dice-card-formula">'+e(dm[1])+'</div><div class="dice-card-result">'+e(dm[2])+'</div><div class="dice-card-rolls">'+e(dm[3])+'</div></div>';}
+      else{div.innerHTML='<div class="mn"><span class="nn"'+nc+'>'+e(name)+'</span><span class="tm">'+ts+'</span></div><div class="mt">'+fmt(text)+'</div>';}
+    }
+    else{div.innerHTML='<div class="mn"><span class="nn"'+nc+'>'+e(name)+'</span><span class="tm">'+ts+'</span></div><div class="mt">'+fmt(text)+'</div>';}
+    c.appendChild(div);c.scrollTop=c.scrollHeight;
+  };
+  window.setJournals=function(list){
+    var c=document.getElementById('pm-journal');c.innerHTML='';
+    list.forEach(function(j){var d=document.createElement('div');d.className='j-item';d.innerHTML='<div class="j-item-title">'+e(j.title||'무제 저널')+'</div><div style="font-size:10px;color:#5a5751;margin-top:2px">'+e((j.body||'').slice(0,40)||'내용 없음')+'</div>';c.appendChild(d);});
+    if(!list.length)c.innerHTML='<div style="text-align:center;color:#5a5751;padding:20px;font-size:12px">저널이 없어요.</div>';
+  };
+  function send(){var i=document.getElementById('pi');var t=i.value.trim();if(!t)return;i.value='';if(window.opener&&window.opener.sendChatFromPopout)window.opener.sendChatFromPopout(t,activeTab);}
+  document.getElementById('sb').addEventListener('click',send);
+  document.getElementById('pi').addEventListener('keydown',function(ev){if(ev.key==='Enter'&&!ev.shiftKey){ev.preventDefault();send();}});
+  document.getElementById('pi').addEventListener('input',function(){if(window.opener&&window.opener.broadcastTyping)window.opener.broadcastTyping();});
+  window._popReady=true;
+})();
+${_sc_close}
+</body></html>`;
 
   const blob = new Blob([popHtml], { type: 'text/html;charset=utf-8' });
   const blobUrl = URL.createObjectURL(blob);
+  const pw = 400, ph2 = 650;
+  const offset = _popoutWins.length * 30;
+  const pl = window.screen.width - pw - 20 - offset;
+  const pt = Math.floor((window.screen.height - ph2) / 2) + offset;
+  const win = window.open(blobUrl, 'ITC_Pop_' + Date.now(), `width=${pw},height=${ph2},left=${pl},top=${pt},resizable=yes`);
 
-  const pw = 360, ph2 = 600;
-  const pl = window.screen.width - pw - 20;
-  const pt = Math.floor((window.screen.height - ph2) / 2);
-  _popoutWin = window.open(blobUrl, 'ITC_Chat',
-    `width=${pw},height=${ph2},left=${pl},top=${pt},resizable=yes`);
-
-  if (!_popoutWin) {
-    URL.revokeObjectURL(blobUrl);
-    showToast('팝업 차단을 해제해 주세요!');
-    return;
-  }
-
+  if (!win) { URL.revokeObjectURL(blobUrl); showToast('팝업 차단을 해제해 주세요!'); return; }
+  _popoutWins.push(win);
   setTimeout(() => URL.revokeObjectURL(blobUrl), 3000);
 
-  const copyMsgs = () => {
-    if (!_popoutWin || _popoutWin.closed || !_popoutWin._popReady) return;
+  const syncExisting = () => {
+    if (!win || win.closed || !win._popReady) return;
     document.querySelectorAll('#chat-messages > div').forEach(m => {
       const nameEl = m.querySelector('.msg-name');
       const textEl = m.querySelector('.msg-text');
-      const type = m.classList.contains('msg-dice') ? 'dice'
-                 : m.classList.contains('msg-sys')  ? 'sys' : 'normal';
-      if (textEl) _popoutWin.addMsg(nameEl?.textContent || '', textEl.textContent, type);
+      const type = m.classList.contains('msg-dice')?'dice':m.classList.contains('msg-sys')?'sys':'normal';
+      if (textEl) win.addMsg(nameEl?.textContent||'', textEl.textContent, type, 'chat', nameEl?.style?.color||'');
     });
+    document.querySelectorAll('#casual-messages > div').forEach(m => {
+      const nameEl = m.querySelector('.msg-name');
+      const textEl = m.querySelector('.msg-text');
+      if (textEl) win.addMsg(nameEl?.textContent||'', textEl.textContent, 'normal', 'casual', '');
+    });
+    try { win.setJournals(loadJournals()); } catch(e){}
   };
   let tries = 0;
-  const t = setInterval(() => {
-    tries++;
-    if ((_popoutWin && _popoutWin._popReady) || tries > 10) {
-      clearInterval(t);
-      copyMsgs();
-    }
-  }, 200);
-
-  showToast('채팅이 새 창으로 분리됐어요!');
+  const t = setInterval(() => { tries++; if ((win && win._popReady) || tries > 15) { clearInterval(t); syncExisting(); } }, 200);
+  showToast(`채팅이 새 창으로 분리됐어요! (${_popoutWins.length}/3)`);
 }
 
-function sendChatFromPopout(text) { sendMessage(St.myName, text, 'normal'); }
+function sendChatFromPopout(text, tab) {
+  if (tab === 'casual') { sendCasualMsg(_casualNickname || St.myName, text); }
+  else {
+    if (St.speakAsJournalId) { const j = loadJournals().find(x => x.id === St.speakAsJournalId); if (j) { saSendMessage(j, text); return; } }
+    sendMessage(St.myName, text, 'normal');
+  }
+}
 
-/* 원본 appendChatMsg 래핑 — 팝아웃 동기화 */
 const _baseAppend = appendChatMsg;
 appendChatMsg = function(name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId, whisperTo, whisperToName, nameColor, msgKey, channel, standingImg) {
   _baseAppend(name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId, whisperTo, whisperToName, nameColor, msgKey, channel, standingImg);
-  if (_popoutWin && !_popoutWin.closed && _popoutWin.addMsg) {
-    _popoutWin.addMsg(name, text, type);
-  }
+  _popoutWins = _popoutWins.filter(w => w && !w.closed);
+  _popoutWins.forEach(w => { if (w.addMsg) w.addMsg(name, text, type, channel || 'chat', nameColor || ''); });
 };
 
 function initProfileModal() {
