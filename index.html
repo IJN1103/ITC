@@ -470,7 +470,7 @@ to{opacity:1}
 .j-fumb{background:rgba(200,92,92,.35);color:var(--red);}
 .panel-right{width:250px;min-width:15px;background:var(--s1);border-left:1px solid var(--border);display:flex;flex-direction:column;transition:width .25s ease;position:relative;}
 .panel-right.collapsed{width:0 !important;min-width:0 !important;overflow:visible;border-left:none;}
-.panel-right.collapsed .right-tabs,.panel-right.collapsed .right-pane,.panel-right.collapsed .chat-resize-handle{display:none;}
+.panel-right.collapsed .right-tabs,.panel-right.collapsed .right-pane,.panel-right.collapsed .chat-resize-handle,.panel-right.collapsed .shared-input-area{display:none;}
 .rtab-toggle{position:absolute;left:0;top:50%;transform:translateX(-100%) translateY(-50%);background:var(--s2);border:1px solid var(--border);border-right:none;border-radius:6px 0 0 6px;color:var(--muted);font-size:12px;cursor:pointer;padding:12px 5px;z-index:40;transition:var(--t);line-height:1;}
 .rtab-toggle:hover{color:var(--accent);background:var(--a-dim);}
 .chat-resize-handle{position:absolute;left:0;top:0;bottom:0;width:5px;cursor:col-resize;z-index:30;background:transparent;transition:background .15s;}
@@ -499,6 +499,7 @@ to{opacity:1}
 .msg-sys .msg-text{color:var(--muted);font-size:12px;font-style:italic;}
 .msg-image{display:block;max-width:220px;height:auto;border-radius:var(--r);margin-top:5px;cursor:zoom-in;border:1px solid var(--border);}
 .chat-input-wrap{padding:8px;display:flex;gap:6px;}
+.shared-input-area{flex-shrink:0;border-top:1px solid var(--border);}
 .chat-toolbar:not(.gm-visible) + .chat-input-wrap{border-top:1px solid var(--border);}
 .right-tabs{display:flex;border-bottom:1px solid var(--border);flex-shrink:0;}
 .rtab{flex:1;background:none;border:none;border-bottom:2px solid transparent;color:var(--muted);padding:9px 4px;cursor:pointer;font-family:inherit;font-size:11px;letter-spacing:.08em;text-transform:uppercase;transition:var(--t);margin-bottom:-1px;display:flex;align-items:center;justify-content:center;gap:5px;}
@@ -1059,6 +1060,15 @@ to{transform:translateX(0);opacity:1;}
       <!-- 채팅 패널 -->
       <div class="right-pane on" id="rpane-chat">
         <div class="chat-messages" id="chat-messages"></div>
+      </div>
+
+      <!-- 잡담 패널 -->
+      <div class="right-pane" id="rpane-casual">
+        <div class="chat-messages" id="casual-messages"></div>
+      </div>
+
+      <!-- 공용 툴바 + 입력창 (채팅/잡담 공유) -->
+      <div class="shared-input-area" id="shared-input-area">
         <div class="chat-toolbar" id="chat-toolbar">
           <div class="speak-as-wrap" id="speak-as-wrap">
             <button class="speak-as-btn" id="speak-as-btn" onclick="toggleSpeakAsDropdown(event)" title="저널 캐릭터로 말하기">
@@ -1088,15 +1098,6 @@ to{transform:translateX(0);opacity:1;}
           <input type="file" id="chat-img-input" accept="image/png,image/jpeg,image/gif" style="display:none" onchange="handleChatImageUpload(this)">
           <textarea class="chat-input" id="chat-input" placeholder="메시지 입력 (Enter 전송)" rows="1" onkeydown="chatKeydown(event)"></textarea>
           <button class="send-btn" onclick="sendChat()">➤</button>
-        </div>
-      </div>
-
-      <!-- 잡담 패널 -->
-      <div class="right-pane" id="rpane-casual">
-        <div class="chat-messages" id="casual-messages"></div>
-        <div class="chat-input-wrap">
-          <textarea class="chat-input" id="casual-input" placeholder="잡담 입력 (Enter 전송)" rows="1" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendCasual();}"></textarea>
-          <button class="send-btn" onclick="sendCasual()">➤</button>
         </div>
       </div>
 
@@ -2905,12 +2906,14 @@ function sendChat() {
   if (St.speakAsJournalId) {
     const j = loadJournals().find(x => x.id === St.speakAsJournalId);
     if (j) {
+      if (_activeRightTab === 'casual') { saSendCasual(j, raw); return; }
       saSendMessage(j, raw);
       return;
     }
     St.speakAsJournalId = null;
     saRefreshBtn();
   }
+  if (_activeRightTab === 'casual') { sendCasualMsg(St.myName, raw); return; }
   sendMessage(St.myName, raw, 'normal');
 }
 
@@ -2925,16 +2928,32 @@ function sendMessage(name, text, type = 'normal') {
 }
 
 function sendCasual() {
-  const inp = document.getElementById('casual-input');
+  const inp = document.getElementById('chat-input');
   const raw = inp.value.trim();
   if (!raw) return;
   inp.value = '';
-  const msg = { name: St.myName, text: raw, uid: St.myId, time: Date.now() };
+  sendCasualMsg(St.myName, raw);
+}
+
+function sendCasualMsg(name, text) {
+  const msg = { name, text, uid: St.myId, time: Date.now() };
   if (window._FB?.CONFIGURED) {
     const { db, ref, push } = window._FB;
     push(ref(db, `rooms/${St.roomCode}/casual`), msg);
   } else {
-    appendCasualMsg(msg.name, raw, St.myId, msg.time);
+    appendCasualMsg(name, text, St.myId, msg.time);
+  }
+}
+
+function saSendCasual(journal, text) {
+  const name = journal.title || '무제';
+  const avatar = saGetAvatar(journal.id);
+  const msg = { name, text: text.replace(/@\S+/g,'').trim(), uid: St.myId, time: Date.now(), speakAsAvatar: avatar, speakAsJournalId: journal.id };
+  if (window._FB?.CONFIGURED) {
+    const { db, ref, push } = window._FB;
+    push(ref(db, `rooms/${St.roomCode}/casual`), msg);
+  } else {
+    appendCasualMsg(name, msg.text, St.myId, msg.time);
   }
 }
 
@@ -4382,11 +4401,15 @@ function showProfileMsg(text, type) {
   el.className = 'profile-msg' + (type ? ' ' + type : '');
 }
 
+let _activeRightTab = 'chat';
 function switchRightTab(tab) {
+  _activeRightTab = tab;
   document.querySelectorAll('.rtab').forEach(b => b.classList.remove('on'));
   document.querySelectorAll('.right-pane').forEach(p => p.classList.remove('on'));
   document.getElementById('rtab-' + tab).classList.add('on');
   document.getElementById('rpane-' + tab).classList.add('on');
+  const shared = document.getElementById('shared-input-area');
+  if (shared) shared.style.display = (tab === 'journal') ? 'none' : '';
   if (tab === 'journal') renderJournalList();
 }
 
