@@ -1051,6 +1051,23 @@ input:focus, select:focus, textarea:focus { outline: none; }
 .map-add-token { position: absolute; top: 10px; right: 10px; z-index: 20; background: var(--s2); border: 1px solid var(--border); border-radius: var(--r); color: var(--dim); cursor: pointer; font-size: 11px; padding: 4px 10px; transition: var(--t); font-family: inherit; }
 .map-add-token:hover { border-color: var(--accent); color: var(--accent); background: var(--a-dim); }
 
+/* ── VN 대사창 ── */
+.vn-dialog{position:absolute;bottom:0;left:0;right:0;z-index:30;display:none;pointer-events:auto}
+.vn-dialog.open{display:flex}
+.vn-dialog-inner{display:flex;align-items:flex-end;width:100%}
+.vn-standing{flex-shrink:0;max-width:35%;max-height:300px;display:flex;align-items:flex-end;justify-content:center;pointer-events:none;z-index:2}
+.vn-standing img{max-height:280px;max-width:100%;object-fit:contain;filter:drop-shadow(2px 2px 8px rgba(0,0,0,.6));animation:vnSlideIn .3s ease}
+@keyframes vnSlideIn{from{opacity:0;transform:translateX(-20px)}to{opacity:1;transform:translateX(0)}}
+.vn-content{flex:1;min-width:0;position:relative;display:flex;flex-direction:column;align-items:flex-start}
+.vn-name-tag{background:linear-gradient(135deg,rgba(60,80,140,.9),rgba(40,55,100,.95));border:1px solid rgba(120,160,255,.25);border-bottom:none;border-radius:6px 6px 0 0;padding:5px 16px;font-size:13px;font-weight:700;color:#fff;letter-spacing:.04em;text-shadow:0 1px 2px rgba(0,0,0,.4);margin-left:16px;z-index:2}
+.vn-box{width:100%;background:linear-gradient(180deg,rgba(15,18,30,.88) 0%,rgba(10,12,22,.94) 100%);border:1px solid rgba(100,140,255,.15);border-radius:0 8px 8px 8px;padding:16px 22px 18px;backdrop-filter:blur(8px);cursor:pointer;position:relative}
+.vn-text{font-size:13.5px;color:rgba(255,255,255,.9);line-height:1.8;letter-spacing:.03em;animation:vnTypeIn .2s ease}
+@keyframes vnTypeIn{from{opacity:0}to{opacity:1}}
+.vn-arrow{position:absolute;bottom:10px;right:18px;font-size:10px;color:rgba(255,255,255,.3);animation:vnBlink 1.2s infinite}
+@keyframes vnBlink{0%,100%{opacity:.25}50%{opacity:.7}}
+.vn-close{position:absolute;top:-28px;right:8px;background:none;border:none;color:rgba(255,255,255,.25);font-size:14px;cursor:pointer;z-index:3;padding:2px 6px;transition:color .2s}
+.vn-close:hover{color:rgba(255,255,255,.7)}
+
 /* ── 다이스바 ── */
 .dice-bar { height: 90px; background: var(--s2); border-top: 1px solid var(--border); display: flex; align-items: center; padding: 0 14px; gap: 10px; flex-shrink: 0; }
 .dice-btns { display: flex; gap: 5px; }
@@ -1925,6 +1942,20 @@ input:focus, select:focus, textarea:focus { outline: none; }
           <button class="map-tb-btn"    id="tool-erase"  onclick="setTool('erase')">✕</button>
         </div>
         <button class="map-add-token gm-only" id="map-add-token" onclick="openModal('modal-token')" style="display:none">+ 토큰</button>
+        <!-- VN 대사창 -->
+        <div class="vn-dialog" id="vn-dialog" onclick="hideDialogueBox()">
+          <div class="vn-dialog-inner">
+            <div class="vn-standing" id="vn-standing"></div>
+            <div class="vn-content">
+              <button class="vn-close" onclick="event.stopPropagation();hideDialogueBox()">✕</button>
+              <div class="vn-name-tag" id="vn-name"></div>
+              <div class="vn-box">
+                <div class="vn-text" id="vn-text"></div>
+                <div class="vn-arrow">▼</div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
       <div class="dice-bar">
         <div class="dice-btns" id="dice-btns"></div>
@@ -3992,10 +4023,12 @@ function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJ
     d2.innerHTML = `${avHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name sa-msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-text">${esc(text).replace(/\n/g,'<br>')}</div></div>`;
     container.appendChild(d2);
     container.scrollTop = container.scrollHeight;
+    // 최근 메시지만 대사창 표시 (로드 시 일괄 렌더링 방지)
+    if (!timestamp || Date.now() - timestamp < 5000) {
+      showDialogueBoxFromMsg(name, text, speakAsJournalId);
+    }
     return;
   }
-
-  // speak-as 이미지 메시지
   if (type === 'speak-as-image') {
     const r = St.avatarShape === 'circle' ? '50%' : '6px';
     const sc = St.avatarShape === 'circle' ? 'shape-circle' : 'shape-rounded';
@@ -5783,6 +5816,122 @@ function saSendMessage(journal, text) {
     push(ref(db, `rooms/${St.roomCode}/chat`), msg);
   } else {
     appendChatMsg(msg.name, text, 'speak-as', St.myId, msg.time, msg.speakAsAvatar, msg.speakAsJournalId);
+  }
+}
+
+/* ─────────────────────────────────────────────────
+   VN DIALOGUE BOX (라이트노벨 대사창)
+───────────────────────────────────────────────── */
+let _vnCurrentStanding = {};  // journalId → 현재 스탠딩 라벨
+let _vnTimer = null;
+
+function getJournalToken(journal) {
+  const j = typeof journal === 'string' ? loadJournals().find(x => x.id === journal) : journal;
+  if (!j?.assignedTokenId) return null;
+  return St.tokens[j.assignedTokenId] || null;
+}
+
+function resolveStandingImage(journal, text) {
+  const token = getJournalToken(journal);
+  if (!token) return null;
+
+  const standings = token.standings || [];
+  const hasStandings = standings.length > 0 && standings.some(s => s.img);
+
+  // @명령어 파싱 — 텍스트에서 @라벨 찾기
+  const atMatch = text.match(/@(\S+)/);
+  if (atMatch && hasStandings) {
+    const label = atMatch[1];
+    const found = standings.find(s => s.label && s.label.replace(/^@/, '') === label && s.img);
+    if (found) {
+      _vnCurrentStanding[journal.id] = found.label;
+      return found.img;
+    }
+  }
+
+  // 스탠딩이 있고 이전에 선택된 스탠딩이 있으면 유지
+  if (hasStandings && _vnCurrentStanding[journal.id]) {
+    const prev = standings.find(s => s.label === _vnCurrentStanding[journal.id] && s.img);
+    if (prev) return prev.img;
+  }
+
+  // 스탠딩이 있으면 첫 번째 스탠딩
+  if (hasStandings) {
+    const first = standings.find(s => s.img);
+    if (first) {
+      _vnCurrentStanding[journal.id] = first.label;
+      return first.img;
+    }
+  }
+
+  // 스탠딩 없고 토큰 이미지가 있으면
+  if (token.tokenImg) return token.tokenImg;
+
+  return null;
+}
+
+function cleanDialogueText(text) {
+  // @스탠딩명령어 제거
+  return text.replace(/@\S+/g, '').trim();
+}
+
+function showDialogueBox(journal, text) {
+  const dialog = document.getElementById('vn-dialog');
+  const nameEl = document.getElementById('vn-name');
+  const textEl = document.getElementById('vn-text');
+  const standingEl = document.getElementById('vn-standing');
+  if (!dialog || !nameEl || !textEl || !standingEl) return;
+
+  // 타이머 초기화
+  if (_vnTimer) { clearTimeout(_vnTimer); _vnTimer = null; }
+
+  const name = journal.title || '무제';
+  const standingImg = resolveStandingImage(journal, text);
+  const cleanText = cleanDialogueText(text);
+
+  nameEl.textContent = name;
+  textEl.innerHTML = esc(cleanText).replace(/\n/g, '<br>');
+
+  if (standingImg) {
+    standingEl.innerHTML = `<img src="${standingImg}" alt="">`;
+    standingEl.style.display = '';
+  } else {
+    standingEl.innerHTML = '';
+    standingEl.style.display = 'none';
+  }
+
+  dialog.classList.add('open');
+
+  // 15초 후 자동 닫기
+  _vnTimer = setTimeout(() => hideDialogueBox(), 15000);
+}
+
+function hideDialogueBox() {
+  const dialog = document.getElementById('vn-dialog');
+  if (dialog) dialog.classList.remove('open');
+  if (_vnTimer) { clearTimeout(_vnTimer); _vnTimer = null; }
+}
+
+function showDialogueBoxFromMsg(name, text, journalId) {
+  // journalId로 저널 찾기 (다른 사람 저널은 못 찾을 수 있음)
+  const journal = journalId ? loadJournals().find(x => x.id === journalId) : null;
+  if (journal) {
+    showDialogueBox(journal, text);
+  } else {
+    // 저널 없이 이름+텍스트만으로 표시
+    const dialog = document.getElementById('vn-dialog');
+    const nameEl = document.getElementById('vn-name');
+    const textEl = document.getElementById('vn-text');
+    const standingEl = document.getElementById('vn-standing');
+    if (!dialog) return;
+    if (_vnTimer) { clearTimeout(_vnTimer); _vnTimer = null; }
+    nameEl.textContent = name || '???';
+    const cleanText = text.replace(/@\S+/g, '').trim();
+    textEl.innerHTML = esc(cleanText).replace(/\n/g, '<br>');
+    standingEl.innerHTML = '';
+    standingEl.style.display = 'none';
+    dialog.classList.add('open');
+    _vnTimer = setTimeout(() => hideDialogueBox(), 15000);
   }
 }
 
