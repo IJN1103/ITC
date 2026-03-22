@@ -89,6 +89,10 @@ if (CONFIGURED) {
       if (window._onAuthReady) window._onAuthReady(user);
     } else {
       window._currentUser = null;
+      // 미로그인 → 로그인 화면 표시
+      document.getElementById('screen-auth').style.display  = 'flex';
+      document.getElementById('screen-lobby').style.display = 'none';
+      document.getElementById('screen-game').style.display  = 'none';
     }
   });
 }
@@ -145,7 +149,7 @@ input:focus, select:focus, textarea:focus { outline: none; }
 ══════════════════════════════════════════════════ */
 #screen-auth {
   min-height: 100vh;
-  display: flex;
+  display: none;
   align-items: stretch;
 }
 
@@ -1778,12 +1782,15 @@ function initAuthScreen() {
 
   // Firebase 미설정 시 안내 표시
   if (!fb?.CONFIGURED) {
+    document.getElementById('screen-auth').style.display = 'flex';
     document.getElementById('auth-form-main').style.display = 'none';
     document.getElementById('local-banner').style.display = 'block';
     return;
   }
 
-  // 이미 로그인된 경우 → 바로 로비로
+  // onAuthStateChanged로 로그인 상태 감지
+  // 로그인 상태이면 → 세션 복원 또는 로비
+  // 미로그인이면 → 로그인 화면 표시
   window._onAuthReady = async user => {
     St.myName = user.displayName || user.email?.split('@')[0] || '플레이어';
     St.myId   = user.uid;
