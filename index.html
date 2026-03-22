@@ -655,7 +655,7 @@ to{transform:translateX(0);opacity:1;}
 .desc-toggle-btn .desc-dot{width:6px;height:6px;border-radius:50%;background:var(--muted);flex-shrink:0;transition:var(--t);}
 .desc-toggle-btn.active .desc-dot{background:var(--accent);}
 .chat-input.desc-mode{border-color:var(--accent);background:rgba(184,154,96,.07);}
-.speak-as-wrap{position:relative;display:inline-flex;align-items:center;width:100%}
+.speak-as-wrap{position:relative;display:inline-flex;align-items:center;flex:1}
 .speak-as-btn{display:inline-flex;align-items:center;gap:6px;background:none;border:none;border-radius:var(--r);color:var(--muted);font:inherit;font-size:12.5px;padding:4px 6px;cursor:pointer;transition:var(--t);letter-spacing:.03em;max-width:180px}
 .speak-as-btn:hover{color:var(--accent2,#7c9ece)}
 .speak-as-btn.active{color:var(--accent2,#7c9ece)}
@@ -1070,12 +1070,18 @@ to{transform:translateX(0);opacity:1;}
       <!-- 공용 툴바 + 입력창 (채팅/잡담 공유) -->
       <div class="shared-input-area" id="shared-input-area">
         <div class="chat-toolbar" id="chat-toolbar">
-          <div class="speak-as-wrap" id="speak-as-wrap">
-            <button class="speak-as-btn" id="speak-as-btn" onclick="toggleSpeakAsDropdown(event)" title="저널 캐릭터로 말하기">
-              <span class="sa-icon" id="sa-icon"><svg width="11" height="11" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="5" r="3" stroke="currentColor" stroke-width="1.5"/><path d="M2 12c0-2.21 2.239-4 5-4s5 1.79 5 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></span>
-              <span class="sa-name" id="sa-name">나</span>
-            </button>
-            <div class="speak-as-dropdown" id="speak-as-dropdown"></div>
+          <div style="display:flex;align-items:center;width:100%;gap:4px">
+            <div class="speak-as-wrap" id="speak-as-wrap">
+              <button class="speak-as-btn" id="speak-as-btn" onclick="toggleSpeakAsDropdown(event)" title="저널 캐릭터로 말하기">
+                <span class="sa-icon" id="sa-icon"><svg width="11" height="11" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="5" r="3" stroke="currentColor" stroke-width="1.5"/><path d="M2 12c0-2.21 2.239-4 5-4s5 1.79 5 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></span>
+                <span class="sa-name" id="sa-name">나</span>
+              </button>
+              <div class="speak-as-dropdown" id="speak-as-dropdown"></div>
+            </div>
+            <div style="margin-left:auto;position:relative" id="sa-color-wrap">
+              <button class="sa-color-btn" id="sa-color-btn" onclick="toggleColorPalette(event)" title="채팅 이름 색상 설정"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r="2"/><circle cx="17.5" cy="10.5" r="2"/><circle cx="8.5" cy="7.5" r="2"/><circle cx="6.5" cy="12" r="2"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.9 0 1.5-.7 1.5-1.5 0-.4-.1-.7-.4-1-.3-.3-.4-.7-.4-1.1 0-.8.7-1.5 1.5-1.5H16c3.3 0 6-2.7 6-6 0-5.5-4.5-9-10-9z"/></svg></button>
+              <div class="sa-color-popup" id="sa-color-popup"></div>
+            </div>
           </div>
           <button class="desc-toggle-btn" id="desc-toggle-btn" onclick="toggleDescMode()" title="/desc 지문 모드">
             <span class="desc-dot"></span>
@@ -1087,10 +1093,6 @@ to{transform:translateX(0);opacity:1;}
               <span id="w-label">귓말</span>
             </button>
             <div class="whisper-dropdown" id="whisper-dropdown"></div>
-          </div>
-          <div style="margin-left:auto;position:relative" id="sa-color-wrap">
-            <button class="sa-color-btn" id="sa-color-btn" onclick="toggleColorPalette(event)" title="채팅 이름 색상 설정">🎨</button>
-            <div class="sa-color-popup" id="sa-color-popup"></div>
           </div>
         </div>
         <div class="chat-input-wrap">
@@ -1409,7 +1411,6 @@ to{transform:translateX(0);opacity:1;}
   <div class="tok-ctx-item" onclick="tokCtxAction('toBack')">집어넣기<span class="ctx-hint">S</span></div>
   <div class="tok-ctx-item" onclick="tokCtxAction('own')">소유 권한 갖기<span class="ctx-hint">T</span></div>
   <div class="tok-ctx-item" onclick="tokCtxAction('duplicate')">복제<span class="ctx-hint">Ctrl+D</span></div>
-  <div class="tok-ctx-item" onclick="tokCtxAction('copy')">복사<span class="ctx-hint">Ctrl+C</span></div>
   <div class="tok-ctx-sep"></div>
   <div class="tok-ctx-item danger" onclick="tokCtxAction('delete')">삭제<span class="ctx-hint">Ctrl+⌫</span></div>
   <div class="tok-ctx-sep"></div>
@@ -1734,6 +1735,7 @@ const St = {
   descMode: false,
   whisperTo: null,
   whisperToName: null,
+  whisperToJournal: null,
   players: {},
   avatarShape: localStorage.getItem('itc_avatar_shape') || 'rounded',
 };
@@ -2405,11 +2407,11 @@ function setupFirebaseListeners() {
 
     const rendered = container.querySelectorAll('.chat-msg').length;
     const toAdd = sorted.slice(rendered);
-    toAdd.forEach(m => appendChatMsg(m.name, m.text, m.type || 'normal', m.uid, m.time, m.speakAsAvatar || null, m.speakAsJournalId || null, m.whisperTo || null, m.whisperToName || null));
+    toAdd.forEach(m => appendChatMsg(m.name, m.text, m.type || 'normal', m.uid, m.time, m.speakAsAvatar || null, m.speakAsJournalId || null, m.whisperTo || null, m.whisperToName || null, m.nameColor || null));
 
     if (toAdd.length === 0 && rendered > sorted.length) {
       container.innerHTML = '';
-      sorted.forEach(m => appendChatMsg(m.name, m.text, m.type || 'normal', m.uid, m.time, m.speakAsAvatar || null, m.speakAsJournalId || null, m.whisperTo || null, m.whisperToName || null));
+      sorted.forEach(m => appendChatMsg(m.name, m.text, m.type || 'normal', m.uid, m.time, m.speakAsAvatar || null, m.speakAsJournalId || null, m.whisperTo || null, m.whisperToName || null, m.nameColor || null));
     }
   });
 
@@ -2491,6 +2493,7 @@ async function enterGame() {
   St.speakAsJournalId = null;
   St.whisperTo = null;
   St.whisperToName = null;
+  St.whisperToJournal = null;
   saRefreshBtn();
   refreshWhisperBtn();
   renderCharacterSheet(St.system);
@@ -2883,8 +2886,19 @@ function sendChat() {
     if (!whisperText) return;
     const players = St.players || {};
     const target = Object.entries(players).find(([id, p]) => p.name === targetName);
-    if (!target) { showToast(`'${targetName}' 플레이어를 찾을 수 없어요.`); return; }
-    sendWhisperMessage(St.myName, whisperText, target[0], targetName);
+    if (target) {
+      sendWhisperMessage(St.myName, whisperText, target[0], targetName);
+      return;
+    }
+    const jTarget = _allJournals.find(j => (j.title || '') === targetName);
+    if (jTarget) {
+      const ownerId = jTarget.ownerId;
+      if (ownerId) {
+        sendWhisperMessage(St.speakAsJournalId ? (loadJournals().find(x=>x.id===St.speakAsJournalId)?.title||St.myName) : St.myName, whisperText, ownerId, targetName);
+        return;
+      }
+    }
+    showToast(`'${targetName}' 대상을 찾을 수 없어요.`);
     return;
   }
 
@@ -2898,7 +2912,8 @@ function sendChat() {
 
   if (St.whisperTo) {
     inp.value = '';
-    sendWhisperMessage(St.myName, raw, St.whisperTo, St.whisperToName);
+    const senderName = St.speakAsJournalId ? (loadJournals().find(x=>x.id===St.speakAsJournalId)?.title || St.myName) : St.myName;
+    sendWhisperMessage(senderName, raw, St.whisperTo, St.whisperToName);
     return;
   }
 
@@ -3077,7 +3092,7 @@ function getAvatarHtml(name, uid) {
   return `<div class="msg-avatar ${shape_class}"><div class="msg-avatar-inner" style="border-radius:${r}">${esc(initial)}</div></div>`;
 }
 
-function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId, whisperTo, whisperToName) {
+function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId, whisperTo, whisperToName, nameColor) {
   const container = document.getElementById('chat-messages');
   const d = timestamp ? new Date(timestamp) : new Date();
   const time = `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
@@ -3124,7 +3139,7 @@ function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJ
     }
     const d2 = document.createElement('div');
     d2.className = 'chat-msg msg-speak-as';
-    const _jColor = speakAsJournalId ? (_allJournals.find(x => x.id === speakAsJournalId)?.nameColor || '') : '';
+    const _jColor = nameColor || (speakAsJournalId ? (_allJournals.find(x => x.id === speakAsJournalId)?.nameColor || '') : '');
     const _nameStyle = _jColor ? ` style="color:${_jColor}"` : '';
     d2.innerHTML = `${avHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name sa-msg-name"${_nameStyle}>${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-text">${esc(text.replace(/@\S+/g,'').trim()).replace(/\n/g,'<br>')}</div></div>`;
     container.appendChild(d2);
@@ -4183,8 +4198,8 @@ function sendChatFromPopout(text) { sendMessage(St.myName, text, 'normal'); }
 
 /* 원본 appendChatMsg 래핑 — 팝아웃 동기화 */
 const _baseAppend = appendChatMsg;
-appendChatMsg = function(name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId, whisperTo, whisperToName) {
-  _baseAppend(name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId, whisperTo, whisperToName);
+appendChatMsg = function(name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId, whisperTo, whisperToName, nameColor) {
+  _baseAppend(name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId, whisperTo, whisperToName, nameColor);
   if (_popoutWin && !_popoutWin.closed && _popoutWin.addMsg) {
     _popoutWin.addMsg(name, text, type);
   }
@@ -5190,15 +5205,16 @@ function saGetAvatar(journalId) {
 }
 
 function saSendMessage(journal, text) {
-  const avatar = saGetAvatar(journal.id);   // 전송 직전 최신 아바타 조회
+  const avatar = saGetAvatar(journal.id);
   const msg = {
     name: journal.title || '무제',
     text,
     type: 'speak-as',
     uid: St.myId,
     time: Date.now(),
-    speakAsAvatar: avatar,                  // base64 데이터 직접 탑재
+    speakAsAvatar: avatar,
     speakAsJournalId: journal.id,
+    nameColor: journal.nameColor || '',
   };
   if (window._FB?.CONFIGURED) {
     const { db, ref, push } = window._FB;
@@ -5386,6 +5402,14 @@ function saSetJournal(journalId) {
   document.getElementById('speak-as-dropdown')?.classList.remove('open');
   saRefreshBtn();
   document.getElementById('chat-input')?.focus();
+  if (window._FB?.CONFIGURED && St.roomCode) {
+    const { db, ref, update } = window._FB;
+    const j = journalId ? loadJournals().find(x => x.id === journalId) : null;
+    update(ref(db, `rooms/${St.roomCode}/players/${St.myId}`), {
+      currentJournalId: journalId || null,
+      currentJournalName: j?.title || null
+    });
+  }
 }
 
 function saRefreshBtn() {
@@ -5496,13 +5520,22 @@ function renderWhisperDropdown() {
 
   const players = St.players || {};
   Object.entries(players).forEach(([id, p]) => {
-    if (id === St.myId) return; // 자기 자신 제외
-    const item = document.createElement('div');
-    item.className = 'w-dd-item' + (St.whisperTo === id ? ' selected' : '');
+    if (id === St.myId) return;
     const roleTag = p.role === 'gm' ? '<span class="w-dd-role">GM</span>' : '';
+    const item = document.createElement('div');
+    item.className = 'w-dd-item' + (St.whisperTo === id && !St.whisperToJournal ? ' selected' : '');
     item.innerHTML = `<span>🔒 ${esc(p.name)}에게 귓말</span>${roleTag}`;
-    item.onclick = (e) => { e.stopPropagation(); selectWhisperTarget(id, p.name); dd.classList.remove('open'); };
+    item.onclick = (e) => { e.stopPropagation(); selectWhisperTarget(id, p.name, null); dd.classList.remove('open'); };
     dd.appendChild(item);
+
+    if (p.currentJournalName && p.currentJournalId) {
+      const jItem = document.createElement('div');
+      jItem.className = 'w-dd-item' + (St.whisperTo === id && St.whisperToJournal === p.currentJournalId ? ' selected' : '');
+      jItem.style.paddingLeft = '24px';
+      jItem.innerHTML = `<span>🔒 ${esc(p.currentJournalName)}에게 귓말</span><span class="w-dd-role">${esc(p.name)}</span>`;
+      jItem.onclick = (e) => { e.stopPropagation(); selectWhisperTarget(id, p.currentJournalName, p.currentJournalId); dd.classList.remove('open'); };
+      dd.appendChild(jItem);
+    }
   });
 
   if (Object.keys(players).filter(id => id !== St.myId).length === 0) {
@@ -5514,9 +5547,10 @@ function renderWhisperDropdown() {
   }
 }
 
-function selectWhisperTarget(uid, name) {
+function selectWhisperTarget(uid, name, journalId) {
   St.whisperTo = uid;
   St.whisperToName = name;
+  St.whisperToJournal = journalId || null;
   if (St.descMode) toggleDescMode();
   refreshWhisperBtn();
   const inp = document.getElementById('chat-input');
@@ -5530,6 +5564,7 @@ function selectWhisperTarget(uid, name) {
 function clearWhisper() {
   St.whisperTo = null;
   St.whisperToName = null;
+  St.whisperToJournal = null;
   refreshWhisperBtn();
   const inp = document.getElementById('chat-input');
   if (inp) {
