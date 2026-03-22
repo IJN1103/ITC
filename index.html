@@ -61,7 +61,7 @@ import { initializeApp }        from "https://www.gstatic.com/firebasejs/10.12.0
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword,
          updateProfile, onAuthStateChanged, signOut, GoogleAuthProvider, signInWithPopup }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-import { getDatabase, ref, set, push, onValue, update, remove, get, serverTimestamp }
+import { getDatabase, ref, set, push, onValue, update, remove, get, serverTimestamp, onDisconnect }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
 // ↓↓↓ 여기에 Firebase 설정을 붙여넣으세요 ↓↓↓
@@ -102,7 +102,7 @@ if (CONFIGURED) {
 /* 전역 노출 */
 window._FB = {
   CONFIGURED, auth, db,
-  ref, set, push, onValue, update, remove, get, serverTimestamp,
+  ref, set, push, onValue, update, remove, get, serverTimestamp, onDisconnect,
   createUserWithEmailAndPassword, signInWithEmailAndPassword,
   updateProfile, onAuthStateChanged, signOut,
   GoogleAuthProvider, signInWithPopup,
@@ -500,6 +500,13 @@ to{opacity:1}
 .msg-image{display:block;max-width:220px;height:auto;border-radius:var(--r);margin-top:5px;cursor:zoom-in;border:1px solid var(--border);}
 .chat-input-wrap{padding:8px;display:flex;gap:6px;}
 .shared-input-area{flex-shrink:0;border-top:1px solid var(--border);}
+.typing-indicator{min-height:0;padding:0 10px;font-size:11px;color:var(--muted);font-style:italic;transition:all .2s ease;overflow:hidden;flex-shrink:0}
+.typing-indicator:empty{padding:0}
+.typing-indicator:not(:empty){padding:4px 10px}
+.p-chip.online .p-dot{background:var(--accent);box-shadow:0 0 4px var(--accent)}
+.p-chip.online span{color:var(--accent)}
+.p-chip.offline .p-dot{background:var(--muted)}
+.p-chip.offline span{color:var(--muted)}
 .chat-toolbar:not(.gm-visible) + .chat-input-wrap{border-top:1px solid var(--border);}
 .right-tabs{display:flex;border-bottom:1px solid var(--border);flex-shrink:0;}
 .rtab{flex:1;background:none;border:none;border-bottom:2px solid transparent;color:var(--muted);padding:9px 4px;cursor:pointer;font-family:inherit;font-size:11px;letter-spacing:.08em;text-transform:uppercase;transition:var(--t);margin-bottom:-1px;display:flex;align-items:center;justify-content:center;gap:5px;}
@@ -1066,11 +1073,13 @@ to{transform:translateX(0);opacity:1;}
       <!-- 채팅 패널 -->
       <div class="right-pane on" id="rpane-chat">
         <div class="chat-messages" id="chat-messages"></div>
+        <div class="typing-indicator" id="typing-chat"></div>
       </div>
 
       <!-- 잡담 패널 -->
       <div class="right-pane" id="rpane-casual">
         <div class="chat-messages" id="casual-messages"></div>
+        <div class="typing-indicator" id="typing-casual"></div>
       </div>
 
       <!-- 공용 툴바 + 입력창 (채팅/잡담 공유) -->
@@ -2469,6 +2478,18 @@ function setupFirebaseListeners() {
     if (!roll || roll.playerId === St.myId || roll.secret) return;
     showRollResult(roll);
   });
+
+  // 온라인 상태 설정
+  const presRef = ref(db, `rooms/${code}/players/${St.myId}/online`);
+  window._FB.set(presRef, true);
+  window._FB.onDisconnect(presRef).set(false);
+
+  // 타이핑 상태 리스너
+  onValue(ref(db, `rooms/${code}/typing`), snap => {
+    const typing = snap.val() || {};
+    renderTypingIndicator('typing-chat', typing, 'chat');
+    renderTypingIndicator('typing-casual', typing, 'casual');
+  });
 }
 
 async function enterGame() {
@@ -2517,13 +2538,14 @@ async function enterGame() {
   loadCasualNick();
 }
 
-function addPlayerChip(id, name, isMe, role) {
+function addPlayerChip(id, name, isMe, role, online) {
   const row = document.getElementById('players-row');
   if (document.getElementById('pchip-' + id)) return;
   const chip = document.createElement('div');
-  chip.className = 'p-chip' + (isMe ? ' me' : '');
+  const statusClass = online ? 'online' : 'offline';
+  chip.className = 'p-chip' + (isMe ? ' me' : '') + ' ' + statusClass;
   chip.id = 'pchip-' + id;
-  const roleTag = role === 'gm' ? `<span style="font-size:9px;color:var(--accent);margin-left:2px">GM</span>` : '';
+  const roleTag = role === 'gm' ? `<span style="font-size:9px;margin-left:2px">GM</span>` : '';
   chip.innerHTML = `<div class="p-dot"></div><span>${esc(name)}</span>${roleTag}`;
   row.appendChild(chip);
 }
@@ -2533,7 +2555,8 @@ function renderPlayers(players) {
   St.players = players;
   if (!window._avatarCache) window._avatarCache = {};
   Object.entries(players).forEach(([id, p]) => {
-    addPlayerChip(id, p.name, id === St.myId, p.role);
+    const online = p.online || id === St.myId;
+    addPlayerChip(id, p.name, id === St.myId, p.role, online);
     const av = localStorage.getItem('itc_avatar_' + id);
     if (av) window._avatarCache[p.name] = av;
   });
@@ -2854,6 +2877,7 @@ function rollFromFormula(formula) {
 
 function chatKeydown(e) {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); }
+  else { broadcastTyping(); }
 }
 
 function toggleDescMode() {
@@ -3001,6 +3025,43 @@ function editCasualNick() {
 
 function loadCasualNick() {
   try { _casualNickname = localStorage.getItem('itc_casual_nick_' + St.myId) || ''; } catch(e) {}
+}
+
+let _typingTimer = null;
+function broadcastTyping() {
+  if (!window._FB?.CONFIGURED || !St.roomCode) return;
+  const { db, ref, set, remove } = window._FB;
+  const tab = _activeRightTab === 'casual' ? 'casual' : 'chat';
+  let displayName = St.myName;
+  if (tab === 'chat' && St.speakAsJournalId) {
+    const j = loadJournals().find(x => x.id === St.speakAsJournalId);
+    if (j) displayName = j.title || St.myName;
+  } else if (tab === 'casual' && _casualNickname) {
+    displayName = _casualNickname;
+  }
+  set(ref(db, `rooms/${St.roomCode}/typing/${St.myId}`), { name: displayName, tab, time: Date.now() });
+  if (_typingTimer) clearTimeout(_typingTimer);
+  _typingTimer = setTimeout(() => {
+    remove(ref(db, `rooms/${St.roomCode}/typing/${St.myId}`));
+    _typingTimer = null;
+  }, 3000);
+}
+
+function renderTypingIndicator(elId, typingData, tab) {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  const now = Date.now();
+  const names = [];
+  Object.entries(typingData).forEach(([uid, data]) => {
+    if (uid === St.myId) return;
+    if (data.tab !== tab) return;
+    if (now - (data.time || 0) > 5000) return;
+    names.push(data.name || '누군가');
+  });
+  if (names.length === 0) { el.textContent = ''; return; }
+  if (names.length === 1) el.textContent = `${names[0]} is typing...`;
+  else if (names.length === 2) el.textContent = `${names[0]}, ${names[1]} are typing...`;
+  else el.textContent = `${names.length}명이 입력 중...`;
 }
 
 function saSendCasual(journal, text) {
