@@ -1069,7 +1069,7 @@ to{transform:translateX(0);opacity:1;}
       <div class="right-pane" id="rpane-journal">
         <div class="journal-pane" id="journal-list-view">
           <div class="journal-add-bar" style="border-bottom:1px solid var(--border);border-top:none;padding:6px 8px">
-            <button class="journal-add-btn" onclick="openJournalEditor(null)" style="padding:5px;font-size:16px;letter-spacing:0" title="새 저널 만들기">+</button>
+            <button class="journal-add-btn" onclick="createNewJournal()" style="padding:5px;font-size:16px;letter-spacing:0" title="새 저널 만들기">+</button>
           </div>
           <div class="journal-list" id="journal-list-container">
             <div class="journal-empty" id="journal-empty">저널이 없어요.<br>위 + 버튼으로 새 저널을 만들어보세요.</div>
@@ -1354,7 +1354,7 @@ to{transform:translateX(0);opacity:1;}
       <div class="modal-title">🪄 토큰 추가</div>
       <button class="modal-close" onclick="closeModal('modal-token')">✕</button>
     </div>
-    <div class="modal-field"><label>이름 (1–4자)</label><input type="text" id="token-name" maxlength="4" placeholder="이름"></div>
+    <div class="modal-field"><label>이름 (30자 이내)</label><input type="text" id="token-name" maxlength="30" placeholder="이름"></div>
     <div class="modal-field"><label>종류</label><select id="token-type"><option value="pc">PC</option><option value="npc">NPC</option><option value="enemy">적</option></select></div>
     <button class="btn-primary" onclick="addToken()">맵에 추가</button>
   </div>
@@ -4091,6 +4091,7 @@ function switchRightTab(tab) {
 
 let _currentJournalId = null;
 let _jdAssignedTokenId = null;
+let _sheetIsNew = false;
 
 function journalKey() { return 'itc_journals_' + St.myId + '_' + St.roomCode; }
 function loadJournals() { try { return JSON.parse(localStorage.getItem(journalKey()) || '[]'); } catch { return []; } }
@@ -4160,6 +4161,66 @@ function closeJournalDrawer() {
 }
 
 function closeJournalEditor() { closeJournalDrawer(); }
+
+function createNewJournal() {
+  if (!St.roomCode) { showToast('방에 입장한 상태에서만 저널을 만들 수 있어요.'); return; }
+  const newId = 'j_' + Date.now();
+  _sheetJournalId = newId;
+  _sheetIsNew = true;
+  _sheetAvatarData = null;
+  _jdAssignedTokenId = null;
+
+  const existingWrap = document.getElementById('sh-skills-wrap');
+  if (existingWrap) existingWrap.innerHTML = '';
+  initSheetUI();
+
+  ['name','player','job','age','residence','birthplace'].forEach(k => {
+    const el = document.getElementById('sh-'+k);
+    if (el) el.value = '';
+  });
+  COC_STATS.forEach(s => {
+    const el = document.getElementById('sh-'+s.key);
+    if (el) { el.value = ''; updateStatHalf(s.key); }
+  });
+  ['hp','hp-max','san','san-max','mp','mp-max','luck','db','build'].forEach(k => {
+    const el = document.getElementById('sh-'+k);
+    if (el) el.value = '';
+  });
+  COC_SKILLS.forEach((sk, i) => {
+    const ck = document.getElementById('sk-check-'+i);
+    const val = document.getElementById('sk-val-'+i);
+    const hlf = document.getElementById('sk-half-'+i);
+    if (ck) ck.checked = false;
+    if (val) val.value = sk.base;
+    if (hlf) hlf.value = Math.floor(sk.base/2);
+  });
+  const notes = document.getElementById('sh-notes');
+  if (notes) notes.value = '';
+  document.getElementById('sh-unarmed-skill').value = '근접전(격투)';
+  document.getElementById('sh-unarmed-dmg').value = '1d3+db';
+  _combatRowCount = 0;
+  const tbody = document.getElementById('sh-combat-rows');
+  if (tbody) tbody.innerHTML = '';
+  ['equipment','spending','cash','assets'].forEach(k => {
+    const el = document.getElementById('sh-'+k);
+    if (el) el.value = '';
+  });
+  ['appearance','personality','ideology','wounds','people','phobias','places','tomes','treasures','encounters'].forEach(k => {
+    const el = document.getElementById('sh-bs-'+k);
+    if (el) el.value = '';
+  });
+
+  refreshSheetAvatar(null, '?');
+  refreshJournalTokenBar(null);
+
+  const hint = document.getElementById('sheet-hint');
+  if (hint) hint.textContent = '';
+  const delBtn = document.querySelector('.sheet-del-btn');
+  if (delBtn) delBtn.style.display = 'none';
+
+  document.getElementById('sheet-overlay').classList.add('open');
+  setTimeout(() => document.getElementById('sh-name')?.focus(), 150);
+}
 
 function saveJournalFromDrawer() {
   if (!St.roomCode) { showToast('방에 입장한 상태에서만 저널을 저장할 수 있어요.'); return; }
@@ -4395,6 +4456,7 @@ function updateStatHalf(key) {
 }
 
 function openSheet(journalId) {
+  _sheetIsNew = false;
   const existingWrap = document.getElementById('sh-skills-wrap');
   if (existingWrap) existingWrap.innerHTML = '';
   initSheetUI();
@@ -4467,12 +4529,27 @@ function openSheet(journalId) {
 
   refreshJournalTokenBar(j?.assignedTokenId || null);
 
+  const delBtn = document.querySelector('.sheet-del-btn');
+  if (delBtn) delBtn.style.display = '';
   document.getElementById('sheet-overlay').classList.add('open');
 }
 
 function closeSheet() {
+  if (_sheetIsNew) {
+    const nameVal = (document.getElementById('sh-name')?.value || '').trim();
+    if (!nameVal) {
+      showToast('저널 이름을 입력해야 닫을 수 있어요.');
+      document.getElementById('sh-name')?.focus();
+      return;
+    }
+    saveSheet();
+    _sheetIsNew = false;
+    const delBtn = document.querySelector('.sheet-del-btn');
+    if (delBtn) delBtn.style.display = '';
+  }
   document.getElementById('sheet-overlay').classList.remove('open');
   _sheetJournalId = null;
+  renderJournalList();
 }
 
 let _combatRowCount = 0;
@@ -4547,6 +4624,12 @@ function saveSheet() {
     data[k] = document.getElementById('sh-'+k)?.value || '';
   });
 
+  if (_sheetIsNew && !data.name.trim()) {
+    showToast('저널 이름을 입력해주세요.');
+    document.getElementById('sh-name')?.focus();
+    return;
+  }
+
   COC_STATS.forEach(s => {
     data[s.key] = parseInt(document.getElementById('sh-'+s.key)?.value) || 0;
   });
@@ -4599,7 +4682,7 @@ function saveSheet() {
     if (_keepAv) {
       data.avatar      = _keepAv;
       list[idx].avatar = _keepAv;
-      saSetAvatar(_sheetJournalId, _keepAv);   // 인메모리 + localStorage
+      saSetAvatar(_sheetJournalId, _keepAv);
     }
     list[idx].sheet     = data;
     list[idx].title     = data.name || list[idx].title;
@@ -4607,6 +4690,29 @@ function saveSheet() {
     list[idx].assignedTokenId = _jdAssignedTokenId || null;
     saveJournals(list);
     renderJournalList();
+  } else {
+    const newJ = {
+      id: _sheetJournalId,
+      title: data.name || '무제 저널',
+      body: '',
+      sheet: data,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      assignedTokenId: _jdAssignedTokenId || null,
+    };
+    if (_sheetAvatarData) {
+      newJ.avatar = _sheetAvatarData;
+      data.avatar = _sheetAvatarData;
+      saSetAvatar(_sheetJournalId, _sheetAvatarData);
+    }
+    list.push(newJ);
+    saveJournals(list);
+    renderJournalList();
+    if (_sheetIsNew) {
+      _sheetIsNew = false;
+      const delBtn = document.querySelector('.sheet-del-btn');
+      if (delBtn) delBtn.style.display = '';
+    }
   }
 
   const hint = document.getElementById('sheet-hint');
