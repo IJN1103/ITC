@@ -4153,8 +4153,8 @@ function sendChatFromPopout(text) { sendMessage(St.myName, text, 'normal'); }
 
 /* 원본 appendChatMsg 래핑 — 팝아웃 동기화 */
 const _baseAppend = appendChatMsg;
-appendChatMsg = function(name, text, type, uid, timestamp) {
-  _baseAppend(name, text, type, uid, timestamp);
+appendChatMsg = function(name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId) {
+  _baseAppend(name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId);
   if (_popoutWin && !_popoutWin.closed && _popoutWin.addMsg) {
     _popoutWin.addMsg(name, text, type);
   }
