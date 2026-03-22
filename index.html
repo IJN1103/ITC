@@ -504,6 +504,12 @@ to{opacity:1}
 .typing-indicator{min-height:0;padding:0 10px;font-size:11px;color:var(--muted);font-style:italic;transition:all .2s ease;overflow:hidden;flex-shrink:0}
 .typing-indicator:empty{padding:0}
 .typing-indicator:not(:empty){padding:4px 10px}
+.msg-actions{display:none;position:absolute;top:2px;right:4px;gap:2px;z-index:5}
+.chat-msg{position:relative}
+.chat-msg:hover .msg-actions{display:flex}
+.msg-act-btn{background:var(--s3);border:1px solid var(--border);border-radius:3px;color:var(--muted);font-size:10px;cursor:pointer;padding:1px 5px;transition:var(--t);font-family:inherit}
+.msg-act-btn:hover{color:var(--accent);border-color:var(--accent)}
+.msg-act-btn.danger:hover{color:var(--red);border-color:rgba(200,92,92,.4)}
 .p-chip.online .p-dot{background:var(--accent);box-shadow:0 0 4px var(--accent)}
 .p-chip.online span{color:var(--accent)}
 .p-chip.offline .p-dot{background:var(--muted)}
@@ -2420,7 +2426,8 @@ function setupFirebaseListeners() {
 
   onValue(ref(db, `rooms/${code}/chat`), snap => {
     const msgs = snap.val() || {};
-    const sorted = Object.values(msgs).sort((a,b) => a.time - b.time)
+    const entries = Object.entries(msgs).map(([k, m]) => ({ ...m, _key: k }));
+    const sorted = entries.sort((a,b) => a.time - b.time)
       .filter(m => {
         if (m.type === 'whisper') return m.uid === St.myId || m.whisperTo === St.myId;
         return true;
@@ -2429,11 +2436,11 @@ function setupFirebaseListeners() {
 
     const rendered = container.querySelectorAll('.chat-msg').length;
     const toAdd = sorted.slice(rendered);
-    toAdd.forEach(m => appendChatMsg(m.name, m.text, m.type || 'normal', m.uid, m.time, m.speakAsAvatar || null, m.speakAsJournalId || null, m.whisperTo || null, m.whisperToName || null, m.nameColor || null));
+    toAdd.forEach(m => appendChatMsg(m.name, m.text, m.type || 'normal', m.uid, m.time, m.speakAsAvatar || null, m.speakAsJournalId || null, m.whisperTo || null, m.whisperToName || null, m.nameColor || null, m._key, 'chat'));
 
     if (toAdd.length === 0 && rendered > sorted.length) {
       container.innerHTML = '';
-      sorted.forEach(m => appendChatMsg(m.name, m.text, m.type || 'normal', m.uid, m.time, m.speakAsAvatar || null, m.speakAsJournalId || null, m.whisperTo || null, m.whisperToName || null, m.nameColor || null));
+      sorted.forEach(m => appendChatMsg(m.name, m.text, m.type || 'normal', m.uid, m.time, m.speakAsAvatar || null, m.speakAsJournalId || null, m.whisperTo || null, m.whisperToName || null, m.nameColor || null, m._key, 'chat'));
     }
   });
 
@@ -2453,15 +2460,16 @@ function setupFirebaseListeners() {
 
   onValue(ref(db, `rooms/${code}/casual`), snap => {
     const msgs = snap.val() || {};
-    const sorted = Object.values(msgs).sort((a,b) => a.time - b.time);
+    const entries = Object.entries(msgs).map(([k, m]) => ({ ...m, _key: k }));
+    const sorted = entries.sort((a,b) => a.time - b.time);
     const container = document.getElementById('casual-messages');
     if (!container) return;
     const rendered = container.querySelectorAll('.chat-msg').length;
     const toAdd = sorted.slice(rendered);
-    toAdd.forEach(m => appendCasualMsg(m.name, m.text, m.uid, m.time));
+    toAdd.forEach(m => appendCasualMsg(m.name, m.text, m.uid, m.time, m._key));
     if (toAdd.length === 0 && rendered > sorted.length) {
       container.innerHTML = '';
-      sorted.forEach(m => appendCasualMsg(m.name, m.text, m.uid, m.time));
+      sorted.forEach(m => appendCasualMsg(m.name, m.text, m.uid, m.time, m._key));
     }
   });
 
@@ -2941,6 +2949,16 @@ function sendChat() {
     return;
   }
 
+  const cm = raw.match(/^\/choice\((.+)\)$/i);
+  if (cm) {
+    inp.value = '';
+    const options = cm[1].split(',').map(s => s.trim()).filter(Boolean);
+    if (options.length < 2) { showToast('선택지를 2개 이상 입력해주세요.'); return; }
+    const picked = options[Math.floor(Math.random() * options.length)];
+    sendMessage(St.myName, `🎯 Choice [${options.join(', ')}] → ${picked}`, 'dice');
+    return;
+  }
+
   const dm = raw.match(/^\/d(.+)$/i);
   if (dm) {
     inp.value = '';
@@ -3120,7 +3138,7 @@ function saSendCasual(journal, text) {
   }
 }
 
-function appendCasualMsg(name, text, uid, timestamp) {
+function appendCasualMsg(name, text, uid, timestamp, msgKey) {
   const container = document.getElementById('casual-messages');
   if (!container) return;
   const d = timestamp ? new Date(timestamp) : new Date();
@@ -3128,7 +3146,8 @@ function appendCasualMsg(name, text, uid, timestamp) {
   const avatarHtml = getAvatarHtml(name, uid || (name === St.myName ? St.myId : null));
   const div = document.createElement('div');
   div.className = 'chat-msg msg-normal';
-  div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-text">${esc(text)}</div></div>`;
+  div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-text">${fmtText(text)}</div></div>`;
+  addMsgActions(div, uid, msgKey, 'casual', text, 'normal');
   container.appendChild(div);
   container.scrollTop = container.scrollHeight;
 }
@@ -3240,7 +3259,7 @@ function getAvatarHtml(name, uid) {
   return `<div class="msg-avatar ${shape_class}"><div class="msg-avatar-inner" style="border-radius:${r}">${esc(initial)}</div></div>`;
 }
 
-function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId, whisperTo, whisperToName, nameColor) {
+function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId, whisperTo, whisperToName, nameColor, msgKey, channel) {
   const container = document.getElementById('chat-messages');
   const d = timestamp ? new Date(timestamp) : new Date();
   const time = `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
@@ -3248,7 +3267,7 @@ function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJ
   if (type === 'system' || type === 'sys') {
     const div = document.createElement('div');
     div.className = 'chat-msg msg-sys';
-    div.innerHTML = `<div class="msg-text">${esc(text)}</div>`;
+    div.innerHTML = `<div class="msg-text">${fmtText(text)}</div>`;
     container.appendChild(div);
     container.scrollTop = container.scrollHeight;
     return;
@@ -3257,7 +3276,8 @@ function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJ
   if (type === 'dsec') {
     const div = document.createElement('div');
     div.className = 'chat-msg msg-dsec';
-    div.innerHTML = `<div class="msg-body"><div class="msg-text">${esc(text).replace(/\n/g, '<br>')}</div></div>`;
+    div.innerHTML = `<div class="msg-body"><div class="msg-text">${fmtText(text)}</div></div>`;
+    addMsgActions(div, uid, msgKey, channel || 'chat', text, type);
     container.appendChild(div);
     container.scrollTop = container.scrollHeight;
     return;
@@ -3269,7 +3289,8 @@ function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJ
     const tagText = isMine ? `→ ${esc(whisperToName || '?')}에게 귓말` : `→ 나에게 귓말`;
     const div = document.createElement('div');
     div.className = 'chat-msg msg-whisper';
-    div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name">${esc(name)}</span><span class="whisper-tag">${tagText}</span><span class="msg-time">${time}</span></div><div class="msg-text">${esc(text).replace(/\n/g,'<br>')}</div></div>`;
+    div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name">${esc(name)}</span><span class="whisper-tag">${tagText}</span><span class="msg-time">${time}</span></div><div class="msg-text">${fmtText(text)}</div></div>`;
+    addMsgActions(div, uid, msgKey, channel || 'chat', text, type);
     container.appendChild(div);
     container.scrollTop = container.scrollHeight;
     return;
@@ -3289,7 +3310,8 @@ function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJ
     d2.className = 'chat-msg msg-speak-as';
     const _jColor = nameColor || (speakAsJournalId ? (_allJournals.find(x => x.id === speakAsJournalId)?.nameColor || '') : '');
     const _nameStyle = _jColor ? ` style="color:${_jColor}"` : '';
-    d2.innerHTML = `${avHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name sa-msg-name"${_nameStyle}>${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-text">${esc(text.replace(/@\S+/g,'').trim()).replace(/\n/g,'<br>')}</div></div>`;
+    d2.innerHTML = `${avHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name sa-msg-name"${_nameStyle}>${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-text">${fmtText(text.replace(/@\S+/g,'').trim())}</div></div>`;
+    addMsgActions(d2, uid, msgKey, channel || 'chat', text, type);
     container.appendChild(d2);
     container.scrollTop = container.scrollHeight;
     if (!timestamp || Date.now() - timestamp < 5000) {
@@ -3335,13 +3357,14 @@ function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJ
       const formula = diceMatch[1].trim();
       const result = diceMatch[2];
       const rolls = diceMatch[3].trim();
-      div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name"${_nc}>${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-text">${esc(text)}</div><div class="dice-card"><div class="dice-card-formula">${esc(formula)}</div><div class="dice-card-result">${esc(result)}</div><div class="dice-card-rolls">${esc(rolls)}</div></div></div>`;
+      div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name"${_nc}>${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-text">${fmtText(text)}</div><div class="dice-card"><div class="dice-card-formula">${esc(formula)}</div><div class="dice-card-result">${esc(result)}</div><div class="dice-card-rolls">${esc(rolls)}</div></div></div>`;
     } else {
-      div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name"${_nc}>${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-text">${esc(text)}</div></div>`;
+      div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name"${_nc}>${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-text">${fmtText(text)}</div></div>`;
     }
   } else {
-    div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name"${_nc}>${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-text">${esc(text)}</div></div>`;
+    div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name"${_nc}>${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-text">${fmtText(text)}</div></div>`;
   }
+  addMsgActions(div, uid, msgKey, channel || 'chat', text, type);
   container.appendChild(div);
   container.scrollTop = container.scrollHeight;
 }
@@ -4347,8 +4370,8 @@ function sendChatFromPopout(text) { sendMessage(St.myName, text, 'normal'); }
 
 /* 원본 appendChatMsg 래핑 — 팝아웃 동기화 */
 const _baseAppend = appendChatMsg;
-appendChatMsg = function(name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId, whisperTo, whisperToName, nameColor) {
-  _baseAppend(name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId, whisperTo, whisperToName, nameColor);
+appendChatMsg = function(name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId, whisperTo, whisperToName, nameColor, msgKey, channel) {
+  _baseAppend(name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId, whisperTo, whisperToName, nameColor, msgKey, channel);
   if (_popoutWin && !_popoutWin.closed && _popoutWin.addMsg) {
     _popoutWin.addMsg(name, text, type);
   }
@@ -5772,6 +5795,65 @@ function refreshWhisperBtn() {
 
 function esc(str) {
   return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function addMsgActions(div, uid, msgKey, channel, text, type) {
+  if (!msgKey) return;
+  if (type === 'system' || type === 'sys') return;
+  const isMine = uid === St.myId;
+  const isGM = St.isGM;
+  if (!isMine && !isGM) return;
+  div.dataset.msgKey = msgKey;
+  div.dataset.channel = channel;
+  div.dataset.msgText = text;
+  const wrap = document.createElement('div');
+  wrap.className = 'msg-actions';
+  const canEdit = type !== 'dice' && type !== 'image' && type !== 'speak-as-image';
+  if (canEdit && isMine) {
+    const editBtn = document.createElement('button');
+    editBtn.className = 'msg-act-btn';
+    editBtn.textContent = '수정';
+    editBtn.onclick = (e) => { e.stopPropagation(); editMsg(div); };
+    wrap.appendChild(editBtn);
+  }
+  const delBtn = document.createElement('button');
+  delBtn.className = 'msg-act-btn danger';
+  delBtn.textContent = '삭제';
+  delBtn.onclick = (e) => { e.stopPropagation(); deleteMsg(div); };
+  wrap.appendChild(delBtn);
+  div.appendChild(wrap);
+}
+
+function editMsg(div) {
+  const key = div.dataset.msgKey;
+  const channel = div.dataset.channel || 'chat';
+  const oldText = div.dataset.msgText || '';
+  const newText = prompt('메시지 수정', oldText);
+  if (newText === null || newText.trim() === oldText) return;
+  if (!newText.trim()) { showToast('빈 메시지는 입력할 수 없어요.'); return; }
+  if (window._FB?.CONFIGURED) {
+    const { db, ref, update } = window._FB;
+    update(ref(db, `rooms/${St.roomCode}/${channel}/${key}`), { text: newText.trim(), edited: true });
+  }
+}
+
+function deleteMsg(div) {
+  const key = div.dataset.msgKey;
+  const channel = div.dataset.channel || 'chat';
+  if (!confirm('이 메시지를 삭제할까요?')) return;
+  if (window._FB?.CONFIGURED) {
+    const { db, ref, remove } = window._FB;
+    remove(ref(db, `rooms/${St.roomCode}/${channel}/${key}`));
+  }
+}
+
+function fmtText(str) {
+  let s = esc(str);
+  s = s.replace(/\*\*\*(.+?)\*\*\*/g, '<b><i>$1</i></b>');
+  s = s.replace(/\*\*(.+?)\*\*/g, '<i>$1</i>');
+  s = s.replace(/\*(.+?)\*/g, '<b>$1</b>');
+  s = s.replace(/\n/g, '<br>');
+  return s;
 }
 
 window.addEventListener('DOMContentLoaded', () => {
