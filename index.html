@@ -3058,12 +3058,12 @@ function setupFirebaseListeners() {
     // 이미 렌더된 메시지 수 추적 — 새 메시지만 추가
     const rendered = container.querySelectorAll('.chat-msg').length;
     const toAdd = sorted.slice(rendered);
-    toAdd.forEach(m => appendChatMsg(m.name, m.text, m.type || 'normal', m.uid, m.time, m.speakAsAvatar || null));
+    toAdd.forEach(m => appendChatMsg(m.name, m.text, m.type || 'normal', m.uid, m.time, m.speakAsAvatar || null, m.speakAsJournalId || null));
 
     // 처음 로드(전체 초기화 필요)할 때만 전체 재렌더
     if (toAdd.length === 0 && rendered > sorted.length) {
       container.innerHTML = '';
-      sorted.forEach(m => appendChatMsg(m.name, m.text, m.type || 'normal', m.uid, m.time, m.speakAsAvatar || null));
+      sorted.forEach(m => appendChatMsg(m.name, m.text, m.type || 'normal', m.uid, m.time, m.speakAsAvatar || null, m.speakAsJournalId || null));
     }
   });
 
@@ -3589,7 +3589,7 @@ function getAvatarHtml(name, uid) {
   return `<div class="msg-avatar ${shape_class}"><div class="msg-avatar-inner" style="border-radius:${r}">${esc(initial)}</div></div>`;
 }
 
-function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar) {
+function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId) {
   const container = document.getElementById('chat-messages');
   // timestamp가 있으면 실제 메시지 시간, 없으면 현재 시간
   const d = timestamp ? new Date(timestamp) : new Date();
@@ -3617,9 +3617,11 @@ function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar) {
   if (type === 'speak-as') {
     const r = St.avatarShape === 'circle' ? '50%' : '6px';
     const sc = St.avatarShape === 'circle' ? 'shape-circle' : 'shape-rounded';
+    // speakAsAvatar가 없으면 로컬 저장소에서 직접 조회 (전송 시 누락됐을 경우 복구)
+    const _finalAv = speakAsAvatar || (speakAsJournalId ? saGetAvatar(speakAsJournalId) : null);
     let avHtml;
-    if (speakAsAvatar) {
-      avHtml = `<div class="msg-avatar ${sc} sa-avatar"><img src="${esc(speakAsAvatar)}" alt="" style="width:26px;height:26px;object-fit:cover;border-radius:${r};display:block"></div>`;
+    if (_finalAv) {
+      avHtml = `<div class="msg-avatar ${sc} sa-avatar"><img src="${esc(_finalAv)}" alt="" style="width:26px;height:26px;object-fit:cover;border-radius:${r};display:block"></div>`;
     } else {
       avHtml = `<div class="msg-avatar ${sc} sa-avatar"><div class="msg-avatar-inner" style="border-radius:${r}">${esc((name||'?')[0].toUpperCase())}</div></div>`;
     }
@@ -4672,9 +4674,9 @@ function openSheet(journalId) {
   const hint = document.getElementById('sheet-hint');
   if (hint) hint.textContent = '';
 
-  // 아바타
-  _sheetAvatarData = null;
-  refreshSheetAvatar(data.avatar || null, (data.name || j?.title || '?')[0]?.toUpperCase());
+  // 아바타: 기존 저장된 값으로 초기화 (재저장 시 유실 방지)
+  _sheetAvatarData = saGetAvatar(journalId) || data.avatar || null;
+  refreshSheetAvatar(_sheetAvatarData, (data.name || j?.title || '?')[0]?.toUpperCase());
 
   document.getElementById('sheet-overlay').classList.add('open');
 }
@@ -4867,7 +4869,7 @@ function saSendMessage(journal, text) {
     const { db, ref, push } = window._FB;
     push(ref(db, `rooms/${St.roomCode}/chat`), msg);
   } else {
-    appendChatMsg(msg.name, text, 'speak-as', St.myId, msg.time, msg.speakAsAvatar);
+    appendChatMsg(msg.name, text, 'speak-as', St.myId, msg.time, msg.speakAsAvatar, msg.speakAsJournalId);
   }
 }
 
