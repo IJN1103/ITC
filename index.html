@@ -2949,13 +2949,14 @@ function sendChat() {
     return;
   }
 
-  const cm = raw.match(/^\/choice\((.+)\)$/i);
+  const cm = raw.match(/^\/choice\s*[\(\（](.+)[\)\）]$/i);
   if (cm) {
     inp.value = '';
     const options = cm[1].split(',').map(s => s.trim()).filter(Boolean);
     if (options.length < 2) { showToast('선택지를 2개 이상 입력해주세요.'); return; }
     const picked = options[Math.floor(Math.random() * options.length)];
-    sendMessage(St.myName, `🎯 Choice [${options.join(', ')}] → ${picked}`, 'dice');
+    const senderName = St.speakAsJournalId ? (loadJournals().find(x=>x.id===St.speakAsJournalId)?.title || St.myName) : St.myName;
+    sendMessage(senderName, `🎯 Choice [${options.join(', ')}] → ${picked}`, 'dice');
     return;
   }
 
@@ -3450,7 +3451,7 @@ function createTokenEl(t) {
   const sz = (t.tokenSize || 1);
   let tokenImgSrc = null;
   if (t.standingAsToken && t.standings && t.standings.length > 0) {
-    const jForToken = loadJournals().find(j => j.assignedTokenId === t.id);
+    const jForToken = _allJournals.find(j => j.assignedTokenId === t.id);
     const curLabel = jForToken ? _vnCurrentStanding[jForToken.id] : null;
     const curStanding = curLabel ? t.standings.find(s => s.label === curLabel && s.img) : null;
     tokenImgSrc = curStanding ? curStanding.img : (t.standings.find(s => s.img)?.img || t.tokenImg || null);
@@ -5419,7 +5420,7 @@ let _vnCurrentStanding = {};  // journalId → 현재 스탠딩 라벨
 let _vnTimer = null;
 
 function getJournalToken(journal) {
-  const j = typeof journal === 'string' ? loadJournals().find(x => x.id === journal) : journal;
+  const j = typeof journal === 'string' ? _allJournals.find(x => x.id === journal) : journal;
   if (!j?.assignedTokenId) return null;
   return St.tokens[j.assignedTokenId] || null;
 }
@@ -5464,7 +5465,7 @@ function cleanDialogueText(text) {
 }
 
 function updateTokenStandingOnMap(journalId) {
-  const j = loadJournals().find(x => x.id === journalId);
+  const j = _allJournals.find(x => x.id === journalId);
   if (!j?.assignedTokenId) return;
   const t = St.tokens[j.assignedTokenId];
   if (!t || !t.standingAsToken) return;
@@ -5518,7 +5519,7 @@ function hideDialogueBox() {
 }
 
 function showDialogueBoxFromMsg(name, text, journalId) {
-  const journal = journalId ? loadJournals().find(x => x.id === journalId) : null;
+  const journal = journalId ? _allJournals.find(x => x.id === journalId) : null;
   if (journal) {
     showDialogueBox(journal, text);
   } else {
@@ -5828,13 +5829,44 @@ function editMsg(div) {
   const key = div.dataset.msgKey;
   const channel = div.dataset.channel || 'chat';
   const oldText = div.dataset.msgText || '';
-  const newText = prompt('메시지 수정', oldText);
-  if (newText === null || newText.trim() === oldText) return;
-  if (!newText.trim()) { showToast('빈 메시지는 입력할 수 없어요.'); return; }
-  if (window._FB?.CONFIGURED) {
-    const { db, ref, update } = window._FB;
-    update(ref(db, `rooms/${St.roomCode}/${channel}/${key}`), { text: newText.trim(), edited: true });
+  const textEl = div.querySelector('.msg-text');
+  if (!textEl || textEl.contentEditable === 'true') return;
+
+  textEl.textContent = oldText;
+  textEl.contentEditable = 'true';
+  textEl.style.outline = '1px solid var(--accent)';
+  textEl.style.borderRadius = '4px';
+  textEl.style.padding = '2px 4px';
+  textEl.focus();
+
+  const range = document.createRange();
+  range.selectNodeContents(textEl);
+  range.collapse(false);
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
+
+  function finishEdit() {
+    textEl.contentEditable = 'false';
+    textEl.style.outline = '';
+    textEl.style.borderRadius = '';
+    textEl.style.padding = '';
+    const newText = textEl.textContent.trim();
+    if (!newText) { textEl.innerHTML = fmtText(oldText); showToast('빈 메시지는 입력할 수 없어요.'); return; }
+    if (newText === oldText) { textEl.innerHTML = fmtText(oldText); return; }
+    div.dataset.msgText = newText;
+    textEl.innerHTML = fmtText(newText);
+    if (window._FB?.CONFIGURED) {
+      const { db, ref, update } = window._FB;
+      update(ref(db, `rooms/${St.roomCode}/${channel}/${key}`), { text: newText, edited: true });
+    }
   }
+
+  textEl.onkeydown = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); finishEdit(); }
+    if (e.key === 'Escape') { textEl.innerHTML = fmtText(oldText); textEl.contentEditable = 'false'; textEl.style.outline = ''; textEl.style.borderRadius = ''; textEl.style.padding = ''; }
+  };
+  textEl.onblur = () => finishEdit();
 }
 
 function deleteMsg(div) {
