@@ -1021,6 +1021,13 @@ input:focus, select:focus, textarea:focus { outline: none; }
 .te-footer .te-hint{flex:1;font-size:11px;color:var(--muted)}
 .te-del-btn{background:none;border:1px solid transparent;border-radius:var(--r);color:var(--muted);font-size:12px;padding:5px 10px;cursor:pointer;transition:var(--t)}
 .te-del-btn:hover{color:var(--red);border-color:rgba(200,92,92,.35);background:rgba(200,92,92,.08)}
+.te-token-img-wrap{display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;flex-shrink:0}
+.te-token-img{width:48px;height:48px;border-radius:50%;background:var(--s3);border:2px dashed var(--border2);display:flex;align-items:center;justify-content:center;font-size:18px;overflow:hidden;transition:var(--t)}
+.te-token-img:hover{border-color:var(--accent);background:var(--a-dim)}
+.te-token-img img{width:100%;height:100%;object-fit:cover;border-radius:50%}
+.te-token-img-hint{font-size:9px;color:var(--muted)}
+.te-img-clear{background:none;border:none;color:var(--muted);font-size:10px;cursor:pointer;padding:2px 0;transition:var(--t)}
+.te-img-clear:hover{color:var(--red)}
 .map-toolbar { position: absolute; top: 10px; left: 10px; display: flex; gap: 4px; z-index: 20; }
 .map-tb-btn { width: 28px; height: 28px; background: var(--s2); border: 1px solid var(--border); border-radius: var(--r); color: var(--dim); cursor: pointer; font-size: 13px; display: flex; align-items: center; justify-content: center; transition: var(--t); }
 .map-tb-btn:hover { border-color: var(--accent); color: var(--accent); }
@@ -2254,10 +2261,16 @@ input:focus, select:focus, textarea:focus { outline: none; }
     </div>
     <div class="te-body" id="te-body">
       <div class="te-section">
-        <div class="te-row" style="gap:10px">
+        <div class="te-row" style="gap:10px;align-items:flex-end">
+          <div class="te-token-img-wrap" onclick="document.getElementById('te-img-input').click()" title="토큰 이미지 변경">
+            <div class="te-token-img" id="te-token-img"><span id="te-token-img-text">📷</span></div>
+            <div class="te-token-img-hint">이미지</div>
+            <input type="file" id="te-img-input" accept="image/*" style="display:none" onchange="teHandleTokenImg(this)">
+          </div>
           <div class="te-field" style="flex:2"><label>이름</label><input id="te-name" placeholder="이름"></div>
           <div class="te-field" style="flex:1"><label>이니셔티브</label><input id="te-initiative" type="number" value="0"></div>
         </div>
+        <button class="te-img-clear" id="te-img-clear" onclick="teClearTokenImg()" style="display:none">이미지 제거</button>
       </div>
       <div class="te-section">
         <div class="te-field"><label>캐릭터 메모</label><textarea id="te-memo" rows="3" placeholder="메모를 자유롭게 입력하세요…"></textarea></div>
@@ -4001,9 +4014,10 @@ function createTokenEl(t) {
   // 토큰 사이즈
   const sz = (t.tokenSize || 1);
   if (sz > 1) { const px = 36 * sz; el.style.width = px+'px'; el.style.height = px+'px'; el.style.fontSize = Math.max(9, 11*sz)+'px'; }
-  // 스탠딩 이미지 (첫 번째 스탠딩을 토큰 이미지로)
-  if (t.standings && t.standings.length > 0 && t.standings[0].img) {
-    el.style.backgroundImage = `url(${t.standings[0].img})`;
+  // 토큰 이미지 (tokenImg 우선, 없으면 첫 번째 스탠딩)
+  const tokenImgSrc = t.tokenImg || (t.standings && t.standings.length > 0 && t.standings[0].img) || null;
+  if (tokenImgSrc) {
+    el.style.backgroundImage = `url(${tokenImgSrc})`;
     el.classList.add('has-img');
   }
   // HP 바
@@ -4160,6 +4174,7 @@ function tokCtxAction(action) {
    TOKEN EDIT PANEL
 ───────────────────────────────────────────────── */
 let _teTokenId = null;
+let _teTokenImgData = null;
 
 function openTokenEdit(tokenId) {
   _teTokenId = tokenId;
@@ -4177,6 +4192,10 @@ function openTokenEdit(tokenId) {
   document.getElementById('te-hide-status').checked = t.hideStatus || false;
   document.getElementById('te-hide-chat').checked = t.hideChat || false;
   document.getElementById('te-hide-list').checked = t.hideList || false;
+
+  // 토큰 이미지
+  _teTokenImgData = t.tokenImg || null;
+  teRefreshTokenImgPreview();
 
   // 스탠딩
   const sl = document.getElementById('te-standing-list');
@@ -4200,6 +4219,45 @@ function openTokenEdit(tokenId) {
 function closeTokenEdit() {
   document.getElementById('te-overlay').classList.remove('open');
   _teTokenId = null;
+  _teTokenImgData = null;
+}
+
+function teRefreshTokenImgPreview() {
+  const wrap = document.getElementById('te-token-img');
+  const txt = document.getElementById('te-token-img-text');
+  const clearBtn = document.getElementById('te-img-clear');
+  if (_teTokenImgData) {
+    wrap.innerHTML = `<img src="${_teTokenImgData}" alt="token">`;
+    if (clearBtn) clearBtn.style.display = '';
+  } else {
+    wrap.innerHTML = '<span id="te-token-img-text">📷</span>';
+    if (clearBtn) clearBtn.style.display = 'none';
+  }
+}
+
+function teHandleTokenImg(input) {
+  const file = input.files[0]; if (!file) return;
+  if (file.size > 3*1024*1024) { showToast('이미지는 3MB 이하만 가능해요.'); return; }
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const img = new Image();
+    img.onload = () => {
+      const MAX = 200; let w = img.width, h = img.height;
+      if (w > MAX || h > MAX) { const r = Math.min(MAX/w, MAX/h); w = Math.round(w*r); h = Math.round(h*r); }
+      const c = document.createElement('canvas'); c.width = w; c.height = h;
+      c.getContext('2d').drawImage(img, 0, 0, w, h);
+      _teTokenImgData = c.toDataURL('image/jpeg', 0.8);
+      teRefreshTokenImgPreview();
+    };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+  input.value = '';
+}
+
+function teClearTokenImg() {
+  _teTokenImgData = null;
+  teRefreshTokenImgPreview();
 }
 
 function teAddStanding(label, img) {
@@ -4286,6 +4344,7 @@ function saveTokenEdit() {
   t.y = parseFloat(document.getElementById('te-y').value) || t.y;
   t.refUrl = document.getElementById('te-url').value.trim();
   t.chatPalette = document.getElementById('te-chatpal').value;
+  t.tokenImg = _teTokenImgData || null;
   t.hideStatus = document.getElementById('te-hide-status').checked;
   t.hideChat = document.getElementById('te-hide-chat').checked;
   t.hideList = document.getElementById('te-hide-list').checked;
