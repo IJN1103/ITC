@@ -27,6 +27,7 @@
           "bgm":        { ".read": "auth != null", ".write": "auth != null" },
           "tokens":     { ".read": "auth != null", ".write": "auth != null" },
           "journals":   { ".read": "auth != null", ".write": "auth != null" },
+          "casual":     { ".read": "auth != null", ".write": "auth != null" },
           "lastRoll":   { ".read": "auth != null", ".write": "auth != null" },
           "characters": {
             "$uid": {
@@ -1050,6 +1051,7 @@ to{transform:translateX(0);opacity:1;}
       <!-- 탭 헤더 -->
       <div class="right-tabs">
         <button class="rtab on" id="rtab-chat" onclick="switchRightTab('chat')">채팅</button>
+        <button class="rtab" id="rtab-casual" onclick="switchRightTab('casual')">잡담</button>
         <button class="rtab" id="rtab-journal" onclick="switchRightTab('journal')">저널</button>
         <button class="chat-popout-btn" onclick="popoutChat()" title="채팅을 새 탭으로 분리" style="margin-left:auto;margin-right:6px">⤢</button>
       </div>
@@ -1086,6 +1088,15 @@ to{transform:translateX(0);opacity:1;}
           <input type="file" id="chat-img-input" accept="image/png,image/jpeg,image/gif" style="display:none" onchange="handleChatImageUpload(this)">
           <textarea class="chat-input" id="chat-input" placeholder="메시지 입력 (Enter 전송)" rows="1" onkeydown="chatKeydown(event)"></textarea>
           <button class="send-btn" onclick="sendChat()">➤</button>
+        </div>
+      </div>
+
+      <!-- 잡담 패널 -->
+      <div class="right-pane" id="rpane-casual">
+        <div class="chat-messages" id="casual-messages"></div>
+        <div class="chat-input-wrap">
+          <textarea class="chat-input" id="casual-input" placeholder="잡담 입력 (Enter 전송)" rows="1" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendCasual();}"></textarea>
+          <button class="send-btn" onclick="sendCasual()">➤</button>
         </div>
       </div>
 
@@ -2415,6 +2426,20 @@ function setupFirebaseListeners() {
     saRefreshToolbar();
   });
 
+  onValue(ref(db, `rooms/${code}/casual`), snap => {
+    const msgs = snap.val() || {};
+    const sorted = Object.values(msgs).sort((a,b) => a.time - b.time);
+    const container = document.getElementById('casual-messages');
+    if (!container) return;
+    const rendered = container.querySelectorAll('.chat-msg').length;
+    const toAdd = sorted.slice(rendered);
+    toAdd.forEach(m => appendCasualMsg(m.name, m.text, m.uid, m.time));
+    if (toAdd.length === 0 && rendered > sorted.length) {
+      container.innerHTML = '';
+      sorted.forEach(m => appendCasualMsg(m.name, m.text, m.uid, m.time));
+    }
+  });
+
   onValue(ref(db, `rooms/${code}/bgm`), snap => {
     const bgm = snap.val();
     if (!bgm) return;
@@ -2897,6 +2922,33 @@ function sendMessage(name, text, type = 'normal') {
   } else {
     appendChatMsg(name, text, type, St.myId);
   }
+}
+
+function sendCasual() {
+  const inp = document.getElementById('casual-input');
+  const raw = inp.value.trim();
+  if (!raw) return;
+  inp.value = '';
+  const msg = { name: St.myName, text: raw, uid: St.myId, time: Date.now() };
+  if (window._FB?.CONFIGURED) {
+    const { db, ref, push } = window._FB;
+    push(ref(db, `rooms/${St.roomCode}/casual`), msg);
+  } else {
+    appendCasualMsg(msg.name, raw, St.myId, msg.time);
+  }
+}
+
+function appendCasualMsg(name, text, uid, timestamp) {
+  const container = document.getElementById('casual-messages');
+  if (!container) return;
+  const d = timestamp ? new Date(timestamp) : new Date();
+  const time = `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
+  const avatarHtml = getAvatarHtml(name, uid || (name === St.myName ? St.myId : null));
+  const div = document.createElement('div');
+  div.className = 'chat-msg msg-normal';
+  div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-text">${esc(text)}</div></div>`;
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
 }
 
 function sendWhisperMessage(senderName, text, targetUid, targetName) {
