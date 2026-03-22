@@ -4279,125 +4279,148 @@ function initChatResize() {
 
 let _popoutWins = [];
 
+function buildPopoutHtml() {
+  const S = '<' + 'script>';
+  const SE = '</' + 'script>';
+  const rc = esc(St.roomCode);
+  const css = [
+    '*{box-sizing:border-box;margin:0;padding:0}',
+    'html,body{height:100%;overflow:hidden}',
+    "body{font-family:'DM Sans',sans-serif;background:#101010;color:#e8e3da;font-size:14px;display:flex;flex-direction:column;height:100vh}",
+    '.tabs{display:flex;border-bottom:1px solid #1f1f1f;flex-shrink:0;background:#131313}',
+    '.tab{flex:1;background:none;border:none;border-bottom:2px solid transparent;color:#5a5751;padding:9px 4px;cursor:pointer;font-family:inherit;font-size:11px;letter-spacing:.08em;text-transform:uppercase;text-align:center;transition:.18s ease}',
+    '.tab.on{color:#b89a60;border-bottom-color:#b89a60}',
+    '.tab:hover:not(.on){color:#8c8882}',
+    '.pane{display:none;flex:1;flex-direction:column;overflow:hidden}',
+    '.pane.on{display:flex}',
+    '.msgs{flex:1;overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:12px}',
+    '.msgs::-webkit-scrollbar{width:4px}.msgs::-webkit-scrollbar-thumb{background:#262626;border-radius:2px}',
+    '.cm{display:flex;gap:10px;margin-bottom:2px}',
+    '.av{width:38px;height:38px;flex-shrink:0;border-radius:8px;background:#1e1e1e;border:1px solid #2e2e2e;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;color:#b89a60;overflow:hidden}',
+    '.av img{width:38px;height:38px;object-fit:cover;border-radius:8px;display:block}',
+    '.mb{flex:1;min-width:0}',
+    '.mn{display:flex;align-items:baseline;gap:6px;margin-bottom:3px}',
+    '.nn{font-size:13.5px;font-weight:600;color:#b89a60}',
+    ".tm{font-size:9px;color:#5a5751;font-family:'DM Mono',monospace}",
+    '.mt{font-size:14.5px;color:#8c8882;line-height:1.65;word-break:break-word}',
+    '.ms{justify-content:center}.ms .av{display:none}.ms .mt{color:#5a5751;font-size:12px;font-style:italic;text-align:center}',
+    ".dc{background:rgba(184,154,96,.1);border:1px solid rgba(184,154,96,.2);border-radius:8px;padding:10px 14px;text-align:center;margin-top:4px;max-width:70%}",
+    ".dc-f{font-size:10px;color:#5a5751;font-family:'DM Mono',monospace;letter-spacing:.08em;margin-bottom:4px}",
+    ".dc-r{font-size:34px;font-weight:800;color:#b89a60;font-family:'DM Mono',monospace;line-height:1.2}",
+    ".dc-d{font-size:14px;color:#8c8882;font-family:'DM Mono',monospace;margin-top:4px}",
+    '.j-list{flex:1;overflow-y:auto;padding:10px}',
+    '.j-item{padding:8px 10px;border:1px solid #1f1f1f;border-radius:6px;margin-bottom:6px}',
+    '.j-item b{font-size:13px;color:#e8e3da}',
+    '.j-item span{font-size:10px;color:#5a5751;display:block;margin-top:2px}',
+    '.ptb{border-top:1px solid #1f1f1f;padding:6px 10px;flex-shrink:0;display:flex;flex-wrap:wrap;gap:4px;align-items:center}',
+    '.ptb-btn{background:#161616;border:1px solid #1f1f1f;border-radius:6px;color:#8c8882;padding:4px 10px;font:inherit;font-size:11px;cursor:pointer;transition:.18s ease}',
+    '.ptb-btn:hover{border-color:#b89a60;color:#b89a60}',
+    '.iw{padding:8px;display:flex;gap:6px;flex-shrink:0}',
+    "textarea{flex:1;background:#161616;border:1px solid #1f1f1f;border-radius:6px;color:#e8e3da;padding:7px 10px;font-size:13px;resize:none;height:34px;font-family:inherit;outline:none}",
+    'textarea:focus{border-color:#b89a60}',
+    '.sb{width:34px;height:34px;background:#b89a60;border:none;border-radius:6px;color:#080808;cursor:pointer;font-size:15px;flex-shrink:0}',
+  ].join('\n');
+
+  const html = [
+    '<div class="tabs" id="tabs"></div>',
+    '<div class="pane on" id="p-chat"><div class="msgs" id="pm-chat"></div></div>',
+    '<div class="pane" id="p-casual"><div class="msgs" id="pm-casual"></div></div>',
+    '<div class="pane" id="p-journal"><div class="j-list" id="pm-journal"></div></div>',
+    '<div class="ptb" id="ptb"></div>',
+    '<div class="iw" id="iw"><textarea id="pi" placeholder="\uba54\uc2dc\uc9c0 \uc785\ub825 (Enter \uc804\uc1a1)" rows="1"></textarea><button class="sb" id="sb">\u27a4</button></div>',
+  ].join('\n');
+
+  const js = `
+(function(){
+  var aTab='chat';
+  var tabs=document.getElementById('tabs');
+  ['채팅:chat','잡담:casual','저널:journal'].forEach(function(s,i){
+    var p=s.split(':'),btn=document.createElement('button');
+    btn.className='tab'+(i===0?' on':'');btn.dataset.tab=p[1];btn.textContent=p[0];
+    btn.onclick=function(){switchTab(p[1]);};tabs.appendChild(btn);
+  });
+  var ptb=document.getElementById('ptb');
+  ['나:popSA','desc:popDesc','귓말:popWhisper'].forEach(function(s){
+    var p=s.split(':'),btn=document.createElement('button');
+    btn.className='ptb-btn';btn.id=p[1]==='popSA'?'pop-sa-btn':'';btn.textContent=p[0];
+    btn.onclick=function(){if(window[p[1]])window[p[1]]();};ptb.appendChild(btn);
+  });
+  function switchTab(t){
+    aTab=t;
+    document.querySelectorAll('.tab').forEach(function(b){b.classList.toggle('on',b.dataset.tab===t);});
+    document.querySelectorAll('.pane').forEach(function(p){p.classList.toggle('on',p.id==='p-'+t);});
+    document.getElementById('iw').style.display=t==='journal'?'none':'';
+    document.getElementById('ptb').style.display=t==='journal'?'none':'';
+  }
+  window.switchTab=switchTab;
+  window.addMsg=function(name,text,type,ch,nc,av,ts){
+    ch=ch||'chat';
+    var c=document.getElementById('pm-'+ch)||document.getElementById('pm-chat');
+    var row=document.createElement('div');
+    var isSys=(type==='sys'||type==='system');
+    row.className='cm'+(isSys?' ms':'');
+    var avDiv=document.createElement('div');avDiv.className='av';
+    if(av){var img=document.createElement('img');img.src=av;avDiv.appendChild(img);}
+    else{avDiv.textContent=(name||'?')[0].toUpperCase();}
+    if(!isSys)row.appendChild(avDiv);
+    var mb=document.createElement('div');mb.className='mb';
+    if(!isSys){
+      var mn=document.createElement('div');mn.className='mn';
+      var nn=document.createElement('span');nn.className='nn';nn.textContent=name;
+      if(nc)nn.style.color=nc;
+      var tm=document.createElement('span');tm.className='tm';tm.textContent=ts||'';
+      mn.appendChild(nn);mn.appendChild(tm);mb.appendChild(mn);
+    }
+    var mt=document.createElement('div');mt.className='mt';
+    var ftxt=text.replace(/\\*\\*\\*(.+?)\\*\\*\\*/g,'<b><i>$1</i></b>').replace(/\\*\\*(.+?)\\*\\*/g,'<i>$1</i>').replace(/\\*(.+?)\\*/g,'<b>$1</b>').replace(/\\n/g,'<br>');
+    mt.innerHTML=ftxt;
+    mb.appendChild(mt);
+    if(type==='dice'){
+      var dm=text.match(/[\u{1F3B2}\u{1F3AF}]\\s*(.+?)\\s*\u2192\\s*(\\d+)\\s*\\(([^)]+)\\)/u);
+      if(dm){
+        mt.style.display='none';
+        var dc=document.createElement('div');dc.className='dc';
+        var df=document.createElement('div');df.className='dc-f';df.textContent=dm[1];
+        var dr=document.createElement('div');dr.className='dc-r';dr.textContent=dm[2];
+        var dd=document.createElement('div');dd.className='dc-d';dd.textContent=dm[3];
+        dc.appendChild(df);dc.appendChild(dr);dc.appendChild(dd);mb.appendChild(dc);
+      }
+    }
+    row.appendChild(mb);c.appendChild(row);c.scrollTop=c.scrollHeight;
+  };
+  window.setJournals=function(list){
+    var c=document.getElementById('pm-journal');c.innerHTML='';
+    list.forEach(function(j){
+      var d=document.createElement('div');d.className='j-item';
+      var b=document.createElement('b');b.textContent=j.title||'\uBB34\uC81C \uC800\uB110';
+      var s=document.createElement('span');s.textContent=(j.body||'').slice(0,40)||'\uB0B4\uC6A9 \uC5C6\uC74C';
+      d.appendChild(b);d.appendChild(s);c.appendChild(d);
+    });
+    if(!list.length){c.innerHTML='<div style="text-align:center;color:#5a5751;padding:20px;font-size:12px">\uC800\uB110\uC774 \uC5C6\uC5B4\uC694.</div>';}
+  };
+  window.popSA=function(){if(window.opener)try{window.opener.toggleSpeakAsDropdown({stopPropagation:function(){}})}catch(e){}};
+  window.popDesc=function(){if(window.opener)try{window.opener.toggleDescMode()}catch(e){}};
+  window.popWhisper=function(){if(window.opener)try{window.opener.toggleWhisperDropdown({stopPropagation:function(){}})}catch(e){}};
+  function send(){var i=document.getElementById('pi');var t=i.value.trim();if(!t)return;i.value='';if(window.opener&&window.opener.sendChatFromPopout)window.opener.sendChatFromPopout(t,aTab);}
+  document.getElementById('sb').onclick=send;
+  document.getElementById('pi').onkeydown=function(ev){if(ev.key==='Enter'&&!ev.shiftKey){ev.preventDefault();send();}};
+  document.getElementById('pi').oninput=function(){if(window.opener&&window.opener.broadcastTyping)window.opener.broadcastTyping();};
+  window._popReady=true;
+})();
+`;
+
+  return '<!DOCTYPE html><html lang="ko"><head>' +
+    '<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
+    '<title>ITC \u2014 ' + rc + '</title>' +
+    '<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400&display=swap" rel=stylesheet>' +
+    '<style>' + css + '</style></head><body>' + html + S + js + SE + '</body></html>';
+}
+
 function popoutChat() {
   _popoutWins = _popoutWins.filter(w => w && !w.closed);
   if (_popoutWins.length >= 3) { showToast('최대 3개까지 분리할 수 있어요.'); return; }
 
-  const _sc_open  = '<scri' + 'pt>';
-  const _sc_close = '</scri' + 'pt>';
-  const rc = esc(St.roomCode);
-
-  const popHtml = `<!DOCTYPE html><html lang="ko"><head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ITC \u2014 ${rc}</title>
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400&display=swap" rel="stylesheet">
-<style>
-*{box-sizing:border-box;margin:0;padding:0}
-html,body{height:100%;overflow:hidden}
-body{font-family:'DM Sans',sans-serif;background:#101010;color:#e8e3da;font-size:14px;display:flex;flex-direction:column;height:100vh}
-.tabs{display:flex;border-bottom:1px solid #1f1f1f;flex-shrink:0;background:#131313}
-.tab{flex:1;background:none;border:none;border-bottom:2px solid transparent;color:#5a5751;padding:9px 4px;cursor:pointer;font-family:inherit;font-size:11px;letter-spacing:.08em;text-transform:uppercase;text-align:center;transition:.18s ease}
-.tab.on{color:#b89a60;border-bottom-color:#b89a60}
-.tab:hover:not(.on){color:#8c8882}
-.pane{display:none;flex:1;flex-direction:column;overflow:hidden}
-.pane.on{display:flex}
-.msgs{flex:1;overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:12px}
-.msgs::-webkit-scrollbar{width:4px}.msgs::-webkit-scrollbar-thumb{background:#262626;border-radius:2px}
-.cm{display:block;overflow:hidden;margin-bottom:2px}
-.av{float:left;width:38px;height:38px;margin-right:10px;margin-top:2px;flex-shrink:0;border-radius:8px;background:#1e1e1e;border:1px solid #2e2e2e;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;color:#b89a60;overflow:hidden}
-.av img{width:38px;height:38px;object-fit:cover;border-radius:8px;display:block}
-.mn{display:flex;align-items:baseline;gap:6px;margin-bottom:3px}
-.nn{font-size:13.5px;font-weight:600;color:#b89a60}
-.tm{font-size:9px;color:#5a5751;font-family:'DM Mono',monospace}
-.mt{font-size:14.5px;color:#8c8882;line-height:1.65;word-break:break-word}
-.md .mt{display:none}
-.dice-card{background:rgba(184,154,96,.1);border:1px solid rgba(184,154,96,.2);border-radius:8px;padding:10px 14px;text-align:center;margin-top:4px;max-width:70%}
-.dice-card-formula{font-size:10px;color:#5a5751;font-family:'DM Mono',monospace;letter-spacing:.08em;margin-bottom:4px}
-.dice-card-result{font-size:34px;font-weight:800;color:#b89a60;font-family:'DM Mono',monospace;line-height:1.2}
-.dice-card-rolls{font-size:14px;color:#8c8882;font-family:'DM Mono',monospace;margin-top:4px}
-.ms .mt{color:#5a5751;font-size:12px;font-style:italic;text-align:center}
-.ms .av{display:none}
-.j-list{flex:1;overflow-y:auto;padding:10px}
-.j-item{padding:8px 10px;border:1px solid #1f1f1f;border-radius:6px;margin-bottom:6px}
-.j-item-title{font-size:13px;color:#e8e3da;font-weight:500}
-.pop-toolbar{border-top:1px solid #1f1f1f;padding:6px 10px;flex-shrink:0;display:flex;flex-wrap:wrap;gap:4px;align-items:center}
-.pop-tb-btn{background:#161616;border:1px solid #1f1f1f;border-radius:6px;color:#8c8882;padding:4px 10px;font:inherit;font-size:11px;cursor:pointer;display:flex;align-items:center;gap:5px;transition:.18s ease}
-.pop-tb-btn:hover,.pop-tb-btn.active{border-color:#b89a60;color:#b89a60}
-.iw{padding:8px;display:flex;gap:6px;flex-shrink:0}
-textarea{flex:1;background:#161616;border:1px solid #1f1f1f;border-radius:6px;color:#e8e3da;padding:7px 10px;font-size:13px;resize:none;height:34px;font-family:inherit;outline:none}
-textarea:focus{border-color:#b89a60}
-.sb{width:34px;height:34px;background:#b89a60;border:none;border-radius:6px;color:#080808;cursor:pointer;font-size:15px;flex-shrink:0}
-</style></head><body>
-<div class="tabs">
-  <button class="tab on" data-tab="chat" onclick="switchTab('chat')">채팅</button>
-  <button class="tab" data-tab="casual" onclick="switchTab('casual')">잡담</button>
-  <button class="tab" data-tab="journal" onclick="switchTab('journal')">저널</button>
-</div>
-<div class="pane on" id="p-chat"><div class="msgs" id="pm-chat"></div></div>
-<div class="pane" id="p-casual"><div class="msgs" id="pm-casual"></div></div>
-<div class="pane" id="p-journal"><div class="j-list" id="pm-journal"></div></div>
-<div class="pop-toolbar" id="pop-toolbar">
-  <button class="pop-tb-btn" id="pop-sa-btn" onclick="popToggleSpeakAs()">나</button>
-  <button class="pop-tb-btn" onclick="popToggleDesc()">desc</button>
-  <button class="pop-tb-btn" onclick="popToggleWhisper()">귓말</button>
-</div>
-<div class="iw" id="pop-iw">
-  <textarea id="pi" placeholder="메시지 입력 (Enter 전송)" rows="1"></textarea>
-  <button class="sb" id="sb">&#x27A4;</button>
-</div>
-${_sc_open}
-(function(){
-  var activeTab='chat';
-  function e(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
-  function fmt(s){var r=e(s);r=r.replace(/\\*\\*\\*(.+?)\\*\\*\\*/g,'<b><i>$$1</i></b>');r=r.replace(/\\*\\*(.+?)\\*\\*/g,'<i>$$1</i>');r=r.replace(/\\*(.+?)\\*/g,'<b>$$1</b>');return r.replace(/\\n/g,'<br>');}
-  window.switchTab=function(t){
-    activeTab=t;
-    document.querySelectorAll('.tab').forEach(function(b){b.classList.toggle('on',b.dataset.tab===t);});
-    document.querySelectorAll('.pane').forEach(function(p){p.classList.toggle('on',p.id==='p-'+t);});
-    var iw=document.getElementById('pop-iw');
-    var tb=document.getElementById('pop-toolbar');
-    if(t==='journal'){iw.style.display='none';tb.style.display='none';}
-    else{iw.style.display='';tb.style.display='';}
-  };
-  window.addMsg=function(name,text,type,channel,nameColor,avatarUrl,timeStr){
-    var ch=channel||'chat';
-    var c=document.getElementById('pm-'+ch);
-    if(!c)c=document.getElementById('pm-chat');
-    var div=document.createElement('div');div.className='cm';
-    var ts=timeStr||'';
-    if(!ts){var now=new Date();ts=now.getHours().toString().padStart(2,'0')+':'+now.getMinutes().toString().padStart(2,'0');}
-    var nc=nameColor?' style="color:'+nameColor+'"':'';
-    var avHtml='<div class="av">';
-    if(avatarUrl){avHtml='<div class="av"><img src="'+avatarUrl+'" alt=""></div>';}
-    else{avHtml='<div class="av">'+e((name||'?')[0]).toUpperCase()+'</div>';}
-    if(type==='sys'||type==='system'){div.className='cm ms';div.innerHTML='<div class="mt">'+fmt(text)+'</div>';}
-    else if(type==='dice'){
-      div.className='cm md';
-      var dm=String(text).match(/[\\u{1F3B2}\\u{1F3AF}]\\s*(.+?)\\s*\\u2192\\s*(\\d+)\\s*\\(([^)]+)\\)/u);
-      if(dm){div.innerHTML=avHtml+'<div style="overflow:hidden"><div class="mn"><span class="nn"'+nc+'>'+e(name)+'</span><span class="tm">'+ts+'</span></div><div class="mt">'+e(text)+'</div><div class="dice-card"><div class="dice-card-formula">'+e(dm[1])+'</div><div class="dice-card-result">'+e(dm[2])+'</div><div class="dice-card-rolls">'+e(dm[3])+'</div></div></div>';}
-      else{div.innerHTML=avHtml+'<div style="overflow:hidden"><div class="mn"><span class="nn"'+nc+'>'+e(name)+'</span><span class="tm">'+ts+'</span></div><div class="mt">'+fmt(text)+'</div></div>';}
-    }
-    else{div.innerHTML=avHtml+'<div style="overflow:hidden"><div class="mn"><span class="nn"'+nc+'>'+e(name)+'</span><span class="tm">'+ts+'</span></div><div class="mt">'+fmt(text)+'</div></div>';}
-    c.appendChild(div);c.scrollTop=c.scrollHeight;
-  };
-  window.setJournals=function(list){
-    var c=document.getElementById('pm-journal');c.innerHTML='';
-    list.forEach(function(j){var d=document.createElement('div');d.className='j-item';d.innerHTML='<div class="j-item-title">'+e(j.title||'무제 저널')+'</div><div style="font-size:10px;color:#5a5751;margin-top:2px">'+e((j.body||'').slice(0,40)||'내용 없음')+'</div>';c.appendChild(d);});
-    if(!list.length)c.innerHTML='<div style="text-align:center;color:#5a5751;padding:20px;font-size:12px">저널이 없어요.</div>';
-  };
-  window.updateSaBtn=function(label){document.getElementById('pop-sa-btn').textContent=label;};
-  window.popToggleSpeakAs=function(){if(window.opener)window.opener.toggleSpeakAsDropdown({stopPropagation:function(){}});};
-  window.popToggleDesc=function(){if(window.opener)window.opener.toggleDescMode();};
-  window.popToggleWhisper=function(){if(window.opener)window.opener.toggleWhisperDropdown({stopPropagation:function(){}});};
-  function send(){var i=document.getElementById('pi');var t=i.value.trim();if(!t)return;i.value='';if(window.opener&&window.opener.sendChatFromPopout)window.opener.sendChatFromPopout(t,activeTab);}
-  document.getElementById('sb').addEventListener('click',send);
-  document.getElementById('pi').addEventListener('keydown',function(ev){if(ev.key==='Enter'&&!ev.shiftKey){ev.preventDefault();send();}});
-  document.getElementById('pi').addEventListener('input',function(){if(window.opener&&window.opener.broadcastTyping)window.opener.broadcastTyping();});
-  window._popReady=true;
-})();
-${_sc_close}
-</body></html>`;
-
+  const popHtml = buildPopoutHtml();
   const blob = new Blob([popHtml], { type: 'text/html;charset=utf-8' });
   const blobUrl = URL.createObjectURL(blob);
   const pw = 420, ph2 = 680;
@@ -4413,16 +4436,9 @@ ${_sc_close}
     const nameEl = m.querySelector('.msg-name');
     const textEl = m.querySelector('.msg-text');
     const timeEl = m.querySelector('.msg-time');
-    const avatarImg = m.querySelector('.msg-avatar img');
-    const type = m.classList.contains('msg-dice')?'dice':m.classList.contains('msg-sys')?'sys':m.classList.contains('msg-dsec')?'dsec':'normal';
-    return {
-      name: nameEl?.textContent || '',
-      text: textEl?.textContent || '',
-      type,
-      nc: nameEl?.style?.color || '',
-      av: avatarImg?.src || '',
-      time: timeEl?.textContent || '',
-    };
+    const avImg = m.querySelector('.msg-avatar img');
+    const type = m.classList.contains('msg-dice')?'dice':m.classList.contains('msg-sys')?'sys':'normal';
+    return { name: nameEl?.textContent||'', text: textEl?.textContent||'', type, nc: nameEl?.style?.color||'', av: avImg?.src||'', time: timeEl?.textContent||'' };
   };
 
   const syncExisting = () => {
@@ -4439,7 +4455,7 @@ ${_sc_close}
   };
   let tries = 0;
   const t = setInterval(() => { tries++; if ((win && win._popReady) || tries > 15) { clearInterval(t); syncExisting(); } }, 200);
-  showToast(`채팅이 새 창으로 분리됐어요! (${_popoutWins.length}/3)`);
+  showToast('채팅이 새 창으로 분리됐어요! (' + _popoutWins.length + '/3)');
 }
 
 function getPopoutAvatarUrl(name, uid) {
