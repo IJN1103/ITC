@@ -1059,6 +1059,69 @@ input:focus, select:focus, textarea:focus { outline: none; }
 }
 .chat-input-wrap { padding: 8px; display: flex; gap: 6px; }
 .chat-toolbar:not(.gm-visible) + .chat-input-wrap { border-top: 1px solid var(--border); }
+
+/* ── 채팅/저널 탭 ── */
+.right-tabs { display: flex; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.rtab { flex: 1; background: none; border: none; border-bottom: 2px solid transparent;
+  color: var(--muted); padding: 9px 4px; cursor: pointer; font-family: inherit;
+  font-size: 11px; letter-spacing: .08em; text-transform: uppercase;
+  transition: var(--t); margin-bottom: -1px; display: flex; align-items: center; justify-content: center; gap: 5px; }
+.rtab.on { color: var(--accent); border-bottom-color: var(--accent); }
+.rtab:hover:not(.on) { color: var(--dim); }
+.right-pane { display: none; flex: 1; flex-direction: column; overflow: hidden; }
+.right-pane.on { display: flex; }
+
+/* ── 저널 ── */
+.journal-pane { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
+.journal-list { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 6px; }
+.journal-list::-webkit-scrollbar { width: 4px; }
+.journal-list::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+.journal-empty { font-size: 12px; color: var(--muted); text-align: center; padding: 24px 0; }
+.journal-item {
+  background: var(--s2); border: 1px solid var(--border); border-radius: var(--r);
+  padding: 10px 12px; cursor: pointer; transition: var(--t);
+}
+.journal-item:hover { border-color: var(--accent); background: var(--a-dim); }
+.journal-item-title { font-size: 13px; color: var(--text); font-weight: 500; margin-bottom: 3px; }
+.journal-item-meta { font-size: 10px; color: var(--muted); display: flex; align-items: center; justify-content: space-between; }
+.journal-add-bar { padding: 8px; border-top: 1px solid var(--border); flex-shrink: 0; }
+.journal-add-btn {
+  width: 100%; padding: 8px; background: none; border: 1px dashed var(--border2);
+  border-radius: var(--r); color: var(--muted); font: inherit; font-size: 12px;
+  cursor: pointer; transition: var(--t);
+}
+.journal-add-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+/* ── 저널 에디터 ── */
+.journal-editor { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
+.journal-editor-header {
+  display: flex; align-items: center; gap: 6px;
+  padding: 8px 10px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+}
+.journal-back-btn {
+  background: none; border: none; color: var(--muted); cursor: pointer;
+  font-size: 16px; padding: 2px 4px; transition: var(--t);
+}
+.journal-back-btn:hover { color: var(--text); }
+.journal-title-input {
+  flex: 1; background: none; border: none; color: var(--text);
+  font: inherit; font-size: 13px; font-weight: 500; outline: none;
+  min-width: 0;
+}
+.journal-title-input::placeholder { color: var(--muted); }
+.journal-del-btn {
+  background: none; border: none; color: var(--muted); cursor: pointer;
+  font-size: 13px; padding: 2px 5px; border-radius: 4px; transition: var(--t);
+}
+.journal-del-btn:hover { color: var(--red); background: rgba(200,92,92,.1); }
+.journal-body-input {
+  flex: 1; background: none; border: none; color: var(--dim); resize: none;
+  font: inherit; font-size: 13px; line-height: 1.7; padding: 12px;
+  outline: none; overflow-y: auto;
+}
+.journal-body-input::placeholder { color: var(--muted); }
+.journal-save-bar { padding: 8px; border-top: 1px solid var(--border); flex-shrink: 0; display: flex; gap: 6px; align-items: center; }
+.journal-saved-hint { font-size: 10px; color: var(--muted); flex: 1; }
 .chat-input { flex: 1; background: var(--s2); border: 1px solid var(--border); border-radius: var(--r); color: var(--text); padding: 7px 10px; font-size: 13px; resize: none; min-height: 34px; max-height: 100px; transition: var(--t); font-family: inherit; }
 .chat-input:focus { border-color: var(--accent); }
 .send-btn { width: 34px; height: 34px; background: var(--accent); border: none; border-radius: var(--r); color: #080808; cursor: pointer; font-size: 15px; display: flex; align-items: center; justify-content: center; transition: var(--t); flex-shrink: 0; }
@@ -1418,27 +1481,63 @@ input:focus, select:focus, textarea:focus { outline: none; }
       </div>
     </div>
 
-    <!-- 오른쪽: 채팅 -->
+    <!-- 오른쪽: 채팅 + 저널 -->
     <div class="panel-right" id="panel-right">
       <!-- 드래그 리사이즈 핸들 -->
       <div class="chat-resize-handle" id="chat-resize-handle"></div>
-      <div class="panel-header">
-        <span class="panel-header-title">채팅</span>
-        <button class="chat-popout-btn" onclick="popoutChat()" title="채팅을 새 탭으로 분리">⤢</button>
-      </div>
-      <div class="chat-messages" id="chat-messages"></div>
-      <div class="chat-toolbar" id="chat-toolbar">
-        <button class="desc-toggle-btn" id="desc-toggle-btn" onclick="toggleDescMode()" title="/desc 지문 모드">
-          <span class="desc-dot"></span>
-          <span>desc</span>
+
+      <!-- 탭 헤더 -->
+      <div class="right-tabs">
+        <button class="rtab on" id="rtab-chat" onclick="switchRightTab('chat')">
+          <span>💬</span><span>채팅</span>
         </button>
+        <button class="rtab" id="rtab-journal" onclick="switchRightTab('journal')">
+          <span>📖</span><span>저널</span>
+        </button>
+        <button class="chat-popout-btn" onclick="popoutChat()" title="채팅을 새 탭으로 분리" style="margin-left:auto;margin-right:6px">⤢</button>
       </div>
-      <div class="chat-input-wrap">
-        <button class="chat-attach-btn" onclick="document.getElementById('chat-img-input').click()" title="사진/GIF 첨부">+</button>
-        <input type="file" id="chat-img-input" accept="image/png,image/jpeg,image/gif" style="display:none" onchange="handleChatImageUpload(this)">
-        <textarea class="chat-input" id="chat-input" placeholder="메시지 입력 (Enter 전송)" rows="1" onkeydown="chatKeydown(event)"></textarea>
-        <button class="send-btn" onclick="sendChat()">➤</button>
+
+      <!-- 채팅 패널 -->
+      <div class="right-pane on" id="rpane-chat">
+        <div class="chat-messages" id="chat-messages"></div>
+        <div class="chat-toolbar" id="chat-toolbar">
+          <button class="desc-toggle-btn" id="desc-toggle-btn" onclick="toggleDescMode()" title="/desc 지문 모드">
+            <span class="desc-dot"></span>
+            <span>desc</span>
+          </button>
+        </div>
+        <div class="chat-input-wrap">
+          <button class="chat-attach-btn" onclick="document.getElementById('chat-img-input').click()" title="사진/GIF 첨부">+</button>
+          <input type="file" id="chat-img-input" accept="image/png,image/jpeg,image/gif" style="display:none" onchange="handleChatImageUpload(this)">
+          <textarea class="chat-input" id="chat-input" placeholder="메시지 입력 (Enter 전송)" rows="1" onkeydown="chatKeydown(event)"></textarea>
+          <button class="send-btn" onclick="sendChat()">➤</button>
+        </div>
       </div>
+
+      <!-- 저널 패널 -->
+      <div class="right-pane" id="rpane-journal">
+        <div class="journal-pane" id="journal-list-view">
+          <div class="journal-list" id="journal-list-container">
+            <div class="journal-empty" id="journal-empty">저널이 없어요.<br>아래 버튼으로 새 저널을 만들어보세요.</div>
+          </div>
+          <div class="journal-add-bar">
+            <button class="journal-add-btn" onclick="openJournalEditor(null)">+ 새 저널 만들기</button>
+          </div>
+        </div>
+        <div class="journal-editor" id="journal-editor-view" style="display:none">
+          <div class="journal-editor-header">
+            <button class="journal-back-btn" onclick="closeJournalEditor()" title="목록으로">‹</button>
+            <input class="journal-title-input" id="journal-title-input" placeholder="저널 제목">
+            <button class="journal-del-btn" id="journal-del-btn" onclick="deleteJournal()" title="삭제">🗑</button>
+          </div>
+          <textarea class="journal-body-input" id="journal-body-input" placeholder="내용을 입력하세요…"></textarea>
+          <div class="journal-save-bar">
+            <span class="journal-saved-hint" id="journal-saved-hint"></span>
+            <button class="btn-primary" style="padding:7px 16px;font-size:12px" onclick="saveJournal()">저장</button>
+          </div>
+        </div>
+      </div>
+
     </div>
   </div>
 
@@ -3725,6 +3824,105 @@ function showProfileMsg(text, type) {
   if (!el) return;
   el.textContent = text;
   el.className = 'profile-msg' + (type ? ' ' + type : '');
+}
+
+/* ─────────────────────────────────────────────────
+   우측 패널 탭 전환
+───────────────────────────────────────────────── */
+function switchRightTab(tab) {
+  document.querySelectorAll('.rtab').forEach(b => b.classList.remove('on'));
+  document.querySelectorAll('.right-pane').forEach(p => p.classList.remove('on'));
+  document.getElementById('rtab-' + tab).classList.add('on');
+  document.getElementById('rpane-' + tab).classList.add('on');
+  if (tab === 'journal') renderJournalList();
+}
+
+/* ─────────────────────────────────────────────────
+   우측 패널 탭 전환
+───────────────────────────────────────────────── */
+function switchRightTab(tab) {
+  document.querySelectorAll('.rtab').forEach(b => b.classList.remove('on'));
+  document.querySelectorAll('.right-pane').forEach(p => p.classList.remove('on'));
+  document.getElementById('rtab-' + tab).classList.add('on');
+  document.getElementById('rpane-' + tab).classList.add('on');
+  if (tab === 'journal') renderJournalList();
+}
+
+/* ─────────────────────────────────────────────────
+   저널
+───────────────────────────────────────────────── */
+let _currentJournalId = null;
+
+function journalKey() { return 'itc_journals_' + St.myId + '_' + St.roomCode; }
+function loadJournals() { try { return JSON.parse(localStorage.getItem(journalKey()) || '[]'); } catch { return []; } }
+function saveJournals(list) { localStorage.setItem(journalKey(), JSON.stringify(list)); }
+
+function renderJournalList() {
+  const list      = loadJournals();
+  const container = document.getElementById('journal-list-container');
+  const empty     = document.getElementById('journal-empty');
+  if (!container) return;
+  container.querySelectorAll('.journal-item').forEach(el => el.remove());
+  if (!list.length) { if (empty) empty.style.display = 'block'; return; }
+  if (empty) empty.style.display = 'none';
+  list.slice().reverse().forEach(j => {
+    const div  = document.createElement('div');
+    div.className = 'journal-item';
+    div.onclick   = () => openJournalEditor(j.id);
+    const d   = new Date(j.updatedAt || j.createdAt);
+    const ds  = `${d.getMonth()+1}/${d.getDate()} ${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
+    const pre = (j.body || '').replace(/\n/g,' ').slice(0,40) || '내용 없음';
+    div.innerHTML = `<div class="journal-item-title">${esc(j.title||'무제 저널')}</div>
+      <div class="journal-item-meta"><span style="color:var(--dim);font-size:11px">${esc(pre)}${(j.body||'').length>40?'…':''}</span><span>${ds}</span></div>`;
+    container.appendChild(div);
+  });
+}
+
+function openJournalEditor(id) {
+  const lv = document.getElementById('journal-list-view');
+  const ev = document.getElementById('journal-editor-view');
+  const ti = document.getElementById('journal-title-input');
+  const bi = document.getElementById('journal-body-input');
+  const hi = document.getElementById('journal-saved-hint');
+  if (id) {
+    const j = loadJournals().find(j => j.id === id);
+    if (!j) return;
+    _currentJournalId = id;
+    ti.value = j.title || '';
+    bi.value = j.body  || '';
+  } else {
+    _currentJournalId = 'j_' + Date.now();
+    ti.value = ''; bi.value = '';
+  }
+  if (hi) hi.textContent = '';
+  lv.style.display = 'none';
+  ev.style.display = 'flex';
+  ti.focus();
+}
+
+function closeJournalEditor() {
+  document.getElementById('journal-list-view').style.display   = 'flex';
+  document.getElementById('journal-editor-view').style.display = 'none';
+  _currentJournalId = null;
+  renderJournalList();
+}
+
+function saveJournal() {
+  const title = document.getElementById('journal-title-input').value.trim() || '무제 저널';
+  const body  = document.getElementById('journal-body-input').value;
+  const hint  = document.getElementById('journal-saved-hint');
+  let list = loadJournals();
+  const idx = list.findIndex(j => j.id === _currentJournalId);
+  if (idx >= 0) { list[idx].title = title; list[idx].body = body; list[idx].updatedAt = Date.now(); }
+  else { list.push({ id: _currentJournalId, title, body, createdAt: Date.now(), updatedAt: Date.now() }); }
+  saveJournals(list);
+  if (hint) { hint.textContent = '저장됐어요 ✓'; setTimeout(() => { if(hint) hint.textContent=''; }, 2000); }
+}
+
+function deleteJournal() {
+  if (!_currentJournalId || !confirm('이 저널을 삭제할까요?')) return;
+  saveJournals(loadJournals().filter(j => j.id !== _currentJournalId));
+  closeJournalEditor();
 }
 
 function esc(str) {
