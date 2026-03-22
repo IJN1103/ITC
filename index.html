@@ -1240,8 +1240,8 @@ input:focus, select:focus, textarea:focus { outline: none; }
   animation: fadeUp .2s ease; overflow: hidden;
 }
 .sheet-head {
-  display: flex; align-items: center; gap: 10px;
-  padding: 14px 20px; border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: flex-end;
+  padding: 8px 12px; border-bottom: 1px solid var(--border);
   flex-shrink: 0; background: var(--s2);
 }
 .sheet-head-title {
@@ -1749,10 +1749,7 @@ input:focus, select:focus, textarea:focus { outline: none; }
 <div class="sheet-overlay" id="sheet-overlay">
   <div class="sheet-modal">
     <div class="sheet-head">
-      <div>
-        <div class="sheet-head-title">Call of Cthulhu 7th edition</div>
-        <div class="sheet-head-sub">캐릭터 시트</div>
-      </div>
+      <div style="flex:1"></div>
       <button class="sheet-close" onclick="closeSheet()">✕</button>
     </div>
     <div class="sheet-body">
