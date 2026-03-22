@@ -322,6 +322,8 @@ to{opacity:1;transform:translateY(0);}
 .map-token{position:absolute;width:36px;height:36px;border-radius:50%;background-color:var(--s3);border:2px solid var(--accent);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:500;cursor:grab;user-select:none;z-index:10;transition:box-shadow .15s;transform:translate(-50%,-50%);}
 .map-token:hover{box-shadow:0 0 0 4px var(--a-glow);}
 .map-token.has-img{background-color:transparent;border:none;border-radius:0;font-size:0;overflow:visible;display:flex;align-items:flex-end;justify-content:center;}
+.map-token.has-img img{image-rendering:auto;-webkit-image-rendering:high-quality;}
+.map-token.has-img img{image-rendering:-webkit-optimize-contrast;image-rendering:crisp-edges;}
 .map-token.has-img:hover{box-shadow:none;filter:drop-shadow(0 0 3px rgba(255,255,255,.5)) drop-shadow(0 0 6px rgba(255,255,255,.2)) brightness(1.08);}
 .token-name-label{position:absolute;bottom:-16px;left:50%;transform:translateX(-50%);white-space:nowrap;font-size:10px;font-weight:600;color:#fff;-webkit-text-stroke:0.5px rgba(0,0,0,.8);paint-order:stroke fill;text-shadow:-1px -1px 0 rgba(0,0,0,.7),1px -1px 0 rgba(0,0,0,.7),-1px 1px 0 rgba(0,0,0,.7),1px 1px 0 rgba(0,0,0,.7),0 0 4px rgba(0,0,0,.5);pointer-events:none;z-index:11;letter-spacing:.02em}
 .map-token .token-hp-bar{position:absolute;bottom:-4px;left:10%;width:80%;height:3px;background:rgba(0,0,0,.4);border-radius:2px;overflow:hidden}
@@ -1555,7 +1557,7 @@ to{transform:translateX(0);opacity:1;}
 </div>
 
 <div class="overlay" id="modal-settings">
-  <div class="modal">
+  <div class="modal" style="width:min(480px,94vw);max-height:85vh;overflow-y:auto">
     <div class="modal-row">
       <div class="modal-title">⚙ 방 설정</div>
       <button class="modal-close" onclick="closeModal('modal-settings')">✕</button>
@@ -1568,7 +1570,6 @@ to{transform:translateX(0);opacity:1;}
       <b>역할</b> — <span id="role-disp"></span>
     </div>
 
-    <!-- 채팅 아바타 도형 설정 -->
     <div style="border-top:1px solid var(--border);padding-top:12px">
       <div style="font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);margin-bottom:10px">채팅 아바타 도형</div>
       <div style="display:flex;gap:10px">
@@ -1585,10 +1586,10 @@ to{transform:translateX(0);opacity:1;}
       </div>
     </div>
 
-    <!-- GM 전용: 플레이어 목록 & 강퇴 -->
     <div id="gm-player-mgmt" class="gm-only" style="display:none;border-top:1px solid var(--border);padding-top:12px">
-      <div style="font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);margin-bottom:8px">플레이어 관리</div>
-      <div id="player-mgmt-list" style="display:flex;flex-direction:column;gap:5px"></div>
+      <div style="font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);margin-bottom:8px">참여자 & 권한 관리</div>
+      <div style="font-size:10px;color:var(--dim);margin-bottom:10px">GM은 모든 권한을 보유합니다. 플레이어에게 개별 권한을 부여하거나 탈취할 수 있습니다.</div>
+      <div id="player-mgmt-list" style="display:flex;flex-direction:column;gap:8px"></div>
     </div>
 
     <div style="display:flex;gap:8px;margin-top:4px">
@@ -3333,7 +3334,7 @@ function teHandleTokenImg(input) {
   reader.onload = ev => {
     const img = new Image();
     img.onload = () => {
-      const MAX = 200; let w = img.width, h = img.height;
+      const MAX = 800; let w = img.width, h = img.height;
       if (w > MAX || h > MAX) { const r = Math.min(MAX/w, MAX/h); w = Math.round(w*r); h = Math.round(h*r); }
       const c = document.createElement('canvas'); c.width = w; c.height = h;
       c.getContext('2d').drawImage(img, 0, 0, w, h);
@@ -3618,6 +3619,20 @@ function openModal(id) {
   if (id === 'modal-profile')  initProfileModal();
 }
 
+const PERMS = [
+  { key: 'moveToken',   label: '토큰 이동',   desc: '맵에서 토큰을 드래그하여 이동' },
+  { key: 'createToken', label: '토큰 생성',   desc: '맵에 새 토큰을 추가' },
+  { key: 'editToken',   label: '토큰 편집',   desc: '토큰 우클릭 편집/삭제' },
+  { key: 'manageMap',   label: '맵 관리',     desc: '맵 배경 업로드 및 변경' },
+  { key: 'manageBgm',   label: 'BGM 관리',    desc: 'BGM 추가/삭제/변경' },
+  { key: 'sendDesc',    label: 'desc 입력',   desc: '/desc 지문 명령어 사용' },
+];
+
+function getPlayerPerms(player) {
+  if (player.role === 'gm') return PERMS.reduce((o, p) => ({ ...o, [p.key]: true }), {});
+  return player.permissions || {};
+}
+
 function renderSettingsModal() {
   const roleEl = document.getElementById('role-disp');
   if (roleEl) roleEl.textContent = St.isGM ? 'GM (방장)' : '플레이어';
@@ -3629,19 +3644,84 @@ function renderSettingsModal() {
 
   updateShapeBtns();
 
-  if (!St.isGM || !window._FB?.CONFIGURED) return;
-  const { db, ref, get, remove } = window._FB;
+  if (!window._FB?.CONFIGURED) return;
+  const { db, ref, get } = window._FB;
   get(ref(db, `rooms/${St.roomCode}/players`)).then(snap => {
     const players = snap.val() || {};
     const list = document.getElementById('player-mgmt-list');
     if (!list) return;
-    list.innerHTML = Object.entries(players).map(([uid, p]) => `
-      <div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:var(--s2);border-radius:var(--r)">
-        <div style="flex:1;font-size:13px;color:var(--text)">${esc(p.name)}</div>
-        <div style="font-size:10px;color:${p.role==='gm'?'var(--accent)':'var(--muted)'};">${p.role==='gm'?'GM':'플레이어'}</div>
-        ${uid !== St.myId ? `<button onclick="kickPlayer('${uid}','${esc(p.name)}')" style="background:none;border:1px solid rgba(200,92,92,.3);border-radius:4px;color:var(--red);font:inherit;font-size:11px;padding:2px 8px;cursor:pointer">강퇴</button>` : '<span style="font-size:10px;color:var(--muted)">(나)</span>'}
-      </div>`).join('');
+    list.innerHTML = '';
+
+    Object.entries(players).forEach(([uid, p]) => {
+      const isGM = p.role === 'gm';
+      const isMe = uid === St.myId;
+      const perms = getPlayerPerms(p);
+
+      const card = document.createElement('div');
+      card.style.cssText = 'background:var(--s2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;';
+
+      const header = document.createElement('div');
+      header.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:6px';
+      const nameDiv = document.createElement('div');
+      nameDiv.style.cssText = 'flex:1;font-size:13px;font-weight:600;color:var(--text)';
+      nameDiv.textContent = p.name;
+      if (isMe) { const me = document.createElement('span'); me.style.cssText='font-size:10px;color:var(--muted);margin-left:4px'; me.textContent='(나)'; nameDiv.appendChild(me); }
+      header.appendChild(nameDiv);
+
+      const roleTag = document.createElement('div');
+      roleTag.style.cssText = 'font-size:10px;padding:2px 8px;border-radius:4px;' + (isGM ? 'background:rgba(184,154,96,.15);color:var(--accent);border:1px solid rgba(184,154,96,.3)' : 'background:var(--s3);color:var(--muted);border:1px solid var(--border)');
+      roleTag.textContent = isGM ? 'GM' : '플레이어';
+      header.appendChild(roleTag);
+
+      if (St.isGM && !isMe && !isGM) {
+        const kickBtn = document.createElement('button');
+        kickBtn.style.cssText = 'background:none;border:1px solid rgba(200,92,92,.3);border-radius:4px;color:var(--red);font:inherit;font-size:10px;padding:2px 8px;cursor:pointer';
+        kickBtn.textContent = '강퇴';
+        kickBtn.onclick = () => kickPlayer(uid, p.name);
+        header.appendChild(kickBtn);
+      }
+
+      card.appendChild(header);
+
+      if (isGM) {
+        const allPerms = document.createElement('div');
+        allPerms.style.cssText = 'font-size:10px;color:var(--dim);padding:4px 0';
+        allPerms.textContent = '모든 권한 보유';
+        card.appendChild(allPerms);
+      } else {
+        const permWrap = document.createElement('div');
+        permWrap.style.cssText = 'display:flex;flex-wrap:wrap;gap:4px;margin-top:4px';
+        PERMS.forEach(pm => {
+          const has = !!perms[pm.key];
+          if (St.isGM) {
+            const btn = document.createElement('button');
+            btn.title = pm.desc;
+            btn.style.cssText = 'font:inherit;font-size:10px;padding:3px 8px;border-radius:4px;cursor:pointer;transition:.15s ease;border:1px solid '+(has?'rgba(90,158,114,.4)':'var(--border)')+';background:'+(has?'rgba(90,158,114,.12)':'var(--s3)')+';color:'+(has?'var(--green)':'var(--muted)');
+            btn.textContent = (has?'\u2713 ':'')+pm.label;
+            btn.onclick = () => togglePerm(uid, pm.key, !has);
+            permWrap.appendChild(btn);
+          } else {
+            const span = document.createElement('span');
+            span.style.cssText = 'font-size:10px;padding:3px 8px;border-radius:4px;border:1px solid '+(has?'rgba(90,158,114,.4)':'var(--border)')+';background:'+(has?'rgba(90,158,114,.12)':'var(--s3)')+';color:'+(has?'var(--green)':'var(--muted)');
+            span.textContent = (has?'\u2713 ':'\u2715 ')+pm.label;
+            permWrap.appendChild(span);
+          }
+        });
+        card.appendChild(permWrap);
+      }
+
+      list.appendChild(card);
+    });
   });
+}
+
+async function togglePerm(uid, permKey, value) {
+  if (!St.isGM || !window._FB?.CONFIGURED) return;
+  const { db, ref, update } = window._FB;
+  const updates = {};
+  updates[permKey] = value || null;
+  await update(ref(db, `rooms/${St.roomCode}/players/${uid}/permissions`), updates);
+  renderSettingsModal();
 }
 
 async function kickPlayer(uid, name) {
