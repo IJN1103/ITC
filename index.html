@@ -499,13 +499,6 @@ input:focus, select:focus, textarea:focus { outline: none; }
 .nav-profile-btn:hover .user-name { color: var(--text); }
 
 /* ── 프로필 아바타 (이미지 지원) ── */
-.user-avatar {
-  width: 28px; height: 28px; border-radius: 50%;
-  background: var(--s3); border: 1px solid var(--border2);
-  display: flex; align-items: center; justify-content: center;
-  font-size: 11px; font-weight: 500; color: var(--accent);
-  overflow: hidden; flex-shrink: 0;
-}
 .user-avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
 
 /* ── 프로필 모달 전용 ── */
@@ -528,8 +521,7 @@ input:focus, select:focus, textarea:focus { outline: none; }
   display: none; align-items: center; justify-content: center;
   border-radius: 50%; font-size: 18px;
 }
-.profile-avatar-big:hover .av-overlay { display: flex; }
-.profile-edit-hint { font-size: 11px; color: var(--muted); }
+.profile-avatar-big:hover .profile-edit-hint { font-size: 11px; color: var(--muted); }
 .profile-section-title {
   font-size: 10px; letter-spacing: .18em; text-transform: uppercase;
   color: var(--muted); margin: 8px 0 10px;
@@ -672,12 +664,7 @@ input:focus, select:focus, textarea:focus { outline: none; }
   letter-spacing: .04em;
 }
 .btn-room:hover { opacity: .88; }
-.btn-room.secondary {
-  background: var(--s3);
-  color: var(--text);
-  border: 1px solid var(--border2);
-}
-.btn-room.secondary:hover { background: var(--s4); }
+.btn-room.btn-room.secondary:hover { background: var(--s4); }
 
 /* 최근 방 */
 .recent-rooms { display: flex; flex-direction: column; gap: 6px; margin-bottom: 18px; }
@@ -731,8 +718,7 @@ input:focus, select:focus, textarea:focus { outline: none; }
   flex-direction: column;
 }
 .campaign-card:hover { border-color: var(--accent); }
-.campaign-card:hover .cc-thumb-overlay { opacity: 1; }
-
+.campaign-card:hover 
 /* 썸네일 영역 (16:9) */
 .cc-thumb {
   width: 100%;
@@ -1022,8 +1008,7 @@ input:focus, select:focus, textarea:focus { outline: none; }
 .chat-messages { flex: 1; overflow-y: auto; padding: 10px; display: block; }
 .chat-msg { animation: fadeUp .2s ease; display: block; overflow: hidden; margin-bottom: 10px; }
 .chat-msg.msg-sys { text-align: center; }
-.chat-msg.msg-sys .msg-avatar { display: none; }
-.msg-avatar {
+.chat-msg.msg-sys .msg-avatar {
   float: left;
   width: 26px; height: 26px;
   margin-right: 7px; margin-top: 1px;
@@ -1038,8 +1023,7 @@ input:focus, select:focus, textarea:focus { outline: none; }
   font-size: 10px; font-weight: 500; color: var(--accent);
   overflow: hidden;
 }
-.msg-avatar.shape-circle .msg-avatar-inner { border-radius: 50%; }
-.msg-avatar img { width: 26px; height: 26px; object-fit: cover; border-radius: 6px; display: block; }
+.msg-avatar.shape-circle .msg-avatar img { width: 26px; height: 26px; object-fit: cover; border-radius: 6px; display: block; }
 .msg-avatar.shape-circle img { border-radius: 50%; }
 .msg-body { display: block; overflow: hidden; }
 .msg-meta { display: block; margin-bottom: 2px; }
@@ -1715,27 +1699,11 @@ function setAvatarShape(shape) {
     el.classList.remove('shape-circle', 'shape-rounded');
     el.classList.add(shape === 'circle' ? 'shape-circle' : 'shape-rounded');
   });
-  // .msg-avatar-inner (이니셜 박스) border-radius
-  document.querySelectorAll('.msg-avatar-inner').forEach(el => {
-    el.style.borderRadius = r;
-  });
-  // .msg-avatar img (프로필 사진) border-radius
-  document.querySelectorAll('.msg-avatar img').forEach(el => {
+  document.querySelectorAll('.msg-avatar-inner, .msg-avatar img').forEach(el => {
     el.style.borderRadius = r;
   });
 
   showToast(shape === 'circle' ? '원형으로 변경됐어요' : '둥근 네모로 변경됐어요');
-}
-
-function updateShapeBtns() {
-  const shape = St.avatarShape;
-  const btnR = document.getElementById('shape-btn-rounded');
-  const btnC = document.getElementById('shape-btn-circle');
-  if (!btnR || !btnC) return;
-  const activeStyle  = `border-color:var(--accent);background:var(--a-dim);color:var(--accent)`;
-  const normalStyle  = `border-color:var(--border);background:var(--s2);color:var(--dim)`;
-  btnR.style.cssText += ';' + (shape === 'rounded' ? activeStyle : normalStyle);
-  btnC.style.cssText += ';' + (shape === 'circle'  ? activeStyle : normalStyle);
 }
 
 
@@ -1921,7 +1889,7 @@ async function doSignOut() {
   location.reload();
 }
 
-/* localLogin removed — Firebase required */
+
 
 function showSetupGuide() { openModal('modal-setup-guide'); }
 
@@ -2858,25 +2826,18 @@ function openLightbox(src) {
 function addLocalMessage(type, name, text) { appendChatMsg(name, text, type); }
 
 function getAvatarHtml(name, uid) {
-  const shape = St.avatarShape === 'circle' ? 'shape-circle' : 'shape-rounded';
   let imgSrc = null;
+  if (uid) imgSrc = localStorage.getItem('itc_avatar_' + uid);
+  if (!imgSrc && name) imgSrc = window._avatarCache?.[name];
 
-  // 1) uid 기반 localStorage 조회 (본인 포함)
-  if (uid) {
-    imgSrc = localStorage.getItem('itc_avatar_' + uid);
-  }
-  // 2) 이름 기반 캐시 (타인이 같은 세션에 있을 때)
-  if (!imgSrc && name) {
-    imgSrc = window._avatarCache?.[name];
-  }
+  const initial   = (name || '?')[0].toUpperCase();
+  const shapeClass = St.avatarShape === 'circle' ? 'shape-circle' : 'shape-rounded';
+  const radius     = St.avatarShape === 'circle' ? '50%' : '6px';
 
-  const initial = (name || '?')[0].toUpperCase();
-  const shape_class = St.avatarShape === 'circle' ? 'shape-circle' : 'shape-rounded';
-  const r = St.avatarShape === 'circle' ? '50%' : '6px';
   if (imgSrc) {
-    return `<div class="msg-avatar ${shape_class}"><img src="${imgSrc}" alt="${esc(initial)}" style="border-radius:${r}"></div>`;
+    return `<div class="msg-avatar ${shapeClass}"><img src="${imgSrc}" alt="${esc(initial)}" style="border-radius:${radius}"></div>`;
   }
-  return `<div class="msg-avatar ${shape_class}"><div class="msg-avatar-inner" style="border-radius:${r}">${esc(initial)}</div></div>`;
+  return `<div class="msg-avatar ${shapeClass}"><div class="msg-avatar-inner" style="border-radius:${radius}">${esc(initial)}</div></div>`;
 }
 
 function appendChatMsg(name, text, type, uid, timestamp) {
@@ -3259,54 +3220,6 @@ function initChatResize() {
 /* ─────────────────────────────────────────────────
    채팅 패널 리사이즈
 ───────────────────────────────────────────────── */
-function initChatResize() {
-  const handle = document.getElementById('chat-resize-handle');
-  const panel  = document.getElementById('panel-right');
-  if (!handle || !panel) return;
-
-  let startX, startW;
-
-  handle.addEventListener('mousedown', e => {
-    e.preventDefault();
-    startX = e.clientX;
-    startW = panel.offsetWidth;
-    handle.classList.add('dragging');
-    document.body.style.cursor = 'col-resize';
-    document.body.style.userSelect = 'none';
-
-    function onMove(e) {
-      const maxW = Math.floor(window.innerWidth * 0.5);
-      const minW = 15;
-      const delta = startX - e.clientX;
-      const newW  = Math.max(minW, Math.min(maxW, startW + delta));
-      panel.style.width    = newW + 'px';
-      panel.style.minWidth = newW + 'px';
-    }
-
-    function onUp() {
-      handle.classList.remove('dragging');
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-      document.removeEventListener('mousemove', onMove);
-      document.removeEventListener('mouseup', onUp);
-      localStorage.setItem('itc_chat_width', panel.offsetWidth);
-    }
-
-    document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup', onUp);
-  });
-
-  // 저장된 너비 복원
-  const saved = localStorage.getItem('itc_chat_width');
-  if (saved) {
-    const w   = parseInt(saved);
-    const max = Math.floor(window.innerWidth * 0.5);
-    if (w >= 15 && w <= max) {
-      panel.style.width    = w + 'px';
-      panel.style.minWidth = w + 'px';
-    }
-  }
-}
 
 /* ─────────────────────────────────────────────────
    채팅 팝아웃 (새 탭 분리)
@@ -3416,8 +3329,8 @@ function sendChatFromPopout(text) { sendMessage(St.myName, text, 'normal'); }
 
 /* 원본 appendChatMsg 래핑 — 팝아웃 동기화 */
 const _baseAppend = appendChatMsg;
-appendChatMsg = function(name, text, type, uid) {
-  _baseAppend(name, text, type, uid);
+appendChatMsg = function(name, text, type, uid, timestamp) {
+  _baseAppend(name, text, type, uid, timestamp);
   if (_popoutWin && !_popoutWin.closed && _popoutWin.addMsg) {
     _popoutWin.addMsg(name, text, type);
   }
@@ -3585,8 +3498,6 @@ function applyCrop() {
   window._crop = null;
   showProfileMsg('프로필 사진이 업데이트됐어요!', 'ok');
 }
-
-
 
 
 async function saveNickname() {
