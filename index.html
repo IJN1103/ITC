@@ -1752,8 +1752,7 @@ async function enterCampaign(code) {
 
 async function removeCampaign(e, code, key) {
   e.stopPropagation();
-  if (!confirm('세션 목록에서 제거할까요?
-(방 자체는 삭제되지 않아요)')) return;
+  if (!confirm('세션 목록에서 제거할까요?\n(방 자체는 삭제되지 않아요)')) return;
   const { db, ref, remove } = window._FB;
   await remove(ref(db, `users/${St.myId}/rooms/${key}`));
 }
