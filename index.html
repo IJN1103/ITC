@@ -1073,6 +1073,108 @@ input:focus, select:focus, textarea:focus { outline: none; }
 
 /* ── 저널 ── */
 .journal-pane { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
+
+/* ── 저널 드로어 (전체화면 오버레이) ── */
+#journal-drawer {
+  position: fixed; inset: 0; z-index: 300;
+  display: none; align-items: stretch;
+  pointer-events: none;
+}
+#journal-drawer.open { display: flex; pointer-events: all; }
+
+/* 뒤 배경 (클릭시 닫힘) */
+.jd-backdrop {
+  position: absolute; inset: 0;
+  background: rgba(0,0,0,.55);
+  backdrop-filter: blur(2px);
+}
+
+/* 드로어 패널 */
+.jd-panel {
+  position: relative; z-index: 1;
+  width: min(680px, 90vw);
+  margin: auto 0 auto 0;
+  height: 100%;
+  background: var(--s1);
+  border-right: 1px solid var(--border2);
+  display: flex; flex-direction: column;
+  animation: slideInLeft .22s ease;
+}
+@keyframes slideInLeft {
+  from { transform: translateX(-100%); opacity: 0; }
+  to   { transform: translateX(0);     opacity: 1; }
+}
+
+/* 드로어 헤더 */
+.jd-header {
+  display: flex; align-items: center; gap: 10px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  background: var(--s2);
+}
+.jd-close {
+  width: 28px; height: 28px;
+  background: none; border: 1px solid var(--border);
+  border-radius: var(--r); color: var(--muted);
+  font-size: 16px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: var(--t); flex-shrink: 0;
+}
+.jd-close:hover { border-color: var(--accent); color: var(--accent); }
+.jd-title-input {
+  flex: 1; background: none; border: none;
+  color: var(--text); font: inherit;
+  font-family: var(--font-head); font-style: italic;
+  font-size: 20px; outline: none; min-width: 0;
+}
+.jd-title-input::placeholder { color: var(--muted); }
+.jd-del-btn {
+  background: none; border: 1px solid transparent;
+  border-radius: var(--r); color: var(--muted);
+  font-size: 13px; padding: 5px 8px; cursor: pointer;
+  transition: var(--t);
+}
+.jd-del-btn:hover { color: var(--red); border-color: rgba(200,92,92,.35); background: rgba(200,92,92,.08); }
+
+/* 메타 바 (수정일 등) */
+.jd-meta {
+  padding: 7px 18px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 11px; color: var(--muted);
+}
+
+/* 본문 영역 */
+.jd-body {
+  flex: 1; padding: 18px; overflow-y: auto;
+}
+.jd-body::-webkit-scrollbar { width: 5px; }
+.jd-body::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+.jd-body-input {
+  width: 100%; height: 100%; min-height: 300px;
+  background: none; border: none; resize: none;
+  color: var(--dim); font: inherit; font-size: 14px;
+  line-height: 1.85; outline: none;
+}
+.jd-body-input::placeholder { color: var(--muted); }
+
+/* 저장 바 */
+.jd-footer {
+  padding: 10px 18px;
+  border-top: 1px solid var(--border);
+  display: flex; align-items: center; gap: 10px;
+  flex-shrink: 0; background: var(--s2);
+}
+.jd-save-hint { flex: 1; font-size: 11px; color: var(--muted); }
+.jd-save-btn {
+  background: var(--accent); color: #080808;
+  border: none; border-radius: var(--r);
+  padding: 8px 20px; font: inherit; font-size: 13px;
+  font-weight: 500; cursor: pointer; transition: var(--t);
+}
+.jd-save-btn:hover { opacity: .88; }
 .journal-list { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 6px; }
 .journal-list::-webkit-scrollbar { width: 4px; }
 .journal-list::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
@@ -1122,6 +1224,173 @@ input:focus, select:focus, textarea:focus { outline: none; }
 .journal-body-input::placeholder { color: var(--muted); }
 .journal-save-bar { padding: 8px; border-top: 1px solid var(--border); flex-shrink: 0; display: flex; gap: 6px; align-items: center; }
 .journal-saved-hint { font-size: 10px; color: var(--muted); flex: 1; }
+
+/* ── 저널 뷰어 (슬라이드인 패널) ── */
+.journal-viewer { position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 300; display: none; align-items: stretch; }
+.journal-viewer.open { display: flex; }
+.journal-viewer-backdrop { flex: 1; background: rgba(0,0,0,.5); backdrop-filter: blur(2px); cursor: pointer; }
+.journal-viewer-panel {
+  width: min(680px, 88vw); background: var(--s1); border-left: 1px solid var(--border2);
+  display: flex; flex-direction: column; overflow: hidden; animation: slideInRight .22s ease;
+}
+@keyframes slideInRight { from { transform: translateX(50px); opacity: 0; } to { transform: none; opacity: 1; } }
+.jv-header { display: flex; align-items: center; gap: 8px; padding: 14px 18px; border-bottom: 1px solid var(--border); flex-shrink: 0; background: var(--s2); }
+.jv-title { flex: 1; font-family: var(--font-head); font-style: italic; font-size: 20px; color: var(--text); min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.jv-btn { background: none; border: 1px solid var(--border); border-radius: var(--r); color: var(--muted); font: inherit; font-size: 11px; letter-spacing: .06em; padding: 5px 12px; cursor: pointer; transition: var(--t); }
+.jv-btn:hover { border-color: var(--accent); color: var(--accent); }
+.jv-btn.editing { background: var(--accent); border-color: var(--accent); color: #080808; }
+.jv-del-btn { background: none; border: none; color: var(--muted); font-size: 14px; cursor: pointer; padding: 4px 7px; border-radius: 4px; transition: var(--t); }
+.jv-del-btn:hover { color: var(--red); background: rgba(200,92,92,.1); }
+.jv-close { background: none; border: none; color: var(--muted); font-size: 18px; cursor: pointer; padding: 2px 6px; border-radius: 4px; transition: var(--t); line-height: 1; }
+.jv-close:hover { color: var(--text); background: var(--s3); }
+.jv-tabs { display: flex; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.jv-tab { flex: 1; background: none; border: none; border-bottom: 2px solid transparent; color: var(--muted); padding: 10px 4px; cursor: pointer; font-family: inherit; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; transition: var(--t); margin-bottom: -1px; }
+.jv-tab.on { color: var(--accent); border-bottom-color: var(--accent); }
+.jv-tab:hover:not(.on) { color: var(--dim); }
+.jv-pane { display: none; flex: 1; overflow-y: auto; flex-direction: column; }
+.jv-pane.on { display: flex; }
+.jv-pane::-webkit-scrollbar { width: 4px; }
+.jv-pane::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+/* 본문 탭 */
+.jv-content-wrap { flex: 1; display: flex; flex-direction: column; position: relative; }
+.jv-body { padding: 20px; font-size: 14px; color: var(--dim); line-height: 1.85; white-space: pre-wrap; word-break: break-word; flex: 1; }
+.jv-body-edit { flex: 1; background: none; border: none; color: var(--dim); resize: none; font: inherit; font-size: 14px; line-height: 1.85; padding: 20px; outline: none; display: none; min-height: 200px; }
+.jv-body-edit.visible { display: block; }
+/* 정보 탭 */
+.jv-info-section { padding: 16px 20px; border-bottom: 1px solid var(--border); }
+.jv-info-label { font-size: 10px; letter-spacing: .18em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+.jv-field { background: var(--s2); border: 1px solid var(--border); border-radius: var(--r); padding: 9px 12px; transition: var(--t); }
+.jv-field:focus-within { border-color: var(--accent); }
+.jv-field-label { font-size: 10px; color: var(--muted); margin-bottom: 3px; letter-spacing: .05em; }
+.jv-field-val { font-size: 13px; color: var(--text); font-weight: 500; }
+.jv-field-input { font-size: 13px; color: var(--text); font-weight: 500; background: none; border: none; outline: none; font-family: inherit; width: 100%; display: none; }
+.jv-field-input.visible { display: block; }
+.jv-field-val.hidden { display: none; }
+.jv-meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+/* 저장 바 */
+.jv-save-bar { display: none; padding: 10px 18px; border-top: 1px solid var(--border); flex-shrink: 0; gap: 8px; align-items: center; background: var(--s2); }
+.jv-save-bar.visible { display: flex; }
+.jv-saved-hint { font-size: 11px; color: var(--muted); flex: 1; }
+
+/* ── 저널 뷰어 (슬라이드인 패널) ── */
+.journal-viewer {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  z-index: 300;
+  display: none;
+  align-items: stretch;
+  pointer-events: none;
+}
+.journal-viewer.open { display: flex; }
+.journal-viewer-backdrop {
+  flex: 1;
+  background: rgba(0,0,0,.45);
+  backdrop-filter: blur(2px);
+  pointer-events: all;
+  cursor: pointer;
+}
+.journal-viewer-panel {
+  width: min(680px, 90vw);
+  background: var(--s1);
+  border-left: 1px solid var(--border2);
+  display: flex;
+  flex-direction: column;
+  pointer-events: all;
+  animation: slideInRight .22s ease;
+  overflow: hidden;
+}
+@keyframes slideInRight {
+  from { transform: translateX(60px); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+
+/* 뷰어 헤더 */
+.jv-header {
+  display: flex; align-items: center; gap: 8px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  background: var(--s2);
+}
+.jv-title {
+  flex: 1; font-family: var(--font-head); font-style: italic;
+  font-size: 20px; color: var(--text); min-width: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.jv-btn {
+  background: none; border: 1px solid var(--border);
+  border-radius: var(--r); color: var(--muted);
+  font: inherit; font-size: 11px; letter-spacing: .06em;
+  padding: 5px 12px; cursor: pointer; transition: var(--t);
+}
+.jv-btn:hover { border-color: var(--accent); color: var(--accent); }
+.jv-btn.active { background: var(--accent); border-color: var(--accent); color: #080808; }
+.jv-close {
+  background: none; border: none; color: var(--muted);
+  font-size: 18px; cursor: pointer; padding: 2px 6px;
+  border-radius: 4px; transition: var(--t); line-height: 1;
+}
+.jv-close:hover { color: var(--text); background: var(--s3); }
+
+/* 뷰어 탭 */
+.jv-tabs {
+  display: flex; border-bottom: 1px solid var(--border); flex-shrink: 0;
+}
+.jv-tab {
+  flex: 1; background: none; border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--muted); padding: 10px 4px;
+  cursor: pointer; font-family: inherit; font-size: 11px;
+  letter-spacing: .1em; text-transform: uppercase;
+  transition: var(--t); margin-bottom: -1px;
+}
+.jv-tab.on { color: var(--accent); border-bottom-color: var(--accent); }
+.jv-tab:hover:not(.on) { color: var(--dim); }
+.jv-pane { display: none; flex: 1; overflow-y: auto; flex-direction: column; }
+.jv-pane.on { display: flex; }
+.jv-pane::-webkit-scrollbar { width: 4px; }
+.jv-pane::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+/* 개요 탭 */
+.jv-body {
+  padding: 20px; font-size: 14px; color: var(--dim);
+  line-height: 1.85; white-space: pre-wrap; word-break: break-word;
+  flex: 1;
+}
+.jv-body-edit {
+  flex: 1; background: none; border: none; color: var(--dim); resize: none;
+  font: inherit; font-size: 14px; line-height: 1.85; padding: 20px;
+  outline: none; display: none;
+}
+.jv-body-edit.visible { display: block; }
+
+/* 메타 섹션 */
+.jv-meta-section { padding: 16px 20px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.jv-meta-label { font-size: 10px; letter-spacing: .18em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+.jv-meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.jv-field {
+  background: var(--s2); border: 1px solid var(--border);
+  border-radius: var(--r); padding: 8px 10px;
+}
+.jv-field-label { font-size: 10px; color: var(--muted); margin-bottom: 3px; letter-spacing: .06em; }
+.jv-field-val { font-size: 13px; color: var(--text); font-weight: 500; }
+.jv-field-input {
+  font-size: 13px; color: var(--text); font-weight: 500;
+  background: none; border: none; outline: none;
+  font-family: inherit; width: 100%; display: none;
+}
+.jv-field-input.visible { display: block; }
+.jv-field-val.hidden { display: none; }
+
+/* 저장 바 */
+.jv-save-bar {
+  display: none; padding: 10px 18px;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0; gap: 8px; align-items: center;
+  background: var(--s2);
+}
+.jv-save-bar.visible { display: flex; }
+.jv-saved-hint { font-size: 11px; color: var(--muted); flex: 1; }
 .chat-input { flex: 1; background: var(--s2); border: 1px solid var(--border); border-radius: var(--r); color: var(--text); padding: 7px 10px; font-size: 13px; resize: none; min-height: 34px; max-height: 100px; transition: var(--t); font-family: inherit; }
 .chat-input:focus { border-color: var(--accent); }
 .send-btn { width: 34px; height: 34px; background: var(--accent); border: none; border-radius: var(--r); color: #080808; cursor: pointer; font-size: 15px; display: flex; align-items: center; justify-content: center; transition: var(--t); flex-shrink: 0; }
@@ -1488,12 +1757,8 @@ input:focus, select:focus, textarea:focus { outline: none; }
 
       <!-- 탭 헤더 -->
       <div class="right-tabs">
-        <button class="rtab on" id="rtab-chat" onclick="switchRightTab('chat')">
-          <span>💬</span><span>채팅</span>
-        </button>
-        <button class="rtab" id="rtab-journal" onclick="switchRightTab('journal')">
-          <span>📖</span><span>저널</span>
-        </button>
+        <button class="rtab on" id="rtab-chat" onclick="switchRightTab('chat')">채팅</button>
+        <button class="rtab" id="rtab-journal" onclick="switchRightTab('journal')">저널</button>
         <button class="chat-popout-btn" onclick="popoutChat()" title="채팅을 새 탭으로 분리" style="margin-left:auto;margin-right:6px">⤢</button>
       </div>
 
@@ -1517,29 +1782,138 @@ input:focus, select:focus, textarea:focus { outline: none; }
       <!-- 저널 패널 -->
       <div class="right-pane" id="rpane-journal">
         <div class="journal-pane" id="journal-list-view">
+          <div class="journal-add-bar" style="border-bottom:1px solid var(--border);border-top:none;padding:6px 8px">
+            <button class="journal-add-btn" onclick="openJournalEditor(null)" style="padding:5px;font-size:16px;letter-spacing:0" title="새 저널 만들기">+</button>
+          </div>
           <div class="journal-list" id="journal-list-container">
-            <div class="journal-empty" id="journal-empty">저널이 없어요.<br>아래 버튼으로 새 저널을 만들어보세요.</div>
-          </div>
-          <div class="journal-add-bar">
-            <button class="journal-add-btn" onclick="openJournalEditor(null)">+ 새 저널 만들기</button>
-          </div>
-        </div>
-        <div class="journal-editor" id="journal-editor-view" style="display:none">
-          <div class="journal-editor-header">
-            <button class="journal-back-btn" onclick="closeJournalEditor()" title="목록으로">‹</button>
-            <input class="journal-title-input" id="journal-title-input" placeholder="저널 제목">
-            <button class="journal-del-btn" id="journal-del-btn" onclick="deleteJournal()" title="삭제">🗑</button>
-          </div>
-          <textarea class="journal-body-input" id="journal-body-input" placeholder="내용을 입력하세요…"></textarea>
-          <div class="journal-save-bar">
-            <span class="journal-saved-hint" id="journal-saved-hint"></span>
-            <button class="btn-primary" style="padding:7px 16px;font-size:12px" onclick="saveJournal()">저장</button>
+            <div class="journal-empty" id="journal-empty">저널이 없어요.<br>위 + 버튼으로 새 저널을 만들어보세요.</div>
           </div>
         </div>
       </div>
 
     </div>
   </div>
+
+<!-- 저널 뷰어 -->
+<div class="journal-viewer" id="journal-viewer">
+  <div class="journal-viewer-backdrop" onclick="closeJournalViewer()"></div>
+  <div class="journal-viewer-panel">
+    <div class="jv-header">
+      <div class="jv-title" id="jv-title">저널</div>
+      <button class="jv-btn" id="jv-edit-btn" onclick="toggleJournalEdit()">편집</button>
+      <button class="jv-del-btn" onclick="deleteJournalFromViewer()" title="삭제">🗑</button>
+      <button class="jv-close" onclick="closeJournalViewer()">✕</button>
+    </div>
+    <div class="jv-tabs">
+      <button class="jv-tab on" onclick="switchJvTab('content', this)">본문</button>
+      <button class="jv-tab"    onclick="switchJvTab('info', this)">정보</button>
+    </div>
+    <!-- 본문 탭 -->
+    <div class="jv-pane on" id="jv-pane-content">
+      <div class="jv-content-wrap">
+        <div class="jv-body" id="jv-body">내용 없음</div>
+        <textarea class="jv-body-edit" id="jv-body-edit" placeholder="내용을 입력하세요…"></textarea>
+      </div>
+    </div>
+    <!-- 정보 탭 -->
+    <div class="jv-pane" id="jv-pane-info">
+      <div class="jv-info-section">
+        <div class="jv-info-label">기본 정보</div>
+        <div class="jv-meta-grid">
+          <div class="jv-field">
+            <div class="jv-field-label">제목</div>
+            <div class="jv-field-val" id="jv-info-title">—</div>
+            <input class="jv-field-input" id="jv-info-title-input" placeholder="제목">
+          </div>
+          <div class="jv-field">
+            <div class="jv-field-label">작성일</div>
+            <div class="jv-field-val" id="jv-info-created">—</div>
+          </div>
+          <div class="jv-field">
+            <div class="jv-field-label">최종 수정</div>
+            <div class="jv-field-val" id="jv-info-updated">—</div>
+          </div>
+          <div class="jv-field">
+            <div class="jv-field-label">글자 수</div>
+            <div class="jv-field-val" id="jv-info-chars">0자</div>
+          </div>
+        </div>
+      </div>
+      <div class="jv-info-section">
+        <div class="jv-info-label">태그 (쉼표로 구분)</div>
+        <div class="jv-field">
+          <div class="jv-field-val" id="jv-info-tags">태그 없음</div>
+          <input class="jv-field-input" id="jv-info-tags-input" placeholder="예: 단서, 중요, NPC">
+        </div>
+      </div>
+    </div>
+    <!-- 저장 바 (편집 모드에서만 표시) -->
+    <div class="jv-save-bar" id="jv-save-bar">
+      <span class="jv-saved-hint" id="jv-saved-hint"></span>
+      <button class="jv-btn" onclick="closeJournalViewer()" style="border-color:var(--border2)">취소</button>
+      <button class="jv-btn" onclick="saveJournalViewer()" style="background:var(--accent);border-color:var(--accent);color:#080808">저장</button>
+    </div>
+  </div>
+</div>
+
+<!-- 저널 뷰어 -->
+<div class="journal-viewer" id="journal-viewer">
+  <div class="journal-viewer-backdrop" onclick="closeJournalViewer()"></div>
+  <div class="journal-viewer-panel">
+    <div class="jv-header">
+      <div class="jv-title" id="jv-title">저널</div>
+      <button class="jv-btn" id="jv-edit-btn" onclick="toggleJournalEdit()">편집</button>
+      <button class="jv-del-btn" onclick="deleteJournalFromViewer()" title="삭제">🗑</button>
+      <button class="jv-close" onclick="closeJournalViewer()">✕</button>
+    </div>
+    <div class="jv-tabs">
+      <button class="jv-tab on" onclick="switchJvTab('content', this)">본문</button>
+      <button class="jv-tab"    onclick="switchJvTab('info', this)">정보</button>
+    </div>
+    <div class="jv-pane on" id="jv-pane-content">
+      <div class="jv-content-wrap">
+        <div class="jv-body" id="jv-body">내용 없음</div>
+        <textarea class="jv-body-edit" id="jv-body-edit" placeholder="내용을 입력하세요…"></textarea>
+      </div>
+    </div>
+    <div class="jv-pane" id="jv-pane-info">
+      <div class="jv-info-section">
+        <div class="jv-info-label">기본 정보</div>
+        <div class="jv-meta-grid">
+          <div class="jv-field">
+            <div class="jv-field-label">제목</div>
+            <div class="jv-field-val" id="jv-info-title">—</div>
+            <input class="jv-field-input" id="jv-info-title-input" placeholder="제목">
+          </div>
+          <div class="jv-field">
+            <div class="jv-field-label">작성일</div>
+            <div class="jv-field-val" id="jv-info-created">—</div>
+          </div>
+          <div class="jv-field">
+            <div class="jv-field-label">최종 수정</div>
+            <div class="jv-field-val" id="jv-info-updated">—</div>
+          </div>
+          <div class="jv-field">
+            <div class="jv-field-label">글자 수</div>
+            <div class="jv-field-val" id="jv-info-chars">0자</div>
+          </div>
+        </div>
+      </div>
+      <div class="jv-info-section">
+        <div class="jv-info-label">태그 (쉼표로 구분)</div>
+        <div class="jv-field">
+          <div class="jv-field-val" id="jv-info-tags">태그 없음</div>
+          <input class="jv-field-input" id="jv-info-tags-input" placeholder="예: 단서, 중요, NPC">
+        </div>
+      </div>
+    </div>
+    <div class="jv-save-bar" id="jv-save-bar">
+      <span class="jv-saved-hint" id="jv-saved-hint"></span>
+      <button class="jv-btn" onclick="closeJournalViewer()" style="border-color:var(--border2)">취소</button>
+      <button class="jv-btn" onclick="saveJournalViewer()" style="background:var(--accent);border-color:var(--accent);color:#080808">저장</button>
+    </div>
+  </div>
+</div>
 
   <!-- BGM 바 -->
   <div class="bgm-bar">
@@ -1558,6 +1932,30 @@ input:focus, select:focus, textarea:focus { outline: none; }
 </div>
 
 <!-- ═══════ MODALS ═══════ -->
+
+<!-- 저널 드로어 -->
+<div id="journal-drawer">
+  <div class="jd-backdrop" onclick="closeJournalDrawer()"></div>
+  <div class="jd-panel">
+    <div class="jd-header">
+      <button class="jd-close" onclick="closeJournalDrawer()" title="닫기">‹</button>
+      <input class="jd-title-input" id="jd-title" placeholder="저널 제목">
+      <button class="jd-del-btn" onclick="deleteJournalFromDrawer()" title="삭제">🗑 삭제</button>
+    </div>
+    <div class="jd-meta">
+      <span id="jd-meta-date">—</span>
+      <span id="jd-save-hint" style="color:var(--muted)"></span>
+    </div>
+    <div class="jd-body">
+      <textarea class="jd-body-input" id="jd-body" placeholder="내용을 자유롭게 입력하세요…&#10;&#10;메모, 단서, 플레이어 노트 등 무엇이든 기록해두세요."></textarea>
+    </div>
+    <div class="jd-footer">
+      <span class="jd-save-hint" id="jd-footer-hint"></span>
+      <button class="jd-save-btn" onclick="saveJournalFromDrawer()">저장</button>
+    </div>
+  </div>
+</div>
+
 <div class="overlay" id="modal-bgm">
   <div class="modal">
     <div class="modal-row">
@@ -3868,7 +4266,7 @@ function renderJournalList() {
   list.slice().reverse().forEach(j => {
     const div  = document.createElement('div');
     div.className = 'journal-item';
-    div.onclick   = () => openJournalEditor(j.id);
+    div.onclick   = () => openJournalViewer(j.id);
     const d   = new Date(j.updatedAt || j.createdAt);
     const ds  = `${d.getMonth()+1}/${d.getDate()} ${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
     const pre = (j.body || '').replace(/\n/g,' ').slice(0,40) || '내용 없음';
@@ -3879,50 +4277,193 @@ function renderJournalList() {
 }
 
 function openJournalEditor(id) {
-  const lv = document.getElementById('journal-list-view');
-  const ev = document.getElementById('journal-editor-view');
-  const ti = document.getElementById('journal-title-input');
-  const bi = document.getElementById('journal-body-input');
-  const hi = document.getElementById('journal-saved-hint');
+  const titleEl = document.getElementById('jd-title');
+  const bodyEl  = document.getElementById('jd-body');
+  const metaEl  = document.getElementById('jd-meta-date');
+  const hintEl  = document.getElementById('jd-footer-hint');
+
   if (id) {
     const j = loadJournals().find(j => j.id === id);
     if (!j) return;
     _currentJournalId = id;
-    ti.value = j.title || '';
-    bi.value = j.body  || '';
+    titleEl.value = j.title || '';
+    bodyEl.value  = j.body  || '';
+    const d = new Date(j.updatedAt || j.createdAt);
+    metaEl.textContent = `마지막 수정: ${d.getFullYear()}.${d.getMonth()+1}.${d.getDate()} ${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
   } else {
     _currentJournalId = 'j_' + Date.now();
-    ti.value = ''; bi.value = '';
+    titleEl.value = ''; bodyEl.value = '';
+    metaEl.textContent = '새 저널';
   }
-  if (hi) hi.textContent = '';
-  lv.style.display = 'none';
-  ev.style.display = 'flex';
-  ti.focus();
+
+  if (hintEl) hintEl.textContent = '';
+  document.getElementById('journal-drawer').classList.add('open');
+  setTimeout(() => titleEl.focus(), 100);
 }
 
-function closeJournalEditor() {
-  document.getElementById('journal-list-view').style.display   = 'flex';
-  document.getElementById('journal-editor-view').style.display = 'none';
-  _currentJournalId = null;
+function closeJournalDrawer() {
+  document.getElementById('journal-drawer').classList.remove('open');
   renderJournalList();
 }
 
-function saveJournal() {
-  const title = document.getElementById('journal-title-input').value.trim() || '무제 저널';
-  const body  = document.getElementById('journal-body-input').value;
-  const hint  = document.getElementById('journal-saved-hint');
+// 하위 호환 (기존 호출 유지)
+function closeJournalEditor() { closeJournalDrawer(); }
+
+function saveJournalFromDrawer() {
+  const title = (document.getElementById('jd-title').value || '').trim() || '무제 저널';
+  const body  = document.getElementById('jd-body').value;
+  const hint  = document.getElementById('jd-footer-hint');
   let list = loadJournals();
   const idx = list.findIndex(j => j.id === _currentJournalId);
-  if (idx >= 0) { list[idx].title = title; list[idx].body = body; list[idx].updatedAt = Date.now(); }
-  else { list.push({ id: _currentJournalId, title, body, createdAt: Date.now(), updatedAt: Date.now() }); }
+  if (idx >= 0) {
+    list[idx].title = title; list[idx].body = body; list[idx].updatedAt = Date.now();
+  } else {
+    list.push({ id: _currentJournalId, title, body, createdAt: Date.now(), updatedAt: Date.now() });
+  }
   saveJournals(list);
+  // 메타 날짜 갱신
+  const d = new Date();
+  document.getElementById('jd-meta-date').textContent =
+    `마지막 수정: ${d.getFullYear()}.${d.getMonth()+1}.${d.getDate()} ${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
   if (hint) { hint.textContent = '저장됐어요 ✓'; setTimeout(() => { if(hint) hint.textContent=''; }, 2000); }
 }
 
-function deleteJournal() {
+// 하위 호환
+function saveJournal() { saveJournalFromDrawer(); }
+
+function deleteJournalFromDrawer() {
   if (!_currentJournalId || !confirm('이 저널을 삭제할까요?')) return;
   saveJournals(loadJournals().filter(j => j.id !== _currentJournalId));
-  closeJournalEditor();
+  closeJournalDrawer();
+}
+function deleteJournal() { deleteJournalFromDrawer(); }
+
+/* ─────────────────────────────────────────────────
+   저널 뷰어
+───────────────────────────────────────────────── */
+let _jvId      = null;
+let _jvEditing = false;
+
+function fmt(ts) {
+  if (!ts) return '—';
+  const d = new Date(ts);
+  return `${d.getFullYear()}.${(d.getMonth()+1).toString().padStart(2,'0')}.${d.getDate().toString().padStart(2,'0')} ${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
+}
+
+function openJournalViewer(id) {
+  const list = loadJournals();
+  const j    = list.find(x => x.id === id);
+  if (!j) return;
+  _jvId      = id;
+  _jvEditing = false;
+
+  // 헤더
+  document.getElementById('jv-title').textContent = j.title || '무제 저널';
+
+  // 본문 탭
+  document.getElementById('jv-body').textContent      = j.body || '';
+  document.getElementById('jv-body').style.display    = 'block';
+  document.getElementById('jv-body-edit').value       = j.body || '';
+  document.getElementById('jv-body-edit').classList.remove('visible');
+
+  // 정보 탭
+  document.getElementById('jv-info-title').textContent   = j.title || '무제 저널';
+  document.getElementById('jv-info-title').classList.remove('hidden');
+  document.getElementById('jv-info-title-input').classList.remove('visible');
+  document.getElementById('jv-info-title-input').value   = j.title || '';
+  document.getElementById('jv-info-created').textContent = fmt(j.createdAt);
+  document.getElementById('jv-info-updated').textContent = fmt(j.updatedAt || j.createdAt);
+  document.getElementById('jv-info-chars').textContent   = (j.body || '').length + '자';
+  const tags = j.tags || '';
+  document.getElementById('jv-info-tags').textContent    = tags || '태그 없음';
+  document.getElementById('jv-info-tags').classList.remove('hidden');
+  document.getElementById('jv-info-tags-input').classList.remove('visible');
+  document.getElementById('jv-info-tags-input').value    = tags;
+
+  // 편집 버튼
+  const editBtn = document.getElementById('jv-edit-btn');
+  editBtn.textContent = '편집';
+  editBtn.classList.remove('editing');
+
+  // 저장 바 숨김
+  document.getElementById('jv-save-bar').classList.remove('visible');
+  document.getElementById('jv-saved-hint').textContent = '';
+
+  // 탭 초기화 (본문 탭)
+  switchJvTab('content', document.querySelector('.jv-tab'));
+
+  document.getElementById('journal-viewer').classList.add('open');
+}
+
+function closeJournalViewer() {
+  document.getElementById('journal-viewer').classList.remove('open');
+  _jvId = null; _jvEditing = false;
+  renderJournalList();
+}
+
+function switchJvTab(tab, btn) {
+  document.querySelectorAll('.jv-tab').forEach(b => b.classList.remove('on'));
+  document.querySelectorAll('.jv-pane').forEach(p => p.classList.remove('on'));
+  if (btn) btn.classList.add('on');
+  document.getElementById('jv-pane-' + tab).classList.add('on');
+}
+
+function toggleJournalEdit() {
+  _jvEditing = !_jvEditing;
+  const editBtn = document.getElementById('jv-edit-btn');
+  editBtn.textContent = _jvEditing ? '편집 중' : '편집';
+  editBtn.classList.toggle('editing', _jvEditing);
+
+  // 본문
+  const body     = document.getElementById('jv-body');
+  const bodyEdit = document.getElementById('jv-body-edit');
+  body.style.display = _jvEditing ? 'none' : 'block';
+  bodyEdit.classList.toggle('visible', _jvEditing);
+
+  // 정보탭 필드
+  ['title', 'tags'].forEach(field => {
+    document.getElementById('jv-info-' + field).classList.toggle('hidden', _jvEditing);
+    document.getElementById('jv-info-' + field + '-input').classList.toggle('visible', _jvEditing);
+  });
+
+  // 저장 바
+  document.getElementById('jv-save-bar').classList.toggle('visible', _jvEditing);
+  document.getElementById('jv-saved-hint').textContent = '';
+}
+
+function saveJournalViewer() {
+  if (!_jvId) return;
+  const list  = loadJournals();
+  const idx   = list.findIndex(j => j.id === _jvId);
+  if (idx < 0) return;
+
+  const title = document.getElementById('jv-info-title-input').value.trim() || '무제 저널';
+  const body  = document.getElementById('jv-body-edit').value;
+  const tags  = document.getElementById('jv-info-tags-input').value.trim();
+
+  list[idx].title     = title;
+  list[idx].body      = body;
+  list[idx].tags      = tags;
+  list[idx].updatedAt = Date.now();
+  saveJournals(list);
+
+  // 뷰 갱신
+  document.getElementById('jv-title').textContent         = title;
+  document.getElementById('jv-body').textContent          = body;
+  document.getElementById('jv-info-title').textContent    = title;
+  document.getElementById('jv-info-updated').textContent  = fmt(list[idx].updatedAt);
+  document.getElementById('jv-info-chars').textContent    = body.length + '자';
+  document.getElementById('jv-info-tags').textContent     = tags || '태그 없음';
+
+  const hint = document.getElementById('jv-saved-hint');
+  hint.textContent = '저장됐어요 ✓';
+  setTimeout(() => { hint.textContent = ''; }, 2000);
+}
+
+function deleteJournalFromViewer() {
+  if (!_jvId || !confirm('이 저널을 삭제할까요?')) return;
+  saveJournals(loadJournals().filter(j => j.id !== _jvId));
+  closeJournalViewer();
 }
 
 function esc(str) {
