@@ -1064,7 +1064,7 @@ input:focus, select:focus, textarea:focus { outline: none; }
 ══════════════════════════════════════════════════ */
 .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.72); display: none; align-items: center; justify-content: center; z-index: 200; backdrop-filter: blur(3px); }
 .overlay.open { display: flex; }
-.modal { background: var(--s1); border: 1px solid var(--border2); border-radius: var(--rl); padding: 24px; width: min(380px, 90vw); max-height: 80vh; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; animation: fadeUp .2s ease; }
+.modal { background: var(--s1); border: 1px solid var(--border2); border-radius: var(--rl); padding: 24px; width: min(380px, 90vw); max-height: 90vh; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; animation: fadeUp .2s ease; }
 .modal-title { font-size: 15px; font-weight: 500; }
 .modal-row { display: flex; align-items: center; justify-content: space-between; }
 .modal-close { background: none; border: none; color: var(--muted); font-size: 18px; cursor: pointer; padding: 2px; transition: var(--t); }
@@ -2393,6 +2393,11 @@ async function enterGame() {
   await initCharacter(St.system);
   initChatResize();
   renderCharacterSheet(St.system);
+  // 내 아바타 캐시 등록 (채팅에서 즉시 사용하기 위해)
+  if (!window._avatarCache) window._avatarCache = {};
+  const myAv = localStorage.getItem('itc_avatar_' + St.myId);
+  if (myAv) window._avatarCache[St.myName] = myAv;
+
   addLocalMessage('system', '', `${St.myName}님이 입장했습니다 — ${SYS_LABELS[St.system]}`);
 }
 
@@ -2734,16 +2739,18 @@ function sendMessage(name, text, type = 'normal') {
 function addLocalMessage(type, name, text) { appendChatMsg(name, text, type); }
 
 function getAvatarHtml(name, uid) {
-  // uid 기반으로 아바타 이미지 가져오기 (본인이면 localStorage, 타인이면 캐시)
   const shape = St.avatarShape === 'circle' ? 'shape-circle' : 'shape-rounded';
   let imgSrc = null;
+
+  // 1) uid 기반 localStorage 조회 (본인 포함)
   if (uid) {
     imgSrc = localStorage.getItem('itc_avatar_' + uid);
   }
-  if (!imgSrc) {
-    // 이름 기반으로 캐시된 아바타 확인
+  // 2) 이름 기반 캐시 (타인이 같은 세션에 있을 때)
+  if (!imgSrc && name) {
     imgSrc = window._avatarCache?.[name];
   }
+
   const initial = (name || '?')[0].toUpperCase();
   const inner = imgSrc
     ? `<img src="${imgSrc}" alt="${esc(initial)}">`
@@ -3257,8 +3264,8 @@ function sendChatFromPopout(text) { sendMessage(St.myName, text, 'normal'); }
 
 /* 원본 appendChatMsg 래핑 — 팝아웃 동기화 */
 const _baseAppend = appendChatMsg;
-appendChatMsg = function(name, text, type) {
-  _baseAppend(name, text, type);
+appendChatMsg = function(name, text, type, uid) {
+  _baseAppend(name, text, type, uid);
   if (_popoutWin && !_popoutWin.closed && _popoutWin.addMsg) {
     _popoutWin.addMsg(name, text, type);
   }
