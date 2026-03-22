@@ -2888,6 +2888,7 @@ function handleSessionCoverUpload(input) {
     if (m) { m.textContent = '이미지는 8MB 이하여야 해요.'; m.className = 'profile-msg err'; }
     return;
   }
+  const capturedId = _sheetJournalId;  // 비동기 전에 캡처 (sheet 닫혀도 안전)
   const reader = new FileReader();
   reader.onload = ev => {
     const img = new Image();
@@ -4427,7 +4428,7 @@ function renderJournalList() {
     const ds  = `${d.getMonth()+1}/${d.getDate()} ${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
     const pre = (j.body || '').replace(/\n/g,' ').slice(0,40) || '내용 없음';
     const initials = (j.title || '저').trim()[0]?.toUpperCase() || '?';
-    const imgSrc    = localStorage.getItem('itc_av_' + j.id) || j.avatar || '';
+    const imgSrc    = saGetAvatar(j.id) || '';  // 인메모리 캐시 + localStorage + j.avatar
     const avatarHtml = imgSrc
       ? `<div class="journal-avatar"><img src="${imgSrc}" alt="avatar"></div>`
       : `<div class="journal-avatar">${esc(initials)}</div>`;
@@ -4673,6 +4674,7 @@ function openSheet(journalId) {
 
   // 아바타: 기존 저장된 값으로 초기화 (재저장 시 유실 방지)
   _sheetAvatarData = saGetAvatar(journalId) || data.avatar || null;
+  if (_sheetAvatarData) saSetAvatar(journalId, _sheetAvatarData);  // 캐시 워밍
   refreshSheetAvatar(_sheetAvatarData, (data.name || j?.title || '?')[0]?.toUpperCase());
 
   document.getElementById('sheet-overlay').classList.add('open');
@@ -4702,12 +4704,12 @@ function handleSheetAvatar(input) {
       ctx.drawImage(img, (img.width-min)/2, (img.height-min)/2, min, min, 0, 0, SIZE, SIZE);
       _sheetAvatarData = canvas.toDataURL('image/jpeg', 0.82);
       refreshSheetAvatar();
-      // ▶ 아바타 즉시 저장 (저장 버튼 클릭 전에도 speak-as에서 사용 가능)
-      if (_sheetJournalId) {
+      // ▶ 아바타 즉시 저장 — capturedId로 비동기 클로저 안전하게 캡처
+      if (capturedId) {
+        saSetAvatar(capturedId, _sheetAvatarData);      // 인메모리 + localStorage
         try {
-          localStorage.setItem('itc_av_' + _sheetJournalId, _sheetAvatarData);
           const _avList = loadJournals();
-          const _avIdx  = _avList.findIndex(x => x.id === _sheetJournalId);
+          const _avIdx  = _avList.findIndex(x => x.id === capturedId);
           if (_avIdx >= 0) { _avList[_avIdx].avatar = _sheetAvatarData; saveJournals(_avList); }
         } catch(e) {}
         saRefreshToolbar();
@@ -4818,7 +4820,7 @@ function saveSheet() {
     if (_keepAv) {
       data.avatar      = _keepAv;
       list[idx].avatar = _keepAv;
-      localStorage.setItem('itc_av_' + _sheetJournalId, _keepAv);
+      saSetAvatar(_sheetJournalId, _keepAv);   // 인메모리 + localStorage
     }
     list[idx].sheet     = data;
     list[idx].title     = data.name || list[idx].title;
@@ -4837,15 +4839,29 @@ function saveSheet() {
 ═══════════════════════════════════════════════ */
 
 // 저널 아바타 조회 (단일 함수, 전 구간에서 이 함수만 사용)
+// ── 인메모리 아바타 캐시 (세션 내 100% 신뢰) ──
+const _JAV = {};
+
+function saSetAvatar(journalId, dataUrl) {
+  if (!journalId || !dataUrl) return;
+  _JAV[journalId] = dataUrl;                          // 인메모리 (1순위)
+  try { localStorage.setItem('itc_av_' + journalId, dataUrl); } catch(e) {}
+}
+
 function saGetAvatar(journalId) {
   if (!journalId) return null;
-  // 1) itc_av_ 별도 키 (가장 신뢰)
-  const a = localStorage.getItem('itc_av_' + journalId);
-  if (a) return a;
-  // 2) 저널 오브젝트 avatar 필드
+  // 1) 인메모리 캐시 (가장 신뢰, 이번 세션에 저장된 값)
+  if (_JAV[journalId]) return _JAV[journalId];
+  // 2) localStorage 폴백 (이전 세션)
+  try {
+    const ls = localStorage.getItem('itc_av_' + journalId);
+    if (ls) { _JAV[journalId] = ls; return ls; }
+  } catch(e) {}
+  // 3) 저널 오브젝트 avatar 필드
   try {
     const j = loadJournals().find(x => x.id === journalId);
-    if (j) return j.avatar || j.sheet?.avatar || null;
+    const av = j?.avatar || j?.sheet?.avatar || null;
+    if (av) { _JAV[journalId] = av; return av; }
   } catch(e) {}
   return null;
 }
