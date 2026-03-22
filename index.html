@@ -966,10 +966,22 @@ input:focus, select:focus, textarea:focus { outline: none; }
 .map-token.npc   { border-color: var(--blue); }
 
 /* ── 토큰 편집 패널 ── */
-.te-overlay{position:fixed;inset:0;z-index:500;display:none;align-items:center;justify-content:flex-end}
+.te-overlay{position:fixed;inset:0;z-index:500;display:none;align-items:center;justify-content:center}
 .te-overlay.open{display:flex}
 .te-backdrop{position:absolute;inset:0;background:rgba(0,0,0,.45)}
-.te-panel{position:relative;width:380px;height:100%;background:var(--s1);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;z-index:1}
+.te-panel{position:relative;width:420px;max-height:85vh;background:var(--s1);border:1px solid var(--border);border-radius:10px;display:flex;flex-direction:column;overflow:hidden;z-index:1;box-shadow:0 8px 32px rgba(0,0,0,.5)}
+
+/* ── 토큰 컨텍스트 메뉴 ── */
+.tok-ctx{position:fixed;z-index:600;background:var(--s2);border:1px solid var(--border2);border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,.45);min-width:170px;padding:4px 0;display:none}
+.tok-ctx.open{display:block}
+.tok-ctx-item{display:flex;align-items:center;justify-content:space-between;padding:7px 14px;font-size:12.5px;color:var(--text);cursor:pointer;transition:var(--t)}
+.tok-ctx-item:hover{background:var(--a-dim)}
+.tok-ctx-item:first-child{border-radius:4px 4px 0 0}
+.tok-ctx-item:last-child{border-radius:0 0 4px 4px}
+.tok-ctx-item .ctx-hint{font-size:10px;color:var(--muted);margin-left:16px}
+.tok-ctx-sep{height:1px;background:var(--border);margin:3px 0}
+.tok-ctx-item.danger{color:var(--red)}
+.tok-ctx-item.danger:hover{background:rgba(200,92,92,.1)}
 .te-head{display:flex;align-items:center;padding:10px 14px;border-bottom:1px solid var(--border);background:var(--s2);gap:8px}
 .te-head-title{flex:1;font-size:14px;font-weight:600;color:var(--text)}
 .te-close{background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer;padding:2px 6px;border-radius:4px}
@@ -2215,6 +2227,21 @@ input:focus, select:focus, textarea:focus { outline: none; }
     <div class="modal-field"><label>종류</label><select id="token-type"><option value="pc">PC</option><option value="npc">NPC</option><option value="enemy">적</option></select></div>
     <button class="btn-primary" onclick="addToken()">맵에 추가</button>
   </div>
+</div>
+
+<!-- 토큰 컨텍스트 메뉴 -->
+<div class="tok-ctx" id="tok-ctx">
+  <div class="tok-ctx-item" onclick="tokCtxAction('edit')">편집</div>
+  <div class="tok-ctx-item" onclick="tokCtxAction('rotate')">회전<span class="ctx-hint">R or Shift+R</span></div>
+  <div class="tok-ctx-sep"></div>
+  <div class="tok-ctx-item" onclick="tokCtxAction('toBack')">집어넣기<span class="ctx-hint">S</span></div>
+  <div class="tok-ctx-item" onclick="tokCtxAction('own')">소유 권한 갖기<span class="ctx-hint">T</span></div>
+  <div class="tok-ctx-item" onclick="tokCtxAction('duplicate')">복제<span class="ctx-hint">Ctrl+D</span></div>
+  <div class="tok-ctx-item" onclick="tokCtxAction('copy')">복사<span class="ctx-hint">Ctrl+C</span></div>
+  <div class="tok-ctx-sep"></div>
+  <div class="tok-ctx-item danger" onclick="tokCtxAction('delete')">삭제<span class="ctx-hint">Ctrl+⌫</span></div>
+  <div class="tok-ctx-sep"></div>
+  <div class="tok-ctx-item" onclick="tokCtxAction('copyId')" style="color:var(--muted)">ID 복사(개발자용)</div>
 </div>
 
 <!-- 토큰 편집 패널 -->
@@ -3991,8 +4018,8 @@ function createTokenEl(t) {
       bar.appendChild(fill); el.appendChild(bar);
     }
   }
-  // 우클릭 → 편집 패널
-  el.addEventListener('contextmenu', e => { e.preventDefault(); openTokenEdit(t.id); });
+  // 우클릭 → 컨텍스트 메뉴
+  el.addEventListener('contextmenu', e => { e.preventDefault(); e.stopPropagation(); showTokenCtx(e, t.id); });
   makeDraggable(el, t.id);
   map.appendChild(el);
 }
@@ -4032,6 +4059,101 @@ function removeToken(tokenId) {
     const { db, ref, remove } = window._FB;
     remove(ref(db, `rooms/${St.roomCode}/tokens/${tokenId}`));
   } else delete St.tokens[tokenId];
+}
+
+/* ─────────────────────────────────────────────────
+   TOKEN CONTEXT MENU
+───────────────────────────────────────────────── */
+let _ctxTokenId = null;
+
+function showTokenCtx(e, tokenId) {
+  _ctxTokenId = tokenId;
+  const menu = document.getElementById('tok-ctx');
+  menu.classList.add('open');
+  // 위치 조정 (화면 밖으로 나가지 않게)
+  let x = e.clientX, y = e.clientY;
+  const mw = menu.offsetWidth || 170, mh = menu.offsetHeight || 300;
+  if (x + mw > window.innerWidth) x = window.innerWidth - mw - 8;
+  if (y + mh > window.innerHeight) y = window.innerHeight - mh - 8;
+  menu.style.left = x + 'px'; menu.style.top = y + 'px';
+}
+
+function hideTokenCtx() {
+  document.getElementById('tok-ctx')?.classList.remove('open');
+  _ctxTokenId = null;
+}
+
+document.addEventListener('click', () => hideTokenCtx());
+document.addEventListener('contextmenu', (e) => {
+  // 토큰 외 영역 우클릭 시 메뉴 닫기
+  if (!e.target.closest('.map-token') && !e.target.closest('.tok-ctx')) hideTokenCtx();
+});
+
+function tokCtxAction(action) {
+  const id = _ctxTokenId;
+  hideTokenCtx();
+  if (!id) return;
+  const t = St.tokens[id];
+  if (!t) return;
+
+  switch (action) {
+    case 'edit':
+      openTokenEdit(id);
+      break;
+    case 'rotate': {
+      t.rotation = ((t.rotation || 0) + 45) % 360;
+      const el = document.getElementById('tok-' + id);
+      if (el) el.style.transform = `translate(-50%,-50%) rotate(${t.rotation}deg)`;
+      if (window._FB?.CONFIGURED) {
+        const { db, ref, update } = window._FB;
+        update(ref(db, `rooms/${St.roomCode}/tokens/${id}`), { rotation: t.rotation });
+      }
+      break;
+    }
+    case 'toBack': {
+      const el = document.getElementById('tok-' + id);
+      if (el) el.style.zIndex = '1';
+      break;
+    }
+    case 'own': {
+      t.ownerId = St.myId;
+      t.ownerName = St.myName;
+      if (window._FB?.CONFIGURED) {
+        const { db, ref, update } = window._FB;
+        update(ref(db, `rooms/${St.roomCode}/tokens/${id}`), { ownerId: St.myId, ownerName: St.myName });
+      }
+      showToast(`${t.name} 토큰의 소유 권한을 가져왔어요.`);
+      break;
+    }
+    case 'duplicate': {
+      const newId = genId();
+      const dup = JSON.parse(JSON.stringify(t));
+      dup.id = newId; dup.x = (t.x || 50) + 2; dup.y = (t.y || 50) + 2;
+      if (window._FB?.CONFIGURED) {
+        const { db, ref, set } = window._FB;
+        set(ref(db, `rooms/${St.roomCode}/tokens/${newId}`), dup);
+      } else {
+        St.tokens[newId] = dup; renderAllTokens(St.tokens);
+      }
+      showToast('토큰이 복제됐어요.');
+      break;
+    }
+    case 'copy':
+      navigator.clipboard?.writeText(JSON.stringify(t, null, 2)).then(() => showToast('토큰 데이터가 클립보드에 복사됐어요.')).catch(() => showToast('복사 실패'));
+      break;
+    case 'delete':
+      if (!confirm(`'${t.name}' 토큰을 삭제할까요?`)) return;
+      const el = document.getElementById('tok-' + id);
+      if (el) el.remove();
+      if (window._FB?.CONFIGURED) {
+        const { db, ref, remove } = window._FB;
+        remove(ref(db, `rooms/${St.roomCode}/tokens/${id}`));
+      } else { delete St.tokens[id]; }
+      break;
+    case 'copyId':
+      navigator.clipboard?.writeText(id).then(() => showToast('토큰 ID 복사됨: ' + id)).catch(() => showToast('복사 실패'));
+      break;
+  }
 }
 
 /* ─────────────────────────────────────────────────
