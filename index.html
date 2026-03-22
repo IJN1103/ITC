@@ -4309,13 +4309,6 @@ function switchRightTab(tab) {
 /* ─────────────────────────────────────────────────
    우측 패널 탭 전환
 ───────────────────────────────────────────────── */
-function switchRightTab(tab) {
-  document.querySelectorAll('.rtab').forEach(b => b.classList.remove('on'));
-  document.querySelectorAll('.right-pane').forEach(p => p.classList.remove('on'));
-  document.getElementById('rtab-' + tab).classList.add('on');
-  document.getElementById('rpane-' + tab).classList.add('on');
-  if (tab === 'journal') renderJournalList();
-}
 
 /* ─────────────────────────────────────────────────
    저널
@@ -4327,12 +4320,16 @@ function loadJournals() { try { return JSON.parse(localStorage.getItem(journalKe
 function saveJournals(list) { localStorage.setItem(journalKey(), JSON.stringify(list)); }
 
 function renderJournalList() {
-  const list      = loadJournals();
   const container = document.getElementById('journal-list-container');
   const empty     = document.getElementById('journal-empty');
   if (!container) return;
   container.querySelectorAll('.journal-item').forEach(el => el.remove());
-  if (!list.length) { if (empty) empty.style.display = 'block'; return; }
+  if (!St.roomCode) {
+    if (empty) { empty.style.display = 'block'; empty.textContent = '방에 입장하면 저널을 볼 수 있어요.'; }
+    return;
+  }
+  const list = loadJournals();
+  if (!list.length) { if (empty) { empty.style.display = 'block'; empty.innerHTML = '저널이 없어요.<br>위 + 버튼으로 새 저널을 만들어보세요.'; } return; }
   if (empty) empty.style.display = 'none';
   list.slice().reverse().forEach(j => {
     const div  = document.createElement('div');
@@ -4388,6 +4385,7 @@ function closeJournalDrawer() {
 function closeJournalEditor() { closeJournalDrawer(); }
 
 function saveJournalFromDrawer() {
+  if (!St.roomCode) { showToast('방에 입장한 상태에서만 저널을 저장할 수 있어요.'); return; }
   const title = (document.getElementById('jd-title').value || '').trim() || '무제 저널';
   const body  = document.getElementById('jd-body').value;
   const hint  = document.getElementById('jd-footer-hint');
