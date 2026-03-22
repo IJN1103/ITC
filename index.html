@@ -2430,6 +2430,7 @@ async function enterGame() {
   sessionStorage.setItem('itc_session_sys',  St.system);
   sessionStorage.setItem('itc_session_role', St.isGM ? 'gm' : 'player');
 
+  document.getElementById('screen-auth').style.display  = 'none';
   document.getElementById('screen-lobby').style.display = 'none';
   document.getElementById('screen-game').style.display  = 'flex';
 
