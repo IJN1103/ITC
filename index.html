@@ -1789,6 +1789,30 @@ function initAuthScreen() {
     St.myId   = user.uid;
     await loadUserProfile(user);
     loadRecentRooms();
+
+    // 새로고침 전 세션이 있으면 바로 재입장
+    const savedCode = sessionStorage.getItem('itc_session_code');
+    const savedSys  = sessionStorage.getItem('itc_session_sys');
+    const savedRole = sessionStorage.getItem('itc_session_role');
+    if (savedCode && window._FB?.CONFIGURED) {
+      const { db, ref, get } = window._FB;
+      try {
+        const snap = await get(ref(db, `rooms/${savedCode}/meta`));
+        if (snap.exists()) {
+          St.roomCode = savedCode;
+          St.system   = savedSys || snap.val().system || 'coc7';
+          St.isGM     = savedRole === 'gm' || snap.val().ownerId === St.myId;
+          setupFirebaseListeners();
+          enterGame();
+          return;
+        }
+      } catch(e) {}
+      // 방이 사라졌으면 세션 클리어
+      sessionStorage.removeItem('itc_session_code');
+      sessionStorage.removeItem('itc_session_sys');
+      sessionStorage.removeItem('itc_session_role');
+    }
+
     showLobby();
   };
   if (window._currentUser) window._onAuthReady(window._currentUser);
@@ -2401,8 +2425,13 @@ function setupFirebaseListeners() {
    GAME ENTER
 ───────────────────────────────────────────────── */
 async function enterGame() {
+  // 새로고침 복원용 세션 저장
+  sessionStorage.setItem('itc_session_code', St.roomCode);
+  sessionStorage.setItem('itc_session_sys',  St.system);
+  sessionStorage.setItem('itc_session_role', St.isGM ? 'gm' : 'player');
+
   document.getElementById('screen-lobby').style.display = 'none';
-  document.getElementById('screen-game').style.display = 'flex';
+  document.getElementById('screen-game').style.display  = 'flex';
 
   document.getElementById('topbar-code').textContent = St.roomCode;
   document.getElementById('topbar-system').textContent = SYS_LABELS[St.system] || St.system;
@@ -3144,6 +3173,13 @@ async function goToLobby() {
   }
   // 리스너 정리
   if (_campaignUnsub) { _campaignUnsub(); _campaignUnsub = null; }
+  sessionStorage.removeItem('itc_session_code');
+  sessionStorage.removeItem('itc_session_sys');
+  sessionStorage.removeItem('itc_session_role');
+
+  sessionStorage.removeItem('itc_session_code');
+  sessionStorage.removeItem('itc_session_sys');
+  sessionStorage.removeItem('itc_session_role');
   St.roomCode = ''; St.isGM = false;
   closeModal('modal-settings');
   showLobby();
@@ -3160,6 +3196,13 @@ async function leaveRoom() {
       await remove(ref(db, `rooms/${St.roomCode}`));
     }
   }
+  sessionStorage.removeItem('itc_session_code');
+  sessionStorage.removeItem('itc_session_sys');
+  sessionStorage.removeItem('itc_session_role');
+
+  sessionStorage.removeItem('itc_session_code');
+  sessionStorage.removeItem('itc_session_sys');
+  sessionStorage.removeItem('itc_session_role');
   St.roomCode = ''; St.isGM = false;
   closeModal('modal-settings');
   showLobby();
