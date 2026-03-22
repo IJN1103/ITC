@@ -26,6 +26,7 @@
           "chat":       { ".read": "auth != null", ".write": "auth != null" },
           "bgm":        { ".read": "auth != null", ".write": "auth != null" },
           "tokens":     { ".read": "auth != null", ".write": "auth != null" },
+          "journals":   { ".read": "auth != null", ".write": "auth != null" },
           "lastRoll":   { ".read": "auth != null", ".write": "auth != null" },
           "characters": {
             "$uid": {
@@ -1092,7 +1093,12 @@ to{transform:translateX(0);opacity:1;}
     <div class="sheet-head">
       <button class="sheet-del-btn" onclick="deleteSheetJournal()" title="이 저널 삭제">🗑 삭제</button>
       <div style="flex:1"></div>
+      <div id="sh-owner-bar" style="display:none;font-size:10px;color:var(--muted);margin-right:12px"></div>
       <button class="sheet-close" onclick="closeSheet()">✕</button>
+    </div>
+    <div id="sh-assign-bar" class="gm-only" style="display:none;padding:8px 16px;border-bottom:1px solid var(--border);background:var(--s2)">
+      <div style="font-size:10px;color:var(--muted);margin-bottom:6px;letter-spacing:.05em">저널 접근 권한 (플레이어에게 부여)</div>
+      <div id="sh-assign-list" style="display:flex;flex-wrap:wrap;gap:4px"></div>
     </div>
     <div class="sheet-body">
 
@@ -2384,6 +2390,14 @@ function setupFirebaseListeners() {
     renderAllTokens(tokens);
   });
 
+  onValue(ref(db, `rooms/${code}/journals`), snap => {
+    _allJournals = [];
+    const data = snap.val() || {};
+    Object.entries(data).forEach(([id, j]) => { j.id = id; _allJournals.push(j); });
+    renderJournalList();
+    saRefreshToolbar();
+  });
+
   onValue(ref(db, `rooms/${code}/bgm`), snap => {
     const bgm = snap.val();
     if (!bgm) return;
@@ -2442,6 +2456,7 @@ async function enterGame() {
   if (myAv) window._avatarCache[St.myName] = myAv;
 
   addLocalMessage('system', '', `${St.myName}님이 입장했습니다 — ${SYS_LABELS[St.system]}`);
+  migrateLocalJournals();
 }
 
 function addPlayerChip(id, name, isMe, role) {
@@ -4249,10 +4264,78 @@ function switchRightTab(tab) {
 let _currentJournalId = null;
 let _jdAssignedTokenId = null;
 let _sheetIsNew = false;
+let _sheetAssignedTo = [];
+
+let _allJournals = [];
 
 function journalKey() { return 'itc_journals_' + St.myId + '_' + St.roomCode; }
-function loadJournals() { try { return JSON.parse(localStorage.getItem(journalKey()) || '[]'); } catch { return []; } }
-function saveJournals(list) { localStorage.setItem(journalKey(), JSON.stringify(list)); }
+
+function loadJournals() {
+  if (St.isGM) return _allJournals.slice();
+  return _allJournals.filter(j =>
+    j.ownerId === St.myId ||
+    (j.assignedTo && j.assignedTo.includes(St.myId))
+  );
+}
+
+function saveJournals(list) {
+  if (!window._FB?.CONFIGURED) {
+    localStorage.setItem(journalKey(), JSON.stringify(list));
+    _allJournals = list;
+    return;
+  }
+  const { db, ref, set, remove } = window._FB;
+  list.forEach(j => {
+    if (!j.ownerId) j.ownerId = St.myId;
+    set(ref(db, `rooms/${St.roomCode}/journals/${j.id}`), j);
+  });
+  const listIds = new Set(list.map(j => j.id));
+  _allJournals.forEach(j => {
+    if (!listIds.has(j.id)) {
+      if (St.isGM || j.ownerId === St.myId) {
+        remove(ref(db, `rooms/${St.roomCode}/journals/${j.id}`));
+      }
+    }
+  });
+}
+
+function saveJournalFB(journal) {
+  if (!journal?.id) return;
+  if (!journal.ownerId) journal.ownerId = St.myId;
+  if (window._FB?.CONFIGURED) {
+    const { db, ref, set } = window._FB;
+    set(ref(db, `rooms/${St.roomCode}/journals/${journal.id}`), journal);
+  } else {
+    const idx = _allJournals.findIndex(j => j.id === journal.id);
+    if (idx >= 0) _allJournals[idx] = journal; else _allJournals.push(journal);
+    localStorage.setItem(journalKey(), JSON.stringify(_allJournals));
+  }
+}
+
+function deleteJournalFB(id) {
+  if (window._FB?.CONFIGURED) {
+    const { db, ref, remove } = window._FB;
+    remove(ref(db, `rooms/${St.roomCode}/journals/${id}`));
+  } else {
+    _allJournals = _allJournals.filter(j => j.id !== id);
+    localStorage.setItem(journalKey(), JSON.stringify(_allJournals));
+  }
+}
+
+function migrateLocalJournals() {
+  if (!window._FB?.CONFIGURED || !St.roomCode) return;
+  try {
+    const localKey = 'itc_journals_' + St.myId + '_' + St.roomCode;
+    const local = JSON.parse(localStorage.getItem(localKey) || '[]');
+    if (local.length === 0) return;
+    const { db, ref, set } = window._FB;
+    local.forEach(j => {
+      if (!j.ownerId) j.ownerId = St.myId;
+      set(ref(db, `rooms/${St.roomCode}/journals/${j.id}`), j);
+    });
+    localStorage.removeItem(localKey);
+  } catch(e) {}
+}
 
 function renderJournalList() {
   const container = document.getElementById('journal-list-container');
@@ -4274,14 +4357,19 @@ function renderJournalList() {
     const ds  = `${d.getMonth()+1}/${d.getDate()} ${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
     const pre = (j.body || '').replace(/\n/g,' ').slice(0,40) || '내용 없음';
     const initials = (j.title || '저').trim()[0]?.toUpperCase() || '?';
-    const imgSrc    = saGetAvatar(j.id) || '';  // 인메모리 캐시 + localStorage + j.avatar
+    const imgSrc    = saGetAvatar(j.id) || '';
     const avatarHtml = imgSrc
       ? `<div class="journal-avatar"><img src="${imgSrc}" alt="avatar"></div>`
       : `<div class="journal-avatar">${esc(initials)}</div>`;
+    const players = St.players || {};
+    const ownerName = j.ownerId && players[j.ownerId] ? players[j.ownerId].name : '';
+    const ownerTag = ownerName && j.ownerId !== St.myId ? `<span style="font-size:9px;color:var(--muted);margin-left:4px">(${esc(ownerName)})</span>` : '';
+    const canDelete = St.isGM || j.ownerId === St.myId;
+    const delHtml = canDelete ? `<button class="journal-item-del" data-jid="${j.id}" onclick="event.stopPropagation();deleteJournalById(this.dataset.jid)" title="삭제">🗑</button>` : '';
     div.innerHTML = `${avatarHtml}<div class="journal-item-body">
-      <div class="journal-item-title">${esc(j.title||'무제 저널')}</div>
+      <div class="journal-item-title">${esc(j.title||'무제 저널')}${ownerTag}</div>
       <div class="journal-item-meta"><span style="color:var(--dim);font-size:11px">${esc(pre)}${(j.body||'').length>40?'…':''}</span><span>${ds}</span></div>
-    </div><button class="journal-item-del" data-jid="${j.id}" onclick="event.stopPropagation();deleteJournalById(this.dataset.jid)" title="삭제">🗑</button>`;
+    </div>${delHtml}`;
     container.appendChild(div);
   });
   saRefreshToolbar();
@@ -4369,6 +4457,8 @@ function createNewJournal() {
 
   refreshSheetAvatar(null, '?');
   refreshJournalTokenBar(null);
+  _sheetAssignedTo = [];
+  refreshSheetAssignBar(null);
 
   const hint = document.getElementById('sheet-hint');
   if (hint) hint.textContent = '';
@@ -4403,7 +4493,7 @@ function saveJournal() { saveJournalFromDrawer(); }
 function deleteJournalFromDrawer() {
   if (!_currentJournalId || !confirm('이 저널을 삭제할까요?')) return;
   const _delId = _currentJournalId;
-  saveJournals(loadJournals().filter(j => j.id !== _delId));
+  deleteJournalFB(_delId);
   if (St.speakAsJournalId === _delId) { St.speakAsJournalId = null; saRefreshBtn(); }
   try { localStorage.removeItem('itc_av_' + _delId); } catch(e) {}
   delete _JAV[_delId];
@@ -4413,7 +4503,7 @@ function deleteJournal() { deleteJournalFromDrawer(); }
 
 function deleteJournalById(id) {
   if (!id || !confirm('이 저널을 삭제할까요?')) return;
-  saveJournals(loadJournals().filter(j => j.id !== id));
+  deleteJournalFB(id);
   if (St.speakAsJournalId === id) { St.speakAsJournalId = null; saRefreshBtn(); }
   try { localStorage.removeItem('itc_av_' + id); } catch(e) {}
   delete _JAV[id];
@@ -4423,12 +4513,55 @@ function deleteJournalById(id) {
 function deleteSheetJournal() {
   if (!_sheetJournalId || !confirm('이 저널을 삭제할까요?')) return;
   const delId = _sheetJournalId;
-  saveJournals(loadJournals().filter(j => j.id !== delId));
+  deleteJournalFB(delId);
   if (St.speakAsJournalId === delId) { St.speakAsJournalId = null; saRefreshBtn(); }
   try { localStorage.removeItem('itc_av_' + delId); } catch(e) {}
   delete _JAV[delId];
   closeSheet();
   renderJournalList();
+}
+
+function refreshSheetAssignBar(journal) {
+  const bar = document.getElementById('sh-assign-bar');
+  const ownerBar = document.getElementById('sh-owner-bar');
+  const list = document.getElementById('sh-assign-list');
+  if (!bar || !list) return;
+
+  bar.style.display = St.isGM ? '' : 'none';
+
+  if (ownerBar) {
+    if (journal?.ownerId) {
+      const players = St.players || {};
+      const owner = players[journal.ownerId];
+      ownerBar.textContent = `소유: ${owner?.name || '알 수 없음'}`;
+      ownerBar.style.display = '';
+    } else {
+      ownerBar.style.display = 'none';
+    }
+  }
+
+  if (!St.isGM) return;
+  list.innerHTML = '';
+  const players = St.players || {};
+  Object.entries(players).forEach(([uid, p]) => {
+    if (p.role === 'gm') return;
+    const assigned = _sheetAssignedTo.includes(uid);
+    const btn = document.createElement('button');
+    btn.style.cssText = 'font:inherit;font-size:10px;padding:3px 10px;border-radius:4px;cursor:pointer;transition:.15s ease;border:1px solid '+(assigned?'rgba(90,158,114,.4)':'var(--border)')+';background:'+(assigned?'rgba(90,158,114,.12)':'var(--s3)')+';color:'+(assigned?'var(--green)':'var(--muted)');
+    btn.textContent = (assigned ? '✓ ' : '') + p.name;
+    btn.onclick = () => {
+      if (assigned) {
+        _sheetAssignedTo = _sheetAssignedTo.filter(x => x !== uid);
+      } else {
+        _sheetAssignedTo.push(uid);
+      }
+      refreshSheetAssignBar(journal);
+    };
+    list.appendChild(btn);
+  });
+  if (Object.keys(players).filter(uid => players[uid].role !== 'gm').length === 0) {
+    list.innerHTML = '<span style="font-size:10px;color:var(--muted)">플레이어가 없습니다</span>';
+  }
 }
 
 function getMyTokens() {
@@ -4686,6 +4819,9 @@ function openSheet(journalId) {
 
   refreshJournalTokenBar(j?.assignedTokenId || null);
 
+  _sheetAssignedTo = j?.assignedTo || [];
+  refreshSheetAssignBar(j);
+
   const delBtn = document.querySelector('.sheet-del-btn');
   if (delBtn) delBtn.style.display = '';
   document.getElementById('sheet-overlay').classList.add('open');
@@ -4829,42 +4965,42 @@ function saveSheet() {
     data['bs_'+k] = document.getElementById('sh-bs-'+k)?.value || '';
   });
 
-  const list = loadJournals();
-  const idx  = list.findIndex(j => j.id === _sheetJournalId);
-  if (idx >= 0) {
+  const list = _allJournals;
+  const existing = list.find(j => j.id === _sheetJournalId);
+  if (existing) {
     const _keepAv = _sheetAvatarData
       || localStorage.getItem('itc_av_' + _sheetJournalId)
-      || list[idx].avatar
+      || existing.avatar
       || null;
     if (_keepAv) {
       data.avatar      = _keepAv;
-      list[idx].avatar = _keepAv;
+      existing.avatar = _keepAv;
       saSetAvatar(_sheetJournalId, _keepAv);
     }
-    list[idx].sheet     = data;
-    list[idx].title     = data.name || list[idx].title;
-    list[idx].updatedAt = Date.now();
-    list[idx].assignedTokenId = _jdAssignedTokenId || null;
-    saveJournals(list);
-    renderJournalList();
+    existing.sheet     = data;
+    existing.title     = data.name || existing.title;
+    existing.updatedAt = Date.now();
+    existing.assignedTokenId = _jdAssignedTokenId || null;
+    if (_sheetAssignedTo !== undefined) existing.assignedTo = _sheetAssignedTo || [];
+    saveJournalFB(existing);
   } else {
     const newJ = {
       id: _sheetJournalId,
       title: data.name || '무제 저널',
       body: '',
       sheet: data,
+      ownerId: St.myId,
       createdAt: Date.now(),
       updatedAt: Date.now(),
       assignedTokenId: _jdAssignedTokenId || null,
+      assignedTo: _sheetAssignedTo || [],
     };
     if (_sheetAvatarData) {
       newJ.avatar = _sheetAvatarData;
       data.avatar = _sheetAvatarData;
       saSetAvatar(_sheetJournalId, _sheetAvatarData);
     }
-    list.push(newJ);
-    saveJournals(list);
-    renderJournalList();
+    saveJournalFB(newJ);
     if (_sheetIsNew) {
       _sheetIsNew = false;
       const delBtn = document.querySelector('.sheet-del-btn');
