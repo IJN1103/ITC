@@ -319,7 +319,7 @@ to{opacity:1;transform:translateY(0);}
 .map-area{flex:1;position:relative;overflow:hidden;background:var(--s1);background-image:linear-gradient(var(--border) 1px,transparent 1px),linear-gradient(90deg,var(--border) 1px,transparent 1px);background-size:44px 44px;}
 .map-token{position:absolute;width:36px;height:36px;border-radius:50%;background-color:var(--s3);border:2px solid var(--accent);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:500;cursor:grab;user-select:none;z-index:10;transition:box-shadow .15s;transform:translate(-50%,-50%);}
 .map-token:hover{box-shadow:0 0 0 4px var(--a-glow);}
-.map-token.has-img{background-color:transparent;background-size:cover;background-position:center;border:none;border-radius:0;font-size:0;overflow:visible;}
+.map-token.has-img{background-color:transparent;border:none;border-radius:0;font-size:0;overflow:visible;display:flex;align-items:flex-end;justify-content:center;}
 .map-token.has-img:hover{box-shadow:none;filter:drop-shadow(0 0 3px rgba(255,255,255,.5)) drop-shadow(0 0 6px rgba(255,255,255,.2)) brightness(1.08);}
 .token-name-label{position:absolute;bottom:-16px;left:50%;transform:translateX(-50%);white-space:nowrap;font-size:10px;font-weight:600;color:#fff;-webkit-text-stroke:0.5px rgba(0,0,0,.8);paint-order:stroke fill;text-shadow:-1px -1px 0 rgba(0,0,0,.7),1px -1px 0 rgba(0,0,0,.7),-1px 1px 0 rgba(0,0,0,.7),1px 1px 0 rgba(0,0,0,.7),0 0 4px rgba(0,0,0,.5);pointer-events:none;z-index:11;letter-spacing:.02em}
 .map-token .token-hp-bar{position:absolute;bottom:-4px;left:10%;width:80%;height:3px;background:rgba(0,0,0,.4);border-radius:2px;overflow:hidden}
@@ -1450,6 +1450,10 @@ to{transform:translateX(0);opacity:1;}
         <div class="te-toggle-row">
           <div><div class="te-toggle-label">화면 캐릭터 목록에 표시하지 않기</div><div class="te-toggle-sub">GM 토큰 등 스테이터스 관리가 필요하지 않은 것</div></div>
           <label class="te-toggle"><input type="checkbox" id="te-hide-list"><span class="te-slider"></span></label>
+        </div>
+        <div class="te-toggle-row">
+          <div><div class="te-toggle-label">스탠딩을 대표 이미지로 설정</div><div class="te-toggle-sub">첫 번째 스탠딩 이미지를 맵 토큰 이미지로 사용</div></div>
+          <label class="te-toggle"><input type="checkbox" id="te-standing-as-token"><span class="te-slider"></span></label>
         </div>
       </div>
     </div>
@@ -3037,12 +3041,23 @@ function createTokenEl(t) {
   el.id = 'tok-' + t.id;
   el.style.left = t.x + '%'; el.style.top = t.y + '%';
   const sz = (t.tokenSize || 1);
-  const tokenImgSrc = t.tokenImg || (t.standings && t.standings.length > 0 && t.standings[0].img) || null;
+  let tokenImgSrc = null;
+  if (t.standingAsToken && t.standings && t.standings.length > 0) {
+    const jForToken = loadJournals().find(j => j.assignedTokenId === t.id);
+    const curLabel = jForToken ? _vnCurrentStanding[jForToken.id] : null;
+    const curStanding = curLabel ? t.standings.find(s => s.label === curLabel && s.img) : null;
+    tokenImgSrc = curStanding ? curStanding.img : (t.standings.find(s => s.img)?.img || t.tokenImg || null);
+  } else {
+    tokenImgSrc = t.tokenImg || null;
+  }
   if (tokenImgSrc) {
     el.textContent = '';
-    el.style.backgroundImage = `url(${tokenImgSrc})`;
+    const img = document.createElement('img');
+    img.src = tokenImgSrc;
+    img.style.cssText = 'width:100%;height:100%;object-fit:contain;pointer-events:none;';
+    el.appendChild(img);
     el.classList.add('has-img');
-    const px = 36 * sz; el.style.width = px+'px'; el.style.height = px+'px';
+    const px = 36 * sz; el.style.width = px+'px'; el.style.height = 'auto'; el.style.minHeight = px+'px';
     const nameLabel = document.createElement('span');
     nameLabel.className = 'token-name-label';
     nameLabel.textContent = t.name || '';
@@ -3212,6 +3227,7 @@ function openTokenEdit(tokenId) {
   document.getElementById('te-hide-status').checked = t.hideStatus || false;
   document.getElementById('te-hide-chat').checked = t.hideChat || false;
   document.getElementById('te-hide-list').checked = t.hideList || false;
+  document.getElementById('te-standing-as-token').checked = t.standingAsToken || false;
 
   _teTokenImgData = t.tokenImg || null;
   teRefreshTokenImgPreview();
@@ -3389,6 +3405,7 @@ function saveTokenEdit() {
   t.hideStatus = document.getElementById('te-hide-status').checked;
   t.hideChat = document.getElementById('te-hide-chat').checked;
   t.hideList = document.getElementById('te-hide-list').checked;
+  t.standingAsToken = document.getElementById('te-standing-as-token').checked;
 
   t.standings = [];
   document.getElementById('te-standing-list').querySelectorAll('.te-standing-row').forEach(row => {
@@ -4686,6 +4703,22 @@ function cleanDialogueText(text) {
   return text.replace(/@\S+/g, '').trim();
 }
 
+function updateTokenStandingOnMap(journalId) {
+  const j = loadJournals().find(x => x.id === journalId);
+  if (!j?.assignedTokenId) return;
+  const t = St.tokens[j.assignedTokenId];
+  if (!t || !t.standingAsToken) return;
+  const el = document.getElementById('tok-' + t.id);
+  if (!el) return;
+  const curLabel = _vnCurrentStanding[journalId];
+  const standings = t.standings || [];
+  const curStanding = curLabel ? standings.find(s => s.label === curLabel && s.img) : null;
+  const newSrc = curStanding ? curStanding.img : (standings.find(s => s.img)?.img || t.tokenImg || null);
+  if (!newSrc) return;
+  const img = el.querySelector('img');
+  if (img) { img.src = newSrc; }
+}
+
 function showDialogueBox(journal, text) {
   const dialog = document.getElementById('vn-dialog');
   const nameEl = document.getElementById('vn-name');
@@ -4697,6 +4730,7 @@ function showDialogueBox(journal, text) {
 
   const name = journal.title || '무제';
   const standingImg = resolveStandingImage(journal, text);
+  updateTokenStandingOnMap(journal.id);
   const cleanText = cleanDialogueText(text);
 
   nameEl.textContent = name;
