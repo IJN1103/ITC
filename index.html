@@ -407,6 +407,12 @@ to{opacity:1;transform:translateY(0);}
 .map-tb-btn.on{background:var(--accent);border-color:var(--accent);color:#080808;}
 .map-add-token{position:absolute;top:10px;right:10px;z-index:20;background:var(--s2);border:1px solid var(--border);border-radius:var(--r);color:var(--dim);cursor:pointer;font-size:11px;padding:4px 10px;transition:var(--t);font-family:inherit;}
 .map-add-token:hover{border-color:var(--accent);color:var(--accent);background:var(--a-dim);}
+.map-zoom{position:absolute;bottom:14px;right:14px;z-index:20;display:flex;flex-direction:column;background:var(--s2);border:1px solid var(--border);border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.3)}
+.map-zoom-btn{background:none;border:none;color:var(--dim);cursor:pointer;padding:8px 10px;display:flex;align-items:center;justify-content:center;transition:var(--t)}
+.map-zoom-btn:hover{color:var(--accent);background:var(--a-dim)}
+.map-zoom-btn:first-child{border-radius:7px 7px 0 0}
+.map-zoom-btn:last-child{border-radius:0 0 7px 7px}
+.map-zoom-divider{height:1px;background:var(--border);margin:0 6px}
 .vn-dialog{position:absolute;bottom:16px;left:16px;right:16px;z-index:30;display:none;pointer-events:auto}
 .vn-dialog.open{display:block}
 .vn-dialog-inner{position:relative;width:100%}
@@ -970,6 +976,16 @@ to{transform:translateX(0);opacity:1;}
     <div class="panel-center">
       <div class="map-area" id="map-area">
         <button class="map-add-token gm-only" id="map-add-token" onclick="openModal('modal-token')" style="display:none">+ 토큰</button>
+        <!-- 줌 컨트롤 -->
+        <div class="map-zoom" id="map-zoom">
+          <button class="map-zoom-btn" onclick="mapZoom(1)" title="확대">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/><line x1="8" y1="11" x2="14" y2="11"/><line x1="11" y1="8" x2="11" y2="14"/></svg>
+          </button>
+          <div class="map-zoom-divider"></div>
+          <button class="map-zoom-btn" onclick="mapZoom(-1)" title="축소">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+          </button>
+        </div>
         <!-- VN 대사창 -->
         <div class="vn-dialog" id="vn-dialog" onclick="hideDialogueBox()">
           <div class="vn-dialog-inner">
@@ -1068,8 +1084,8 @@ to{transform:translateX(0);opacity:1;}
   </div>
 
 <!-- CoC 캐릭터 시트 모달 -->
-<div class="sheet-overlay" id="sheet-overlay">
-  <div class="sheet-modal">
+<div class="sheet-overlay" id="sheet-overlay" onclick="closeSheet()">
+  <div class="sheet-modal" onclick="event.stopPropagation()">
     <div class="sheet-head">
       <button class="sheet-del-btn" onclick="deleteSheetJournal()" title="이 저널 삭제">🗑 삭제</button>
       <div style="flex:1"></div>
@@ -3001,6 +3017,28 @@ function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJ
   container.scrollTop = container.scrollHeight;
 }
 
+let _mapScale = 1;
+function mapZoom(dir) {
+  _mapScale = Math.max(0.3, Math.min(3, _mapScale + dir * 0.2));
+  const map = document.getElementById('map-area');
+  if (!map) return;
+  const gridSize = Math.round(44 * _mapScale);
+  map.style.backgroundSize = `${gridSize}px ${gridSize}px`;
+  map.querySelectorAll('.map-token').forEach(el => {
+    el.style.transformOrigin = 'center center';
+    const hasImg = el.classList.contains('has-img');
+    const rot = el.style.transform?.match(/rotate\([^)]+\)/)?.[0] || '';
+    el.style.transform = `translate(-50%,-50%) scale(${_mapScale}) ${rot}`;
+  });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const mapEl = document.getElementById('map-area');
+  if (mapEl) mapEl.addEventListener('wheel', e => {
+    if (e.ctrlKey || e.metaKey) { e.preventDefault(); mapZoom(e.deltaY < 0 ? 1 : -1); }
+  }, { passive: false });
+});
+
 function addToken() {
   if (!requireGM('토큰 추가')) return;
   const name = document.getElementById('token-name').value.trim() || '?';
@@ -3027,6 +3065,7 @@ function createTokenEl(t) {
   el.className = `map-token ${t.type==='enemy'?'enemy':t.type==='npc'?'npc':''}`;
   el.id = 'tok-' + t.id;
   el.style.left = t.x + '%'; el.style.top = t.y + '%';
+  if (_mapScale !== 1) el.style.transform = `translate(-50%,-50%) scale(${_mapScale})`;
   const sz = (t.tokenSize || 1);
   let tokenImgSrc = null;
   if (t.standingAsToken && t.standings && t.standings.length > 0) {
