@@ -959,8 +959,9 @@ input:focus, select:focus, textarea:focus { outline: none; }
 .map-area { flex: 1; position: relative; overflow: hidden; background: var(--s1); background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px); background-size: 44px 44px; }
 .map-token { position: absolute; width: 36px; height: 36px; border-radius: 50%; background-color: var(--s3); border: 2px solid var(--accent); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 500; cursor: grab; user-select: none; z-index: 10; transition: box-shadow .15s; transform: translate(-50%,-50%); }
 .map-token:hover { box-shadow: 0 0 0 4px var(--a-glow); }
-.map-token.has-img { background-color: transparent; background-size: cover; background-position: center; border: none; border-radius: 0; font-size: 0; }
+.map-token.has-img { background-color: transparent; background-size: cover; background-position: center; border: none; border-radius: 0; font-size: 0; overflow: visible; }
 .map-token.has-img:hover { box-shadow: none; }
+.token-name-label { position:absolute; bottom:-16px; left:50%; transform:translateX(-50%); white-space:nowrap; font-size:10px; font-weight:600; color:#fff; -webkit-text-stroke:0.5px rgba(0,0,0,.8); paint-order:stroke fill; text-shadow: -1px -1px 0 rgba(0,0,0,.7), 1px -1px 0 rgba(0,0,0,.7), -1px 1px 0 rgba(0,0,0,.7), 1px 1px 0 rgba(0,0,0,.7), 0 0 4px rgba(0,0,0,.5); pointer-events:none; z-index:11; letter-spacing:.02em }
 .map-token .token-hp-bar { position:absolute;bottom:-4px;left:10%;width:80%;height:3px;background:rgba(0,0,0,.4);border-radius:2px;overflow:hidden }
 .map-token .token-hp-fill { height:100%;background:var(--green,#4caf50);border-radius:2px;transition:width .3s }
 .map-token.enemy { border-color: var(--red); }
@@ -1007,7 +1008,21 @@ input:focus, select:focus, textarea:focus { outline: none; }
 .te-field input,.te-field textarea,.te-field select{background:var(--s2);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font:inherit;font-size:12px;padding:5px 8px}
 .te-field input:focus,.te-field textarea:focus{border-color:var(--accent);outline:none}
 .te-field textarea{resize:vertical;min-height:60px}
-.te-status-row,.te-param-row,.te-standing-row{display:flex;align-items:center;gap:4px;padding:3px 0}
+.te-status-row,.te-param-row{display:flex;align-items:center;gap:4px;padding:3px 0}
+.te-standing-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)}
+.te-standing-row:last-child{border-bottom:none}
+.te-st-thumb{width:48px;height:48px;flex-shrink:0;border-radius:6px;background:var(--s3);border:1px dashed var(--border2);display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;transition:var(--t)}
+.te-st-thumb:hover{border-color:var(--accent);background:var(--a-dim)}
+.te-st-thumb img{width:100%;height:100%;object-fit:cover;border-radius:5px}
+.te-st-thumb .st-placeholder{font-size:18px;color:var(--muted)}
+.te-st-fields{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.te-st-fields label{font-size:10px;color:var(--muted)}
+.te-st-fields input{background:var(--s2);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font:inherit;font-size:13px;padding:5px 8px}
+.te-st-fields input:focus{border-color:var(--accent);outline:none}
+.te-st-actions{display:flex;align-items:center;gap:4px;flex-shrink:0}
+.te-st-del{background:none;border:none;color:var(--muted);font-size:14px;cursor:pointer;padding:4px;transition:var(--t)}
+.te-st-del:hover{color:var(--red)}
+.te-st-check{font-size:14px;color:var(--accent);opacity:0}.te-standing-row.has-img .te-st-check{opacity:1}
 .te-status-row input,.te-param-row input{flex:1;min-width:0}
 .te-toggle-row{display:flex;align-items:center;justify-content:space-between;padding:6px 0}
 .te-toggle-row .te-toggle-label{font-size:12px;color:var(--text)}
@@ -4023,6 +4038,11 @@ function createTokenEl(t) {
     el.style.backgroundImage = `url(${tokenImgSrc})`;
     el.classList.add('has-img');
     const px = 36 * sz; el.style.width = px+'px'; el.style.height = px+'px';
+    // 토큰 하단 이름 라벨
+    const nameLabel = document.createElement('span');
+    nameLabel.className = 'token-name-label';
+    nameLabel.textContent = t.name || '';
+    el.appendChild(nameLabel);
   } else {
     el.textContent = t.name;
     if (sz > 1) { const px = 36 * sz; el.style.width = px+'px'; el.style.height = px+'px'; el.style.fontSize = Math.max(9, 11*sz)+'px'; }
@@ -4271,19 +4291,43 @@ function teAddStanding(label, img) {
   const list = document.getElementById('te-standing-list');
   const idx = list.children.length;
   const row = document.createElement('div');
-  row.className = 'te-standing-row';
-  row.innerHTML = `
-    <input style="flex:1;min-width:0" placeholder="라벨 (예: @미소)" value="${esc(label||'')}">
-    <label style="font-size:11px;color:var(--accent);cursor:pointer;white-space:nowrap;padding:4px 6px;border:1px solid var(--border);border-radius:var(--r)">
-      ${img ? '✅ 이미지' : '📷 업로드'}
-      <input type="file" accept="image/*" style="display:none" onchange="teHandleStandingImg(this,${idx})">
-    </label>`;
+  row.className = 'te-standing-row' + (img ? ' has-img' : '');
   if (img) row.dataset.img = img;
+  const thumbContent = img
+    ? `<img src="${img}" alt="">`
+    : `<span class="st-placeholder">📷</span>`;
+  row.innerHTML = `
+    <div class="te-st-thumb" onclick="this.querySelector('input[type=file]').click()" title="이미지 업로드">
+      ${thumbContent}
+      <input type="file" accept="image/*" style="display:none" onchange="teHandleStandingImg(this,${idx})">
+    </div>
+    <div class="te-st-fields">
+      <label>라벨</label>
+      <input placeholder="@미소" value="${esc(label||'')}">
+    </div>
+    <div class="te-st-actions">
+      <button class="te-st-del" onclick="teRemoveStandingAt(${idx})" title="삭제">🗑</button>
+      <span class="te-st-check">✓</span>
+    </div>`;
   list.appendChild(row);
 }
 function teRemoveStanding() {
   const list = document.getElementById('te-standing-list');
   if (list.lastChild) list.removeChild(list.lastChild);
+}
+function teRemoveStandingAt(idx) {
+  const list = document.getElementById('te-standing-list');
+  const row = list.children[idx];
+  if (row && confirm('이 스탠딩을 삭제할까요?')) {
+    row.remove();
+    // 인덱스 재정렬
+    Array.from(list.children).forEach((r, i) => {
+      const fileInput = r.querySelector('input[type=file]');
+      if (fileInput) fileInput.setAttribute('onchange', `teHandleStandingImg(this,${i})`);
+      const delBtn = r.querySelector('.te-st-del');
+      if (delBtn) delBtn.setAttribute('onclick', `teRemoveStandingAt(${i})`);
+    });
+  }
 }
 function teHandleStandingImg(input, idx) {
   const file = input.files[0]; if (!file) return;
@@ -4296,12 +4340,14 @@ function teHandleStandingImg(input, idx) {
       if (w > MAX || h > MAX) { const r = Math.min(MAX/w, MAX/h); w = Math.round(w*r); h = Math.round(h*r); }
       const c = document.createElement('canvas'); c.width = w; c.height = h;
       c.getContext('2d').drawImage(img, 0, 0, w, h);
-      const dataUrl = c.toDataURL('image/jpeg', 0.8);
+      const dataUrl = c.toDataURL('image/png');
       const list = document.getElementById('te-standing-list');
       const row = list.children[idx];
       if (row) {
         row.dataset.img = dataUrl;
-        row.querySelector('label').innerHTML = `✅ 이미지<input type="file" accept="image/*" style="display:none" onchange="teHandleStandingImg(this,${idx})">`;
+        row.classList.add('has-img');
+        const thumb = row.querySelector('.te-st-thumb');
+        if (thumb) thumb.innerHTML = `<img src="${dataUrl}" alt=""><input type="file" accept="image/*" style="display:none" onchange="teHandleStandingImg(this,${idx})">`;
       }
     };
     img.src = ev.target.result;
