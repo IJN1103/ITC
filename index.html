@@ -1399,13 +1399,14 @@ input:focus, select:focus, textarea:focus { outline: none; }
 .chat-input:focus { border-color: var(--accent); }
 .send-btn { width: 34px; height: 34px; background: var(--accent); border: none; border-radius: var(--r); color: #080808; cursor: pointer; font-size: 15px; display: flex; align-items: center; justify-content: center; transition: var(--t); flex-shrink: 0; }
 .send-btn:hover { opacity: .85; }
-.chat-toolbar { display: none; padding: 8px 8px 4px; gap: 4px; border-top: 1px solid var(--border); }
+.chat-toolbar { display: none; padding: 8px 8px 4px; gap: 6px; border-top: 1px solid var(--border); flex-wrap: wrap; align-items: center; }
 .chat-toolbar.gm-visible { display: flex; }
 .desc-toggle-btn {
   display: inline-flex; align-items: center; gap: 5px;
   background: none; border: 1px solid var(--border); border-radius: var(--r);
   color: var(--muted); font: inherit; font-size: 11px;
-  padding: 3px 10px; cursor: pointer; transition: var(--t); letter-spacing: .04em;
+  padding: 4px 10px; cursor: pointer; transition: var(--t); letter-spacing: .04em;
+  height: 26px; box-sizing: border-box;
 }
 .desc-toggle-btn:hover { border-color: var(--accent); color: var(--accent); }
 .desc-toggle-btn.active { background: rgba(184,154,96,.15); border-color: var(--accent); color: var(--accent); }
@@ -1413,7 +1414,7 @@ input:focus, select:focus, textarea:focus { outline: none; }
 .desc-toggle-btn.active .desc-dot { background: var(--accent); }
 .chat-input.desc-mode { border-color: var(--accent); background: rgba(184,154,96,.07); }
 /* ── speak-as 버튼 ── */
-.speak-as-wrap{position:relative;display:inline-flex;align-items:center}
+.speak-as-wrap{position:relative;display:inline-flex;align-items:center;width:100%}
 .speak-as-btn{
   display:inline-flex;align-items:center;gap:6px;
   background:none;border:none;border-radius:var(--r);
@@ -1433,7 +1434,8 @@ input:focus, select:focus, textarea:focus { outline: none; }
   display:inline-flex;align-items:center;gap:5px;
   background:none;border:1px solid var(--border);border-radius:var(--r);
   color:var(--muted);font:inherit;font-size:11px;
-  padding:3px 10px;cursor:pointer;transition:var(--t);letter-spacing:.04em
+  padding:4px 10px;cursor:pointer;transition:var(--t);letter-spacing:.04em;
+  height:26px;box-sizing:border-box
 }
 .whisper-btn:hover{border-color:#9b59b6;color:#9b59b6}
 .whisper-btn.active{background:rgba(155,89,182,.12);border-color:#9b59b6;color:#9b59b6}
