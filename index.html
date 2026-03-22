@@ -463,7 +463,7 @@ to{opacity:1}
 .j-fail{background:rgba(200,92,92,.2);color:var(--red);}
 .j-fumb{background:rgba(200,92,92,.35);color:var(--red);}
 .panel-right{width:250px;min-width:15px;background:var(--s1);border-left:1px solid var(--border);display:flex;flex-direction:column;transition:width .25s ease;position:relative;}
-.panel-right.collapsed{width:0;min-width:0;overflow:visible;border-left:none;}
+.panel-right.collapsed{width:0 !important;min-width:0 !important;overflow:visible;border-left:none;}
 .panel-right.collapsed .right-tabs,.panel-right.collapsed .right-pane,.panel-right.collapsed .chat-resize-handle{display:none;}
 .rtab-toggle{position:absolute;left:0;top:50%;transform:translateX(-100%) translateY(-50%);background:var(--s2);border:1px solid var(--border);border-right:none;border-radius:6px 0 0 6px;color:var(--muted);font-size:12px;cursor:pointer;padding:12px 5px;z-index:40;transition:var(--t);line-height:1;}
 .rtab-toggle:hover{color:var(--accent);background:var(--a-dim);}
@@ -3632,7 +3632,18 @@ function togglePanel(side) { document.getElementById(`panel-${side}`).classList.
 
 function toggleChatPanel() {
   const panel = document.getElementById('panel-right');
+  const isCollapsed = panel.classList.contains('collapsed');
+  if (!isCollapsed) {
+    panel._savedWidth = panel.style.width || '';
+    panel._savedMinWidth = panel.style.minWidth || '';
+    panel.style.width = '';
+    panel.style.minWidth = '';
+  }
   panel.classList.toggle('collapsed');
+  if (isCollapsed && panel._savedWidth) {
+    panel.style.width = panel._savedWidth;
+    panel.style.minWidth = panel._savedMinWidth;
+  }
   const btn = document.getElementById('chat-toggle-btn');
   if (btn) btn.textContent = panel.classList.contains('collapsed') ? '▶' : '◀';
 }
