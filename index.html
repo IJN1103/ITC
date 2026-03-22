@@ -4364,10 +4364,12 @@ function renderJournalList() {
     const players = St.players || {};
     const ownerName = j.ownerId && players[j.ownerId] ? players[j.ownerId].name : '';
     const ownerTag = ownerName && j.ownerId !== St.myId ? `<span style="font-size:9px;color:var(--muted);margin-left:4px">(${esc(ownerName)})</span>` : '';
+    const assignedNames = (j.assignedTo || []).map(uid => players[uid]?.name).filter(Boolean);
+    const assignTag = assignedNames.length > 0 ? `<span style="font-size:9px;color:var(--green);margin-left:4px">(부여: ${esc(assignedNames.join(', '))})</span>` : '';
     const canDelete = St.isGM || j.ownerId === St.myId;
     const delHtml = canDelete ? `<button class="journal-item-del" data-jid="${j.id}" onclick="event.stopPropagation();deleteJournalById(this.dataset.jid)" title="삭제">🗑</button>` : '';
     div.innerHTML = `${avatarHtml}<div class="journal-item-body">
-      <div class="journal-item-title">${esc(j.title||'무제 저널')}${ownerTag}</div>
+      <div class="journal-item-title">${esc(j.title||'무제 저널')}${ownerTag}${assignTag}</div>
       <div class="journal-item-meta"><span style="color:var(--dim);font-size:11px">${esc(pre)}${(j.body||'').length>40?'…':''}</span><span>${ds}</span></div>
     </div>${delHtml}`;
     container.appendChild(div);
