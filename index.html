@@ -1703,11 +1703,23 @@ function setAvatarShape(shape) {
   St.avatarShape = shape;
   localStorage.setItem('itc_avatar_shape', shape);
   updateShapeBtns();
-  // 이미 렌더된 채팅창 아바타 도형 즉시 갱신
+
+  const r = shape === 'circle' ? '50%' : '6px';
+
+  // .msg-avatar wrapper 클래스 교체
   document.querySelectorAll('.msg-avatar').forEach(el => {
     el.classList.remove('shape-circle', 'shape-rounded');
     el.classList.add(shape === 'circle' ? 'shape-circle' : 'shape-rounded');
   });
+  // .msg-avatar-inner (이니셜 박스) border-radius
+  document.querySelectorAll('.msg-avatar-inner').forEach(el => {
+    el.style.borderRadius = r;
+  });
+  // .msg-avatar img (프로필 사진) border-radius
+  document.querySelectorAll('.msg-avatar img').forEach(el => {
+    el.style.borderRadius = r;
+  });
+
   showToast(shape === 'circle' ? '원형으로 변경됐어요' : '둥근 네모로 변경됐어요');
 }
 
@@ -1722,17 +1734,6 @@ function updateShapeBtns() {
   btnC.style.cssText += ';' + (shape === 'circle'  ? activeStyle : normalStyle);
 }
 
-function setAvatarShape(shape) {
-  St.avatarShape = shape;
-  localStorage.setItem('itc_avatar_shape', shape);
-  updateShapeBtns();
-  // 이미 렌더된 채팅 아바타 도형 즉시 갱신
-  document.querySelectorAll('.msg-avatar').forEach(el => {
-    el.classList.remove('shape-circle', 'shape-rounded');
-    el.classList.add(shape === 'circle' ? 'shape-circle' : 'shape-rounded');
-  });
-  showToast(shape === 'circle' ? '원형으로 변경됐어요' : '둥근 네모로 변경됐어요');
-}
 
 function updateShapeBtns() {
   const shape = St.avatarShape;
@@ -2824,10 +2825,11 @@ function getAvatarHtml(name, uid) {
 
   const initial = (name || '?')[0].toUpperCase();
   const shape_class = St.avatarShape === 'circle' ? 'shape-circle' : 'shape-rounded';
+  const r = St.avatarShape === 'circle' ? '50%' : '6px';
   if (imgSrc) {
-    return `<div class="msg-avatar ${shape_class}"><img src="${imgSrc}" alt="${esc(initial)}"></div>`;
+    return `<div class="msg-avatar ${shape_class}"><img src="${imgSrc}" alt="${esc(initial)}" style="border-radius:${r}"></div>`;
   }
-  return `<div class="msg-avatar ${shape_class}"><div class="msg-avatar-inner">${esc(initial)}</div></div>`;
+  return `<div class="msg-avatar ${shape_class}"><div class="msg-avatar-inner" style="border-radius:${r}">${esc(initial)}</div></div>`;
 }
 
 function appendChatMsg(name, text, type, uid) {
