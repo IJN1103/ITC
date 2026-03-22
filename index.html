@@ -1175,31 +1175,31 @@ input:focus, select:focus, textarea:focus { outline: none; }
   font-weight: 500; cursor: pointer; transition: var(--t);
 }
 .jd-save-btn:hover { opacity: .88; }
-.journal-list { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 6px; }
+.journal-list { flex: 1; overflow-y: auto; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }
 .journal-list::-webkit-scrollbar { width: 4px; }
 .journal-list::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
 .journal-empty { font-size: 12px; color: var(--muted); text-align: center; padding: 24px 0; }
 .journal-item {
   background: var(--s2); border: 1px solid var(--border); border-radius: var(--r);
-  padding: 10px 12px; cursor: pointer; transition: var(--t);
+  padding: 8px 10px; cursor: pointer; transition: var(--t);
   display: flex; align-items: center; gap: 10px;
 }
 .journal-item:hover { border-color: var(--accent); background: var(--a-dim); }
 .journal-avatar {
-  width: 38px; height: 38px; border-radius: 8px; flex-shrink: 0;
+  width: 36px; height: 36px; border-radius: 7px; flex-shrink: 0;
   background: var(--s3); border: 1px solid var(--border2);
   display: flex; align-items: center; justify-content: center;
-  font-size: 15px; font-weight: 600; color: var(--accent);
+  font-size: 14px; font-weight: 600; color: var(--accent);
   overflow: hidden;
 }
-.journal-avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: 8px; }
+.journal-avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: 7px; }
 .journal-item-body { flex: 1; min-width: 0; }
 .journal-item-title { font-size: 13px; color: var(--text); font-weight: 500; margin-bottom: 3px; }
 .journal-item-meta { font-size: 10px; color: var(--muted); display: flex; align-items: center; justify-content: space-between; }
 /* 시트 헤더 프로필 */
 .sh-avatar-wrap {
   display: flex; flex-direction: column; align-items: center;
-  gap: 6px; padding: 14px 16px 14px 4px;
+  gap: 4px; padding: 0 10px 0 0; flex-shrink: 0;
 }
 .sh-avatar {
   width: 64px; height: 64px; border-radius: 10px;
@@ -1292,7 +1292,7 @@ input:focus, select:focus, textarea:focus { outline: none; }
   color: var(--muted); padding-bottom: 6px; border-bottom: 1px solid var(--border);
 }
 /* 그리드 필드 */
-.sh-grid { display: grid; gap: 8px; }
+.sh-grid { display: grid; gap: 8px; align-content: start; }
 .sh-grid-2 { grid-template-columns: 1fr 1fr; }
 .sh-grid-3 { grid-template-columns: 1fr 1fr 1fr; }
 .sh-grid-4 { grid-template-columns: 1fr 1fr 1fr 1fr; }
@@ -1798,7 +1798,7 @@ input:focus, select:focus, textarea:focus { outline: none; }
         <!-- 탐사자 정보 -->
         <div class="sh-sec">
           <div class="sh-sec-title">탐사자 정보</div>
-          <div style="display:flex;align-items:flex-start;gap:10px">
+          <div style="display:flex;gap:12px;align-items:flex-start">
             <!-- 프로필 아바타 -->
             <div class="sh-avatar-wrap">
               <div class="sh-avatar" id="sh-avatar" onclick="document.getElementById('sh-avatar-input').click()" title="프로필 이미지 변경">
@@ -1808,16 +1808,16 @@ input:focus, select:focus, textarea:focus { outline: none; }
               <input type="file" id="sh-avatar-input" accept="image/*" style="display:none" onchange="handleSheetAvatar(this)">
               <span class="sh-avatar-hint">클릭해서 변경</span>
             </div>
-            <div class="sh-grid sh-grid-2" style="flex:1">
-            <div class="sh-field"><div class="sh-label">이름</div><input class="sh-input" id="sh-name" placeholder="캐릭터 이름" oninput="if(!_sheetAvatarData) refreshSheetAvatar(null, this.value.trim()[0]?.toUpperCase()||'?')"></div>
-            <div class="sh-field"><div class="sh-label">플레이어</div><input class="sh-input" id="sh-player" placeholder="플레이어 이름"></div>
-            <div class="sh-field"><div class="sh-label">직업</div><input class="sh-input" id="sh-job" placeholder="탐사자 직업"></div>
-            <div class="sh-field"><div class="sh-label">나이 / 성별</div><input class="sh-input" id="sh-age" placeholder="예: 28 / 남성"></div>
-            <div class="sh-field"><div class="sh-label">거주지</div><input class="sh-input" id="sh-residence" placeholder="현재 거주지"></div>
-            <div class="sh-field"><div class="sh-label">출생지</div><input class="sh-input" id="sh-birthplace" placeholder="출생지"></div>
+            <!-- 필드 그리드 -->
+            <div class="sh-grid sh-grid-2" style="flex:1;align-content:start">
+              <div class="sh-field"><div class="sh-label">이름</div><input class="sh-input" id="sh-name" placeholder="캐릭터 이름" oninput="if(!_sheetAvatarData) refreshSheetAvatar(null, this.value.trim()[0]?.toUpperCase()||'?')"></div>
+              <div class="sh-field"><div class="sh-label">플레이어</div><input class="sh-input" id="sh-player" placeholder="플레이어 이름"></div>
+              <div class="sh-field"><div class="sh-label">직업</div><input class="sh-input" id="sh-job" placeholder="탐사자 직업"></div>
+              <div class="sh-field"><div class="sh-label">나이 / 성별</div><input class="sh-input" id="sh-age" placeholder="예: 28 / 남성"></div>
+              <div class="sh-field"><div class="sh-label">거주지</div><input class="sh-input" id="sh-residence" placeholder="현재 거주지"></div>
+              <div class="sh-field"><div class="sh-label">출생지</div><input class="sh-input" id="sh-birthplace" placeholder="출생지"></div>
+            </div>
           </div>
-            </div><!-- /sh-grid flex -->
-          </div><!-- /avatar flex -->
         </div>
         <!-- 특성치 -->
         <div class="sh-sec">
