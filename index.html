@@ -2886,33 +2886,35 @@ function appendChatMsg(name, text, type, uid) {
   const avatarHtml = getAvatarHtml(name, uid || (name === St.myName ? St.myId : null));
 
   if (type === 'image') {
-    // 이미지를 먼저 완전히 로드한 뒤 DOM에 삽입 → 겹침 방지
+    // ① 순서 유지를 위해 placeholder를 먼저 DOM에 삽입
+    const div = document.createElement('div');
+    div.className = 'chat-msg msg-image-msg';
+    const body = document.createElement('div');
+    body.className = 'msg-body';
+    body.innerHTML = `<div class="msg-meta"><span class="msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-img-placeholder" style="width:80px;height:48px;background:var(--s3);border-radius:var(--r);margin-top:5px;opacity:.5"></div>`;
+    div.innerHTML = avatarHtml;
+    div.appendChild(body);
+    container.appendChild(div);   // ← 순서 확정
+    container.scrollTop = container.scrollHeight;
+
+    // ② 이미지 로드 후 placeholder 교체
     const imgEl = new Image();
     imgEl.className = 'msg-image';
     imgEl.alt = '첨부 이미지';
-    imgEl.style.cursor = 'zoom-in';
     imgEl.addEventListener('click', () => openLightbox(imgEl.src));
 
     imgEl.onload = () => {
-      const div = document.createElement('div');
-      div.className = 'chat-msg msg-image-msg';
-      const body = document.createElement('div');
-      body.className = 'msg-body';
-      body.innerHTML = `<div class="msg-meta"><span class="msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div>`;
-      body.appendChild(imgEl);
-      div.innerHTML = avatarHtml;
-      div.appendChild(body);
-      container.appendChild(div);
+      const ph = body.querySelector('.msg-img-placeholder');
+      if (ph) ph.replaceWith(imgEl);
       container.scrollTop = container.scrollHeight;
     };
 
     imgEl.onerror = () => {
-      // 로드 실패 시 링크로 대체
-      const div = document.createElement('div');
-      div.className = 'chat-msg msg-normal';
-      div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-text">[이미지 로드 실패]</div></div>`;
-      container.appendChild(div);
-      container.scrollTop = container.scrollHeight;
+      const ph = body.querySelector('.msg-img-placeholder');
+      if (ph) {
+        ph.style.cssText = 'font-size:12px;color:var(--muted);padding:4px 0';
+        ph.textContent = '[이미지 로드 실패]';
+      }
     };
 
     imgEl.src = text;
