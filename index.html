@@ -959,8 +959,56 @@ input:focus, select:focus, textarea:focus { outline: none; }
 .map-area { flex: 1; position: relative; overflow: hidden; background: var(--s1); background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px); background-size: 44px 44px; }
 .map-token { position: absolute; width: 36px; height: 36px; border-radius: 50%; background: var(--s3); border: 2px solid var(--accent); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 500; cursor: grab; user-select: none; z-index: 10; transition: box-shadow .15s; transform: translate(-50%,-50%); }
 .map-token:hover { box-shadow: 0 0 0 4px var(--a-glow); }
+.map-token.has-img { background-size: cover; background-position: center; font-size: 0; }
+.map-token .token-hp-bar { position:absolute;bottom:-4px;left:10%;width:80%;height:3px;background:rgba(0,0,0,.4);border-radius:2px;overflow:hidden }
+.map-token .token-hp-fill { height:100%;background:var(--green,#4caf50);border-radius:2px;transition:width .3s }
 .map-token.enemy { border-color: var(--red); }
 .map-token.npc   { border-color: var(--blue); }
+
+/* ── 토큰 편집 패널 ── */
+.te-overlay{position:fixed;inset:0;z-index:500;display:none;align-items:center;justify-content:flex-end}
+.te-overlay.open{display:flex}
+.te-backdrop{position:absolute;inset:0;background:rgba(0,0,0,.45)}
+.te-panel{position:relative;width:380px;height:100%;background:var(--s1);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;z-index:1}
+.te-head{display:flex;align-items:center;padding:10px 14px;border-bottom:1px solid var(--border);background:var(--s2);gap:8px}
+.te-head-title{flex:1;font-size:14px;font-weight:600;color:var(--text)}
+.te-close{background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer;padding:2px 6px;border-radius:4px}
+.te-close:hover{color:var(--text);background:var(--s3)}
+.te-body{flex:1;overflow-y:auto;padding:14px 16px;display:flex;flex-direction:column;gap:14px}
+.te-body::-webkit-scrollbar{width:4px}
+.te-body::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+.te-section{display:flex;flex-direction:column;gap:8px}
+.te-sec-header{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);padding-bottom:4px}
+.te-sec-title{font-size:13px;font-weight:600;color:var(--text)}
+.te-sec-desc{font-size:10px;color:var(--muted);margin-top:2px}
+.te-add-btn{background:none;border:none;color:var(--muted);font-size:16px;cursor:pointer;padding:0 4px;transition:var(--t)}
+.te-add-btn:hover{color:var(--accent)}
+.te-sub-btn{background:none;border:none;color:var(--muted);font-size:14px;cursor:pointer;padding:0 4px}
+.te-sub-btn:hover{color:var(--red)}
+.te-row{display:flex;align-items:center;gap:6px}
+.te-row input,.te-row select,.te-row textarea{background:var(--s2);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font:inherit;font-size:12px;padding:5px 8px}
+.te-row input:focus,.te-row textarea:focus{border-color:var(--accent);outline:none}
+.te-row label{font-size:11px;color:var(--muted);min-width:50px}
+.te-field{display:flex;flex-direction:column;gap:3px}
+.te-field label{font-size:11px;color:var(--muted)}
+.te-field input,.te-field textarea,.te-field select{background:var(--s2);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font:inherit;font-size:12px;padding:5px 8px}
+.te-field input:focus,.te-field textarea:focus{border-color:var(--accent);outline:none}
+.te-field textarea{resize:vertical;min-height:60px}
+.te-status-row,.te-param-row,.te-standing-row{display:flex;align-items:center;gap:4px;padding:3px 0}
+.te-status-row input,.te-param-row input{flex:1;min-width:0}
+.te-toggle-row{display:flex;align-items:center;justify-content:space-between;padding:6px 0}
+.te-toggle-row .te-toggle-label{font-size:12px;color:var(--text)}
+.te-toggle-row .te-toggle-sub{font-size:10px;color:var(--muted)}
+.te-toggle{position:relative;width:36px;height:20px;flex-shrink:0}
+.te-toggle input{opacity:0;width:0;height:0}
+.te-toggle .te-slider{position:absolute;inset:0;background:var(--s3);border-radius:10px;cursor:pointer;transition:var(--t);border:1px solid var(--border)}
+.te-toggle .te-slider:before{content:'';position:absolute;width:14px;height:14px;left:2px;bottom:2px;background:var(--muted);border-radius:50%;transition:var(--t)}
+.te-toggle input:checked + .te-slider{background:var(--accent);border-color:var(--accent)}
+.te-toggle input:checked + .te-slider:before{transform:translateX(16px);background:#fff}
+.te-footer{padding:10px 16px;border-top:1px solid var(--border);display:flex;align-items:center;gap:8px}
+.te-footer .te-hint{flex:1;font-size:11px;color:var(--muted)}
+.te-del-btn{background:none;border:1px solid transparent;border-radius:var(--r);color:var(--muted);font-size:12px;padding:5px 10px;cursor:pointer;transition:var(--t)}
+.te-del-btn:hover{color:var(--red);border-color:rgba(200,92,92,.35);background:rgba(200,92,92,.08)}
 .map-toolbar { position: absolute; top: 10px; left: 10px; display: flex; gap: 4px; z-index: 20; }
 .map-tb-btn { width: 28px; height: 28px; background: var(--s2); border: 1px solid var(--border); border-radius: var(--r); color: var(--dim); cursor: pointer; font-size: 13px; display: flex; align-items: center; justify-content: center; transition: var(--t); }
 .map-tb-btn:hover { border-color: var(--accent); color: var(--accent); }
@@ -2166,6 +2214,86 @@ input:focus, select:focus, textarea:focus { outline: none; }
     <div class="modal-field"><label>이름 (1–4자)</label><input type="text" id="token-name" maxlength="4" placeholder="이름"></div>
     <div class="modal-field"><label>종류</label><select id="token-type"><option value="pc">PC</option><option value="npc">NPC</option><option value="enemy">적</option></select></div>
     <button class="btn-primary" onclick="addToken()">맵에 추가</button>
+  </div>
+</div>
+
+<!-- 토큰 편집 패널 -->
+<div class="te-overlay" id="te-overlay">
+  <div class="te-backdrop" onclick="closeTokenEdit()"></div>
+  <div class="te-panel">
+    <div class="te-head">
+      <span class="te-head-title">토큰 편집</span>
+      <button class="te-close" onclick="closeTokenEdit()">✕</button>
+    </div>
+    <div class="te-body" id="te-body">
+      <div class="te-section">
+        <div class="te-row" style="gap:10px">
+          <div class="te-field" style="flex:2"><label>이름</label><input id="te-name" placeholder="이름"></div>
+          <div class="te-field" style="flex:1"><label>이니셔티브</label><input id="te-initiative" type="number" value="0"></div>
+        </div>
+      </div>
+      <div class="te-section">
+        <div class="te-field"><label>캐릭터 메모</label><textarea id="te-memo" rows="3" placeholder="메모를 자유롭게 입력하세요…"></textarea></div>
+      </div>
+      <div class="te-section">
+        <div class="te-row" style="gap:10px">
+          <div class="te-field" style="flex:1"><label>토큰 사이즈</label><input id="te-size" type="number" value="1" min="1" max="10"></div>
+          <div class="te-field" style="flex:1"><label>x</label><input id="te-x" type="number" step="0.1"></div>
+          <div class="te-field" style="flex:1"><label>y</label><input id="te-y" type="number" step="0.1"></div>
+        </div>
+      </div>
+      <div class="te-section">
+        <div class="te-field"><label>참고 URL</label><input id="te-url" placeholder="https://..."></div>
+      </div>
+      <div class="te-section">
+        <div class="te-sec-header">
+          <span class="te-sec-title">스탠딩</span>
+          <div><button class="te-sub-btn" onclick="teRemoveStanding()">−</button><button class="te-add-btn" onclick="teAddStanding()">＋</button></div>
+        </div>
+        <div class="te-sec-desc">채팅 시 메시지 박스에 표시되는 이미지를 설정합니다. 예를 들어, "@미소"라는 라벨로 설정 한 경우, 채팅에서 "... @미소" 처럼 더하는 것으로 스탠딩을 변경합니다.</div>
+        <div id="te-standing-list"></div>
+      </div>
+      <div class="te-section">
+        <div class="te-sec-header">
+          <span class="te-sec-title">스테이터스</span>
+          <div><button class="te-sub-btn" onclick="teRemoveStatus()">−</button><button class="te-add-btn" onclick="teAddStatus()">＋</button></div>
+        </div>
+        <div class="te-sec-desc">HP나 MP 등 캐릭터에 연동하여 변동하는 스테이터스를 설정합니다. {라벨명}처럼 채팅하면 채팅창에서 현재 값을 불러올 수 있습니다.</div>
+        <div id="te-status-list"></div>
+      </div>
+      <div class="te-section">
+        <div class="te-sec-header">
+          <span class="te-sec-title">매개변수</span>
+          <div><button class="te-sub-btn" onclick="teRemoveParam()">−</button><button class="te-add-btn" onclick="teAddParam()">＋</button></div>
+        </div>
+        <div class="te-sec-desc">캐릭터의 거의 변하지 않는 매개변수를 설정합니다. {라벨명}처럼 채팅하면 채팅창에서 값을 불러올 수 있습니다.</div>
+        <div id="te-param-list"></div>
+      </div>
+      <div class="te-section">
+        <div class="te-sec-header"><span class="te-sec-title">채팅 팔레트</span></div>
+        <div class="te-sec-desc">1d100 등의 다이스 커맨드나 캐릭터와 연동 되는 채팅 커맨드를 줄 바꿈으로 구분하여 등록합니다.</div>
+        <div class="te-field"><textarea id="te-chatpal" rows="4" placeholder="채팅 팔레트"></textarea></div>
+      </div>
+      <div class="te-section" style="gap:0">
+        <div class="te-toggle-row">
+          <div><div class="te-toggle-label">스테이터스를 비공개로 하기</div><div class="te-toggle-sub">비밀NPC, 적 캐릭터 등</div></div>
+          <label class="te-toggle"><input type="checkbox" id="te-hide-status"><span class="te-slider"></span></label>
+        </div>
+        <div class="te-toggle-row">
+          <div><div class="te-toggle-label">채팅 시 캐릭터를 표시하지 않는다</div><div class="te-toggle-sub">토큰 자체를 스탠딩처럼 보이게 할 경우</div></div>
+          <label class="te-toggle"><input type="checkbox" id="te-hide-chat"><span class="te-slider"></span></label>
+        </div>
+        <div class="te-toggle-row">
+          <div><div class="te-toggle-label">화면 캐릭터 목록에 표시하지 않기</div><div class="te-toggle-sub">GM 토큰 등 스테이터스 관리가 필요하지 않은 것</div></div>
+          <label class="te-toggle"><input type="checkbox" id="te-hide-list"><span class="te-slider"></span></label>
+        </div>
+      </div>
+    </div>
+    <div class="te-footer">
+      <button class="te-del-btn" onclick="deleteTokenFromEdit()">🗑 삭제</button>
+      <span class="te-hint" id="te-hint"></span>
+      <button class="btn-primary" style="padding:6px 18px;font-size:12px" onclick="saveTokenEdit()">저장</button>
+    </div>
   </div>
 </div>
 
@@ -3843,6 +3971,28 @@ function createTokenEl(t) {
   el.id = 'tok-' + t.id;
   el.textContent = t.name;
   el.style.left = t.x + '%'; el.style.top = t.y + '%';
+  // 토큰 사이즈
+  const sz = (t.tokenSize || 1);
+  if (sz > 1) { const px = 36 * sz; el.style.width = px+'px'; el.style.height = px+'px'; el.style.fontSize = Math.max(9, 11*sz)+'px'; }
+  // 스탠딩 이미지 (첫 번째 스탠딩을 토큰 이미지로)
+  if (t.standings && t.standings.length > 0 && t.standings[0].img) {
+    el.style.backgroundImage = `url(${t.standings[0].img})`;
+    el.classList.add('has-img');
+  }
+  // HP 바
+  if (t.statuses && t.statuses.length > 0) {
+    const hp = t.statuses[0];
+    if (hp.max > 0) {
+      const pct = Math.max(0, Math.min(100, (hp.cur / hp.max) * 100));
+      const bar = document.createElement('div'); bar.className = 'token-hp-bar';
+      const fill = document.createElement('div'); fill.className = 'token-hp-fill'; fill.style.width = pct + '%';
+      if (pct <= 25) fill.style.background = 'var(--red)';
+      else if (pct <= 50) fill.style.background = '#f0ad4e';
+      bar.appendChild(fill); el.appendChild(bar);
+    }
+  }
+  // 우클릭 → 편집 패널
+  el.addEventListener('contextmenu', e => { e.preventDefault(); openTokenEdit(t.id); });
   makeDraggable(el, t.id);
   map.appendChild(el);
 }
@@ -3882,6 +4032,195 @@ function removeToken(tokenId) {
     const { db, ref, remove } = window._FB;
     remove(ref(db, `rooms/${St.roomCode}/tokens/${tokenId}`));
   } else delete St.tokens[tokenId];
+}
+
+/* ─────────────────────────────────────────────────
+   TOKEN EDIT PANEL
+───────────────────────────────────────────────── */
+let _teTokenId = null;
+
+function openTokenEdit(tokenId) {
+  _teTokenId = tokenId;
+  const t = St.tokens[tokenId];
+  if (!t) return;
+
+  document.getElementById('te-name').value = t.name || '';
+  document.getElementById('te-initiative').value = t.initiative || 0;
+  document.getElementById('te-memo').value = t.memo || '';
+  document.getElementById('te-size').value = t.tokenSize || 1;
+  document.getElementById('te-x').value = Math.round((t.x || 0) * 10) / 10;
+  document.getElementById('te-y').value = Math.round((t.y || 0) * 10) / 10;
+  document.getElementById('te-url').value = t.refUrl || '';
+  document.getElementById('te-chatpal').value = t.chatPalette || '';
+  document.getElementById('te-hide-status').checked = t.hideStatus || false;
+  document.getElementById('te-hide-chat').checked = t.hideChat || false;
+  document.getElementById('te-hide-list').checked = t.hideList || false;
+
+  // 스탠딩
+  const sl = document.getElementById('te-standing-list');
+  sl.innerHTML = '';
+  (t.standings || []).forEach((s, i) => teAddStanding(s.label, s.img));
+
+  // 스테이터스
+  const stl = document.getElementById('te-status-list');
+  stl.innerHTML = '';
+  (t.statuses || []).forEach(s => teAddStatus(s.label, s.cur, s.max));
+
+  // 매개변수
+  const pl = document.getElementById('te-param-list');
+  pl.innerHTML = '';
+  (t.params || []).forEach(p => teAddParam(p.label, p.value));
+
+  document.getElementById('te-hint').textContent = '';
+  document.getElementById('te-overlay').classList.add('open');
+}
+
+function closeTokenEdit() {
+  document.getElementById('te-overlay').classList.remove('open');
+  _teTokenId = null;
+}
+
+function teAddStanding(label, img) {
+  const list = document.getElementById('te-standing-list');
+  const idx = list.children.length;
+  const row = document.createElement('div');
+  row.className = 'te-standing-row';
+  row.innerHTML = `
+    <input style="flex:1;min-width:0" placeholder="라벨 (예: @미소)" value="${esc(label||'')}">
+    <label style="font-size:11px;color:var(--accent);cursor:pointer;white-space:nowrap;padding:4px 6px;border:1px solid var(--border);border-radius:var(--r)">
+      ${img ? '✅ 이미지' : '📷 업로드'}
+      <input type="file" accept="image/*" style="display:none" onchange="teHandleStandingImg(this,${idx})">
+    </label>`;
+  if (img) row.dataset.img = img;
+  list.appendChild(row);
+}
+function teRemoveStanding() {
+  const list = document.getElementById('te-standing-list');
+  if (list.lastChild) list.removeChild(list.lastChild);
+}
+function teHandleStandingImg(input, idx) {
+  const file = input.files[0]; if (!file) return;
+  if (file.size > 3*1024*1024) { showToast('이미지는 3MB 이하만 가능해요.'); return; }
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const img = new Image();
+    img.onload = () => {
+      const MAX = 400; let w = img.width, h = img.height;
+      if (w > MAX || h > MAX) { const r = Math.min(MAX/w, MAX/h); w = Math.round(w*r); h = Math.round(h*r); }
+      const c = document.createElement('canvas'); c.width = w; c.height = h;
+      c.getContext('2d').drawImage(img, 0, 0, w, h);
+      const dataUrl = c.toDataURL('image/jpeg', 0.8);
+      const list = document.getElementById('te-standing-list');
+      const row = list.children[idx];
+      if (row) {
+        row.dataset.img = dataUrl;
+        row.querySelector('label').innerHTML = `✅ 이미지<input type="file" accept="image/*" style="display:none" onchange="teHandleStandingImg(this,${idx})">`;
+      }
+    };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function teAddStatus(label, cur, max) {
+  const list = document.getElementById('te-status-list');
+  const row = document.createElement('div');
+  row.className = 'te-status-row';
+  row.innerHTML = `
+    <input style="flex:1" placeholder="라벨" value="${esc(label||'')}">
+    <input style="width:55px" type="number" placeholder="현재값" value="${cur!=null?cur:''}">
+    <input style="width:55px" type="number" placeholder="최대값" value="${max!=null?max:''}">`;
+  list.appendChild(row);
+}
+function teRemoveStatus() {
+  const list = document.getElementById('te-status-list');
+  if (list.lastChild) list.removeChild(list.lastChild);
+}
+
+function teAddParam(label, value) {
+  const list = document.getElementById('te-param-list');
+  const row = document.createElement('div');
+  row.className = 'te-param-row';
+  row.innerHTML = `
+    <input style="flex:1" placeholder="라벨" value="${esc(label||'')}">
+    <input style="flex:1" placeholder="값" value="${esc(value||'')}">`;
+  list.appendChild(row);
+}
+function teRemoveParam() {
+  const list = document.getElementById('te-param-list');
+  if (list.lastChild) list.removeChild(list.lastChild);
+}
+
+function saveTokenEdit() {
+  if (!_teTokenId) return;
+  const t = St.tokens[_teTokenId];
+  if (!t) return;
+
+  t.name = document.getElementById('te-name').value.trim() || '?';
+  t.initiative = parseFloat(document.getElementById('te-initiative').value) || 0;
+  t.memo = document.getElementById('te-memo').value;
+  t.tokenSize = parseInt(document.getElementById('te-size').value) || 1;
+  t.x = parseFloat(document.getElementById('te-x').value) || t.x;
+  t.y = parseFloat(document.getElementById('te-y').value) || t.y;
+  t.refUrl = document.getElementById('te-url').value.trim();
+  t.chatPalette = document.getElementById('te-chatpal').value;
+  t.hideStatus = document.getElementById('te-hide-status').checked;
+  t.hideChat = document.getElementById('te-hide-chat').checked;
+  t.hideList = document.getElementById('te-hide-list').checked;
+
+  // 스탠딩
+  t.standings = [];
+  document.getElementById('te-standing-list').querySelectorAll('.te-standing-row').forEach(row => {
+    const inputs = row.querySelectorAll('input[type="text"],input:not([type])');
+    const label = inputs[0]?.value?.trim() || '';
+    const img = row.dataset.img || '';
+    if (label || img) t.standings.push({ label, img });
+  });
+
+  // 스테이터스
+  t.statuses = [];
+  document.getElementById('te-status-list').querySelectorAll('.te-status-row').forEach(row => {
+    const inputs = row.querySelectorAll('input');
+    const label = inputs[0]?.value?.trim() || '';
+    const cur = parseFloat(inputs[1]?.value) || 0;
+    const max = parseFloat(inputs[2]?.value) || 0;
+    if (label) t.statuses.push({ label, cur, max });
+  });
+
+  // 매개변수
+  t.params = [];
+  document.getElementById('te-param-list').querySelectorAll('.te-param-row').forEach(row => {
+    const inputs = row.querySelectorAll('input');
+    const label = inputs[0]?.value?.trim() || '';
+    const value = inputs[1]?.value?.trim() || '';
+    if (label) t.params.push({ label, value });
+  });
+
+  // Firebase 저장
+  if (window._FB?.CONFIGURED) {
+    const { db, ref, set } = window._FB;
+    set(ref(db, `rooms/${St.roomCode}/tokens/${_teTokenId}`), t);
+  } else {
+    renderAllTokens(St.tokens);
+  }
+
+  const hint = document.getElementById('te-hint');
+  if (hint) { hint.textContent = '저장됐어요 ✓'; setTimeout(() => { if(hint) hint.textContent=''; }, 2000); }
+}
+
+function deleteTokenFromEdit() {
+  if (!_teTokenId || !confirm('이 토큰을 삭제할까요?')) return;
+  const delId = _teTokenId;
+  closeTokenEdit();
+  const el = document.getElementById('tok-' + delId);
+  if (el) el.remove();
+  if (window._FB?.CONFIGURED) {
+    const { db, ref, remove } = window._FB;
+    remove(ref(db, `rooms/${St.roomCode}/tokens/${delId}`));
+  } else {
+    delete St.tokens[delId];
+    renderAllTokens(St.tokens);
+  }
 }
 
 function setTool(t) {
