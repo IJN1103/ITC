@@ -2438,11 +2438,11 @@ function setupFirebaseListeners() {
 
     const rendered = container.querySelectorAll('.chat-msg').length;
     const toAdd = sorted.slice(rendered);
-    toAdd.forEach(m => appendChatMsg(m.name, m.text, m.type || 'normal', m.uid, m.time, m.speakAsAvatar || null, m.speakAsJournalId || null, m.whisperTo || null, m.whisperToName || null, m.nameColor || null, m._key, 'chat'));
+    toAdd.forEach(m => appendChatMsg(m.name, m.text, m.type || 'normal', m.uid, m.time, m.speakAsAvatar || null, m.speakAsJournalId || null, m.whisperTo || null, m.whisperToName || null, m.nameColor || null, m._key, 'chat', m.standingImg || null));
 
     if (toAdd.length === 0 && rendered > sorted.length) {
       container.innerHTML = '';
-      sorted.forEach(m => appendChatMsg(m.name, m.text, m.type || 'normal', m.uid, m.time, m.speakAsAvatar || null, m.speakAsJournalId || null, m.whisperTo || null, m.whisperToName || null, m.nameColor || null, m._key, 'chat'));
+      sorted.forEach(m => appendChatMsg(m.name, m.text, m.type || 'normal', m.uid, m.time, m.speakAsAvatar || null, m.speakAsJournalId || null, m.whisperTo || null, m.whisperToName || null, m.nameColor || null, m._key, 'chat', m.standingImg || null));
     }
   });
 
@@ -3262,7 +3262,7 @@ function getAvatarHtml(name, uid) {
   return `<div class="msg-avatar ${shape_class}"><div class="msg-avatar-inner" style="border-radius:${r}">${esc(initial)}</div></div>`;
 }
 
-function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId, whisperTo, whisperToName, nameColor, msgKey, channel) {
+function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId, whisperTo, whisperToName, nameColor, msgKey, channel, standingImg) {
   const container = document.getElementById('chat-messages');
   const d = timestamp ? new Date(timestamp) : new Date();
   const time = `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
@@ -3318,7 +3318,7 @@ function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJ
     container.appendChild(d2);
     container.scrollTop = container.scrollHeight;
     if (!timestamp || Date.now() - timestamp < 5000) {
-      showDialogueBoxFromMsg(name, text, speakAsJournalId);
+      showDialogueBoxFromMsg(name, text, speakAsJournalId, standingImg);
     }
     return;
   }
@@ -4373,8 +4373,8 @@ function sendChatFromPopout(text) { sendMessage(St.myName, text, 'normal'); }
 
 /* 원본 appendChatMsg 래핑 — 팝아웃 동기화 */
 const _baseAppend = appendChatMsg;
-appendChatMsg = function(name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId, whisperTo, whisperToName, nameColor, msgKey, channel) {
-  _baseAppend(name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId, whisperTo, whisperToName, nameColor, msgKey, channel);
+appendChatMsg = function(name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId, whisperTo, whisperToName, nameColor, msgKey, channel, standingImg) {
+  _baseAppend(name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId, whisperTo, whisperToName, nameColor, msgKey, channel, standingImg);
   if (_popoutWin && !_popoutWin.closed && _popoutWin.addMsg) {
     _popoutWin.addMsg(name, text, type);
   }
@@ -5400,6 +5400,7 @@ function saGetAvatar(journalId) {
 
 function saSendMessage(journal, text) {
   const avatar = saGetAvatar(journal.id);
+  const standingImg = resolveStandingImage(journal, text);
   const msg = {
     name: journal.title || '무제',
     text,
@@ -5410,11 +5411,12 @@ function saSendMessage(journal, text) {
     speakAsJournalId: journal.id,
     nameColor: journal.nameColor || '',
   };
+  if (standingImg) msg.standingImg = standingImg;
   if (window._FB?.CONFIGURED) {
     const { db, ref, push } = window._FB;
     push(ref(db, `rooms/${St.roomCode}/chat`), msg);
   } else {
-    appendChatMsg(msg.name, text, 'speak-as', St.myId, msg.time, msg.speakAsAvatar, msg.speakAsJournalId);
+    appendChatMsg(msg.name, text, 'speak-as', St.myId, msg.time, msg.speakAsAvatar, msg.speakAsJournalId, null, null, msg.nameColor, null, 'chat', msg.standingImg);
   }
 }
 
@@ -5520,25 +5522,38 @@ function hideDialogueBox() {
   if (_vnTimer) { clearTimeout(_vnTimer); _vnTimer = null; }
 }
 
-function showDialogueBoxFromMsg(name, text, journalId) {
+function showDialogueBoxFromMsg(name, text, journalId, standingImg) {
   const journal = journalId ? _allJournals.find(x => x.id === journalId) : null;
+  const dialog = document.getElementById('vn-dialog');
+  const nameEl = document.getElementById('vn-name');
+  const textEl = document.getElementById('vn-text');
+  const standingEl = document.getElementById('vn-standing');
+  if (!dialog) return;
+  if (_vnTimer) { clearTimeout(_vnTimer); _vnTimer = null; }
+
+  nameEl.textContent = (journal?.title || name || '???');
+  const cleanText = cleanDialogueText(text);
+  textEl.innerHTML = esc(cleanText).replace(/\n/g, '<br>');
+
+  let resolvedStanding = null;
   if (journal) {
-    showDialogueBox(journal, text);
+    resolvedStanding = resolveStandingImage(journal, text);
+    updateTokenStandingOnMap(journal.id);
+  }
+  const finalStanding = resolvedStanding || standingImg || null;
+
+  if (finalStanding) {
+    standingEl.innerHTML = `<img src="${finalStanding}" alt="">`;
+    standingEl.style.display = '';
+    dialog.classList.add('has-standing');
   } else {
-    const dialog = document.getElementById('vn-dialog');
-    const nameEl = document.getElementById('vn-name');
-    const textEl = document.getElementById('vn-text');
-    const standingEl = document.getElementById('vn-standing');
-    if (!dialog) return;
-    if (_vnTimer) { clearTimeout(_vnTimer); _vnTimer = null; }
-    nameEl.textContent = name || '???';
-    const cleanText = text.replace(/@\S+/g, '').trim();
-    textEl.innerHTML = esc(cleanText).replace(/\n/g, '<br>');
     standingEl.innerHTML = '';
     standingEl.style.display = 'none';
-    dialog.classList.add('open');
-    _vnTimer = setTimeout(() => hideDialogueBox(), 15000);
+    dialog.classList.remove('has-standing');
   }
+
+  dialog.classList.add('open');
+  _vnTimer = setTimeout(() => hideDialogueBox(), 15000);
 }
 
 function toggleSpeakAsDropdown(e) {
