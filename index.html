@@ -1427,6 +1427,41 @@ input:focus, select:focus, textarea:focus { outline: none; }
   font-size:14px;overflow:hidden;flex-shrink:0}
 .sa-icon img{width:100%;height:100%;object-fit:cover;display:block;border-radius:6px}
 .sa-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* ── whisper(귓말) 버튼 ── */
+.whisper-wrap{position:relative;display:inline-flex;align-items:center}
+.whisper-btn{
+  display:inline-flex;align-items:center;gap:5px;
+  background:none;border:1px solid var(--border);border-radius:var(--r);
+  color:var(--muted);font:inherit;font-size:11px;
+  padding:3px 10px;cursor:pointer;transition:var(--t);letter-spacing:.04em
+}
+.whisper-btn:hover{border-color:#9b59b6;color:#9b59b6}
+.whisper-btn.active{background:rgba(155,89,182,.12);border-color:#9b59b6;color:#9b59b6}
+.whisper-btn .w-dot{width:6px;height:6px;border-radius:50%;background:var(--muted);flex-shrink:0;transition:var(--t)}
+.whisper-btn.active .w-dot{background:#9b59b6}
+.whisper-dropdown{
+  position:absolute;bottom:calc(100% + 6px);left:0;
+  min-width:180px;max-width:220px;
+  background:var(--s2);border:1px solid var(--border2);border-radius:8px;
+  box-shadow:0 4px 16px rgba(0,0,0,.35);
+  z-index:200;flex-direction:column;display:none
+}
+.whisper-dropdown.open{display:flex}
+.w-dd-header{font-size:10px;color:var(--muted);padding:7px 10px 4px;letter-spacing:.05em}
+.w-dd-item{
+  display:flex;align-items:center;gap:8px;
+  padding:7px 10px;cursor:pointer;transition:var(--t);
+  font-size:12px;color:var(--text)
+}
+.w-dd-item:hover{background:rgba(155,89,182,.1)}
+.w-dd-item.selected{background:rgba(155,89,182,.15);color:#9b59b6}
+.w-dd-item .w-dd-role{font-size:9px;color:var(--muted);margin-left:auto}
+.chat-input.whisper-mode{border-color:#9b59b6;background:rgba(155,89,182,.07)}
+/* whisper 채팅 메시지 */
+.chat-msg.msg-whisper{opacity:.92}
+.msg-whisper .msg-body{background:rgba(155,89,182,.08);border-radius:8px;padding:6px 10px}
+.msg-whisper .msg-name{color:#9b59b6 !important}
+.msg-whisper .whisper-tag{font-size:10px;color:#9b59b6;margin-left:4px;font-style:italic}
 /* 드롭다운 */
 .speak-as-dropdown{
   position:absolute;bottom:calc(100% + 6px);left:0;
@@ -1828,6 +1863,13 @@ input:focus, select:focus, textarea:focus { outline: none; }
             <span class="desc-dot"></span>
             <span>desc</span>
           </button>
+          <div class="whisper-wrap" id="whisper-wrap">
+            <button class="whisper-btn" id="whisper-btn" onclick="toggleWhisperDropdown(event)" title="귓말 보내기">
+              <span class="w-dot"></span>
+              <span id="w-label">귓말</span>
+            </button>
+            <div class="whisper-dropdown" id="whisper-dropdown"></div>
+          </div>
         </div>
         <div class="chat-input-wrap">
           <button class="chat-attach-btn" onclick="document.getElementById('chat-img-input').click()" title="사진/GIF 첨부">+</button>
@@ -2355,6 +2397,9 @@ const St = {
   selectedCharId: null,
   isGM: false,
   descMode: false,
+  whisperTo: null,
+  whisperToName: null,
+  players: {},
   avatarShape: localStorage.getItem('itc_avatar_shape') || 'rounded',
 };
 
@@ -3065,18 +3110,23 @@ function setupFirebaseListeners() {
 
   onValue(ref(db, `rooms/${code}/chat`), snap => {
     const msgs = snap.val() || {};
-    const sorted = Object.values(msgs).sort((a,b) => a.time - b.time);
+    const sorted = Object.values(msgs).sort((a,b) => a.time - b.time)
+      .filter(m => {
+        // whisper 메시지는 보낸 사람과 받는 사람만 볼 수 있음
+        if (m.type === 'whisper') return m.uid === St.myId || m.whisperTo === St.myId;
+        return true;
+      });
     const container = document.getElementById('chat-messages');
 
     // 이미 렌더된 메시지 수 추적 — 새 메시지만 추가
     const rendered = container.querySelectorAll('.chat-msg').length;
     const toAdd = sorted.slice(rendered);
-    toAdd.forEach(m => appendChatMsg(m.name, m.text, m.type || 'normal', m.uid, m.time, m.speakAsAvatar || null, m.speakAsJournalId || null));
+    toAdd.forEach(m => appendChatMsg(m.name, m.text, m.type || 'normal', m.uid, m.time, m.speakAsAvatar || null, m.speakAsJournalId || null, m.whisperTo || null, m.whisperToName || null));
 
     // 처음 로드(전체 초기화 필요)할 때만 전체 재렌더
     if (toAdd.length === 0 && rendered > sorted.length) {
       container.innerHTML = '';
-      sorted.forEach(m => appendChatMsg(m.name, m.text, m.type || 'normal', m.uid, m.time, m.speakAsAvatar || null, m.speakAsJournalId || null));
+      sorted.forEach(m => appendChatMsg(m.name, m.text, m.type || 'normal', m.uid, m.time, m.speakAsAvatar || null, m.speakAsJournalId || null, m.whisperTo || null, m.whisperToName || null));
     }
   });
 
@@ -3134,15 +3184,18 @@ async function enterGame() {
   document.querySelectorAll('.gm-only').forEach(el => { el.style.display = St.isGM ? '' : 'none'; });
   // 플레이어 지우개 숨김
   if (!St.isGM) { const eb = document.getElementById('tool-erase'); if (eb) eb.style.display = 'none'; }
-  // GM 채팅 툴바
+  // GM 채팅 툴바 — 항상 표시 (desc만 GM 전용)
   const toolbar = document.getElementById('chat-toolbar');
-  if (toolbar) toolbar.classList.toggle('gm-visible', St.isGM);
+  if (toolbar) toolbar.classList.add('gm-visible');
   const descBtn = document.getElementById('desc-toggle-btn');
   if (descBtn) descBtn.style.display = St.isGM ? '' : 'none';
   saRefreshToolbar();
   St.descMode = false;
   St.speakAsJournalId = null;
+  St.whisperTo = null;
+  St.whisperToName = null;
   saRefreshBtn();
+  refreshWhisperBtn();
   renderCharacterSheet(St.system);
   // 내 아바타 캐시 등록 (채팅에서 즉시 사용하기 위해)
   if (!window._avatarCache) window._avatarCache = {};
@@ -3168,6 +3221,7 @@ function addPlayerChip(id, name, isMe, role) {
 
 function renderPlayers(players) {
   document.getElementById('players-row').innerHTML = '';
+  St.players = players;
   // 아바타 캐시 갱신: 타 플레이어 아바타도 표시 가능하도록
   if (!window._avatarCache) window._avatarCache = {};
   Object.entries(players).forEach(([id, p]) => {
@@ -3505,6 +3559,27 @@ function sendChat() {
     return;
   }
 
+  // /w 명령어 직접 입력: /w 닉네임 메시지
+  const wm = raw.match(/^\/w\s+(\S+)\s+([\s\S]+)$/i);
+  if (wm) {
+    inp.value = '';
+    const targetName = wm[1];
+    const whisperText = wm[2].trim();
+    if (!whisperText) return;
+    const players = St.players || {};
+    const target = Object.entries(players).find(([id, p]) => p.name === targetName);
+    if (!target) { showToast(`'${targetName}' 플레이어를 찾을 수 없어요.`); return; }
+    sendWhisperMessage(St.myName, whisperText, target[0], targetName);
+    return;
+  }
+
+  // 귓말 토글 모드
+  if (St.whisperTo) {
+    inp.value = '';
+    sendWhisperMessage(St.myName, raw, St.whisperTo, St.whisperToName);
+    return;
+  }
+
   inp.value = '';
   if (St.speakAsJournalId) {
     const j = loadJournals().find(x => x.id === St.speakAsJournalId);
@@ -3525,6 +3600,20 @@ function sendMessage(name, text, type = 'normal') {
     push(ref(db, `rooms/${St.roomCode}/chat`), msg);
   } else {
     appendChatMsg(name, text, type, St.myId);
+  }
+}
+
+function sendWhisperMessage(senderName, text, targetUid, targetName) {
+  const msg = {
+    name: senderName, text, type: 'whisper',
+    uid: St.myId, time: Date.now(),
+    whisperTo: targetUid, whisperToName: targetName
+  };
+  if (window._FB?.CONFIGURED) {
+    const { db, ref, push } = window._FB;
+    push(ref(db, `rooms/${St.roomCode}/chat`), msg);
+  } else {
+    appendChatMsg(msg.name, text, 'whisper', St.myId, msg.time, null, null, targetUid, targetName);
   }
 }
 
@@ -3602,7 +3691,7 @@ function getAvatarHtml(name, uid) {
   return `<div class="msg-avatar ${shape_class}"><div class="msg-avatar-inner" style="border-radius:${r}">${esc(initial)}</div></div>`;
 }
 
-function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId) {
+function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId, whisperTo, whisperToName) {
   const container = document.getElementById('chat-messages');
   // timestamp가 있으면 실제 메시지 시간, 없으면 현재 시간
   const d = timestamp ? new Date(timestamp) : new Date();
@@ -3621,6 +3710,19 @@ function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJ
     const div = document.createElement('div');
     div.className = 'chat-msg msg-dsec';
     div.innerHTML = `<div class="msg-body"><div class="msg-text">${esc(text).replace(/\n/g, '<br>')}</div></div>`;
+    container.appendChild(div);
+    container.scrollTop = container.scrollHeight;
+    return;
+  }
+
+  // whisper 메시지
+  if (type === 'whisper') {
+    const avatarHtml = getAvatarHtml(name, uid || (name === St.myName ? St.myId : null));
+    const isMine = uid === St.myId;
+    const tagText = isMine ? `→ ${esc(whisperToName || '?')}에게 귓말` : `→ 나에게 귓말`;
+    const div = document.createElement('div');
+    div.className = 'chat-msg msg-whisper';
+    div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name">${esc(name)}</span><span class="whisper-tag">${tagText}</span><span class="msg-time">${time}</span></div><div class="msg-text">${esc(text).replace(/\n/g,'<br>')}</div></div>`;
     container.appendChild(div);
     container.scrollTop = container.scrollHeight;
     return;
@@ -4168,8 +4270,8 @@ function sendChatFromPopout(text) { sendMessage(St.myName, text, 'normal'); }
 
 /* 원본 appendChatMsg 래핑 — 팝아웃 동기화 */
 const _baseAppend = appendChatMsg;
-appendChatMsg = function(name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId) {
-  _baseAppend(name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId);
+appendChatMsg = function(name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId, whisperTo, whisperToName) {
+  _baseAppend(name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId, whisperTo, whisperToName);
   if (_popoutWin && !_popoutWin.closed && _popoutWin.addMsg) {
     _popoutWin.addMsg(name, text, type);
   }
@@ -5019,15 +5121,106 @@ function saRefreshToolbar() {
   if (!wrap || !toolbar) return;
   const hasJ = loadJournals().length > 0;
   wrap.style.display = hasJ ? '' : 'none';
-  if (hasJ && !St.isGM) toolbar.classList.add('gm-visible');
-  if (!hasJ && !St.isGM) toolbar.classList.remove('gm-visible');
+  // 툴바는 항상 표시 (귓말 버튼이 있으므로)
+  toolbar.classList.add('gm-visible');
   saRefreshBtn();
 }
 
 // 외부 클릭 시 드롭다운 닫기
 document.addEventListener('click', () => {
   document.getElementById('speak-as-dropdown')?.classList.remove('open');
+  document.getElementById('whisper-dropdown')?.classList.remove('open');
 });
+
+/* ─────────────────────────────────────────────────
+   WHISPER (귓말)
+───────────────────────────────────────────────── */
+function toggleWhisperDropdown(e) {
+  e.stopPropagation();
+  const dd = document.getElementById('whisper-dropdown');
+  if (!dd) return;
+  const isOpen = dd.classList.contains('open');
+  // 다른 드롭다운 닫기
+  document.getElementById('speak-as-dropdown')?.classList.remove('open');
+  if (isOpen) { dd.classList.remove('open'); return; }
+  renderWhisperDropdown();
+  dd.classList.add('open');
+}
+
+function renderWhisperDropdown() {
+  const dd = document.getElementById('whisper-dropdown');
+  if (!dd) return;
+  dd.innerHTML = '';
+  const header = document.createElement('div');
+  header.className = 'w-dd-header';
+  header.textContent = '귓말 대상 선택';
+  dd.appendChild(header);
+
+  // "해제" 옵션
+  const clear = document.createElement('div');
+  clear.className = 'w-dd-item' + (!St.whisperTo ? ' selected' : '');
+  clear.innerHTML = `<span>🔊 일반 채팅</span>`;
+  clear.onclick = (e) => { e.stopPropagation(); clearWhisper(); dd.classList.remove('open'); };
+  dd.appendChild(clear);
+
+  // 플레이어 목록
+  const players = St.players || {};
+  Object.entries(players).forEach(([id, p]) => {
+    if (id === St.myId) return; // 자기 자신 제외
+    const item = document.createElement('div');
+    item.className = 'w-dd-item' + (St.whisperTo === id ? ' selected' : '');
+    const roleTag = p.role === 'gm' ? '<span class="w-dd-role">GM</span>' : '';
+    item.innerHTML = `<span>🔒 ${esc(p.name)}에게 귓말</span>${roleTag}`;
+    item.onclick = (e) => { e.stopPropagation(); selectWhisperTarget(id, p.name); dd.classList.remove('open'); };
+    dd.appendChild(item);
+  });
+
+  if (Object.keys(players).filter(id => id !== St.myId).length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'w-dd-item';
+    empty.style.color = 'var(--muted)';
+    empty.innerHTML = '<span>다른 플레이어가 없어요</span>';
+    dd.appendChild(empty);
+  }
+}
+
+function selectWhisperTarget(uid, name) {
+  St.whisperTo = uid;
+  St.whisperToName = name;
+  // desc 모드 해제
+  if (St.descMode) toggleDescMode();
+  refreshWhisperBtn();
+  const inp = document.getElementById('chat-input');
+  if (inp) {
+    inp.classList.add('whisper-mode');
+    inp.placeholder = `${name}에게 귓말 (Enter 전송)`;
+    inp.focus();
+  }
+}
+
+function clearWhisper() {
+  St.whisperTo = null;
+  St.whisperToName = null;
+  refreshWhisperBtn();
+  const inp = document.getElementById('chat-input');
+  if (inp) {
+    inp.classList.remove('whisper-mode');
+    inp.placeholder = '메시지 입력 (Enter 전송)';
+  }
+}
+
+function refreshWhisperBtn() {
+  const btn = document.getElementById('whisper-btn');
+  const label = document.getElementById('w-label');
+  if (!btn) return;
+  if (St.whisperTo) {
+    btn.classList.add('active');
+    if (label) label.textContent = `→ ${St.whisperToName}`;
+  } else {
+    btn.classList.remove('active');
+    if (label) label.textContent = '귓말';
+  }
+}
 
 function esc(str) {
   return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
