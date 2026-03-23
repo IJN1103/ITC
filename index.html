@@ -5544,7 +5544,7 @@ function saGetAvatar(journalId) {
     if (ls) { _JAV[journalId] = ls; return ls; }
   } catch(e) {}
   try {
-    const j = loadJournals().find(x => x.id === journalId);
+    const j = _allJournals.find(x => x.id === journalId);
     const av = j?.avatar || j?.sheet?.avatar || null;
     if (av) { _JAV[journalId] = av; return av; }
   } catch(e) {}
