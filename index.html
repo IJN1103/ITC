@@ -4288,7 +4288,7 @@ function buildPopoutHtml() {
   const journals = loadJournals().map(j => ({
     id: j.id, title: j.title || '무제', nc: j.nameColor || ''
   }));
-  const journalJson = JSON.stringify(journals).replace(/</g, '\\x3c');
+  const journalJson = JSON.stringify(journals);
   
   const css = `
 *{box-sizing:border-box;margin:0;padding:0}
@@ -4426,8 +4426,8 @@ function buildPopoutScript(journalJson, playersJson) {
   L.push('window.setJournals=function(list){journals=list;var c=document.getElementById("pm-journal");c.innerHTML="";list.forEach(function(j){var d=document.createElement("div");d.className="j-item";var b=document.createElement("b");b.textContent=j.title||"\\uBB34\\uC81C";var s=document.createElement("span");s.textContent=(j.body||"").slice(0,40)||"\\uB0B4\\uC6A9 \\uC5C6\\uC74C";d.appendChild(b);d.appendChild(s);c.appendChild(d)})};');
 
   // helper: get avatar from opener
-  L.push('var _avCache={};function getAv(id){return _avCache[id]||""}');
-  L.push('window.setAvatars=function(map){_avCache=map||{}};');
+  L.push('var _avCache={};function getAv(id){if(_avCache[id])return _avCache[id];try{if(window.opener&&window.opener.saGetAvatar){var r=window.opener.saGetAvatar(id);if(r){_avCache[id]=r;return r}}}catch(e){}return""}');
+  L.push('window.setAvatars=function(map){for(var k in map)_avCache[k]=map[k]};');
 
   // speak-as dropdown
   L.push('function toggleSADD(){var dd=document.getElementById("sa-dd");if(dd.classList.contains("open")){dd.classList.remove("open");return}dd.innerHTML="";');
