@@ -1771,6 +1771,7 @@ const St = {
 };
 
 /* 권한 체크 헬퍼 */
+var _allJournals = [];
 function requireGM(action) {
   if (!St.isGM) {
     showToast('GM만 사용할 수 있는 기능이에요.');
@@ -2549,6 +2550,7 @@ async function enterGame() {
   migrateLocalJournals();
   loadCasualNick();
   loadMyNameColor();
+  fetchJournalsFromFB();
 }
 
 function addPlayerChip(id, name, isMe, role, online) {
@@ -4798,8 +4800,6 @@ let _jdAssignedTokenId = null;
 let _sheetIsNew = false;
 let _sheetAssignedTo = [];
 
-let _allJournals = [];
-
 function journalKey() { return 'itc_journals_' + St.myId + '_' + St.roomCode; }
 
 function loadJournals() {
@@ -4808,6 +4808,18 @@ function loadJournals() {
     j.ownerId === St.myId ||
     (j.assignedTo && j.assignedTo.includes(St.myId))
   );
+}
+
+function fetchJournalsFromFB() {
+  if (!window._FB?.CONFIGURED || !St.roomCode) return;
+  const { db, ref, get } = window._FB;
+  get(ref(db, `rooms/${St.roomCode}/journals`)).then(snap => {
+    const data = snap.val() || {};
+    _allJournals = [];
+    Object.entries(data).forEach(([id, j]) => { j.id = id; _allJournals.push(j); });
+    renderJournalList();
+    saRefreshToolbar();
+  }).catch(() => {});
 }
 
 function saveJournals(list) {
