@@ -4816,18 +4816,10 @@ function saveJournals(list) {
     _allJournals = list;
     return;
   }
-  const { db, ref, set, remove } = window._FB;
+  const { db, ref, set } = window._FB;
   list.forEach(j => {
     if (!j.ownerId) j.ownerId = St.myId;
     set(ref(db, `rooms/${St.roomCode}/journals/${j.id}`), j);
-  });
-  const listIds = new Set(list.map(j => j.id));
-  _allJournals.forEach(j => {
-    if (!listIds.has(j.id)) {
-      if (St.isGM || j.ownerId === St.myId) {
-        remove(ref(db, `rooms/${St.roomCode}/journals/${j.id}`));
-      }
-    }
   });
 }
 
@@ -5008,14 +5000,13 @@ function saveJournalFromDrawer() {
   const title = (document.getElementById('jd-title').value || '').trim() || '무제 저널';
   const body  = document.getElementById('jd-body').value;
   const hint  = document.getElementById('jd-footer-hint');
-  let list = loadJournals();
-  const idx = list.findIndex(j => j.id === _currentJournalId);
-  if (idx >= 0) {
-    list[idx].title = title; list[idx].body = body; list[idx].updatedAt = Date.now();
+  const existing = _allJournals.find(j => j.id === _currentJournalId);
+  if (existing) {
+    existing.title = title; existing.body = body; existing.updatedAt = Date.now();
+    saveJournalFB(existing);
   } else {
-    list.push({ id: _currentJournalId, title, body, createdAt: Date.now(), updatedAt: Date.now() });
+    saveJournalFB({ id: _currentJournalId, title, body, ownerId: St.myId, createdAt: Date.now(), updatedAt: Date.now() });
   }
-  saveJournals(list);
   const d = new Date();
   document.getElementById('jd-meta-date').textContent =
     `마지막 수정: ${d.getFullYear()}.${d.getMonth()+1}.${d.getDate()} ${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
@@ -5401,9 +5392,8 @@ function handleSheetAvatar(input) {
       if (capturedId) {
         saSetAvatar(capturedId, _sheetAvatarData);      // 인메모리 + localStorage
         try {
-          const _avList = loadJournals();
-          const _avIdx  = _avList.findIndex(x => x.id === capturedId);
-          if (_avIdx >= 0) { _avList[_avIdx].avatar = _sheetAvatarData; saveJournals(_avList); }
+          const _avJ = _allJournals.find(x => x.id === capturedId);
+          if (_avJ) { _avJ.avatar = _sheetAvatarData; saveJournalFB(_avJ); }
         } catch(e) {}
         saRefreshToolbar();
       }
