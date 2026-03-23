@@ -2527,12 +2527,11 @@ async function enterGame() {
 
   const gmBadge = document.getElementById('gm-badge');
   if (gmBadge) gmBadge.style.display = St.isGM ? 'inline-flex' : 'none';
-  document.querySelectorAll('.gm-only').forEach(el => { el.style.display = St.isGM ? '' : 'none'; });
-  if (!St.isGM) { const eb = document.getElementById('tool-erase'); if (eb) eb.style.display = 'none'; }
+  refreshPermUI();
   const toolbar = document.getElementById('chat-toolbar');
   if (toolbar) toolbar.classList.add('gm-visible');
   const descBtn = document.getElementById('desc-toggle-btn');
-  if (descBtn) descBtn.style.display = St.isGM ? '' : 'none';
+  if (descBtn) descBtn.style.display = hasPerm('sendDesc') ? '' : 'none';
   saRefreshToolbar();
   St.descMode = false;
   St.speakAsJournalId = null;
@@ -2568,6 +2567,8 @@ function addPlayerChip(id, name, isMe, role, online) {
 function renderPlayers(players) {
   document.getElementById('players-row').innerHTML = '';
   St.players = players;
+  refreshMyPerms();
+  refreshPermUI();
   if (!window._avatarCache) window._avatarCache = {};
   Object.entries(players).forEach(([id, p]) => {
     const online = p.online || id === St.myId;
@@ -2895,7 +2896,7 @@ function chatKeydown(e) {
 }
 
 function toggleDescMode() {
-  if (!St.isGM) return;
+  if (!hasPerm('sendDesc')) return;
   St.descMode = !St.descMode;
   const btn = document.getElementById('desc-toggle-btn');
   const inp = document.getElementById('chat-input');
@@ -2913,7 +2914,7 @@ function sendChat() {
   if (!raw) return;
   clearTypingState();
 
-  if (St.descMode && St.isGM) {
+  if (St.descMode && hasPerm('sendDesc')) {
     inp.value = '';
     sendMessage(St.myName, raw, 'dsec');
     return;
@@ -2922,7 +2923,7 @@ function sendChat() {
   const m = raw.match(/^\/desc\s*([\s\S]*)$/i);
   if (m) {
     inp.value = '';
-    if (!St.isGM) { showToast('GM만 /desc를 사용할 수 있어요.'); return; }
+    if (!hasPerm('sendDesc')) { showToast('desc 입력 권한이 없어요.'); return; }
     const content = m[1].trim();
     if (!content) return;
     sendMessage(St.myName, content, 'dsec');
@@ -3431,7 +3432,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function addToken() {
-  if (!requireGM('토큰 추가')) return;
+  if (!hasPerm('createToken')) { showToast('토큰 생성 권한이 없어요.'); return; }
   const name = document.getElementById('token-name').value.trim() || '?';
   const type = document.getElementById('token-type').value;
   const id = genId();
@@ -3500,7 +3501,7 @@ function createTokenEl(t) {
 
 function makeDraggable(el, tokenId) {
   el.addEventListener('mousedown', e => {
-    if (!St.isGM) { showToast('GM만 토큰을 이동할 수 있어요.'); return; }
+    if (!hasPerm('moveToken')) { showToast('토큰 이동 권한이 없어요.'); return; }
     if (St.tool === 'erase') { removeToken(tokenId); return; }
     e.preventDefault();
     e.stopPropagation();
@@ -3528,7 +3529,7 @@ function makeDraggable(el, tokenId) {
 }
 
 function removeToken(tokenId) {
-  if (!requireGM('토큰 삭제')) return;
+  if (!hasPerm('editToken')) { showToast('토큰 편집 권한이 없어요.'); return; }
   const el = document.getElementById('tok-' + tokenId);
   if (el) el.remove();
   if (window._FB?.CONFIGURED) {
@@ -3540,6 +3541,7 @@ function removeToken(tokenId) {
 let _ctxTokenId = null;
 
 function showTokenCtx(e, tokenId) {
+  if (!hasPerm('editToken')) { showToast('토큰 편집 권한이 없어요.'); return; }
   _ctxTokenId = tokenId;
   const menu = document.getElementById('tok-ctx');
   menu.classList.add('open');
@@ -3878,7 +3880,7 @@ function deleteTokenFromEdit() {
 }
 
 function setTool(t) {
-  if (t === 'erase' && !requireGM('지우개 도구')) return;
+  if (t === 'erase' && !hasPerm('editToken')) { showToast('토큰 편집 권한이 없어요.'); return; }
   St.tool = t;
   document.getElementById('tool-select').classList.toggle('on', t === 'select');
   const eraseBtn = document.getElementById('tool-erase');
@@ -3913,7 +3915,7 @@ function extractVideoId(url) {
 }
 
 function addBgmTrack() {
-  if (!requireGM('BGM 추가')) return;
+  if (!hasPerm('manageBgm')) { showToast('BGM 관리 권한이 없어요.'); return; }
   const urlInp  = document.getElementById('yt-url-input').value.trim();
   const nameInp = document.getElementById('yt-name-input').value.trim();
   const vid = extractVideoId(urlInp);
@@ -3946,7 +3948,7 @@ function playTrack(idx) {
 }
 
 function bgmToggle() {
-  if (!requireGM('BGM 재생 제어')) return;
+  if (!hasPerm('manageBgm')) { showToast('BGM 관리 권한이 없어요.'); return; }
   if (!ytReady || !ytPlayer) { loadYTApi(); return; }
   if (St.isPlaying) { ytPlayer.pauseVideo(); St.isPlaying = false; }
   else {
@@ -3962,8 +3964,8 @@ function updatePlayBtn() {
   btn.classList.toggle('playing', St.isPlaying);
 }
 
-function bgmNext() { if (!St.isGM) { showToast('GM만 BGM을 제어할 수 있어요.'); return; } if (St.playlist.length) playTrack((St.currentTrack+1) % St.playlist.length); }
-function bgmPrev() { if (!St.isGM) { showToast('GM만 BGM을 제어할 수 있어요.'); return; } if (St.playlist.length) playTrack(St.currentTrack<=0 ? St.playlist.length-1 : St.currentTrack-1); }
+function bgmNext() { if (!hasPerm('manageBgm')) { showToast('BGM 관리 권한이 없어요.'); return; } if (St.playlist.length) playTrack((St.currentTrack+1) % St.playlist.length); }
+function bgmPrev() { if (!hasPerm('manageBgm')) { showToast('BGM 관리 권한이 없어요.'); return; } if (St.playlist.length) playTrack(St.currentTrack<=0 ? St.playlist.length-1 : St.currentTrack-1); }
 function setVolume(v) { if (ytReady && ytPlayer) ytPlayer.setVolume(parseInt(v)); }
 function removeTrack(i) {
   St.playlist.splice(i,1);
@@ -3986,6 +3988,31 @@ const PERMS = [
   { key: 'manageBgm',   label: 'BGM 관리',    desc: 'BGM 추가/삭제/변경' },
   { key: 'sendDesc',    label: 'desc 입력',   desc: '/desc 지문 명령어 사용' },
 ];
+
+let _myPerms = {};
+
+function hasPerm(key) {
+  if (St.isGM) return true;
+  return !!_myPerms[key];
+}
+
+function refreshMyPerms() {
+  if (St.isGM) { _myPerms = {}; return; }
+  const me = St.players?.[St.myId];
+  _myPerms = me?.permissions || {};
+}
+
+function refreshPermUI() {
+  const addToken = document.getElementById('map-add-token');
+  if (addToken) addToken.style.display = hasPerm('createToken') ? '' : 'none';
+  document.querySelectorAll('.bgm-add').forEach(el => { el.style.display = hasPerm('manageBgm') ? '' : 'none'; });
+  const descBtn = document.getElementById('desc-toggle-btn');
+  if (descBtn) descBtn.style.display = hasPerm('sendDesc') ? '' : 'none';
+  const endBtn = document.getElementById('btn-end-room');
+  if (endBtn) endBtn.style.display = St.isGM ? '' : 'none';
+  const gmMgmt = document.getElementById('gm-player-mgmt');
+  if (gmMgmt) gmMgmt.style.display = St.isGM ? 'block' : 'none';
+}
 
 function getPlayerPerms(player) {
   if (player.role === 'gm') return PERMS.reduce((o, p) => ({ ...o, [p.key]: true }), {});
@@ -4789,7 +4816,7 @@ function switchRightTab(tab) {
     if (saWrap) saWrap.style.display = '';
     if (casualBar) casualBar.style.display = 'none';
     if (colorWrap) colorWrap.style.display = '';
-    if (descBtn) descBtn.style.display = St.isGM ? '' : 'none';
+    if (descBtn) descBtn.style.display = hasPerm('sendDesc') ? '' : 'none';
     if (whisperWrap) whisperWrap.style.display = '';
   }
   if (tab === 'journal') renderJournalList();
