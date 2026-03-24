@@ -3,21 +3,44 @@
  * Firebase 리스너, 게임 진입, 플레이어 관리, 캐릭터 시트
  */
 
+
 let _processedChatKeys = new Set();
 let _processedCasualKeys = new Set();
+let _firebaseUnsubs = [];
+
+function trackFirebaseUnsub(unsub) {
+  if (typeof unsub === 'function') _firebaseUnsubs.push(unsub);
+}
+
+function clearFirebaseListeners() {
+  _firebaseUnsubs.forEach(unsub => {
+    try { unsub(); } catch (e) {}
+  });
+  _firebaseUnsubs = [];
+}
+
+function bindRoomValue(path, handler) {
+  if (!window._FB?.CONFIGURED || !St.roomCode) return;
+  const { db, ref, onValue } = window._FB;
+  const unsub = onValue(ref(db, `rooms/${St.roomCode}/${path}`), handler);
+  trackFirebaseUnsub(unsub);
+}
+
 
 function setupFirebaseListeners() {
   if (!window._FB?.CONFIGURED) return;
-  const { db, ref, onValue } = window._FB;
+  const { db, ref } = window._FB;
   const code = St.roomCode;
 
+  clearFirebaseListeners();
   _processedChatKeys.clear();
   _processedCasualKeys.clear();
 
-  onValue(ref(db, `rooms/${code}/players`), snap => {
+  bindRoomValue('players', snap => {
     const players = snap.val() || {};
     if (!players[St.myId] && St.roomCode) {
       alert('GM에 의해 방에서 강퇴되었습니다.');
+      clearFirebaseListeners();
       St.roomCode = '';
       document.getElementById('screen-game').style.display = 'none';
       document.getElementById('screen-lobby').style.display = 'flex';
@@ -27,33 +50,29 @@ function setupFirebaseListeners() {
   });
 
   // 🔥 [완벽 버그 픽스] 사진 데이터만 따로 관리하는 전용 통로
-  onValue(ref(db, `rooms/${code}/avatars`), snap => {
+  bindRoomValue('avatars', snap => {
     const avatars = snap.val() || {};
     if (!window._avatarCache) window._avatarCache = {};
-
+    
     Object.entries(avatars).forEach(([uid, avData]) => {
-      const avatarSrc = typeof avData === 'string' ? avData : (avData?.avatar || '');
-      if (!avatarSrc) return;
-      localStorage.setItem('itc_avatar_' + uid, avatarSrc);
-      window._avatarCache[uid] = avatarSrc;
+      localStorage.setItem('itc_avatar_' + uid, avData);
+      window._avatarCache[uid] = avData;
+      // St.players에 해당 유저가 있다면 이름표에도 사진을 달아줍니다.
       if (St.players && St.players[uid] && St.players[uid].name) {
-        window._avatarCache[St.players[uid].name] = avatarSrc;
+        window._avatarCache[St.players[uid].name] = avData;
       }
     });
-
-    if (typeof rerenderExistingChatAvatars === 'function') {
-      rerenderExistingChatAvatars();
-    }
   });
 
-  onValue(ref(db, `rooms/${code}/chat`), snap => {
+  bindRoomValue('chat', snap => {
     const msgs = snap.val() || {};
     const entries = Object.entries(msgs).map(([k, m]) => ({ ...m, _key: k }));
     const sorted = entries.sort((a,b) => a.time - b.time)
       .filter(m => {
         if (m.type === 'whisper') return m.uid === St.myId || m.whisperTo === St.myId;
         return true;
-      });
+      })
+      .slice(-100);
     const container = document.getElementById('chat-messages');
     if (!container) return;
     const rendered = container.querySelectorAll('.chat-msg').length;
@@ -76,13 +95,13 @@ function setupFirebaseListeners() {
     });
   });
 
-  onValue(ref(db, `rooms/${code}/tokens`), snap => {
+  bindRoomValue('tokens', snap => {
     const tokens = snap.val() || {};
     St.tokens = tokens;
     renderAllTokens(tokens);
   });
 
-  onValue(ref(db, `rooms/${code}/journals`), snap => {
+  bindRoomValue('journals', snap => {
     _allJournals = [];
     const data = snap.val() || {};
     Object.entries(data).forEach(([id, j]) => { j.id = id; _allJournals.push(j); });
@@ -90,10 +109,10 @@ function setupFirebaseListeners() {
     saRefreshToolbar();
   });
 
-  onValue(ref(db, `rooms/${code}/casual`), snap => {
+  bindRoomValue('casual', snap => {
     const msgs = snap.val() || {};
     const entries = Object.entries(msgs).map(([k, m]) => ({ ...m, _key: k }));
-    const sorted = entries.sort((a,b) => a.time - b.time);
+    const sorted = entries.sort((a,b) => a.time - b.time).slice(-100);
     const container = document.getElementById('casual-messages');
     if (!container) return;
     const rendered = container.querySelectorAll('.chat-msg').length;
@@ -111,7 +130,7 @@ function setupFirebaseListeners() {
     });
   });
 
-  onValue(ref(db, `rooms/${code}/bgm`), snap => {
+  bindRoomValue('bgm', snap => {
     const bgm = snap.val();
     if (!bgm) return;
     if (bgm.playlist) { St.playlist = bgm.playlist; renderPlaylist(); }
@@ -121,7 +140,7 @@ function setupFirebaseListeners() {
     }
   });
 
-  onValue(ref(db, `rooms/${code}/lastRoll`), snap => {
+  bindRoomValue('lastRoll', snap => {
     const roll = snap.val();
     if (!roll || roll.playerId === St.myId || roll.secret) return;
     showRollResult(roll);
@@ -131,7 +150,7 @@ function setupFirebaseListeners() {
   window._FB.set(presRef, true);
   window._FB.onDisconnect(presRef).set(false);
 
-  onValue(ref(db, `rooms/${code}/typing`), snap => {
+  bindRoomValue('typing', snap => {
     const typing = snap.val() || {};
     renderTypingIndicator('typing-chat', typing, 'chat');
     renderTypingIndicator('typing-casual', typing, 'casual');
@@ -178,11 +197,10 @@ async function enterGame() {
   if (!window._avatarCache) window._avatarCache = {};
   const myAv = localStorage.getItem('itc_avatar_' + St.myId);
   if (myAv) {
-    window._avatarCache[St.myId] = myAv;
     window._avatarCache[St.myName] = myAv;
+    // 내가 방에 들어올 때 사진 데이터베이스(avatars)에 내 프사를 올립니다.
     if (window._FB?.CONFIGURED) {
       window._FB.set(window._FB.ref(window._FB.db, `rooms/${St.roomCode}/avatars/${St.myId}`), myAv).catch(()=>{});
-      window._FB.update(window._FB.ref(window._FB.db, `rooms/${St.roomCode}/players/${St.myId}`), { avatar: myAv }).catch(()=>{});
     }
   }
 
@@ -194,13 +212,8 @@ async function enterGame() {
       const currentAv = localStorage.getItem('itc_avatar_' + St.myId);
       if (currentAv && currentAv !== _lastAv) {
         _lastAv = currentAv;
-        window._avatarCache[St.myId] = currentAv;
         window._avatarCache[St.myName] = currentAv;
         window._FB.set(window._FB.ref(window._FB.db, `rooms/${St.roomCode}/avatars/${St.myId}`), currentAv).catch(()=>{});
-        window._FB.update(window._FB.ref(window._FB.db, `rooms/${St.roomCode}/players/${St.myId}`), { avatar: currentAv }).catch(()=>{});
-        if (typeof rerenderExistingChatAvatars === 'function') {
-          rerenderExistingChatAvatars();
-        }
       }
     }, 2000);
   }
@@ -234,18 +247,11 @@ function renderPlayers(players) {
   Object.entries(players).forEach(([id, p]) => {
     const online = p.online || id === St.myId;
     addPlayerChip(id, p.name, id === St.myId, p.role, online);
-
-    const av = p.avatar || localStorage.getItem('itc_avatar_' + id);
-    if (av) {
-      localStorage.setItem('itc_avatar_' + id, av);
-      window._avatarCache[id] = av;
-      window._avatarCache[p.name] = av;
-    }
+    
+    // 로컬에 백업해둔 프사가 있다면 일단 표시합니다. (실시간 교체는 맨 위 리스너가 담당)
+    const av = localStorage.getItem('itc_avatar_' + id);
+    if (av) window._avatarCache[p.name] = av;
   });
-
-  if (typeof rerenderExistingChatAvatars === 'function') {
-    rerenderExistingChatAvatars();
-  }
 }
 
 async function initCharacter(sys) {
@@ -467,3 +473,5 @@ async function leaveRoom() {
   closeModal('modal-settings');
   showLobby();
 }
+
+window.clearFirebaseListeners = clearFirebaseListeners;

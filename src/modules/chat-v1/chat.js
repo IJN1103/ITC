@@ -3,6 +3,48 @@
  * 채팅, 잡담, 귓말, 타이핑, 이미지 업로드
  */
 
+
+const CHAT_DOM_LIMIT = 120;
+const CASUAL_DOM_LIMIT = 120;
+const SCROLL_BOTTOM_THRESHOLD = 72;
+
+function isNearBottom(container) {
+  if (!container) return true;
+  const remaining = container.scrollHeight - container.scrollTop - container.clientHeight;
+  return remaining <= SCROLL_BOTTOM_THRESHOLD;
+}
+
+function smartAppendMessage(container, node, limit) {
+  if (!container || !node) return;
+  const stickToBottom = isNearBottom(container);
+  container.appendChild(node);
+  trimOldMessages(container, limit);
+  if (stickToBottom) {
+    requestAnimationFrame(() => {
+      container.scrollTop = container.scrollHeight;
+    });
+  }
+}
+
+function trimOldMessages(container, limit) {
+  if (!container || !limit || limit < 1) return;
+  const nodes = container.querySelectorAll('.chat-msg');
+  const overflow = nodes.length - limit;
+  if (overflow <= 0) return;
+  for (let i = 0; i < overflow; i += 1) {
+    nodes[i]?.remove();
+  }
+}
+
+function setImagePerfAttrs(root) {
+  if (!root) return;
+  root.querySelectorAll('img').forEach(img => {
+    img.loading = 'lazy';
+    img.decoding = 'async';
+    img.referrerPolicy = 'no-referrer';
+  });
+}
+
 function chatKeydown(e) {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); }
 }
@@ -264,12 +306,10 @@ function appendCasualMsg(name, text, uid, timestamp, msgKey) {
   const avatarHtml = getAvatarHtml(name, uid || (name === St.myName ? St.myId : null));
   const div = document.createElement('div');
   div.className = 'chat-msg msg-normal';
-  if (uid) div.dataset.uid = uid;
-  if (name) div.dataset.name = name;
   div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-text">${fmtText(text)}</div></div>`;
   addMsgActions(div, uid, msgKey, 'casual', text, 'normal');
-  container.appendChild(div);
-  container.scrollTop = container.scrollHeight;
+  setImagePerfAttrs(div);
+  smartAppendMessage(container, div, CASUAL_DOM_LIMIT);
   if (typeof _popoutWins !== 'undefined') {
     const av = getPopoutAvatarUrl(name, uid);
     _popoutWins.filter(w => w && !w.closed).forEach(w => { if (w.addMsg) w.addMsg(name, text, 'normal', 'casual', '', av, time, fmtText(text)); });
@@ -364,34 +404,23 @@ function openLightbox(src) {
 function addLocalMessage(type, name, text) { appendChatMsg(name, text, type); }
 
 function getAvatarHtml(name, uid) {
+  const shape = St.avatarShape === 'circle' ? 'shape-circle' : 'shape-rounded';
   let imgSrc = null;
 
   if (uid) {
     imgSrc = localStorage.getItem('itc_avatar_' + uid);
   }
   if (!imgSrc && name) {
-    imgSrc = window._avatarCache?.[uid] || window._avatarCache?.[name];
+    imgSrc = window._avatarCache?.[name];
   }
 
   const initial = (name || '?')[0].toUpperCase();
   const shape_class = St.avatarShape === 'circle' ? 'shape-circle' : 'shape-rounded';
   const r = St.avatarShape === 'circle' ? '50%' : '6px';
   if (imgSrc) {
-    return `<div class="msg-avatar ${shape_class}" data-avatar-holder="1"><img src="${imgSrc}" alt="${esc(initial)}" style="border-radius:${r}"></div>`;
+    return `<div class="msg-avatar ${shape_class}"><img src="${imgSrc}" alt="${esc(initial)}" style="border-radius:${r}"></div>`;
   }
-  return `<div class="msg-avatar ${shape_class}" data-avatar-holder="1"><div class="msg-avatar-inner" style="border-radius:${r}">${esc(initial)}</div></div>`;
-}
-
-function rerenderExistingChatAvatars() {
-  document.querySelectorAll('.chat-msg').forEach(div => {
-    const uid = div.dataset.uid || '';
-    const name = div.dataset.name || '';
-    const holder = div.querySelector('[data-avatar-holder="1"]');
-    if (!holder) return;
-    holder.outerHTML = getAvatarHtml(name, uid || null);
-  });
-
-  refreshCasualNickDisplay();
+  return `<div class="msg-avatar ${shape_class}"><div class="msg-avatar-inner" style="border-radius:${r}">${esc(initial)}</div></div>`;
 }
 
 function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId, whisperTo, whisperToName, nameColor, msgKey, channel, standingImg, tokenId, standingLabel) {
@@ -403,8 +432,8 @@ function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJ
     const div = document.createElement('div');
     div.className = 'chat-msg msg-sys';
     div.innerHTML = `<div class="msg-text">${fmtText(text)}</div>`;
-    container.appendChild(div);
-    container.scrollTop = container.scrollHeight;
+    setImagePerfAttrs(div);
+    smartAppendMessage(container, div, CHAT_DOM_LIMIT);
     return;
   }
 
@@ -413,8 +442,8 @@ function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJ
     div.className = 'chat-msg msg-dsec';
     div.innerHTML = `<div class="msg-body"><div class="msg-text">${fmtText(text)}</div></div>`;
     addMsgActions(div, uid, msgKey, channel || 'chat', text, type);
-    container.appendChild(div);
-    container.scrollTop = container.scrollHeight;
+    setImagePerfAttrs(div);
+    smartAppendMessage(container, div, CHAT_DOM_LIMIT);
     return;
   }
 
@@ -424,12 +453,10 @@ function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJ
     const tagText = isMine ? `→ ${esc(whisperToName || '?')}에게 귓말` : `→ 나에게 귓말`;
     const div = document.createElement('div');
     div.className = 'chat-msg msg-whisper';
-    if (uid) div.dataset.uid = uid;
-    if (name) div.dataset.name = name;
     div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name">${esc(name)}</span><span class="whisper-tag">${tagText}</span><span class="msg-time">${time}</span></div><div class="msg-text">${fmtText(text)}</div></div>`;
     addMsgActions(div, uid, msgKey, channel || 'chat', text, type);
-    container.appendChild(div);
-    container.scrollTop = container.scrollHeight;
+    setImagePerfAttrs(div);
+    smartAppendMessage(container, div, CHAT_DOM_LIMIT);
     return;
   }
 
@@ -449,8 +476,8 @@ function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJ
     const _nameStyle = _jColor ? ` style="color:${_jColor}"` : '';
     d2.innerHTML = `${avHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name sa-msg-name"${_nameStyle}>${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-text">${fmtText(text.replace(/@\S+/g,'').trim())}</div></div>`;
     addMsgActions(d2, uid, msgKey, channel || 'chat', text, type);
-    container.appendChild(d2);
-    container.scrollTop = container.scrollHeight;
+    setImagePerfAttrs(d2);
+    smartAppendMessage(container, d2, CHAT_DOM_LIMIT);
     if (!timestamp || Date.now() - timestamp < 5000) {
       showDialogueBoxFromMsg(name, text, speakAsJournalId, standingImg, tokenId, standingLabel);
     }
@@ -469,8 +496,8 @@ function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJ
     const d2 = document.createElement('div');
     d2.className = 'chat-msg msg-speak-as msg-image-msg';
     d2.innerHTML = `${avHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name sa-msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div><img class="msg-image" src="${esc(text)}" alt="첨부 이미지" style="display:block;max-width:220px;height:auto;margin-top:5px;border-radius:var(--r);border:1px solid var(--border);cursor:zoom-in" onclick="openLightbox(this.src)"></div>`;
-    container.appendChild(d2);
-    container.scrollTop = container.scrollHeight;
+    setImagePerfAttrs(d2);
+    smartAppendMessage(container, d2, CHAT_DOM_LIMIT);
     return;
   }
 
@@ -479,18 +506,14 @@ function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJ
   if (type === 'image') {
     const div = document.createElement('div');
     div.className = 'chat-msg msg-image-msg';
-    if (uid) div.dataset.uid = uid;
-    if (name) div.dataset.name = name;
     div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div><img class="msg-image" src="${esc(text)}" alt="첨부 이미지" style="display:block;max-width:220px;height:auto;margin-top:5px;border-radius:var(--r);border:1px solid var(--border);cursor:zoom-in" onclick="openLightbox(this.src)"></div>`;
-    container.appendChild(div);
-    container.scrollTop = container.scrollHeight;
+    setImagePerfAttrs(div);
+    smartAppendMessage(container, div, CHAT_DOM_LIMIT);
     return;
   }
 
   const div = document.createElement('div');
   div.className = `chat-msg msg-${type}`;
-  if (uid) div.dataset.uid = uid;
-  if (name) div.dataset.name = name;
   const _nc = nameColor ? ` style="color:${nameColor}"` : '';
   if (type === 'dice') {
     const diceMatch = text.match(/🎲\s*(.+?)\s*→\s*(\d+)\s*\(([^)]+)\)/);
@@ -506,7 +529,7 @@ function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJ
     div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name"${_nc}>${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-text">${fmtText(text)}</div></div>`;
   }
   addMsgActions(div, uid, msgKey, channel || 'chat', text, type);
-  container.appendChild(div);
-  container.scrollTop = container.scrollHeight;
+  setImagePerfAttrs(div);
+  smartAppendMessage(container, div, CHAT_DOM_LIMIT);
 }
 
