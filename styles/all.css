@@ -390,7 +390,7 @@ to{opacity:1}
 .msg-image{display:block;width:100%;height:auto;max-width:min(220px,100%);max-height:360px;object-fit:contain;object-position:center center;border-radius:var(--r);cursor:zoom-in;border:1px solid var(--border);background:transparent;opacity:0;transition:opacity .18s ease;}
 .msg-image.is-ready{opacity:1;}
 .msg-image-shell{display:inline-block;width:auto;max-width:min(220px,100%);margin-top:5px;border-radius:var(--r);overflow:hidden;background:transparent;position:relative;vertical-align:top;}
-.msg-image-shell.is-wide{display:block;width:min(100%,520px);max-width:100%;}
+.msg-image-shell.is-wide{display:block;width:min(100%,520px);max-width:100%;aspect-ratio:auto !important;overflow:visible;}
 .msg-image-shell.is-loading::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg, rgba(255,255,255,0), rgba(255,255,255,.06), rgba(255,255,255,0));animation:chatImgPulse 1.2s linear infinite;}
 .msg-image-shell:not(.is-wide){aspect-ratio:auto !important;}
 
