@@ -1,0 +1,513 @@
+/**
+ * ITC TRPG — Map + Token 모듈
+ * 맵 줌/팬, 토큰 CRUD/드래그/편집
+ */
+
+let _mapScale = 1;
+let _mapPanX = 0, _mapPanY = 0;
+
+function applyMapTransform() {
+  const inner = document.getElementById('map-inner');
+  if (inner) inner.style.transform = `translate(${_mapPanX}px,${_mapPanY}px) scale(${_mapScale})`;
+}
+
+function mapZoom(dir, cx, cy) {
+  const map = document.getElementById('map-area');
+  if (!map) return;
+  const rect = map.getBoundingClientRect();
+  if (cx === undefined) { cx = rect.width / 2; cy = rect.height / 2; }
+  const prevScale = _mapScale;
+  _mapScale = Math.max(0.2, Math.min(4, _mapScale + dir * 0.15));
+  const ratio = _mapScale / prevScale;
+  _mapPanX = cx - ratio * (cx - _mapPanX);
+  _mapPanY = cy - ratio * (cy - _mapPanY);
+  applyMapTransform();
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const mapEl = document.getElementById('map-area');
+  if (!mapEl) return;
+
+  mapEl.addEventListener('wheel', e => {
+    e.preventDefault();
+    const rect = mapEl.getBoundingClientRect();
+    mapZoom(e.deltaY < 0 ? 1 : -1, e.clientX - rect.left, e.clientY - rect.top);
+  }, { passive: false });
+
+  let isPanning = false, panStartX, panStartY, panOriginX, panOriginY;
+  mapEl.addEventListener('mousedown', e => {
+    if (e.target.closest('.map-token') || e.target.closest('.map-zoom') || e.target.closest('.map-add-token') || e.target.closest('.vn-dialog')) return;
+    if (e.button !== 0) return;
+    isPanning = true;
+    panStartX = e.clientX; panStartY = e.clientY;
+    panOriginX = _mapPanX; panOriginY = _mapPanY;
+    mapEl.classList.add('panning');
+    e.preventDefault();
+  });
+  document.addEventListener('mousemove', e => {
+    if (!isPanning) return;
+    _mapPanX = panOriginX + (e.clientX - panStartX);
+    _mapPanY = panOriginY + (e.clientY - panStartY);
+    applyMapTransform();
+  });
+  document.addEventListener('mouseup', () => {
+    if (isPanning) { isPanning = false; mapEl.classList.remove('panning'); }
+  });
+});
+
+function addToken() {
+  if (!hasPerm('createToken')) { showToast('토큰 생성 권한이 없어요.'); return; }
+  const name = document.getElementById('token-name').value.trim() || '?';
+  const type = document.getElementById('token-type').value;
+  const id = genId();
+  const token = { id, name, type, x: 48 + Math.random()*12, y: 48 + Math.random()*12 };
+  if (window._FB?.CONFIGURED) {
+    const { db, ref, set } = window._FB;
+    set(ref(db, `rooms/${St.roomCode}/tokens/${id}`), token);
+  } else { St.tokens[id] = token; renderAllTokens(St.tokens); }
+  closeModal('modal-token');
+  document.getElementById('token-name').value = '';
+}
+
+function renderAllTokens(tokens) {
+  const inner = document.getElementById('map-inner');
+  if (inner) inner.querySelectorAll('.map-token').forEach(t => t.remove());
+  Object.values(tokens).forEach(t => createTokenEl(t));
+}
+
+function createTokenEl(t) {
+  const inner = document.getElementById('map-inner');
+  const el = document.createElement('div');
+  el.className = `map-token ${t.type==='enemy'?'enemy':t.type==='npc'?'npc':''}`;
+  el.id = 'tok-' + t.id;
+  el.style.left = t.x + '%'; el.style.top = t.y + '%';
+  const sz = (t.tokenSize || 1);
+  let tokenImgSrc = null;
+  if (t.standingAsToken && t.standings && t.standings.length > 0) {
+    const jForToken = _allJournals.find(j => j.assignedTokenId === t.id);
+    const curLabel = jForToken ? _vnCurrentStanding[jForToken.id] : null;
+    const curStanding = curLabel ? t.standings.find(s => s.label === curLabel && s.img) : null;
+    tokenImgSrc = curStanding ? curStanding.img : (t.standings.find(s => s.img)?.img || t.tokenImg || null);
+  } else {
+    tokenImgSrc = t.tokenImg || null;
+  }
+  if (tokenImgSrc) {
+    el.textContent = '';
+    const img = document.createElement('img');
+    img.src = tokenImgSrc;
+    img.style.cssText = 'width:100%;height:100%;object-fit:contain;pointer-events:none;';
+    el.appendChild(img);
+    el.classList.add('has-img');
+    const px = 36 * sz; el.style.width = px+'px'; el.style.height = 'auto'; el.style.minHeight = px+'px';
+    const nameLabel = document.createElement('span');
+    nameLabel.className = 'token-name-label';
+    nameLabel.textContent = t.name || '';
+    el.appendChild(nameLabel);
+  } else {
+    el.textContent = t.name;
+    if (sz > 1) { const px = 36 * sz; el.style.width = px+'px'; el.style.height = px+'px'; el.style.fontSize = Math.max(9, 11*sz)+'px'; }
+  }
+  if (t.statuses && t.statuses.length > 0) {
+    const hp = t.statuses[0];
+    if (hp.max > 0) {
+      const pct = Math.max(0, Math.min(100, (hp.cur / hp.max) * 100));
+      const bar = document.createElement('div'); bar.className = 'token-hp-bar';
+      const fill = document.createElement('div'); fill.className = 'token-hp-fill'; fill.style.width = pct + '%';
+      if (pct <= 25) fill.style.background = 'var(--red)';
+      else if (pct <= 50) fill.style.background = '#f0ad4e';
+      bar.appendChild(fill); el.appendChild(bar);
+    }
+  }
+  el.addEventListener('contextmenu', e => { e.preventDefault(); e.stopPropagation(); showTokenCtx(e, t.id); });
+  makeDraggable(el, t.id);
+  inner.appendChild(el);
+}
+
+function makeDraggable(el, tokenId) {
+  el.addEventListener('mousedown', e => {
+    if (!hasPerm('moveToken')) { showToast('토큰 이동 권한이 없어요.'); return; }
+    if (St.tool === 'erase') { removeToken(tokenId); return; }
+    e.preventDefault();
+    e.stopPropagation();
+    const map = document.getElementById('map-area');
+    const inner = document.getElementById('map-inner');
+    const rect = inner.getBoundingClientRect();
+    const sx = e.clientX, sy = e.clientY;
+    const sl = parseFloat(el.style.left), st = parseFloat(el.style.top);
+    const natW = map.offsetWidth, natH = map.offsetHeight;
+    const onMove = e => {
+      el.style.left = Math.max(0,Math.min(100, sl + (e.clientX-sx)/(natW*_mapScale)*100)) + '%';
+      el.style.top  = Math.max(0,Math.min(100, st + (e.clientY-sy)/(natH*_mapScale)*100)) + '%';
+    };
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      if (window._FB?.CONFIGURED) {
+        const { db, ref, update } = window._FB;
+        update(ref(db, `rooms/${St.roomCode}/tokens/${tokenId}`), { x: parseFloat(el.style.left), y: parseFloat(el.style.top) });
+      }
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+}
+
+function removeToken(tokenId) {
+  if (!hasPerm('editToken')) { showToast('토큰 편집 권한이 없어요.'); return; }
+  const el = document.getElementById('tok-' + tokenId);
+  if (el) el.remove();
+  if (window._FB?.CONFIGURED) {
+    const { db, ref, remove } = window._FB;
+    remove(ref(db, `rooms/${St.roomCode}/tokens/${tokenId}`));
+  } else delete St.tokens[tokenId];
+}
+
+let _ctxTokenId = null;
+
+function showTokenCtx(e, tokenId) {
+  if (!hasPerm('editToken')) { showToast('토큰 편집 권한이 없어요.'); return; }
+  _ctxTokenId = tokenId;
+  const menu = document.getElementById('tok-ctx');
+  menu.classList.add('open');
+  let x = e.clientX, y = e.clientY;
+  const mw = menu.offsetWidth || 170, mh = menu.offsetHeight || 300;
+  if (x + mw > window.innerWidth) x = window.innerWidth - mw - 8;
+  if (y + mh > window.innerHeight) y = window.innerHeight - mh - 8;
+  menu.style.left = x + 'px'; menu.style.top = y + 'px';
+}
+
+function hideTokenCtx() {
+  document.getElementById('tok-ctx')?.classList.remove('open');
+  _ctxTokenId = null;
+}
+
+document.addEventListener('click', () => hideTokenCtx());
+document.addEventListener('contextmenu', (e) => {
+  if (!e.target.closest('.map-token') && !e.target.closest('.tok-ctx')) hideTokenCtx();
+});
+
+function tokCtxAction(action) {
+  const id = _ctxTokenId;
+  hideTokenCtx();
+  if (!id) return;
+  const t = St.tokens[id];
+  if (!t) return;
+
+  switch (action) {
+    case 'edit':
+      openTokenEdit(id);
+      break;
+    case 'rotate': {
+      t.rotation = ((t.rotation || 0) + 45) % 360;
+      const el = document.getElementById('tok-' + id);
+      if (el) el.style.transform = `translate(-50%,-50%) rotate(${t.rotation}deg)`;
+      if (window._FB?.CONFIGURED) {
+        const { db, ref, update } = window._FB;
+        update(ref(db, `rooms/${St.roomCode}/tokens/${id}`), { rotation: t.rotation });
+      }
+      break;
+    }
+    case 'toBack': {
+      const el = document.getElementById('tok-' + id);
+      if (el) el.style.zIndex = '1';
+      break;
+    }
+    case 'own': {
+      t.ownerId = St.myId;
+      t.ownerName = St.myName;
+      if (window._FB?.CONFIGURED) {
+        const { db, ref, update } = window._FB;
+        update(ref(db, `rooms/${St.roomCode}/tokens/${id}`), { ownerId: St.myId, ownerName: St.myName });
+      }
+      showToast(`${t.name} 토큰의 소유 권한을 가져왔어요.`);
+      break;
+    }
+    case 'duplicate': {
+      const newId = genId();
+      const dup = JSON.parse(JSON.stringify(t));
+      dup.id = newId; dup.x = (t.x || 50) + 2; dup.y = (t.y || 50) + 2;
+      if (window._FB?.CONFIGURED) {
+        const { db, ref, set } = window._FB;
+        set(ref(db, `rooms/${St.roomCode}/tokens/${newId}`), dup);
+      } else {
+        St.tokens[newId] = dup; renderAllTokens(St.tokens);
+      }
+      showToast('토큰이 복제됐어요.');
+      break;
+    }
+    case 'copy':
+      navigator.clipboard?.writeText(JSON.stringify(t, null, 2)).then(() => showToast('토큰 데이터가 클립보드에 복사됐어요.')).catch(() => showToast('복사 실패'));
+      break;
+    case 'delete':
+      if (!confirm(`'${t.name}' 토큰을 삭제할까요?`)) return;
+      const el = document.getElementById('tok-' + id);
+      if (el) el.remove();
+      if (window._FB?.CONFIGURED) {
+        const { db, ref, remove } = window._FB;
+        remove(ref(db, `rooms/${St.roomCode}/tokens/${id}`));
+      } else { delete St.tokens[id]; }
+      break;
+    case 'copyId':
+      navigator.clipboard?.writeText(id).then(() => showToast('토큰 ID 복사됨: ' + id)).catch(() => showToast('복사 실패'));
+      break;
+  }
+}
+
+let _teTokenId = null;
+let _teTokenImgData = null;
+
+function openTokenEdit(tokenId) {
+  _teTokenId = tokenId;
+  const t = St.tokens[tokenId];
+  if (!t) return;
+
+  document.getElementById('te-name').value = t.name || '';
+  document.getElementById('te-initiative').value = t.initiative || 0;
+  document.getElementById('te-memo').value = t.memo || '';
+  document.getElementById('te-size').value = t.tokenSize || 1;
+  document.getElementById('te-x').value = Math.round((t.x || 0) * 10) / 10;
+  document.getElementById('te-y').value = Math.round((t.y || 0) * 10) / 10;
+  document.getElementById('te-url').value = t.refUrl || '';
+  document.getElementById('te-chatpal').value = t.chatPalette || '';
+  document.getElementById('te-hide-status').checked = t.hideStatus || false;
+  document.getElementById('te-hide-chat').checked = t.hideChat || false;
+  document.getElementById('te-hide-list').checked = t.hideList || false;
+  document.getElementById('te-standing-as-token').checked = t.standingAsToken || false;
+
+  _teTokenImgData = t.tokenImg || null;
+  teRefreshTokenImgPreview();
+
+  const sl = document.getElementById('te-standing-list');
+  sl.innerHTML = '';
+  (t.standings || []).forEach((s, i) => teAddStanding(s.label, s.img));
+
+  const stl = document.getElementById('te-status-list');
+  stl.innerHTML = '';
+  (t.statuses || []).forEach(s => teAddStatus(s.label, s.cur, s.max));
+
+  const pl = document.getElementById('te-param-list');
+  pl.innerHTML = '';
+  (t.params || []).forEach(p => teAddParam(p.label, p.value));
+
+  document.getElementById('te-hint').textContent = '';
+  document.getElementById('te-overlay').classList.add('open');
+}
+
+function closeTokenEdit() {
+  document.getElementById('te-overlay').classList.remove('open');
+  _teTokenId = null;
+  _teTokenImgData = null;
+}
+
+function teRefreshTokenImgPreview() {
+  const wrap = document.getElementById('te-token-img');
+  const txt = document.getElementById('te-token-img-text');
+  const clearBtn = document.getElementById('te-img-clear');
+  if (_teTokenImgData) {
+    wrap.innerHTML = `<img src="${_teTokenImgData}" alt="token">`;
+    if (clearBtn) clearBtn.style.display = '';
+  } else {
+    wrap.innerHTML = '<span id="te-token-img-text">📷</span>';
+    if (clearBtn) clearBtn.style.display = 'none';
+  }
+}
+
+function teHandleTokenImg(input) {
+  const file = input.files[0]; if (!file) return;
+  if (file.size > 3*1024*1024) { showToast('이미지는 3MB 이하만 가능해요.'); return; }
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const img = new Image();
+    img.onload = () => {
+      const MAX = 800; let w = img.width, h = img.height;
+      if (w > MAX || h > MAX) { const r = Math.min(MAX/w, MAX/h); w = Math.round(w*r); h = Math.round(h*r); }
+      const c = document.createElement('canvas'); c.width = w; c.height = h;
+      c.getContext('2d').drawImage(img, 0, 0, w, h);
+      _teTokenImgData = c.toDataURL('image/png');
+      teRefreshTokenImgPreview();
+    };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+  input.value = '';
+}
+
+function teClearTokenImg() {
+  _teTokenImgData = null;
+  teRefreshTokenImgPreview();
+}
+
+function teAddStanding(label, img) {
+  const list = document.getElementById('te-standing-list');
+  const idx = list.children.length;
+  const row = document.createElement('div');
+  row.className = 'te-standing-row' + (img ? ' has-img' : '');
+  if (img) row.dataset.img = img;
+  const thumbContent = img
+    ? `<img src="${img}" alt="">`
+    : `<span class="st-placeholder">📷</span>`;
+  row.innerHTML = `
+    <div class="te-st-thumb" onclick="this.querySelector('input[type=file]').click()" title="이미지 업로드">
+      ${thumbContent}
+      <input type="file" accept="image/*" style="display:none" onchange="teHandleStandingImg(this,${idx})">
+    </div>
+    <div class="te-st-fields">
+      <label>라벨</label>
+      <input placeholder="@미소" value="${esc(label||'')}">
+    </div>
+    <div class="te-st-actions">
+      <button class="te-st-del" onclick="teRemoveStandingAt(${idx})" title="삭제">🗑</button>
+      <span class="te-st-check">✓</span>
+    </div>`;
+  list.appendChild(row);
+}
+function teRemoveStanding() {
+  const list = document.getElementById('te-standing-list');
+  if (list.lastChild) list.removeChild(list.lastChild);
+}
+function teRemoveStandingAt(idx) {
+  const list = document.getElementById('te-standing-list');
+  const row = list.children[idx];
+  if (row && confirm('이 스탠딩을 삭제할까요?')) {
+    row.remove();
+    Array.from(list.children).forEach((r, i) => {
+      const fileInput = r.querySelector('input[type=file]');
+      if (fileInput) fileInput.setAttribute('onchange', `teHandleStandingImg(this,${i})`);
+      const delBtn = r.querySelector('.te-st-del');
+      if (delBtn) delBtn.setAttribute('onclick', `teRemoveStandingAt(${i})`);
+    });
+  }
+}
+function teHandleStandingImg(input, idx) {
+  const file = input.files[0]; if (!file) return;
+  if (file.size > 3*1024*1024) { showToast('이미지는 3MB 이하만 가능해요.'); return; }
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const img = new Image();
+    img.onload = () => {
+      const MAX = 800; let w = img.width, h = img.height;
+      if (w > MAX || h > MAX) { const r = Math.min(MAX/w, MAX/h); w = Math.round(w*r); h = Math.round(h*r); }
+      const c = document.createElement('canvas'); c.width = w; c.height = h;
+      c.getContext('2d').drawImage(img, 0, 0, w, h);
+      const dataUrl = c.toDataURL('image/png');
+      const list = document.getElementById('te-standing-list');
+      const row = list.children[idx];
+      if (row) {
+        row.dataset.img = dataUrl;
+        row.classList.add('has-img');
+        const thumb = row.querySelector('.te-st-thumb');
+        if (thumb) thumb.innerHTML = `<img src="${dataUrl}" alt=""><input type="file" accept="image/*" style="display:none" onchange="teHandleStandingImg(this,${idx})">`;
+      }
+    };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function teAddStatus(label, cur, max) {
+  const list = document.getElementById('te-status-list');
+  const row = document.createElement('div');
+  row.className = 'te-status-row';
+  row.innerHTML = `
+    <input style="flex:1" placeholder="라벨" value="${esc(label||'')}">
+    <input style="width:55px" type="number" placeholder="현재값" value="${cur!=null?cur:''}">
+    <input style="width:55px" type="number" placeholder="최대값" value="${max!=null?max:''}">`;
+  list.appendChild(row);
+}
+function teRemoveStatus() {
+  const list = document.getElementById('te-status-list');
+  if (list.lastChild) list.removeChild(list.lastChild);
+}
+
+function teAddParam(label, value) {
+  const list = document.getElementById('te-param-list');
+  const row = document.createElement('div');
+  row.className = 'te-param-row';
+  row.innerHTML = `
+    <input style="flex:1" placeholder="라벨" value="${esc(label||'')}">
+    <input style="flex:1" placeholder="값" value="${esc(value||'')}">`;
+  list.appendChild(row);
+}
+function teRemoveParam() {
+  const list = document.getElementById('te-param-list');
+  if (list.lastChild) list.removeChild(list.lastChild);
+}
+
+function saveTokenEdit() {
+  if (!_teTokenId) return;
+  const t = St.tokens[_teTokenId];
+  if (!t) return;
+
+  t.name = document.getElementById('te-name').value.trim() || '?';
+  t.initiative = parseFloat(document.getElementById('te-initiative').value) || 0;
+  t.memo = document.getElementById('te-memo').value;
+  t.tokenSize = parseInt(document.getElementById('te-size').value) || 1;
+  t.x = parseFloat(document.getElementById('te-x').value) || t.x;
+  t.y = parseFloat(document.getElementById('te-y').value) || t.y;
+  t.refUrl = document.getElementById('te-url').value.trim();
+  t.chatPalette = document.getElementById('te-chatpal').value;
+  t.tokenImg = _teTokenImgData || null;
+  t.hideStatus = document.getElementById('te-hide-status').checked;
+  t.hideChat = document.getElementById('te-hide-chat').checked;
+  t.hideList = document.getElementById('te-hide-list').checked;
+  t.standingAsToken = document.getElementById('te-standing-as-token').checked;
+
+  t.standings = [];
+  document.getElementById('te-standing-list').querySelectorAll('.te-standing-row').forEach(row => {
+    const inputs = row.querySelectorAll('input[type="text"],input:not([type])');
+    const label = inputs[0]?.value?.trim() || '';
+    const img = row.dataset.img || '';
+    if (label || img) t.standings.push({ label, img });
+  });
+
+  t.statuses = [];
+  document.getElementById('te-status-list').querySelectorAll('.te-status-row').forEach(row => {
+    const inputs = row.querySelectorAll('input');
+    const label = inputs[0]?.value?.trim() || '';
+    const cur = parseFloat(inputs[1]?.value) || 0;
+    const max = parseFloat(inputs[2]?.value) || 0;
+    if (label) t.statuses.push({ label, cur, max });
+  });
+
+  t.params = [];
+  document.getElementById('te-param-list').querySelectorAll('.te-param-row').forEach(row => {
+    const inputs = row.querySelectorAll('input');
+    const label = inputs[0]?.value?.trim() || '';
+    const value = inputs[1]?.value?.trim() || '';
+    if (label) t.params.push({ label, value });
+  });
+
+  if (window._FB?.CONFIGURED) {
+    const { db, ref, set } = window._FB;
+    set(ref(db, `rooms/${St.roomCode}/tokens/${_teTokenId}`), t);
+  } else {
+    renderAllTokens(St.tokens);
+  }
+
+  const hint = document.getElementById('te-hint');
+  if (hint) { hint.textContent = '저장됐어요 ✓'; setTimeout(() => { if(hint) hint.textContent=''; }, 2000); }
+}
+
+function deleteTokenFromEdit() {
+  if (!_teTokenId || !confirm('이 토큰을 삭제할까요?')) return;
+  const delId = _teTokenId;
+  closeTokenEdit();
+  const el = document.getElementById('tok-' + delId);
+  if (el) el.remove();
+  if (window._FB?.CONFIGURED) {
+    const { db, ref, remove } = window._FB;
+    remove(ref(db, `rooms/${St.roomCode}/tokens/${delId}`));
+  } else {
+    delete St.tokens[delId];
+    renderAllTokens(St.tokens);
+  }
+}
+
+function setTool(t) {
+  if (t === 'erase' && !hasPerm('editToken')) { showToast('토큰 편집 권한이 없어요.'); return; }
+  St.tool = t;
+  document.getElementById('tool-select').classList.toggle('on', t === 'select');
+  const eraseBtn = document.getElementById('tool-erase');
+  if (eraseBtn) eraseBtn.classList.toggle('on', t === 'erase');
+}
+
