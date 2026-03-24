@@ -362,7 +362,7 @@ function openLightbox(src) {
 function addLocalMessage(type, name, text) { appendChatMsg(name, text, type); }
 
 function getAvatarHtml(name, uid) {
-  const shapeClass = St.avatarShape === 'circle' ? 'shape-circle' : 'shape-rounded';
+  const shape = St.avatarShape === 'circle' ? 'shape-circle' : 'shape-rounded';
   let imgSrc = null;
 
   if (uid) {
@@ -373,36 +373,30 @@ function getAvatarHtml(name, uid) {
   }
 
   const initial = (name || '?')[0].toUpperCase();
+  const shape_class = St.avatarShape === 'circle' ? 'shape-circle' : 'shape-rounded';
   const r = St.avatarShape === 'circle' ? '50%' : '6px';
-  const uidAttr = uid ? ` data-avatar-uid="${esc(uid)}"` : '';
-  const nameAttr = name ? ` data-avatar-name="${esc(name)}"` : '';
   if (imgSrc) {
-    return `<div class="msg-avatar ${shapeClass}"${uidAttr}${nameAttr}><img src="${imgSrc}" alt="${esc(initial)}" style="border-radius:${r}"></div>`;
+    return `<div class="msg-avatar ${shape_class}"><img src="${imgSrc}" alt="${esc(initial)}" style="border-radius:${r}"></div>`;
   }
-  return `<div class="msg-avatar ${shapeClass}"${uidAttr}${nameAttr}><div class="msg-avatar-inner" style="border-radius:${r}">${esc(initial)}</div></div>`;
+  return `<div class="msg-avatar ${shape_class}"><div class="msg-avatar-inner" style="border-radius:${r}">${esc(initial)}</div></div>`;
 }
 
-function rerenderAvatarNode(node) {
-  if (!node) return;
-  const uid = node.dataset.avatarUid || '';
-  const name = node.dataset.avatarName || '';
-  let imgSrc = '';
-  if (uid) imgSrc = localStorage.getItem('itc_avatar_' + uid) || '';
-  if (!imgSrc && name) imgSrc = window._avatarCache?.[name] || '';
-
+function refreshRenderedAvatars(uid, name, imgSrc) {
+  if (!imgSrc) return;
+  const nodes = document.querySelectorAll('#chat-messages .chat-msg, #casual-messages .chat-msg');
   const initial = (name || '?')[0].toUpperCase();
   const r = St.avatarShape === 'circle' ? '50%' : '6px';
-  if (imgSrc) {
-    node.innerHTML = `<img src="${imgSrc}" alt="${esc(initial)}" style="border-radius:${r}">`;
-  } else {
-    node.innerHTML = `<div class="msg-avatar-inner" style="border-radius:${r}">${esc(initial)}</div>`;
-  }
-}
 
-function refreshAllRenderedAvatars() {
-  document.querySelectorAll('.msg-avatar[data-avatar-uid], .msg-avatar[data-avatar-name]').forEach(rerenderAvatarNode);
-  if (typeof refreshCasualNickDisplay === 'function') refreshCasualNickDisplay();
-  if (typeof refreshProfileAvatar === 'function') refreshProfileAvatar();
+  nodes.forEach(node => {
+    const uidMatch = uid && node.dataset.senderUid === uid;
+    const nameMatch = name && node.dataset.senderName === name;
+    if (!uidMatch && !nameMatch) return;
+
+    const avatarEl = node.querySelector('.msg-avatar');
+    if (!avatarEl) return;
+
+    avatarEl.innerHTML = `<img src="${imgSrc}" alt="${esc(initial)}" style="width:100%;height:100%;object-fit:cover;border-radius:${r}">`;
+  });
 }
 
 function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId, whisperTo, whisperToName, nameColor, msgKey, channel, standingImg, tokenId, standingLabel) {
@@ -435,6 +429,8 @@ function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJ
     const tagText = isMine ? `→ ${esc(whisperToName || '?')}에게 귓말` : `→ 나에게 귓말`;
     const div = document.createElement('div');
     div.className = 'chat-msg msg-whisper';
+    if (uid) div.dataset.senderUid = uid;
+    if (name) div.dataset.senderName = name;
     div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name">${esc(name)}</span><span class="whisper-tag">${tagText}</span><span class="msg-time">${time}</span></div><div class="msg-text">${fmtText(text)}</div></div>`;
     addMsgActions(div, uid, msgKey, channel || 'chat', text, type);
     container.appendChild(div);
@@ -454,6 +450,8 @@ function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJ
     }
     const d2 = document.createElement('div');
     d2.className = 'chat-msg msg-speak-as';
+    if (uid) d2.dataset.senderUid = uid;
+    if (name) d2.dataset.senderName = name;
     const _jColor = nameColor || (speakAsJournalId ? (_allJournals.find(x => x.id === speakAsJournalId)?.nameColor || '') : '');
     const _nameStyle = _jColor ? ` style="color:${_jColor}"` : '';
     d2.innerHTML = `${avHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name sa-msg-name"${_nameStyle}>${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-text">${fmtText(text.replace(/@\S+/g,'').trim())}</div></div>`;
@@ -477,6 +475,8 @@ function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJ
     }
     const d2 = document.createElement('div');
     d2.className = 'chat-msg msg-speak-as msg-image-msg';
+    if (uid) d2.dataset.senderUid = uid;
+    if (name) d2.dataset.senderName = name;
     d2.innerHTML = `${avHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name sa-msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div><img class="msg-image" src="${esc(text)}" alt="첨부 이미지" style="display:block;max-width:220px;height:auto;margin-top:5px;border-radius:var(--r);border:1px solid var(--border);cursor:zoom-in" onclick="openLightbox(this.src)"></div>`;
     container.appendChild(d2);
     container.scrollTop = container.scrollHeight;
@@ -488,6 +488,8 @@ function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJ
   if (type === 'image') {
     const div = document.createElement('div');
     div.className = 'chat-msg msg-image-msg';
+    if (uid) div.dataset.senderUid = uid;
+    if (name) div.dataset.senderName = name;
     div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div><img class="msg-image" src="${esc(text)}" alt="첨부 이미지" style="display:block;max-width:220px;height:auto;margin-top:5px;border-radius:var(--r);border:1px solid var(--border);cursor:zoom-in" onclick="openLightbox(this.src)"></div>`;
     container.appendChild(div);
     container.scrollTop = container.scrollHeight;
@@ -496,6 +498,8 @@ function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJ
 
   const div = document.createElement('div');
   div.className = `chat-msg msg-${type}`;
+  if (uid) div.dataset.senderUid = uid;
+  if (name) div.dataset.senderName = name;
   const _nc = nameColor ? ` style="color:${nameColor}"` : '';
   if (type === 'dice') {
     const diceMatch = text.match(/🎲\s*(.+?)\s*→\s*(\d+)\s*\(([^)]+)\)/);
