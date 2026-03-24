@@ -77,7 +77,7 @@ function sendChat() {
     return;
   }
 
-  const dm = raw.match(/^\/d(.+)$/i);
+  const dm = raw.match(/^\/(\d*d\d+.*)$/i);
   if (dm) {
     inp.value = '';
     const formula = dm[1].trim();
