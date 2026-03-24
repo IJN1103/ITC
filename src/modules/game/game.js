@@ -196,6 +196,7 @@ async function enterGame() {
   const gmBadge = document.getElementById('gm-badge');
   if (gmBadge) gmBadge.style.display = St.isGM ? 'inline-flex' : 'none';
   refreshPermUI();
+  if (typeof refreshChatActionButtons === 'function') refreshChatActionButtons();
   const toolbar = document.getElementById('chat-toolbar');
   if (toolbar) toolbar.classList.add('gm-visible');
   const descBtn = document.getElementById('desc-toggle-btn');

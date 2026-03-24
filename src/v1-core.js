@@ -106,6 +106,7 @@ function switchRightTab(tab) {
     if (descBtn) descBtn.style.display = hasPerm('sendDesc') ? '' : 'none';
     if (whisperWrap) whisperWrap.style.display = '';
   }
+  if (typeof refreshChatActionButtons === 'function') refreshChatActionButtons();
   if (tab === 'journal') renderJournalList();
 }
 
