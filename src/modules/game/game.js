@@ -3,7 +3,6 @@
  * Firebase 리스너, 게임 진입, 플레이어 관리, 캐릭터 시트
  */
 
-// 채팅 중복 렌더링 방지를 위한 고유 키 저장소
 let _processedChatKeys = new Set();
 let _processedCasualKeys = new Set();
 
@@ -12,7 +11,6 @@ function setupFirebaseListeners() {
   const { db, ref, onValue } = window._FB;
   const code = St.roomCode;
 
-  // 방에 입장하거나 리스너가 재실행될 때 추적 기록 초기화
   _processedChatKeys.clear();
   _processedCasualKeys.clear();
 
@@ -28,7 +26,21 @@ function setupFirebaseListeners() {
     renderPlayers(players);
   });
 
-  // 🔥 메인 채팅방 동기화 (버그 수정됨)
+  // 🔥 [완벽 버그 픽스] 사진 데이터만 따로 관리하는 전용 통로
+  onValue(ref(db, `rooms/${code}/avatars`), snap => {
+    const avatars = snap.val() || {};
+    if (!window._avatarCache) window._avatarCache = {};
+    
+    Object.entries(avatars).forEach(([uid, avData]) => {
+      localStorage.setItem('itc_avatar_' + uid, avData);
+      window._avatarCache[uid] = avData;
+      // St.players에 해당 유저가 있다면 이름표에도 사진을 달아줍니다.
+      if (St.players && St.players[uid] && St.players[uid].name) {
+        window._avatarCache[St.players[uid].name] = avData;
+      }
+    });
+  });
+
   onValue(ref(db, `rooms/${code}/chat`), snap => {
     const msgs = snap.val() || {};
     const entries = Object.entries(msgs).map(([k, m]) => ({ ...m, _key: k }));
@@ -37,18 +49,15 @@ function setupFirebaseListeners() {
         if (m.type === 'whisper') return m.uid === St.myId || m.whisperTo === St.myId;
         return true;
       });
-    
     const container = document.getElementById('chat-messages');
     if (!container) return;
     const rendered = container.querySelectorAll('.chat-msg').length;
 
-    // 만약 누군가 메시지를 삭제해서 화면의 메시지 수가 서버 데이터보다 많아진 경우, 화면을 싹 비우고 리셋합니다.
     if (rendered > sorted.length) {
       container.innerHTML = '';
       _processedChatKeys.clear();
     }
 
-    // 개수로 자르지 않고, 기록된 적 없는 고유 키(_key)만 화면에 추가합니다.
     sorted.forEach(m => {
       if (!_processedChatKeys.has(m._key)) {
         appendChatMsg(
@@ -76,7 +85,6 @@ function setupFirebaseListeners() {
     saRefreshToolbar();
   });
 
-  // 🔥 잡담(Casual) 채팅방 동기화 (버그 수정됨)
   onValue(ref(db, `rooms/${code}/casual`), snap => {
     const msgs = snap.val() || {};
     const entries = Object.entries(msgs).map(([k, m]) => ({ ...m, _key: k }));
@@ -85,13 +93,11 @@ function setupFirebaseListeners() {
     if (!container) return;
     const rendered = container.querySelectorAll('.chat-msg').length;
 
-    // 삭제 처리 리셋 로직
     if (rendered > sorted.length) {
       container.innerHTML = '';
       _processedCasualKeys.clear();
     }
 
-    // 중복 방지 렌더링
     sorted.forEach(m => {
       if (!_processedCasualKeys.has(m._key)) {
         appendCasualMsg(m.name, m.text, m.uid, m.time, m._key);
@@ -116,12 +122,10 @@ function setupFirebaseListeners() {
     showRollResult(roll);
   });
 
-  // 온라인 상태 설정
   const presRef = ref(db, `rooms/${code}/players/${St.myId}/online`);
   window._FB.set(presRef, true);
   window._FB.onDisconnect(presRef).set(false);
 
-  // 타이핑 상태 리스너
   onValue(ref(db, `rooms/${code}/typing`), snap => {
     const typing = snap.val() || {};
     renderTypingIndicator('typing-chat', typing, 'chat');
@@ -165,14 +169,29 @@ async function enterGame() {
   saRefreshBtn();
   refreshWhisperBtn();
   renderCharacterSheet(St.system);
+  
   if (!window._avatarCache) window._avatarCache = {};
   const myAv = localStorage.getItem('itc_avatar_' + St.myId);
   if (myAv) {
     window._avatarCache[St.myName] = myAv;
-    // 🔥 [버그 수정] 내 프사를 다른 사람들도 볼 수 있게 파이어베이스 방 데이터에 올림!
+    // 내가 방에 들어올 때 사진 데이터베이스(avatars)에 내 프사를 올립니다.
     if (window._FB?.CONFIGURED) {
-      window._FB.update(window._FB.ref(window._FB.db, `rooms/${St.roomCode}/players/${St.myId}`), { avatar: myAv });
+      window._FB.set(window._FB.ref(window._FB.db, `rooms/${St.roomCode}/avatars/${St.myId}`), myAv).catch(()=>{});
     }
+  }
+
+  // 🔥 [새로 추가된 마법의 로직] 2초마다 내 프사 변경을 감지해서 자동으로 남들에게 쏴줍니다.
+  if (!window._avatarWatcher) {
+    let _lastAv = myAv;
+    window._avatarWatcher = setInterval(() => {
+      if (!St.roomCode || !window._FB?.CONFIGURED) return;
+      const currentAv = localStorage.getItem('itc_avatar_' + St.myId);
+      if (currentAv && currentAv !== _lastAv) {
+        _lastAv = currentAv;
+        window._avatarCache[St.myName] = currentAv;
+        window._FB.set(window._FB.ref(window._FB.db, `rooms/${St.roomCode}/avatars/${St.myId}`), currentAv).catch(()=>{});
+      }
+    }, 2000);
   }
 
   addLocalMessage('system', '', `${St.myName}님이 입장했습니다 — ${SYS_LABELS[St.system]}`);
@@ -200,18 +219,14 @@ function renderPlayers(players) {
   refreshMyPerms();
   refreshPermUI();
   if (!window._avatarCache) window._avatarCache = {};
+  
   Object.entries(players).forEach(([id, p]) => {
     const online = p.online || id === St.myId;
     addPlayerChip(id, p.name, id === St.myId, p.role, online);
     
-    // 🔥 [버그 수정] 파이어베이스(서버)에 상대방의 프사가 있으면 가져와서 캐시에 저장!
-    if (p.avatar) {
-      window._avatarCache[p.name] = p.avatar;
-      localStorage.setItem('itc_avatar_' + id, p.avatar); // 다음을 위해 내 컴퓨터에도 백업
-    } else {
-      const av = localStorage.getItem('itc_avatar_' + id);
-      if (av) window._avatarCache[p.name] = av;
-    }
+    // 로컬에 백업해둔 프사가 있다면 일단 표시합니다. (실시간 교체는 맨 위 리스너가 담당)
+    const av = localStorage.getItem('itc_avatar_' + id);
+    if (av) window._avatarCache[p.name] = av;
   });
 }
 
@@ -424,10 +439,13 @@ async function leaveRoom() {
   sessionStorage.removeItem('itc_session_sys');
   sessionStorage.removeItem('itc_session_role');
 
-  sessionStorage.removeItem('itc_session_code');
-  sessionStorage.removeItem('itc_session_sys');
-  sessionStorage.removeItem('itc_session_role');
   St.roomCode = ''; St.isGM = false;
+  
+  if (window._avatarWatcher) {
+    clearInterval(window._avatarWatcher);
+    window._avatarWatcher = null;
+  }
+  
   closeModal('modal-settings');
   showLobby();
 }
