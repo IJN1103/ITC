@@ -699,7 +699,9 @@ function getChatImageClassName(imageWide = false) {
 }
 
 function getChatImageInlineStyle(imageWide = false) {
-  return imageWide ? 'width:100%;max-width:none;height:auto;object-fit:contain;' : '';
+  return imageWide
+    ? 'display:block;width:100%;max-width:none;height:auto;object-fit:contain;'
+    : 'display:block;width:100%;height:auto;object-fit:contain;';
 }
 
 const CHAT_IMAGE_PLACEHOLDER = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==';
@@ -715,8 +717,15 @@ function normalizeChatImageMeta(imageMeta = null) {
 
 function getChatImageShellStyle(imageWide = false, imageMeta = null) {
   const meta = normalizeChatImageMeta(imageMeta);
-  const ratio = meta ? `${meta.width} / ${meta.height}` : (imageWide ? '16 / 9' : '4 / 3');
-  return `aspect-ratio:${ratio};`;
+  if (imageWide) {
+    const ratio = meta ? `${meta.width} / ${meta.height}` : '16 / 9';
+    return `aspect-ratio:${ratio};`;
+  }
+  if (meta) {
+    const clampedWidth = Math.max(72, Math.min(220, meta.width));
+    return `width:min(100%, ${clampedWidth}px);`;
+  }
+  return 'width:min(100%, 220px);';
 }
 
 function activateDeferredChatImage(img, force = false) {
