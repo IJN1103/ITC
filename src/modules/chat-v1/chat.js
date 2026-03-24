@@ -38,7 +38,7 @@ function getChatImageWideMode() {
 
 function getChatImageInlineStyle(isWide) {
   if (isWide) {
-    return 'display:block;width:100%;max-width:none;height:auto;margin-top:5px;border-radius:var(--r);border:1px solid var(--border);cursor:zoom-in';
+    return 'display:block;width:100%;max-width:none;height:auto;margin-top:5px;border-radius:var(--r);border:1px solid var(--border);cursor:zoom-in;object-fit:contain';
   }
   return 'display:block;max-width:220px;width:auto;height:auto;margin-top:5px;border-radius:var(--r);border:1px solid var(--border);cursor:zoom-in';
 }
@@ -66,7 +66,7 @@ function getPendingChatImageBox() {
           <div id="chat-pending-image-summary" style="font-size:12px;opacity:.8;">0장 선택됨</div>
           <label style="display:inline-flex;align-items:center;gap:6px;margin-top:6px;font-size:11px;opacity:.82;cursor:pointer;user-select:none;">
             <input id="chat-image-wide-toggle" type="checkbox" onchange="setChatImageWideMode(this.checked)" style="margin:0;accent-color:var(--accent,#8b5cf6);">
-            <span>가로 제한 해제</span>
+            <span>가로폭 채우기</span>
           </label>
         </div>
         <button type="button" onclick="clearPendingChatImage()" title="선택한 이미지 전체 취소" style="border:1px solid var(--border);background:transparent;color:inherit;border-radius:8px;padding:4px 8px;cursor:pointer;line-height:1;">전체 취소</button>
@@ -646,8 +646,8 @@ function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJ
       avHtml = `<div class="msg-avatar ${sc} sa-avatar"><div class="msg-avatar-inner" style="border-radius:${r}">${esc((name||'?')[0].toUpperCase())}</div></div>`;
     }
     const d2 = document.createElement('div');
-    d2.className = `chat-msg msg-speak-as msg-image-msg${imageWide ? ' msg-image-wide-row' : ''}`;
-    d2.innerHTML = `${avHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name sa-msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div><img class="${getChatImageClassName(imageWide)}" src="${esc(text)}" alt="첨부 이미지" style="${getChatImageInlineStyle(imageWide)}" onclick="openLightbox(this.src)"></div>`;
+    d2.className = `chat-msg msg-speak-as msg-image-msg${imageWide ? ' msg-image-fill-row' : ''}`;
+    d2.innerHTML = `${avHtml}<div class="msg-body${imageWide ? ' msg-body-image-fill' : ''}"><div class="msg-meta"><span class="msg-name sa-msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div><div class="${imageWide ? 'msg-image-fill-wrap' : ''}"><img class="${getChatImageClassName(imageWide)}" src="${esc(text)}" alt="첨부 이미지" style="${getChatImageInlineStyle(imageWide)}" onclick="openLightbox(this.src)"></div></div>`;
     container.appendChild(d2);
     container.scrollTop = container.scrollHeight;
     return;
@@ -657,10 +657,10 @@ function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJ
 
   if (type === 'image') {
     const div = document.createElement('div');
-    div.className = `chat-msg msg-image-msg${imageWide ? ' msg-image-wide-row' : ''}`;
+    div.className = `chat-msg msg-image-msg${imageWide ? ' msg-image-fill-row' : ''}`;
     div.dataset.avatarUid = uid || '';
     div.dataset.avatarName = name || '';
-    div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div><img class="${getChatImageClassName(imageWide)}" src="${esc(text)}" alt="첨부 이미지" style="${getChatImageInlineStyle(imageWide)}" onclick="openLightbox(this.src)"></div>`;
+    div.innerHTML = `${avatarHtml}<div class="msg-body${imageWide ? ' msg-body-image-fill' : ''}"><div class="msg-meta"><span class="msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div><div class="${imageWide ? 'msg-image-fill-wrap' : ''}"><img class="${getChatImageClassName(imageWide)}" src="${esc(text)}" alt="첨부 이미지" style="${getChatImageInlineStyle(imageWide)}" onclick="openLightbox(this.src)"></div></div>`;
     container.appendChild(div);
     container.scrollTop = container.scrollHeight;
     return;
