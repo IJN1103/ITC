@@ -7,6 +7,46 @@ let _processedChatKeys = new Set();
 let _processedCasualKeys = new Set();
 let _firebaseUnsubs = [];
 let _playerDigest = '';
+let _roomAvatarSyncBound = false;
+let _lastSyncedRoomAvatar = null;
+
+function syncMyAvatarToRoom(avatarOverride = undefined, force = false) {
+  if (!window._FB?.CONFIGURED || !St.roomCode || !St.myId) return Promise.resolve();
+  const nextAvatar = avatarOverride !== undefined
+    ? (avatarOverride || '')
+    : (() => {
+        try { return localStorage.getItem('itc_avatar_' + St.myId) || ''; } catch (e) { return ''; }
+      })();
+
+  if (!window._avatarCache) window._avatarCache = {};
+  window._avatarCache[St.myId] = nextAvatar;
+  if (St.myName) window._avatarCache[St.myName] = nextAvatar;
+
+  if (!force && _lastSyncedRoomAvatar === nextAvatar) return Promise.resolve();
+  _lastSyncedRoomAvatar = nextAvatar;
+
+  const { db, ref, set, update } = window._FB;
+  return Promise.all([
+    set(ref(db, `rooms/${St.roomCode}/avatars/${St.myId}`), nextAvatar).catch(() => {}),
+    update(ref(db, `rooms/${St.roomCode}/players/${St.myId}`), { avatar: nextAvatar }).catch(() => {}),
+  ]).then(() => {
+    if (typeof rerenderExistingChatAvatars === 'function') rerenderExistingChatAvatars();
+  });
+}
+
+function bindRoomStabilityEvents() {
+  if (_roomAvatarSyncBound) return;
+  _roomAvatarSyncBound = true;
+
+  document.addEventListener('itc:avatar-updated', (ev) => {
+    const detail = ev?.detail || {};
+    const targetUid = detail.uid || window._currentUser?.uid || St.myId;
+    if (!targetUid || targetUid !== St.myId) return;
+    const avatar = detail.avatar || '';
+    _lastSyncedRoomAvatar = null;
+    syncMyAvatarToRoom(avatar, true);
+  });
+}
 
 function cleanupFirebaseListeners() {
   _firebaseUnsubs.forEach(unsub => { try { if (typeof unsub === 'function') unsub(); } catch (e) {} });
@@ -27,6 +67,8 @@ function digestPlayers(players) {
 function setupFirebaseListeners() {
   if (!window._FB?.CONFIGURED) return;
   cleanupFirebaseListeners();
+  bindRoomStabilityEvents();
+  _lastSyncedRoomAvatar = null;
 
   const { db, ref, onValue, onChildAdded, onChildChanged, onChildRemoved, query, limitToLast } = window._FB;
   const code = St.roomCode;
@@ -212,34 +254,8 @@ async function enterGame() {
   renderCharacterSheet(St.system);
   
   if (!window._avatarCache) window._avatarCache = {};
-  const myAv = localStorage.getItem('itc_avatar_' + St.myId);
-  if (myAv) {
-    window._avatarCache[St.myId] = myAv;
-    window._avatarCache[St.myName] = myAv;
-    if (window._FB?.CONFIGURED) {
-      window._FB.set(window._FB.ref(window._FB.db, `rooms/${St.roomCode}/avatars/${St.myId}`), myAv).catch(()=>{});
-      window._FB.update(window._FB.ref(window._FB.db, `rooms/${St.roomCode}/players/${St.myId}`), { avatar: myAv }).catch(()=>{});
-    }
-  }
-
-  // 🔥 [새로 추가된 마법의 로직] 2초마다 내 프사 변경을 감지해서 자동으로 남들에게 쏴줍니다.
-  if (!window._avatarWatcher) {
-    let _lastAv = myAv;
-    window._avatarWatcher = setInterval(() => {
-      if (!St.roomCode || !window._FB?.CONFIGURED) return;
-      const currentAv = localStorage.getItem('itc_avatar_' + St.myId);
-      if (currentAv && currentAv !== _lastAv) {
-        _lastAv = currentAv;
-        window._avatarCache[St.myId] = currentAv;
-        window._avatarCache[St.myName] = currentAv;
-        window._FB.set(window._FB.ref(window._FB.db, `rooms/${St.roomCode}/avatars/${St.myId}`), currentAv).catch(()=>{});
-        window._FB.update(window._FB.ref(window._FB.db, `rooms/${St.roomCode}/players/${St.myId}`), { avatar: currentAv }).catch(()=>{});
-        if (typeof rerenderExistingChatAvatars === 'function') {
-          rerenderExistingChatAvatars();
-        }
-      }
-    }, 2000);
-  }
+  bindRoomStabilityEvents();
+  syncMyAvatarToRoom(undefined, true);
 
   addLocalMessage('system', '', `${St.myName}님이 입장했습니다 — ${SYS_LABELS[St.system]}`);
   migrateLocalJournals();
@@ -494,12 +510,13 @@ async function leaveRoom() {
   sessionStorage.removeItem('itc_session_role');
 
   St.roomCode = ''; St.isGM = false;
-  
-  if (window._avatarWatcher) {
-    clearInterval(window._avatarWatcher);
-    window._avatarWatcher = null;
-  }
+  _lastSyncedRoomAvatar = null;
+  if (typeof clearPendingChatImages === 'function') clearPendingChatImages();
   
   closeModal('modal-settings');
   showLobby();
 }
+
+window.setupFirebaseListeners = setupFirebaseListeners;
+window.syncMyAvatarToRoom = syncMyAvatarToRoom;
+window.enterGame = enterGame;
