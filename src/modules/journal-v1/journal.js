@@ -573,20 +573,13 @@ function openSheet(journalId) {
 }
 
 function closeSheet() {
-  if (_sheetIsNew) {
-    const nameVal = (document.getElementById('sh-name')?.value || '').trim();
-    if (!nameVal) {
-      showToast('저널 이름을 입력해야 닫을 수 있어요.');
-      document.getElementById('sh-name')?.focus();
-      return;
-    }
-    saveSheet();
-    _sheetIsNew = false;
-    const delBtn = document.querySelector('.sheet-del-btn');
-    if (delBtn) delBtn.style.display = '';
-  }
   document.getElementById('sheet-overlay').classList.remove('open');
   _sheetJournalId = null;
+  _sheetIsNew = false;
+  _jdAssignedTokenId = null;
+  _sheetAssignedTo = [];
+  const hint = document.getElementById('sheet-hint');
+  if (hint) hint.textContent = '';
   renderJournalList();
 }
 
@@ -754,5 +747,7 @@ function saveSheet() {
 
   const hint = document.getElementById('sheet-hint');
   if (hint) { hint.textContent = '저장됐어요 ✓'; setTimeout(() => { hint.textContent = ''; }, 2000); }
+
+  closeSheet();
 }
 
