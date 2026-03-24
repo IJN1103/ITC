@@ -5,173 +5,139 @@
 
 let _processedChatKeys = new Set();
 let _processedCasualKeys = new Set();
-let _roomUnsubs = [];
-let _autoSaveTimer = null;
-let _lastPlayersRenderKey = '';
+let _firebaseUnsubs = [];
+let _playerDigest = '';
 
-function cleanupRoomListeners() {
-  _roomUnsubs.forEach(unsub => {
-    try { if (typeof unsub === 'function') unsub(); } catch(e) {}
-  });
-  _roomUnsubs = [];
+function cleanupFirebaseListeners() {
+  _firebaseUnsubs.forEach(unsub => { try { if (typeof unsub === 'function') unsub(); } catch (e) {} });
+  _firebaseUnsubs = [];
 }
 
-function makePlayersRenderKey(players) {
-  return JSON.stringify(
-    Object.entries(players || {}).map(([id, p]) => [id, p?.name || '', p?.role || '', !!p?.online]).sort((a,b) => a[0].localeCompare(b[0]))
-  );
+function trackFirebaseListener(unsub) {
+  if (typeof unsub === 'function') _firebaseUnsubs.push(unsub);
 }
 
-function removeMessageNode(containerId, msgKey) {
-  const container = document.getElementById(containerId);
-  if (!container || !msgKey) return;
-  const el = container.querySelector(`.chat-msg[data-msg-key="${msgKey}"]`);
-  if (el) el.remove();
-}
-
-function patchExistingMessage(containerId, msg, channelName) {
-  const container = document.getElementById(containerId);
-  if (!container || !msg?._key) return false;
-  const el = container.querySelector(`.chat-msg[data-msg-key="${msg._key}"]`);
-  if (!el) return false;
-
-  const type = msg.type || el.dataset.msgType || 'normal';
-  const text = typeof msg.text === 'string' ? msg.text : '';
-  const prevText = el.dataset.msgText || '';
-  if (prevText === text && (el.dataset.msgType || 'normal') === type) return true;
-
-  el.dataset.msgText = text;
-  el.dataset.msgType = type;
-  if (channelName) el.dataset.channel = channelName;
-
-  const timeEl = el.querySelector('.msg-time');
-  if (timeEl && msg.time) {
-    const d = new Date(msg.time);
-    timeEl.textContent = `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
-  }
-
-  if (type === 'image' || type === 'speak-as-image') {
-    const img = el.querySelector('.msg-image');
-    if (img && img.src !== text) img.src = text;
-    return true;
-  }
-
-  const textEl = el.querySelector('.msg-text');
-  if (!textEl) return true;
-  if (type === 'speak-as') {
-    textEl.innerHTML = fmtText(text.replace(/@\S+/g, '').trim());
-  } else {
-    textEl.innerHTML = fmtText(text);
-  }
-  return true;
-}
-
-function attachIncrementalChannel(path, processedSet, appendFn, filterFn, containerId, channelName) {
-  const { db, ref, query, limitToLast, onChildAdded, onChildChanged, onChildRemoved } = window._FB;
-  const q = query(ref(db, path), limitToLast(100));
-
-  const unsubAdded = onChildAdded(q, snap => {
-    const msg = snap.val() || {};
-    const key = snap.key;
-    if (!key) return;
-    if (filterFn && !filterFn(msg)) return;
-    if (processedSet.has(key)) return;
-    appendFn({ ...msg, _key: key });
-    processedSet.add(key);
-  });
-
-  const unsubChanged = onChildChanged(q, snap => {
-    const msg = snap.val() || {};
-    const key = snap.key;
-    if (!key) return;
-    if (filterFn && !filterFn(msg)) {
-      removeMessageNode(containerId, key);
-      processedSet.delete(key);
-      return;
-    }
-    if (!processedSet.has(key)) {
-      appendFn({ ...msg, _key: key });
-      processedSet.add(key);
-      return;
-    }
-    patchExistingMessage(containerId, { ...msg, _key: key }, channelName);
-  });
-
-  const unsubRemoved = onChildRemoved(q, snap => {
-    const key = snap.key;
-    if (!key) return;
-    removeMessageNode(containerId, key);
-    processedSet.delete(key);
-  });
-
-  _roomUnsubs.push(unsubAdded, unsubChanged, unsubRemoved);
+function digestPlayers(players) {
+  return JSON.stringify(Object.keys(players || {}).sort().map(id => {
+    const p = players[id] || {};
+    return [id, p.name || '', p.role || '', !!p.online, p.avatar || '', p.casualNick || '', p.nameColor || ''];
+  }));
 }
 
 function setupFirebaseListeners() {
   if (!window._FB?.CONFIGURED) return;
-  const { db, ref, onValue } = window._FB;
+  cleanupFirebaseListeners();
+
+  const { db, ref, onValue, onChildAdded, onChildChanged, onChildRemoved, query, limitToLast } = window._FB;
   const code = St.roomCode;
 
-  cleanupRoomListeners();
   _processedChatKeys.clear();
   _processedCasualKeys.clear();
-  _lastPlayersRenderKey = '';
+  if (typeof resetRenderedMessages === 'function') {
+    resetRenderedMessages('chat');
+    resetRenderedMessages('casual');
+  }
 
-  const chatContainer = document.getElementById('chat-messages');
-  const casualContainer = document.getElementById('casual-messages');
-  if (chatContainer) chatContainer.innerHTML = '';
-  if (casualContainer) casualContainer.innerHTML = '';
-
-  _roomUnsubs.push(onValue(ref(db, `rooms/${code}/players`), snap => {
+  trackFirebaseListener(onValue(ref(db, `rooms/${code}/players`), snap => {
     const players = snap.val() || {};
     if (!players[St.myId] && St.roomCode) {
-      cleanupRoomListeners();
       alert('GM에 의해 방에서 강퇴되었습니다.');
+      cleanupFirebaseListeners();
       St.roomCode = '';
       document.getElementById('screen-game').style.display = 'none';
       document.getElementById('screen-lobby').style.display = 'flex';
       return;
     }
-    const nextKey = makePlayersRenderKey(players);
-    if (nextKey === _lastPlayersRenderKey) return;
-    _lastPlayersRenderKey = nextKey;
+    const nextDigest = digestPlayers(players);
+    if (nextDigest === _playerDigest) return;
+    _playerDigest = nextDigest;
     renderPlayers(players);
   }));
 
-  _roomUnsubs.push(onValue(ref(db, `rooms/${code}/avatars`), snap => {
-    const avatars = snap.val() || {};
-    if (!window._avatarCache) window._avatarCache = {};
-    Object.entries(avatars).forEach(([uid, avData]) => {
-      if (!avData) return;
-      try { localStorage.setItem('itc_avatar_' + uid, avData); } catch(e) {}
-      window._avatarCache[uid] = avData;
-      if (St.players && St.players[uid] && St.players[uid].name) {
-        window._avatarCache[St.players[uid].name] = avData;
+  const chatBaseRef = ref(db, `rooms/${code}/chat`);
+  const chatRef = (query && limitToLast) ? query(chatBaseRef, limitToLast(100)) : chatBaseRef;
+  const casualBaseRef = ref(db, `rooms/${code}/casual`);
+  const casualRef = (query && limitToLast) ? query(casualBaseRef, limitToLast(100)) : casualBaseRef;
+
+  const shouldShowChatMessage = (m) => {
+    if (!m) return false;
+    if (m.type === 'whisper') return m.uid === St.myId || m.whisperTo === St.myId;
+    return true;
+  };
+
+  const addChatRecord = (key, m) => {
+    if (!shouldShowChatMessage(m) || _processedChatKeys.has(key)) return;
+    appendChatMsg(m.name, m.text, m.type || 'normal', m.uid, m.time, m.speakAsAvatar || null, m.speakAsJournalId || null, m.whisperTo || null, m.whisperToName || null, m.nameColor || null, key, 'chat', m.standingImg || null, m.tokenId || null, m.standingLabel || null, !!m.imageWide);
+    _processedChatKeys.add(key);
+  };
+
+  const changeChatRecord = (key, m) => {
+    if (!shouldShowChatMessage(m)) {
+      if (_processedChatKeys.has(key)) {
+        removeChatMsg(key, 'chat');
+        _processedChatKeys.delete(key);
       }
-    });
-  }));
+      return;
+    }
+    replaceChatMsg(m.name, m.text, m.type || 'normal', m.uid, m.time, m.speakAsAvatar || null, m.speakAsJournalId || null, m.whisperTo || null, m.whisperToName || null, m.nameColor || null, key, 'chat', m.standingImg || null, m.tokenId || null, m.standingLabel || null, !!m.imageWide);
+    _processedChatKeys.add(key);
+  };
 
-  attachIncrementalChannel(
-    `rooms/${code}/chat`,
-    _processedChatKeys,
-    (m) => appendChatMsg(
-      m.name, m.text, m.type || 'normal', m.uid, m.time,
-      m.speakAsAvatar || null, m.speakAsJournalId || null,
-      m.whisperTo || null, m.whisperToName || null, m.nameColor || null,
-      m._key, 'chat', m.standingImg || null, m.tokenId || null, m.standingLabel || null
-    ),
-    (m) => m.type !== 'whisper' || m.uid === St.myId || m.whisperTo === St.myId,
-    'chat-messages',
-    'chat'
-  );
+  const removeChatRecord = (key) => {
+    removeChatMsg(key, 'chat');
+    _processedChatKeys.delete(key);
+  };
 
-  _roomUnsubs.push(onValue(ref(db, `rooms/${code}/tokens`), snap => {
+  if (onChildAdded && onChildChanged && onChildRemoved) {
+    trackFirebaseListener(onChildAdded(chatRef, snap => addChatRecord(snap.key, snap.val() || {})));
+    trackFirebaseListener(onChildChanged(chatRef, snap => changeChatRecord(snap.key, snap.val() || {})));
+    trackFirebaseListener(onChildRemoved(chatRef, snap => removeChatRecord(snap.key)));
+  } else {
+    trackFirebaseListener(onValue(chatRef, snap => {
+      const msgs = snap.val() || {};
+      if (typeof resetRenderedMessages === 'function') resetRenderedMessages('chat');
+      _processedChatKeys.clear();
+      Object.entries(msgs).map(([k, m]) => ({ ...m, _key: k })).sort((a, b) => (a.time || 0) - (b.time || 0)).forEach(m => addChatRecord(m._key, m));
+    }));
+  }
+
+  const addCasualRecord = (key, m) => {
+    if (!m || _processedCasualKeys.has(key)) return;
+    appendCasualMsg(m.name, m.text, m.uid, m.time, key);
+    _processedCasualKeys.add(key);
+  };
+
+  const changeCasualRecord = (key, m) => {
+    if (!m) return;
+    replaceCasualMsg(m.name, m.text, m.uid, m.time, key);
+    _processedCasualKeys.add(key);
+  };
+
+  const removeCasualRecord = (key) => {
+    removeCasualMsg(key);
+    _processedCasualKeys.delete(key);
+  };
+
+  if (onChildAdded && onChildChanged && onChildRemoved) {
+    trackFirebaseListener(onChildAdded(casualRef, snap => addCasualRecord(snap.key, snap.val() || {})));
+    trackFirebaseListener(onChildChanged(casualRef, snap => changeCasualRecord(snap.key, snap.val() || {})));
+    trackFirebaseListener(onChildRemoved(casualRef, snap => removeCasualRecord(snap.key)));
+  } else {
+    trackFirebaseListener(onValue(casualRef, snap => {
+      const msgs = snap.val() || {};
+      if (typeof resetRenderedMessages === 'function') resetRenderedMessages('casual');
+      _processedCasualKeys.clear();
+      Object.entries(msgs).map(([k, m]) => ({ ...m, _key: k })).sort((a, b) => (a.time || 0) - (b.time || 0)).forEach(m => addCasualRecord(m._key, m));
+    }));
+  }
+
+  trackFirebaseListener(onValue(ref(db, `rooms/${code}/tokens`), snap => {
     const tokens = snap.val() || {};
     St.tokens = tokens;
     renderAllTokens(tokens);
   }));
 
-  _roomUnsubs.push(onValue(ref(db, `rooms/${code}/journals`), snap => {
+  trackFirebaseListener(onValue(ref(db, `rooms/${code}/journals`), snap => {
     _allJournals = [];
     const data = snap.val() || {};
     Object.entries(data).forEach(([id, j]) => { j.id = id; _allJournals.push(j); });
@@ -179,16 +145,7 @@ function setupFirebaseListeners() {
     saRefreshToolbar();
   }));
 
-  attachIncrementalChannel(
-    `rooms/${code}/casual`,
-    _processedCasualKeys,
-    (m) => appendCasualMsg(m.name, m.text, m.uid, m.time, m._key),
-    null,
-    'casual-messages',
-    'casual'
-  );
-
-  _roomUnsubs.push(onValue(ref(db, `rooms/${code}/bgm`), snap => {
+  trackFirebaseListener(onValue(ref(db, `rooms/${code}/bgm`), snap => {
     const bgm = snap.val();
     if (!bgm) return;
     if (bgm.playlist) { St.playlist = bgm.playlist; renderPlaylist(); }
@@ -198,7 +155,7 @@ function setupFirebaseListeners() {
     }
   }));
 
-  _roomUnsubs.push(onValue(ref(db, `rooms/${code}/lastRoll`), snap => {
+  trackFirebaseListener(onValue(ref(db, `rooms/${code}/lastRoll`), snap => {
     const roll = snap.val();
     if (!roll || roll.playerId === St.myId || roll.secret) return;
     showRollResult(roll);
@@ -208,7 +165,7 @@ function setupFirebaseListeners() {
   window._FB.set(presRef, true);
   window._FB.onDisconnect(presRef).set(false);
 
-  _roomUnsubs.push(onValue(ref(db, `rooms/${code}/typing`), snap => {
+  trackFirebaseListener(onValue(ref(db, `rooms/${code}/typing`), snap => {
     const typing = snap.val() || {};
     renderTypingIndicator('typing-chat', typing, 'chat');
     renderTypingIndicator('typing-casual', typing, 'casual');
@@ -230,6 +187,7 @@ async function enterGame() {
   document.getElementById('system-disp').textContent = SYS_LABELS[St.system];
   document.getElementById('myname-disp').textContent = St.myName;
 
+  _playerDigest = '';
   addPlayerChip(St.myId, St.myName, true, St.isGM ? 'gm' : 'player');
   renderDiceButtons(St.system);
   await initCharacter(St.system);
@@ -255,10 +213,11 @@ async function enterGame() {
   if (!window._avatarCache) window._avatarCache = {};
   const myAv = localStorage.getItem('itc_avatar_' + St.myId);
   if (myAv) {
+    window._avatarCache[St.myId] = myAv;
     window._avatarCache[St.myName] = myAv;
-    // 내가 방에 들어올 때 사진 데이터베이스(avatars)에 내 프사를 올립니다.
     if (window._FB?.CONFIGURED) {
       window._FB.set(window._FB.ref(window._FB.db, `rooms/${St.roomCode}/avatars/${St.myId}`), myAv).catch(()=>{});
+      window._FB.update(window._FB.ref(window._FB.db, `rooms/${St.roomCode}/players/${St.myId}`), { avatar: myAv }).catch(()=>{});
     }
   }
 
@@ -270,8 +229,13 @@ async function enterGame() {
       const currentAv = localStorage.getItem('itc_avatar_' + St.myId);
       if (currentAv && currentAv !== _lastAv) {
         _lastAv = currentAv;
+        window._avatarCache[St.myId] = currentAv;
         window._avatarCache[St.myName] = currentAv;
         window._FB.set(window._FB.ref(window._FB.db, `rooms/${St.roomCode}/avatars/${St.myId}`), currentAv).catch(()=>{});
+        window._FB.update(window._FB.ref(window._FB.db, `rooms/${St.roomCode}/players/${St.myId}`), { avatar: currentAv }).catch(()=>{});
+        if (typeof rerenderExistingChatAvatars === 'function') {
+          rerenderExistingChatAvatars();
+        }
       }
     }, 2000);
   }
@@ -305,11 +269,18 @@ function renderPlayers(players) {
   Object.entries(players).forEach(([id, p]) => {
     const online = p.online || id === St.myId;
     addPlayerChip(id, p.name, id === St.myId, p.role, online);
-    
-    // 로컬에 백업해둔 프사가 있다면 일단 표시합니다. (실시간 교체는 맨 위 리스너가 담당)
-    const av = localStorage.getItem('itc_avatar_' + id);
-    if (av) window._avatarCache[p.name] = av;
+
+    const av = p.avatar || localStorage.getItem('itc_avatar_' + id);
+    if (av) {
+      localStorage.setItem('itc_avatar_' + id, av);
+      window._avatarCache[id] = av;
+      window._avatarCache[p.name] = av;
+    }
   });
+
+  if (typeof rerenderExistingChatAvatars === 'function') {
+    rerenderExistingChatAvatars();
+  }
 }
 
 async function initCharacter(sys) {
@@ -488,19 +459,16 @@ function updateBar(type) {
 
 function autoSave() {
   if (!window._FB?.CONFIGURED || !window._currentUser) return;
-  if (_autoSaveTimer) clearTimeout(_autoSaveTimer);
-  _autoSaveTimer = setTimeout(() => {
-    const { db, ref, set } = window._FB;
-    const uid = window._currentUser.uid;
-    const charData = { ...St.character, updatedAt: Date.now() };
-    if (St.roomCode) {
-      set(ref(db, `rooms/${St.roomCode}/characters/${uid}`), charData);
-    }
-    if (St.selectedCharId) {
-      set(ref(db, `users/${uid}/characters/${St.selectedCharId}`), charData);
-    }
-    _autoSaveTimer = null;
-  }, 350);
+  const { db, ref, set } = window._FB;
+  const uid = window._currentUser.uid;
+  const charData = { ...St.character, updatedAt: Date.now() };
+
+  if (St.roomCode) {
+    set(ref(db, `rooms/${St.roomCode}/characters/${uid}`), charData);
+  }
+  if (St.selectedCharId) {
+    set(ref(db, `users/${uid}/characters/${St.selectedCharId}`), charData);
+  }
 }
 
 function saveCharacter() {
@@ -512,7 +480,6 @@ function saveCharacter() {
 async function leaveRoom() {
   if (!confirm('방에서 완전히 나가시겠습니까?\n(나중에 코드로 다시 입장할 수 있어요)')) return;
   if (window._FB?.CONFIGURED) {
-    cleanupRoomListeners();
     const { db, ref, remove, get } = window._FB;
     await remove(ref(db, `rooms/${St.roomCode}/players/${St.myId}`));
     const snap = await get(ref(db, `rooms/${St.roomCode}/players`));

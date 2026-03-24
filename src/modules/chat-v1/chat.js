@@ -244,42 +244,6 @@ function clearTypingState() {
   if (_typingTimer) { clearTimeout(_typingTimer); _typingTimer = null; }
 }
 
-
-
-function isNearBottom(container, threshold = 80) {
-  if (!container) return true;
-  return (container.scrollHeight - container.scrollTop - container.clientHeight) <= threshold;
-}
-
-function trimMessageContainer(container, maxCount = 120) {
-  if (!container) return;
-  while (container.children.length > maxCount) {
-    container.removeChild(container.firstElementChild);
-  }
-}
-
-function appendMessageNode(container, node) {
-  if (!container || !node) return;
-  const stick = isNearBottom(container);
-  container.appendChild(node);
-  trimMessageContainer(container, 120);
-  if (stick) {
-    requestAnimationFrame(() => {
-      container.scrollTop = container.scrollHeight;
-    });
-  }
-}
-
-function tagMessageNode(div, msgKey, channel, text, type, uid) {
-  if (!div) return div;
-  if (msgKey) div.dataset.msgKey = msgKey;
-  div.dataset.channel = channel || 'chat';
-  div.dataset.msgType = type || 'normal';
-  if (uid) div.dataset.uid = uid;
-  if (typeof text === 'string') div.dataset.msgText = text;
-  return div;
-}
-
 function saSendCasual(journal, text) {
   const name = journal.title || '무제';
   const avatar = saGetAvatar(journal.id);
@@ -292,22 +256,36 @@ function saSendCasual(journal, text) {
   }
 }
 
-function appendCasualMsg(name, text, uid, timestamp, msgKey) {
-  const container = document.getElementById('casual-messages');
-  if (!container) return;
+function buildCasualMsgElement(name, text, uid, timestamp, msgKey) {
   const d = timestamp ? new Date(timestamp) : new Date();
   const time = `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
   const avatarHtml = getAvatarHtml(name, uid || (name === St.myName ? St.myId : null));
   const div = document.createElement('div');
   div.className = 'chat-msg msg-normal';
+  div.dataset.avatarUid = uid || '';
+  div.dataset.avatarName = name || '';
   div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-text">${fmtText(text)}</div></div>`;
-  tagMessageNode(div, msgKey, 'casual', text, 'normal', uid);
   addMsgActions(div, uid, msgKey, 'casual', text, 'normal');
-  appendMessageNode(container, div);
+  return div;
+}
+
+function appendCasualMsg(name, text, uid, timestamp, msgKey) {
+  const div = buildCasualMsgElement(name, text, uid, timestamp, msgKey);
+  queueMessageRender('casual', div, msgKey, true);
   if (typeof _popoutWins !== 'undefined') {
     const av = getPopoutAvatarUrl(name, uid);
-    _popoutWins.filter(w => w && !w.closed).forEach(w => { if (w.addMsg) w.addMsg(name, text, 'normal', 'casual', '', av, time, fmtText(text)); });
+    const renderedTime = div.querySelector('.msg-time')?.textContent || '';
+    _popoutWins.filter(w => w && !w.closed).forEach(w => { if (w.addMsg) w.addMsg(name, text, 'normal', 'casual', '', av, renderedTime, fmtText(text)); });
   }
+}
+
+function replaceCasualMsg(name, text, uid, timestamp, msgKey) {
+  const div = buildCasualMsgElement(name, text, uid, timestamp, msgKey);
+  replaceRenderedMessage('casual', msgKey, div);
+}
+
+function removeCasualMsg(msgKey) {
+  removeRenderedMessage('casual', msgKey);
 }
 
 function sendWhisperMessage(senderName, text, targetUid, targetName) {
@@ -398,27 +376,37 @@ function openLightbox(src) {
 function addLocalMessage(type, name, text) { appendChatMsg(name, text, type); }
 
 function getAvatarHtml(name, uid) {
-  const shape = St.avatarShape === 'circle' ? 'shape-circle' : 'shape-rounded';
   let imgSrc = null;
 
   if (uid) {
     imgSrc = localStorage.getItem('itc_avatar_' + uid);
   }
   if (!imgSrc && name) {
-    imgSrc = window._avatarCache?.[name];
+    imgSrc = window._avatarCache?.[uid] || window._avatarCache?.[name];
   }
 
   const initial = (name || '?')[0].toUpperCase();
   const shape_class = St.avatarShape === 'circle' ? 'shape-circle' : 'shape-rounded';
   const r = St.avatarShape === 'circle' ? '50%' : '6px';
   if (imgSrc) {
-    return `<div class="msg-avatar ${shape_class}"><img src="${imgSrc}" alt="${esc(initial)}" style="border-radius:${r}"></div>`;
+    return `<div class="msg-avatar ${shape_class}" data-avatar-holder="1"><img src="${imgSrc}" alt="${esc(initial)}" style="border-radius:${r}"></div>`;
   }
-  return `<div class="msg-avatar ${shape_class}"><div class="msg-avatar-inner" style="border-radius:${r}">${esc(initial)}</div></div>`;
+  return `<div class="msg-avatar ${shape_class}" data-avatar-holder="1"><div class="msg-avatar-inner" style="border-radius:${r}">${esc(initial)}</div></div>`;
 }
 
-function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId, whisperTo, whisperToName, nameColor, msgKey, channel, standingImg, tokenId, standingLabel) {
-  const container = document.getElementById('chat-messages');
+function rerenderExistingChatAvatars() {
+  document.querySelectorAll('.chat-msg').forEach(div => {
+    const uid = div.dataset.uid || '';
+    const name = div.dataset.name || '';
+    const holder = div.querySelector('[data-avatar-holder="1"]');
+    if (!holder) return;
+    holder.outerHTML = getAvatarHtml(name, uid || null);
+  });
+
+  refreshCasualNickDisplay();
+}
+
+function buildChatMsgElement(name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId, whisperTo, whisperToName, nameColor, msgKey, channel, standingImg, tokenId, standingLabel, imageWide = false) {
   const d = timestamp ? new Date(timestamp) : new Date();
   const time = `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
 
@@ -426,19 +414,15 @@ function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJ
     const div = document.createElement('div');
     div.className = 'chat-msg msg-sys';
     div.innerHTML = `<div class="msg-text">${fmtText(text)}</div>`;
-    tagMessageNode(div, msgKey, channel || 'chat', text, type, uid);
-    appendMessageNode(container, div);
-    return;
+    return div;
   }
 
   if (type === 'dsec') {
     const div = document.createElement('div');
     div.className = 'chat-msg msg-dsec';
     div.innerHTML = `<div class="msg-body"><div class="msg-text">${fmtText(text)}</div></div>`;
-    tagMessageNode(div, msgKey, channel || 'chat', text, type, uid);
     addMsgActions(div, uid, msgKey, channel || 'chat', text, type);
-    appendMessageNode(container, div);
-    return;
+    return div;
   }
 
   if (type === 'whisper') {
@@ -447,83 +431,90 @@ function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJ
     const tagText = isMine ? `→ ${esc(whisperToName || '?')}에게 귓말` : `→ 나에게 귓말`;
     const div = document.createElement('div');
     div.className = 'chat-msg msg-whisper';
+    div.dataset.avatarUid = uid || '';
+    div.dataset.avatarName = name || '';
     div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name">${esc(name)}</span><span class="whisper-tag">${tagText}</span><span class="msg-time">${time}</span></div><div class="msg-text">${fmtText(text)}</div></div>`;
-    tagMessageNode(div, msgKey, channel || 'chat', text, type, uid);
     addMsgActions(div, uid, msgKey, channel || 'chat', text, type);
-    appendMessageNode(container, div);
-    return;
+    return div;
   }
 
   if (type === 'speak-as') {
     const r = St.avatarShape === 'circle' ? '50%' : '6px';
     const sc = St.avatarShape === 'circle' ? 'shape-circle' : 'shape-rounded';
-    const _finalAv = speakAsAvatar || (speakAsJournalId ? saGetAvatar(speakAsJournalId) : null);
-    let avHtml;
-    if (_finalAv) {
-      avHtml = `<div class="msg-avatar ${sc} sa-avatar"><img src="${esc(_finalAv)}" alt="" style="width:38px;height:38px;object-fit:cover;border-radius:${r};display:block"></div>`;
-    } else {
-      avHtml = `<div class="msg-avatar ${sc} sa-avatar"><div class="msg-avatar-inner" style="border-radius:${r}">${esc((name||'?')[0].toUpperCase())}</div></div>`;
-    }
-    const d2 = document.createElement('div');
-    d2.className = 'chat-msg msg-speak-as';
-    const _jColor = nameColor || (speakAsJournalId ? (_allJournals.find(x => x.id === speakAsJournalId)?.nameColor || '') : '');
-    const _nameStyle = _jColor ? ` style="color:${_jColor}"` : '';
-    d2.innerHTML = `${avHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name sa-msg-name"${_nameStyle}>${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-text">${fmtText(text.replace(/@\S+/g,'').trim())}</div></div>`;
-    tagMessageNode(d2, msgKey, channel || 'chat', text, type, uid);
-    addMsgActions(d2, uid, msgKey, channel || 'chat', text, type);
-    appendMessageNode(container, d2);
-    if (!timestamp || Date.now() - timestamp < 5000) {
-      showDialogueBoxFromMsg(name, text, speakAsJournalId, standingImg, tokenId, standingLabel);
-    }
-    return;
+    const finalAvatar = speakAsAvatar || (speakAsJournalId ? saGetAvatar(speakAsJournalId) : null);
+    const avatarHtml = finalAvatar
+      ? `<div class="msg-avatar ${sc} sa-avatar"><img src="${esc(finalAvatar)}" alt="" style="width:38px;height:38px;object-fit:cover;border-radius:${r};display:block"></div>`
+      : `<div class="msg-avatar ${sc} sa-avatar"><div class="msg-avatar-inner" style="border-radius:${r}">${esc((name || '?')[0].toUpperCase())}</div></div>`;
+    const div = document.createElement('div');
+    div.className = 'chat-msg msg-speak-as';
+    const journalColor = nameColor || (speakAsJournalId ? (_allJournals.find(x => x.id === speakAsJournalId)?.nameColor || '') : '');
+    const nameStyle = journalColor ? ` style="color:${journalColor}"` : '';
+    div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name sa-msg-name"${nameStyle}>${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-text">${fmtText(text.replace(/@\S+/g,'').trim())}</div></div>`;
+    addMsgActions(div, uid, msgKey, channel || 'chat', text, type);
+    return div;
   }
+
   if (type === 'speak-as-image') {
     const r = St.avatarShape === 'circle' ? '50%' : '6px';
     const sc = St.avatarShape === 'circle' ? 'shape-circle' : 'shape-rounded';
-    const _finalAv = speakAsAvatar || (speakAsJournalId ? saGetAvatar(speakAsJournalId) : null);
-    let avHtml;
-    if (_finalAv) {
-      avHtml = `<div class="msg-avatar ${sc} sa-avatar"><img src="${esc(_finalAv)}" alt="" style="width:38px;height:38px;object-fit:cover;border-radius:${r};display:block"></div>`;
-    } else {
-      avHtml = `<div class="msg-avatar ${sc} sa-avatar"><div class="msg-avatar-inner" style="border-radius:${r}">${esc((name||'?')[0].toUpperCase())}</div></div>`;
-    }
-    const d2 = document.createElement('div');
-    d2.className = 'chat-msg msg-speak-as msg-image-msg';
-    d2.innerHTML = `${avHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name sa-msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div><img class="msg-image" src="${esc(text)}" alt="첨부 이미지" loading="lazy" decoding="async" style="display:block;max-width:220px;height:auto;margin-top:5px;border-radius:var(--r);border:1px solid var(--border);cursor:zoom-in" onclick="openLightbox(this.src)"></div>`;
-    tagMessageNode(d2, msgKey, channel || 'chat', text, type, uid);
-    appendMessageNode(container, d2);
-    return;
+    const finalAvatar = speakAsAvatar || (speakAsJournalId ? saGetAvatar(speakAsJournalId) : null);
+    const avatarHtml = finalAvatar
+      ? `<div class="msg-avatar ${sc} sa-avatar"><img src="${esc(finalAvatar)}" alt="" style="width:38px;height:38px;object-fit:cover;border-radius:${r};display:block"></div>`
+      : `<div class="msg-avatar ${sc} sa-avatar"><div class="msg-avatar-inner" style="border-radius:${r}">${esc((name || '?')[0].toUpperCase())}</div></div>`;
+    const div = document.createElement('div');
+    div.className = `chat-msg msg-speak-as msg-image-msg${imageWide ? ' msg-image-wide-row' : ''}`;
+    div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name sa-msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div><img class="${getChatImageClassName(imageWide)}" src="${esc(text)}" alt="첨부 이미지" loading="lazy" decoding="async" style="${getChatImageInlineStyle(imageWide)}" onclick="openLightbox(this.src)"></div>`;
+    return div;
   }
 
   const avatarHtml = getAvatarHtml(name, uid || (name === St.myName ? St.myId : null));
 
   if (type === 'image') {
     const div = document.createElement('div');
-    div.className = 'chat-msg msg-image-msg';
-    div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div><img class="msg-image" src="${esc(text)}" alt="첨부 이미지" loading="lazy" decoding="async" style="display:block;max-width:220px;height:auto;margin-top:5px;border-radius:var(--r);border:1px solid var(--border);cursor:zoom-in" onclick="openLightbox(this.src)"></div>`;
-    tagMessageNode(div, msgKey, channel || 'chat', text, type, uid);
-    appendMessageNode(container, div);
-    return;
+    div.className = `chat-msg msg-image-msg${imageWide ? ' msg-image-wide-row' : ''}`;
+    div.dataset.avatarUid = uid || '';
+    div.dataset.avatarName = name || '';
+    div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div><img class="${getChatImageClassName(imageWide)}" src="${esc(text)}" alt="첨부 이미지" loading="lazy" decoding="async" style="${getChatImageInlineStyle(imageWide)}" onclick="openLightbox(this.src)"></div>`;
+    return div;
   }
 
   const div = document.createElement('div');
   div.className = `chat-msg msg-${type}`;
-  const _nc = nameColor ? ` style="color:${nameColor}"` : '';
-  tagMessageNode(div, msgKey, channel || 'chat', text, type, uid);
+  div.dataset.avatarUid = uid || '';
+  div.dataset.avatarName = name || '';
+  const nameStyle = nameColor ? ` style="color:${nameColor}"` : '';
   if (type === 'dice') {
     const diceMatch = text.match(/🎲\s*(.+?)\s*→\s*(\d+)\s*\(([^)]+)\)/);
     if (diceMatch) {
       const formula = diceMatch[1].trim();
       const result = diceMatch[2];
       const rolls = diceMatch[3].trim();
-      div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name"${_nc}>${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-text">${fmtText(text)}</div><div class="dice-card"><div class="dice-card-formula">${esc(formula)}</div><div class="dice-card-result">${esc(result)}</div><div class="dice-card-rolls">${esc(rolls)}</div></div></div>`;
+      div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name"${nameStyle}>${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-text">${fmtText(text)}</div><div class="dice-card"><div class="dice-card-formula">${esc(formula)}</div><div class="dice-card-result">${esc(result)}</div><div class="dice-card-rolls">${esc(rolls)}</div></div></div>`;
     } else {
-      div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name"${_nc}>${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-text">${fmtText(text)}</div></div>`;
+      div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name"${nameStyle}>${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-text">${fmtText(text)}</div></div>`;
     }
   } else {
-    div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name"${_nc}>${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-text">${fmtText(text)}</div></div>`;
+    div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name"${nameStyle}>${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-text">${fmtText(text)}</div></div>`;
   }
   addMsgActions(div, uid, msgKey, channel || 'chat', text, type);
-  appendMessageNode(container, div);
+  return div;
 }
 
+function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId, whisperTo, whisperToName, nameColor, msgKey, channel, standingImg, tokenId, standingLabel, imageWide = false) {
+  const actualChannel = channel || 'chat';
+  const div = buildChatMsgElement(name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId, whisperTo, whisperToName, nameColor, msgKey, actualChannel, standingImg, tokenId, standingLabel, imageWide);
+  queueMessageRender(actualChannel, div, msgKey, true);
+  if (type === 'speak-as' && (!timestamp || Date.now() - timestamp < 5000)) {
+    showDialogueBoxFromMsg(name, text, speakAsJournalId, standingImg, tokenId, standingLabel);
+  }
+}
+
+function replaceChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId, whisperTo, whisperToName, nameColor, msgKey, channel, standingImg, tokenId, standingLabel, imageWide = false) {
+  const actualChannel = channel || 'chat';
+  const div = buildChatMsgElement(name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId, whisperTo, whisperToName, nameColor, msgKey, actualChannel, standingImg, tokenId, standingLabel, imageWide);
+  replaceRenderedMessage(actualChannel, msgKey, div);
+}
+
+function removeChatMsg(msgKey, channel = 'chat') {
+  removeRenderedMessage(channel, msgKey);
+}

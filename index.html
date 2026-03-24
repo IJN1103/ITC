@@ -14,7 +14,8 @@ import { initializeApp }        from "https://www.gstatic.com/firebasejs/10.12.0
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword,
          updateProfile, onAuthStateChanged, signOut, GoogleAuthProvider, signInWithPopup }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-import { getDatabase, ref, set, push, onValue, update, remove, get, serverTimestamp, onDisconnect, query, limitToLast, onChildAdded, onChildChanged, onChildRemoved }
+import { getDatabase, ref, set, push, onValue, update, remove, get, serverTimestamp, onDisconnect,
+         query, limitToLast, onChildAdded, onChildChanged, onChildRemoved }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
 // ↓↓↓ 여기에 Firebase 설정을 붙여넣으세요 ↓↓↓
@@ -55,7 +56,8 @@ if (CONFIGURED) {
 /* 전역 노출 */
 window._FB = {
   CONFIGURED, auth, db,
-  ref, set, push, onValue, update, remove, get, serverTimestamp, onDisconnect, query, limitToLast, onChildAdded, onChildChanged, onChildRemoved,
+  ref, set, push, onValue, update, remove, get, serverTimestamp, onDisconnect,
+  query, limitToLast, onChildAdded, onChildChanged, onChildRemoved,
   createUserWithEmailAndPassword, signInWithEmailAndPassword,
   updateProfile, onAuthStateChanged, signOut,
   GoogleAuthProvider, signInWithPopup,
