@@ -3,164 +3,6 @@
  * 채팅, 잡담, 귓말, 타이핑, 이미지 업로드
  */
 
-
-let _pendingChatImages = [];
-const MAX_PENDING_CHAT_IMAGES = 4;
-let _chatImageWideMode = false;
-
-function ensureChatImageInputConfig() {
-  const input = document.getElementById('chat-img-input');
-  if (input) input.multiple = true;
-  return input;
-}
-
-function loadChatImageWideMode() {
-  try {
-    _chatImageWideMode = localStorage.getItem('itc_chat_image_wide_mode') === '1';
-  } catch (e) {
-    _chatImageWideMode = false;
-  }
-}
-
-function setChatImageWideMode(enabled) {
-  _chatImageWideMode = !!enabled;
-  try {
-    localStorage.setItem('itc_chat_image_wide_mode', _chatImageWideMode ? '1' : '0');
-  } catch (e) {}
-  const checkbox = document.getElementById('chat-image-wide-toggle');
-  if (checkbox) checkbox.checked = _chatImageWideMode;
-}
-
-function getChatImageWideMode() {
-  const checkbox = document.getElementById('chat-image-wide-toggle');
-  return checkbox ? !!checkbox.checked : _chatImageWideMode;
-}
-
-function getChatImageInlineStyle(isWide) {
-  if (isWide) {
-    return 'display:block;width:100%;max-width:none;height:auto;margin-top:5px;border-radius:var(--r);border:1px solid var(--border);cursor:zoom-in';
-  }
-  return 'display:block;max-width:220px;width:auto;height:auto;margin-top:5px;border-radius:var(--r);border:1px solid var(--border);cursor:zoom-in';
-}
-
-function getChatImageClassName(isWide) {
-  return `msg-image${isWide ? ' is-wide' : ''}`;
-}
-
-function getPendingChatImageBox() {
-  const inputWrap = document.querySelector('.chat-input-wrap');
-  if (!inputWrap || !inputWrap.parentNode) return null;
-  let box = document.getElementById('chat-pending-image-box');
-  if (!box) {
-    box = document.createElement('div');
-    box.id = 'chat-pending-image-box';
-    box.style.display = 'none';
-    box.style.margin = '0 10px 8px';
-    box.style.padding = '8px';
-    box.style.border = '1px solid var(--border)';
-    box.style.borderRadius = '10px';
-    box.style.background = 'var(--panel, rgba(255,255,255,0.04))';
-    box.innerHTML = `
-      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:8px;">
-        <div style="min-width:0;">
-          <div id="chat-pending-image-summary" style="font-size:12px;opacity:.8;">0장 선택됨</div>
-          <label style="display:inline-flex;align-items:center;gap:6px;margin-top:6px;font-size:11px;opacity:.82;cursor:pointer;user-select:none;">
-            <input id="chat-image-wide-toggle" type="checkbox" onchange="setChatImageWideMode(this.checked)" style="margin:0;accent-color:var(--accent,#8b5cf6);">
-            <span>가로폭 채우기</span>
-          </label>
-        </div>
-        <button type="button" onclick="clearPendingChatImage()" title="선택한 이미지 전체 취소" style="border:1px solid var(--border);background:transparent;color:inherit;border-radius:8px;padding:4px 8px;cursor:pointer;line-height:1;">전체 취소</button>
-      </div>
-      <div id="chat-pending-image-list" style="display:flex;flex-wrap:wrap;gap:8px;"></div>
-    `;
-    inputWrap.parentNode.insertBefore(box, inputWrap);
-  }
-  const checkbox = document.getElementById('chat-image-wide-toggle');
-  if (checkbox) checkbox.checked = _chatImageWideMode;
-  return box;
-}
-
-function refreshPendingChatImageBox() {
-  ensureChatImageInputConfig();
-  const box = getPendingChatImageBox();
-  if (!box) return;
-  const list = document.getElementById('chat-pending-image-list');
-  const summary = document.getElementById('chat-pending-image-summary');
-  if (!_pendingChatImages.length) {
-    box.style.display = 'none';
-    if (list) list.innerHTML = '';
-    return;
-  }
-  if (summary) {
-    const count = _pendingChatImages.length;
-    summary.textContent = `${count}장 선택됨`; 
-  }
-  if (list) {
-    list.innerHTML = _pendingChatImages.map((item, index) => `
-      <div style="width:84px;min-width:84px;">
-        <div style="position:relative;">
-          <img src="${item.dataUrl}" alt="선택한 이미지 ${index + 1}" style="display:block;width:84px;height:84px;object-fit:cover;border-radius:8px;border:1px solid var(--border);background:#111;">
-          <button type="button" onclick="removePendingChatImage(${index})" title="이 이미지 취소" style="position:absolute;top:4px;right:4px;border:1px solid rgba(255,255,255,.15);background:rgba(0,0,0,.65);color:#fff;border-radius:999px;width:22px;height:22px;cursor:pointer;line-height:1;">✕</button>
-        </div>
-        <div style="font-size:11px;opacity:.85;margin-top:4px;word-break:break-all;">${esc(item.fileName || `이미지 ${index + 1}`)}</div>
-      </div>
-    `).join('');
-  }
-  box.style.display = 'block';
-}
-
-function addPendingChatImages(items) {
-  if (!items.length) return;
-  const available = MAX_PENDING_CHAT_IMAGES - _pendingChatImages.length;
-  if (available <= 0) {
-    showToast('이미지는 한 번에 최대 4장까지 보낼 수 있어요.');
-    return;
-  }
-  const accepted = items.slice(0, available);
-  _pendingChatImages = _pendingChatImages.concat(accepted);
-  if (accepted.length < items.length) {
-    showToast('이미지는 한 번에 최대 4장까지 보낼 수 있어요.');
-  }
-  refreshPendingChatImageBox();
-}
-
-function removePendingChatImage(index) {
-  if (index < 0 || index >= _pendingChatImages.length) return;
-  _pendingChatImages.splice(index, 1);
-  refreshPendingChatImageBox();
-}
-
-function clearPendingChatImage() {
-  _pendingChatImages = [];
-  const input = ensureChatImageInputConfig();
-  if (input) input.value = '';
-  refreshPendingChatImageBox();
-}
-
-function sendPreparedChatImage(dataUrl, wideMode = false) {
-  if (!dataUrl) return;
-  const saJId = St.speakAsJournalId;
-  const saJournal = saJId ? loadJournals().find(x => x.id === saJId) : null;
-  const saName = saJournal ? (saJournal.title || '무제') : null;
-  const saAvatar = saJId ? saGetAvatar(saJId) : null;
-
-  if (saJournal) {
-    const msg = {
-      name: saName, text: dataUrl, type: 'speak-as-image',
-      uid: St.myId, time: Date.now(), imageWide: !!wideMode,
-      speakAsAvatar: saAvatar, speakAsJournalId: saJId
-    };
-    if (window._FB?.CONFIGURED) {
-      const { db, ref, push } = window._FB;
-      push(ref(db, `rooms/${St.roomCode}/chat`), msg);
-    } else {
-      appendChatMsg(msg.name, dataUrl, 'speak-as-image', St.myId, msg.time, saAvatar, saJId, null, null, null, null, null, null, null, null, !!wideMode);
-    }
-  } else {
-    sendMessage(St.myName, dataUrl, 'image', { imageWide: !!wideMode });
-  }
-}
-
 function chatKeydown(e) {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); }
 }
@@ -179,17 +21,18 @@ function toggleDescMode() {
 }
 
 function sendChat() {
+  ensureChatUploadUi();
   const inp = document.getElementById('chat-input');
-  const raw = inp.value.trim();
-  const pendingImages = _pendingChatImages.slice();
-  if (!raw && !pendingImages.length) return;
+  const raw = (inp?.value || '').trim();
+  const hasPendingImages = Array.isArray(window._pendingChatImages) && window._pendingChatImages.length > 0;
+
+  if (!raw && !hasPendingImages) return;
   clearTypingState();
 
-  if (pendingImages.length) {
-    const imageWide = getChatImageWideMode();
-    pendingImages.forEach(item => sendPreparedChatImage(item.dataUrl, imageWide));
-    clearPendingChatImage();
-    if (!raw) return;
+  if (hasPendingImages) flushPendingChatImages();
+  if (!raw) {
+    if (inp) inp.value = '';
+    return;
   }
 
   if (St.descMode && hasPerm('sendDesc')) {
@@ -275,14 +118,14 @@ function sendChat() {
   sendMessage(St.myName, raw, 'normal');
 }
 
-function sendMessage(name, text, type = 'normal', extra = null) {
-  const msg = { name, text, type, uid: St.myId, time: Date.now(), ...(extra || {}) };
+function sendMessage(name, text, type = 'normal', extra = {}) {
+  const msg = { name, text, type, uid: St.myId, time: Date.now(), ...extra };
   if (type === 'normal' && St.myNameColor) msg.nameColor = St.myNameColor;
   if (window._FB?.CONFIGURED) {
     const { db, ref, push } = window._FB;
     push(ref(db, `rooms/${St.roomCode}/chat`), msg);
   } else {
-    appendChatMsg(name, text, type, St.myId, null, null, null, null, null, msg.nameColor || null, null, null, null, null, null, !!msg.imageWide);
+    appendChatMsg(name, text, type, St.myId, null, null, null, null, null, msg.nameColor || null);
   }
 }
 
@@ -430,8 +273,6 @@ function appendCasualMsg(name, text, uid, timestamp, msgKey) {
   const avatarHtml = getAvatarHtml(name, uid || (name === St.myName ? St.myId : null));
   const div = document.createElement('div');
   div.className = 'chat-msg msg-normal';
-  div.dataset.avatarUid = uid || '';
-  div.dataset.avatarName = name || '';
   div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-text">${fmtText(text)}</div></div>`;
   addMsgActions(div, uid, msgKey, 'casual', text, 'normal');
   container.appendChild(div);
@@ -456,78 +297,162 @@ function sendWhisperMessage(senderName, text, targetUid, targetName) {
   }
 }
 
-function readFileAsDataUrl(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = ev => resolve(ev.target.result);
-    reader.onerror = () => reject(new Error('파일을 읽는 중 오류가 발생했어요.'));
-    reader.readAsDataURL(file);
+function ensureChatUploadUi() {
+  const inputWrap = document.querySelector('.chat-input-wrap');
+  if (!inputWrap) return;
+  const fileInput = document.getElementById('chat-img-input');
+  if (fileInput && !fileInput.hasAttribute('multiple')) fileInput.setAttribute('multiple', 'multiple');
+  let preview = document.getElementById('chat-upload-preview');
+  if (!preview) {
+    preview = document.createElement('div');
+    preview.id = 'chat-upload-preview';
+    preview.className = 'chat-upload-preview';
+    inputWrap.parentNode.insertBefore(preview, inputWrap);
+  }
+  renderPendingChatImages();
+}
+
+function renderPendingChatImages() {
+  const preview = document.getElementById('chat-upload-preview');
+  if (!preview) return;
+  const items = Array.isArray(window._pendingChatImages) ? window._pendingChatImages : [];
+  if (!items.length) {
+    preview.innerHTML = '';
+    preview.style.display = 'none';
+    return;
+  }
+  preview.style.display = 'block';
+  const fillChecked = items.every(item => !!item.fillWidth);
+  preview.innerHTML = `
+    <div class="chat-upload-toprow">
+      <span class="chat-upload-count">${items.length}장 선택됨</span>
+      <label class="chat-fill-toggle"><input type="checkbox" id="chat-fill-width-toggle" ${fillChecked ? 'checked' : ''}> <span>가로폭 채우기</span></label>
+    </div>
+    <div class="chat-upload-grid">${items.map((item, idx) => `
+      <div class="chat-upload-item">
+        <img src="${item.dataUrl}" alt="선택한 이미지">
+        <button type="button" class="chat-upload-remove" onclick="removePendingChatImage(${idx})">✕</button>
+      </div>
+    `).join('')}</div>
+  `;
+  document.getElementById('chat-fill-width-toggle')?.addEventListener('change', e => {
+    const checked = !!e.target.checked;
+    (window._pendingChatImages || []).forEach(item => item.fillWidth = checked);
   });
 }
 
-function compressImageDataUrl(dataUrl) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => {
-      const MAX = 800;
-      let w = img.width, h = img.height;
-      if (w > MAX || h > MAX) {
-        const r = Math.min(MAX / w, MAX / h);
-        w = Math.round(w * r);
-        h = Math.round(h * r);
-      }
-      const canvas = document.createElement('canvas');
-      canvas.width = w;
-      canvas.height = h;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) {
-        reject(new Error('이미지 처리에 실패했어요.'));
-        return;
-      }
-      ctx.drawImage(img, 0, 0, w, h);
-      resolve(canvas.toDataURL('image/jpeg', 0.82));
-    };
-    img.onerror = () => reject(new Error('이미지를 불러오지 못했어요.'));
-    img.src = dataUrl;
-  });
+function removePendingChatImage(index) {
+  if (!Array.isArray(window._pendingChatImages)) window._pendingChatImages = [];
+  window._pendingChatImages.splice(index, 1);
+  renderPendingChatImages();
 }
 
-async function handleChatImageUpload(input) {
-  ensureChatImageInputConfig();
+function clearPendingChatImages() {
+  window._pendingChatImages = [];
+  renderPendingChatImages();
+  const input = document.getElementById('chat-img-input');
+  if (input) input.value = '';
+}
+
+function queueChatImage(dataUrl, fillWidth) {
+  if (!Array.isArray(window._pendingChatImages)) window._pendingChatImages = [];
+  if (window._pendingChatImages.length >= 4) {
+    showToast('이미지는 한 번에 최대 4장까지 선택할 수 있어요.');
+    return;
+  }
+  window._pendingChatImages.push({ dataUrl, fillWidth: !!fillWidth });
+  renderPendingChatImages();
+}
+
+function flushPendingChatImages() {
+  const items = Array.isArray(window._pendingChatImages) ? [...window._pendingChatImages] : [];
+  if (!items.length) return;
+
+  const saJId = St.speakAsJournalId;
+  const saJournal = saJId ? loadJournals().find(x => x.id === saJId) : null;
+  const saName = saJournal ? (saJournal.title || '무제') : null;
+  const saAvatar = saJId ? saGetAvatar(saJId) : null;
+
+  items.forEach(item => {
+    if (saJournal) {
+      const msg = {
+        name: saName,
+        text: item.dataUrl,
+        type: 'speak-as-image',
+        uid: St.myId,
+        time: Date.now(),
+        speakAsAvatar: saAvatar,
+        speakAsJournalId: saJId,
+        fillWidth: !!item.fillWidth
+      };
+      if (window._FB?.CONFIGURED) {
+        const { db, ref, push } = window._FB;
+        push(ref(db, `rooms/${St.roomCode}/chat`), msg);
+      } else {
+        appendChatMsg(msg.name, msg.text, msg.type, St.myId, msg.time, saAvatar, saJId, null, null, null, null, null, null, null, null, !!msg.fillWidth);
+      }
+    } else {
+      sendMessage(St.myName, item.dataUrl, 'image', { fillWidth: !!item.fillWidth });
+    }
+  });
+
+  clearPendingChatImages();
+}
+
+function handleChatImageUpload(input) {
+  ensureChatUploadUi();
   const files = Array.from(input.files || []);
   if (!files.length) return;
 
-  const remainingSlots = MAX_PENDING_CHAT_IMAGES - _pendingChatImages.length;
-  if (remainingSlots <= 0) {
-    showToast('이미지는 한 번에 최대 4장까지 보낼 수 있어요.');
+  if (!Array.isArray(window._pendingChatImages)) window._pendingChatImages = [];
+  const remain = 4 - window._pendingChatImages.length;
+  if (remain <= 0) {
+    showToast('이미지는 한 번에 최대 4장까지 선택할 수 있어요.');
     input.value = '';
     return;
   }
 
-  const selectedFiles = files.slice(0, remainingSlots);
-  if (selectedFiles.length < files.length) {
-    showToast('이미지는 한 번에 최대 4장까지 보낼 수 있어요.');
+  if (files.length > remain) {
+    showToast(`이미지는 한 번에 최대 4장까지 선택할 수 있어요. 지금은 ${remain}장만 추가됩니다.`);
   }
 
-  const prepared = [];
-  for (const file of selectedFiles) {
+  const fillWidth = !!document.getElementById('chat-fill-width-toggle')?.checked;
+
+  files.slice(0, remain).forEach(file => {
     const isGif = file.type === 'image/gif';
     const maxSize = isGif ? 5 * 1024 * 1024 : 3 * 1024 * 1024;
     if (file.size > maxSize) {
-      showToast(`${file.name} 파일은 ${isGif ? '5MB 이하 GIF' : '3MB 이하 이미지'}만 가능해요.`);
-      continue;
+      showToast(isGif ? 'GIF는 5MB 이하만 가능해요.' : '이미지는 3MB 이하만 가능해요.');
+      return;
     }
-    try {
-      const dataUrl = await readFileAsDataUrl(file);
-      const finalDataUrl = isGif ? dataUrl : await compressImageDataUrl(dataUrl);
-      prepared.push({ dataUrl: finalDataUrl, fileName: file.name });
-    } catch (err) {
-      console.error(err);
-      showToast(`${file.name} 이미지를 준비하지 못했어요.`);
-    }
-  }
 
-  addPendingChatImages(prepared);
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const sourceDataUrl = ev.target.result;
+      if (isGif) {
+        queueChatImage(sourceDataUrl, fillWidth);
+        return;
+      }
+
+      const img = new Image();
+      img.onload = () => {
+        const MAX = 1600;
+        let w = img.width, h = img.height;
+        if (w > MAX || h > MAX) {
+          const r = Math.min(MAX / w, MAX / h);
+          w = Math.round(w * r);
+          h = Math.round(h * r);
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        queueChatImage(canvas.toDataURL('image/jpeg', 0.88), fillWidth);
+      };
+      img.src = sourceDataUrl;
+    };
+    reader.readAsDataURL(file);
+  });
   input.value = '';
 }
 
@@ -541,19 +466,17 @@ function openLightbox(src) {
 
 function addLocalMessage(type, name, text) { appendChatMsg(name, text, type); }
 
-function resolveAvatarSrc(name, uid) {
-  if (uid && St.players?.[uid]?.avatar) return St.players[uid].avatar;
-  if (uid && window._avatarCache?.[uid]) return window._avatarCache[uid];
-  if (uid) {
-    const localAvatar = localStorage.getItem('itc_avatar_' + uid);
-    if (localAvatar) return localAvatar;
-  }
-  if (name && window._avatarCache?.[name]) return window._avatarCache[name];
-  return null;
-}
-
 function getAvatarHtml(name, uid) {
-  const imgSrc = resolveAvatarSrc(name, uid);
+  const shape = St.avatarShape === 'circle' ? 'shape-circle' : 'shape-rounded';
+  let imgSrc = null;
+
+  if (uid) {
+    imgSrc = localStorage.getItem('itc_avatar_' + uid);
+  }
+  if (!imgSrc && name) {
+    imgSrc = window._avatarCache?.[name];
+  }
+
   const initial = (name || '?')[0].toUpperCase();
   const shape_class = St.avatarShape === 'circle' ? 'shape-circle' : 'shape-rounded';
   const r = St.avatarShape === 'circle' ? '50%' : '6px';
@@ -563,17 +486,7 @@ function getAvatarHtml(name, uid) {
   return `<div class="msg-avatar ${shape_class}"><div class="msg-avatar-inner" style="border-radius:${r}">${esc(initial)}</div></div>`;
 }
 
-function refreshRenderedAvatars() {
-  document.querySelectorAll('.chat-msg[data-avatar-name]').forEach(el => {
-    const name = el.dataset.avatarName || '';
-    const uid = el.dataset.avatarUid || '';
-    const avatarEl = el.querySelector('.msg-avatar');
-    if (!avatarEl) return;
-    avatarEl.outerHTML = getAvatarHtml(name, uid);
-  });
-}
-
-function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId, whisperTo, whisperToName, nameColor, msgKey, channel, standingImg, tokenId, standingLabel, imageWide = false) {
+function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId, whisperTo, whisperToName, nameColor, msgKey, channel, standingImg, tokenId, standingLabel, fillWidth = false) {
   const container = document.getElementById('chat-messages');
   const d = timestamp ? new Date(timestamp) : new Date();
   const time = `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
@@ -603,8 +516,6 @@ function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJ
     const tagText = isMine ? `→ ${esc(whisperToName || '?')}에게 귓말` : `→ 나에게 귓말`;
     const div = document.createElement('div');
     div.className = 'chat-msg msg-whisper';
-    div.dataset.avatarUid = uid || '';
-    div.dataset.avatarName = name || '';
     div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name">${esc(name)}</span><span class="whisper-tag">${tagText}</span><span class="msg-time">${time}</span></div><div class="msg-text">${fmtText(text)}</div></div>`;
     addMsgActions(div, uid, msgKey, channel || 'chat', text, type);
     container.appendChild(div);
@@ -646,11 +557,11 @@ function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJ
       avHtml = `<div class="msg-avatar ${sc} sa-avatar"><div class="msg-avatar-inner" style="border-radius:${r}">${esc((name||'?')[0].toUpperCase())}</div></div>`;
     }
     const d2 = document.createElement('div');
-    d2.className = `chat-msg msg-speak-as msg-image-msg${imageWide ? ' msg-image-wide-row' : ''}`;
-    if (imageWide) {
-      d2.innerHTML = `${avHtml}<div class="msg-wide-head"><div class="msg-meta"><span class="msg-name sa-msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div></div><div class="msg-wide-image-wrap"><img class="${getChatImageClassName(imageWide)}" src="${esc(text)}" alt="첨부 이미지" style="${getChatImageInlineStyle(imageWide)}" onclick="openLightbox(this.src)"></div>`;
+    d2.className = `chat-msg msg-speak-as msg-image-msg${fillWidth ? ' msg-image-fill' : ''}`;
+    if (fillWidth) {
+      d2.innerHTML = `<div class="msg-full-head">${avHtml}<div class="msg-meta"><span class="msg-name sa-msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div></div><div class="msg-body msg-body-fill"><img class="msg-image msg-image-fill" src="${esc(text)}" alt="첨부 이미지" onclick="openLightbox(this.src)"></div>`;
     } else {
-      d2.innerHTML = `${avHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name sa-msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div><img class="${getChatImageClassName(imageWide)}" src="${esc(text)}" alt="첨부 이미지" style="${getChatImageInlineStyle(imageWide)}" onclick="openLightbox(this.src)"></div>`;
+      d2.innerHTML = `${avHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name sa-msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div><img class="msg-image" src="${esc(text)}" alt="첨부 이미지" onclick="openLightbox(this.src)"></div>`;
     }
     container.appendChild(d2);
     container.scrollTop = container.scrollHeight;
@@ -661,13 +572,11 @@ function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJ
 
   if (type === 'image') {
     const div = document.createElement('div');
-    div.className = `chat-msg msg-image-msg${imageWide ? ' msg-image-wide-row' : ''}`;
-    div.dataset.avatarUid = uid || '';
-    div.dataset.avatarName = name || '';
-    if (imageWide) {
-      div.innerHTML = `${avatarHtml}<div class="msg-wide-head"><div class="msg-meta"><span class="msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div></div><div class="msg-wide-image-wrap"><img class="${getChatImageClassName(imageWide)}" src="${esc(text)}" alt="첨부 이미지" style="${getChatImageInlineStyle(imageWide)}" onclick="openLightbox(this.src)"></div>`;
+    div.className = `chat-msg msg-image-msg${fillWidth ? ' msg-image-fill' : ''}`;
+    if (fillWidth) {
+      div.innerHTML = `<div class="msg-full-head">${avatarHtml}<div class="msg-meta"><span class="msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div></div><div class="msg-body msg-body-fill"><img class="msg-image msg-image-fill" src="${esc(text)}" alt="첨부 이미지" onclick="openLightbox(this.src)"></div>`;
     } else {
-      div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div><img class="${getChatImageClassName(imageWide)}" src="${esc(text)}" alt="첨부 이미지" style="${getChatImageInlineStyle(imageWide)}" onclick="openLightbox(this.src)"></div>`;
+      div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div><img class="msg-image" src="${esc(text)}" alt="첨부 이미지" onclick="openLightbox(this.src)"></div>`;
     }
     container.appendChild(div);
     container.scrollTop = container.scrollHeight;
@@ -676,8 +585,6 @@ function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJ
 
   const div = document.createElement('div');
   div.className = `chat-msg msg-${type}`;
-  div.dataset.avatarUid = uid || '';
-  div.dataset.avatarName = name || '';
   const _nc = nameColor ? ` style="color:${nameColor}"` : '';
   if (type === 'dice') {
     const diceMatch = text.match(/🎲\s*(.+?)\s*→\s*(\d+)\s*\(([^)]+)\)/);
@@ -698,9 +605,5 @@ function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJ
 }
 
 
-window.clearPendingChatImage = clearPendingChatImage;
-window.removePendingChatImage = removePendingChatImage;
-window.setChatImageWideMode = setChatImageWideMode;
 
-loadChatImageWideMode();
-ensureChatImageInputConfig();
+setTimeout(() => { try { ensureChatUploadUi(); } catch (e) {} }, 0);

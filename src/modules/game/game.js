@@ -23,6 +23,14 @@ function setupFirebaseListeners() {
       document.getElementById('screen-lobby').style.display = 'flex';
       return;
     }
+    if (!window._avatarCache) window._avatarCache = {};
+    Object.entries(players).forEach(([uid, p]) => {
+      if (p && p.avatar) {
+        try { localStorage.setItem('itc_avatar_' + uid, p.avatar); } catch(e) {}
+        window._avatarCache[uid] = p.avatar;
+        if (p.name) window._avatarCache[p.name] = p.avatar;
+      }
+    });
     renderPlayers(players);
   });
 
@@ -49,7 +57,7 @@ function setupFirebaseListeners() {
           m.name, m.text, m.type || 'normal', m.uid, m.time, 
           m.speakAsAvatar || null, m.speakAsJournalId || null, 
           m.whisperTo || null, m.whisperToName || null, m.nameColor || null, 
-          m._key, 'chat', m.standingImg || null, m.tokenId || null, m.standingLabel || null, !!m.imageWide
+          m._key, 'chat', m.standingImg || null, m.tokenId || null, m.standingLabel || null, !!m.fillWidth
         );
         _processedChatKeys.add(m._key);
       }
@@ -158,11 +166,25 @@ async function enterGame() {
   if (!window._avatarCache) window._avatarCache = {};
   const myAv = localStorage.getItem('itc_avatar_' + St.myId);
   if (myAv) {
-    window._avatarCache[St.myId] = myAv;
     window._avatarCache[St.myName] = myAv;
-    if (window._FB?.CONFIGURED && St.roomCode) {
-      window._FB.update(window._FB.ref(window._FB.db, `rooms/${St.roomCode}/players/${St.myId}`), { avatar: myAv }).catch(()=>{});
+    // 내가 방에 들어올 때 사진 데이터베이스(avatars)에 내 프사를 올립니다.
+    if (window._FB?.CONFIGURED) {
+      window._FB.set(window._FB.ref(window._FB.db, `rooms/${St.roomCode}/avatars/${St.myId}`), myAv).catch(()=>{});
     }
+  }
+
+  // 🔥 [새로 추가된 마법의 로직] 2초마다 내 프사 변경을 감지해서 자동으로 남들에게 쏴줍니다.
+  if (!window._avatarWatcher) {
+    let _lastAv = myAv;
+    window._avatarWatcher = setInterval(() => {
+      if (!St.roomCode || !window._FB?.CONFIGURED) return;
+      const currentAv = localStorage.getItem('itc_avatar_' + St.myId);
+      if (currentAv && currentAv !== _lastAv) {
+        _lastAv = currentAv;
+        window._avatarCache[St.myName] = currentAv;
+        window._FB.set(window._FB.ref(window._FB.db, `rooms/${St.roomCode}/avatars/${St.myId}`), currentAv).catch(()=>{});
+      }
+    }, 2000);
   }
 
   addLocalMessage('system', '', `${St.myName}님이 입장했습니다 — ${SYS_LABELS[St.system]}`);
@@ -184,33 +206,6 @@ function addPlayerChip(id, name, isMe, role, online) {
   row.appendChild(chip);
 }
 
-function cacheAvatarForPlayer(id, player) {
-  const avatar = player?.avatar || '';
-  if (!avatar) return;
-  if (!window._avatarCache) window._avatarCache = {};
-  window._avatarCache[id] = avatar;
-  if (player.name) window._avatarCache[player.name] = avatar;
-  try { localStorage.setItem('itc_avatar_' + id, avatar); } catch(e) {}
-}
-
-function hydrateMissingPlayerAvatars(players) {
-  if (!window._FB?.CONFIGURED) return;
-  const { db, ref, get, update } = window._FB;
-  Object.entries(players).forEach(([id, p]) => {
-    if (p?.avatar) return;
-    get(ref(db, `users/${id}/profile/avatar`)).then(snap => {
-      const avatar = snap.val();
-      if (!avatar) return;
-      cacheAvatarForPlayer(id, { ...p, avatar });
-      const msgEls = document.querySelectorAll(`.chat-msg[data-avatar-uid="${id}"]`);
-      if (msgEls.length && typeof refreshRenderedAvatars === 'function') refreshRenderedAvatars();
-      if (St.roomCode && id === St.myId) {
-        update(ref(db, `rooms/${St.roomCode}/players/${id}`), { avatar }).catch(() => {});
-      }
-    }).catch(() => {});
-  });
-}
-
 function renderPlayers(players) {
   document.getElementById('players-row').innerHTML = '';
   St.players = players;
@@ -221,17 +216,11 @@ function renderPlayers(players) {
   Object.entries(players).forEach(([id, p]) => {
     const online = p.online || id === St.myId;
     addPlayerChip(id, p.name, id === St.myId, p.role, online);
-    cacheAvatarForPlayer(id, p);
-
-    const localAv = localStorage.getItem('itc_avatar_' + id);
-    if (!p.avatar && localAv) {
-      window._avatarCache[id] = localAv;
-      if (p.name) window._avatarCache[p.name] = localAv;
-    }
+    
+    // 로컬에 백업해둔 프사가 있다면 일단 표시합니다. (실시간 교체는 맨 위 리스너가 담당)
+    const av = localStorage.getItem('itc_avatar_' + id);
+    if (av) window._avatarCache[p.name] = av;
   });
-
-  hydrateMissingPlayerAvatars(players);
-  if (typeof refreshRenderedAvatars === 'function') refreshRenderedAvatars();
 }
 
 async function initCharacter(sys) {
