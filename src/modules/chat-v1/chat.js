@@ -3,166 +3,8 @@
  * 채팅, 잡담, 귓말, 타이핑, 이미지 업로드
  */
 
-let _pendingChatImages = [];
-let _pendingWideMode = false;
-const MAX_PENDING_CHAT_IMAGES = 4;
-
-function getPendingUploadHost() {
-  const inputWrap = document.querySelector('.chat-input-wrap');
-  if (!inputWrap || !inputWrap.parentElement) return null;
-  return inputWrap.parentElement;
-}
-
-function ensurePendingUploadBox() {
-  const host = getPendingUploadHost();
-  if (!host) return null;
-  let box = document.getElementById('chat-pending-upload-box');
-  if (box) return box;
-  box = document.createElement('div');
-  box.id = 'chat-pending-upload-box';
-  box.className = 'chat-pending-upload-box';
-  host.insertBefore(box, document.querySelector('.chat-input-wrap'));
-  return box;
-}
-
-function renderPendingUploadBox() {
-  const box = ensurePendingUploadBox();
-  if (!box) return;
-  if (!_pendingChatImages.length) {
-    box.innerHTML = '';
-    box.style.display = 'none';
-    return;
-  }
-  box.style.display = 'block';
-  const thumbs = _pendingChatImages.map(item => `
-    <div class="chat-pending-thumb">
-      <img src="${esc(item.preview)}" alt="선택 이미지">
-      <button type="button" class="chat-pending-remove" onclick="removePendingChatImage('${item.id}')">✕</button>
-    </div>
-  `).join('');
-  box.innerHTML = `
-    <div class="chat-pending-top">
-      <div class="chat-pending-count">${_pendingChatImages.length}장 선택됨</div>
-      <label class="chat-wide-toggle">
-        <input type="checkbox" ${_pendingWideMode ? 'checked' : ''} onchange="togglePendingWideMode(this.checked)">
-        <span>가로폭 채우기</span>
-      </label>
-    </div>
-    <div class="chat-pending-grid">${thumbs}</div>
-  `;
-}
-
-function togglePendingWideMode(checked) {
-  _pendingWideMode = !!checked;
-  _pendingChatImages.forEach(item => item.imageWide = _pendingWideMode);
-  renderPendingUploadBox();
-}
-
-function removePendingChatImage(id) {
-  const removed = _pendingChatImages.find(item => item.id === id);
-  if (removed?.preview?.startsWith('blob:')) {
-    try { URL.revokeObjectURL(removed.preview); } catch (e) {}
-  }
-  _pendingChatImages = _pendingChatImages.filter(item => item.id !== id);
-  renderPendingUploadBox();
-}
-
-function clearPendingChatImages() {
-  _pendingChatImages.forEach(item => {
-    if (item?.preview?.startsWith('blob:')) {
-      try { URL.revokeObjectURL(item.preview); } catch (e) {}
-    }
-  });
-  _pendingChatImages = [];
-  renderPendingUploadBox();
-}
-
-function scrollChatToLatest(force = false) {
-  const paneId = _activeRightTab === 'casual' ? 'casual-messages' : 'chat-messages';
-  const container = document.getElementById(paneId);
-  if (!container) return;
-  const nearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 120;
-  if (force || nearBottom) scrollChatToLatest();
-}
-
-async function prepareUploadDataUrl(file) {
-  const isGif = file.type === 'image/gif';
-  return await new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error('read-failed'));
-    reader.onload = ev => {
-      const dataUrl = ev.target.result;
-      if (isGif) {
-        resolve(dataUrl);
-        return;
-      }
-      const img = new Image();
-      img.onerror = () => reject(new Error('image-load-failed'));
-      img.onload = () => {
-        const MAX = 1600;
-        let w = img.width, h = img.height;
-        if (w > MAX || h > MAX) {
-          const r = Math.min(MAX / w, MAX / h);
-          w = Math.round(w * r);
-          h = Math.round(h * r);
-        }
-        const canvas = document.createElement('canvas');
-        canvas.width = w;
-        canvas.height = h;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, w, h);
-        resolve(canvas.toDataURL('image/jpeg', 0.84));
-      };
-      img.src = dataUrl;
-    };
-    reader.readAsDataURL(file);
-  });
-}
-
-async function sendPendingChatImages() {
-  if (!_pendingChatImages.length) return false;
-  const batch = _pendingChatImages.slice();
-  clearPendingChatImages();
-  const saJId = St.speakAsJournalId;
-  const saJournal = saJId ? loadJournals().find(x => x.id === saJId) : null;
-  const saName = saJournal ? (saJournal.title || '무제') : null;
-  const saAvatar = saJId ? saGetAvatar(saJId) : null;
-
-  for (const item of batch) {
-    try {
-      const dataUrl = await prepareUploadDataUrl(item.file);
-      if (saJournal) {
-        const msg = {
-          name: saName,
-          text: dataUrl,
-          type: 'speak-as-image',
-          uid: St.myId,
-          time: Date.now(),
-          speakAsAvatar: saAvatar,
-          speakAsJournalId: saJId,
-          imageWide: !!item.imageWide,
-        };
-        if (window._FB?.CONFIGURED) {
-          const { db, ref, push } = window._FB;
-          await push(ref(db, `rooms/${St.roomCode}/chat`), msg);
-        } else {
-          appendChatMsg(msg.name, dataUrl, msg.type, St.myId, msg.time, saAvatar, saJId, null, null, null, null, 'chat', null, null, null, !!msg.imageWide);
-        }
-      } else {
-        sendMessage(St.myName, dataUrl, 'image', { imageWide: !!item.imageWide });
-      }
-    } catch (e) {
-      showToast('이미지 전송 중 오류가 발생했어요.');
-    }
-  }
-  return true;
-}
-
 function chatKeydown(e) {
-  if (e.key === 'Enter' && !e.shiftKey) {
-    e.preventDefault();
-    sendChat();
-  }
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); }
 }
 
 function toggleDescMode() {
@@ -178,17 +20,10 @@ function toggleDescMode() {
   }
 }
 
-async function sendChat() {
+function sendChat() {
   const inp = document.getElementById('chat-input');
-  const raw = (inp?.value || '').trim();
-
-  if (!raw && _pendingChatImages.length) {
-    await sendPendingChatImages();
-    clearTypingState();
-    return;
-  }
+  const raw = inp.value.trim();
   if (!raw) return;
-
   clearTypingState();
 
   if (St.descMode && hasPerm('sendDesc')) {
@@ -274,14 +109,14 @@ async function sendChat() {
   sendMessage(St.myName, raw, 'normal');
 }
 
-function sendMessage(name, text, type = 'normal', extra = {}) {
-  const msg = { name, text, type, uid: St.myId, time: Date.now(), ...extra };
-  if (type === 'normal' && St.myNameColor && !msg.nameColor) msg.nameColor = St.myNameColor;
+function sendMessage(name, text, type = 'normal') {
+  const msg = { name, text, type, uid: St.myId, time: Date.now() };
+  if (type === 'normal' && St.myNameColor) msg.nameColor = St.myNameColor;
   if (window._FB?.CONFIGURED) {
     const { db, ref, push } = window._FB;
     push(ref(db, `rooms/${St.roomCode}/chat`), msg);
   } else {
-    appendChatMsg(name, text, type, St.myId, null, null, null, null, null, msg.nameColor || null, null, 'chat', null, null, null, !!msg.imageWide);
+    appendChatMsg(name, text, type, St.myId, null, null, null, null, null, msg.nameColor || null);
   }
 }
 
@@ -431,11 +266,10 @@ function appendCasualMsg(name, text, uid, timestamp, msgKey) {
   div.className = 'chat-msg msg-normal';
   div.dataset.avatarUid = uid || '';
   div.dataset.avatarName = name || '';
-  div.dataset.msgKey = msgKey || '';
   div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-text">${fmtText(text)}</div></div>`;
   addMsgActions(div, uid, msgKey, 'casual', text, 'normal');
   container.appendChild(div);
-  scrollChatToLatest();
+  container.scrollTop = container.scrollHeight;
   if (typeof _popoutWins !== 'undefined') {
     const av = getPopoutAvatarUrl(name, uid);
     _popoutWins.filter(w => w && !w.closed).forEach(w => { if (w.addMsg) w.addMsg(name, text, 'normal', 'casual', '', av, time, fmtText(text)); });
@@ -457,34 +291,65 @@ function sendWhisperMessage(senderName, text, targetUid, targetName) {
 }
 
 function handleChatImageUpload(input) {
-  const files = Array.from(input.files || []);
-  if (!files.length) return;
+  const file = input.files[0];
+  if (!file) return;
 
-  const roomLeft = MAX_PENDING_CHAT_IMAGES - _pendingChatImages.length;
-  if (roomLeft <= 0) {
-    showToast(`이미지는 최대 ${MAX_PENDING_CHAT_IMAGES}장까지 선택할 수 있어요.`);
+  const isGif = file.type === 'image/gif';
+  const maxSize = isGif ? 5 * 1024 * 1024 : 3 * 1024 * 1024;
+  if (file.size > maxSize) {
+    showToast(isGif ? 'GIF는 5MB 이하만 가능해요.' : '이미지는 3MB 이하만 가능해요.');
     input.value = '';
     return;
   }
 
-  const selected = files.slice(0, roomLeft);
-  if (files.length > roomLeft) {
-    showToast(`이미지는 최대 ${MAX_PENDING_CHAT_IMAGES}장까지 선택할 수 있어요.`);
+  const saJId = St.speakAsJournalId;
+  const saJournal = saJId ? loadJournals().find(x => x.id === saJId) : null;
+  const saName = saJournal ? (saJournal.title || '무제') : null;
+  const saAvatar = saJId ? saGetAvatar(saJId) : null;
+
+  function sendImg(dataUrl) {
+    if (saJournal) {
+      const msg = {
+        name: saName, text: dataUrl, type: 'speak-as-image',
+        uid: St.myId, time: Date.now(),
+        speakAsAvatar: saAvatar, speakAsJournalId: saJId
+      };
+      if (window._FB?.CONFIGURED) {
+        const { db, ref, push } = window._FB;
+        push(ref(db, `rooms/${St.roomCode}/chat`), msg);
+      } else {
+        appendChatMsg(msg.name, dataUrl, 'speak-as-image', St.myId, msg.time, saAvatar, saJId);
+      }
+    } else {
+      sendMessage(St.myName, dataUrl, 'image');
+    }
   }
 
-  selected.forEach(file => {
-    const isGif = file.type === 'image/gif';
-    const maxSize = isGif ? 5 * 1024 * 1024 : 3 * 1024 * 1024;
-    if (file.size > maxSize) {
-      showToast(isGif ? 'GIF는 5MB 이하만 가능해요.' : '이미지는 3MB 이하만 가능해요.');
-      return;
-    }
-    if (!file.type.startsWith('image/')) return;
-    const id = `pending_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    _pendingChatImages.push({ id, file, preview: URL.createObjectURL(file), imageWide: _pendingWideMode });
-  });
+  const reader = new FileReader();
+  reader.onload = ev => {
+    let dataUrl = ev.target.result;
 
-  renderPendingUploadBox();
+    if (!isGif) {
+      const img = new Image();
+      img.onload = () => {
+        const MAX = 800;
+        let w = img.width, h = img.height;
+        if (w > MAX || h > MAX) {
+          const r = Math.min(MAX/w, MAX/h);
+          w = Math.round(w*r); h = Math.round(h*r);
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        const compressed = canvas.toDataURL('image/jpeg', 0.82);
+        sendImg(compressed);
+      };
+      img.src = dataUrl;
+    } else {
+      sendImg(dataUrl);
+    }
+  };
+  reader.readAsDataURL(file);
   input.value = '';
 }
 
@@ -530,7 +395,7 @@ function refreshRenderedAvatars() {
   });
 }
 
-function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId, whisperTo, whisperToName, nameColor, msgKey, channel, standingImg, tokenId, standingLabel, imageWide) {
+function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId, whisperTo, whisperToName, nameColor, msgKey, channel, standingImg, tokenId, standingLabel) {
   const container = document.getElementById('chat-messages');
   const d = timestamp ? new Date(timestamp) : new Date();
   const time = `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
@@ -540,7 +405,7 @@ function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJ
     div.className = 'chat-msg msg-sys';
     div.innerHTML = `<div class="msg-text">${fmtText(text)}</div>`;
     container.appendChild(div);
-    scrollChatToLatest();
+    container.scrollTop = container.scrollHeight;
     return;
   }
 
@@ -550,7 +415,7 @@ function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJ
     div.innerHTML = `<div class="msg-body"><div class="msg-text">${fmtText(text)}</div></div>`;
     addMsgActions(div, uid, msgKey, channel || 'chat', text, type);
     container.appendChild(div);
-    scrollChatToLatest();
+    container.scrollTop = container.scrollHeight;
     return;
   }
 
@@ -562,11 +427,10 @@ function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJ
     div.className = 'chat-msg msg-whisper';
     div.dataset.avatarUid = uid || '';
     div.dataset.avatarName = name || '';
-  div.dataset.msgKey = msgKey || '';
     div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name">${esc(name)}</span><span class="whisper-tag">${tagText}</span><span class="msg-time">${time}</span></div><div class="msg-text">${fmtText(text)}</div></div>`;
     addMsgActions(div, uid, msgKey, channel || 'chat', text, type);
     container.appendChild(div);
-    scrollChatToLatest();
+    container.scrollTop = container.scrollHeight;
     return;
   }
 
@@ -587,7 +451,7 @@ function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJ
     d2.innerHTML = `${avHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name sa-msg-name"${_nameStyle}>${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-text">${fmtText(text.replace(/@\S+/g,'').trim())}</div></div>`;
     addMsgActions(d2, uid, msgKey, channel || 'chat', text, type);
     container.appendChild(d2);
-    scrollChatToLatest();
+    container.scrollTop = container.scrollHeight;
     if (!timestamp || Date.now() - timestamp < 5000) {
       showDialogueBoxFromMsg(name, text, speakAsJournalId, standingImg, tokenId, standingLabel);
     }
@@ -604,10 +468,10 @@ function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJ
       avHtml = `<div class="msg-avatar ${sc} sa-avatar"><div class="msg-avatar-inner" style="border-radius:${r}">${esc((name||'?')[0].toUpperCase())}</div></div>`;
     }
     const d2 = document.createElement('div');
-    d2.className = `chat-msg msg-speak-as msg-image-msg ${imageWide ? 'msg-image-wide-row' : ''}`;
-    d2.dataset.avatarUid = uid || ''; d2.dataset.avatarName = name || ''; d2.dataset.msgKey = msgKey || ''; d2.innerHTML = `${avHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name sa-msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div><img class="msg-image ${imageWide ? 'is-wide' : ''}" src="${esc(text)}" alt="첨부 이미지" onclick="openLightbox(this.src)"></div>`;
+    d2.className = 'chat-msg msg-speak-as msg-image-msg';
+    d2.innerHTML = `${avHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name sa-msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div><img class="msg-image" src="${esc(text)}" alt="첨부 이미지" style="display:block;max-width:220px;height:auto;margin-top:5px;border-radius:var(--r);border:1px solid var(--border);cursor:zoom-in" onclick="openLightbox(this.src)"></div>`;
     container.appendChild(d2);
-    scrollChatToLatest();
+    container.scrollTop = container.scrollHeight;
     return;
   }
 
@@ -615,13 +479,12 @@ function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJ
 
   if (type === 'image') {
     const div = document.createElement('div');
-    div.className = `chat-msg msg-image-msg ${imageWide ? 'msg-image-wide-row' : ''}`;
+    div.className = 'chat-msg msg-image-msg';
     div.dataset.avatarUid = uid || '';
     div.dataset.avatarName = name || '';
-  div.dataset.msgKey = msgKey || '';
-    div.dataset.msgKey = msgKey || ''; div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div><img class="msg-image ${imageWide ? 'is-wide' : ''}" src="${esc(text)}" alt="첨부 이미지" onclick="openLightbox(this.src)"></div>`;
+    div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div><img class="msg-image" src="${esc(text)}" alt="첨부 이미지" style="display:block;max-width:220px;height:auto;margin-top:5px;border-radius:var(--r);border:1px solid var(--border);cursor:zoom-in" onclick="openLightbox(this.src)"></div>`;
     container.appendChild(div);
-    scrollChatToLatest();
+    container.scrollTop = container.scrollHeight;
     return;
   }
 
@@ -629,7 +492,6 @@ function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJ
   div.className = `chat-msg msg-${type}`;
   div.dataset.avatarUid = uid || '';
   div.dataset.avatarName = name || '';
-  div.dataset.msgKey = msgKey || '';
   const _nc = nameColor ? ` style="color:${nameColor}"` : '';
   if (type === 'dice') {
     const diceMatch = text.match(/🎲\s*(.+?)\s*→\s*(\d+)\s*\(([^)]+)\)/);
@@ -646,28 +508,6 @@ function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJ
   }
   addMsgActions(div, uid, msgKey, channel || 'chat', text, type);
   container.appendChild(div);
-  scrollChatToLatest();
+  container.scrollTop = container.scrollHeight;
 }
 
-
-
-function upsertChatMessageFromRemote(msg, channel = "chat") {
-  const container = document.getElementById(channel === "casual" ? "casual-messages" : "chat-messages");
-  if (!container) return;
-  const key = msg?._key;
-  if (!key) return;
-  const existing = container.querySelector(`.chat-msg[data-msg-key="${key}"]`);
-  if (existing) existing.remove();
-  if (channel === "casual") {
-    appendCasualMsg(msg.name, msg.text, msg.uid, msg.time, key);
-    return;
-  }
-  appendChatMsg(msg.name, msg.text, msg.type || "normal", msg.uid, msg.time, msg.speakAsAvatar || null, msg.speakAsJournalId || null, msg.whisperTo || null, msg.whisperToName || null, msg.nameColor || null, key, channel, msg.standingImg || null, msg.tokenId || null, msg.standingLabel || null, !!msg.imageWide);
-}
-
-function removeChatMessageFromRemote(key, channel = "chat") {
-  const container = document.getElementById(channel === "casual" ? "casual-messages" : "chat-messages");
-  if (!container || !key) return;
-  const el = container.querySelector(`.chat-msg[data-msg-key="${key}"]`);
-  if (el) el.remove();
-}
