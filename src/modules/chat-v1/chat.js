@@ -20,104 +20,242 @@ function toggleDescMode() {
   }
 }
 
-function sendChat() {
+
+const _renderState = {
+  chat: { containerId: 'chat-messages', raf: 0, queue: [], map: new Map(), max: 120 },
+  casual: { containerId: 'casual-messages', raf: 0, queue: [], map: new Map(), max: 120 },
+};
+
+function getRenderState(channel = 'chat') {
+  return _renderState[channel] || _renderState.chat;
+}
+
+function getRenderContainer(channel = 'chat') {
+  const state = getRenderState(channel);
+  return document.getElementById(state.containerId);
+}
+
+function isNearBottom(el, threshold = 56) {
+  if (!el) return true;
+  return (el.scrollHeight - el.scrollTop - el.clientHeight) <= threshold;
+}
+
+function scrollToBottom(el) {
+  if (!el) return;
+  el.scrollTop = el.scrollHeight;
+}
+
+function trimRenderedMessages(channel = 'chat') {
+  const state = getRenderState(channel);
+  const el = getRenderContainer(channel);
+  if (!el) return;
+  while (el.children.length > state.max) {
+    const first = el.firstElementChild;
+    if (!first) break;
+    const key = first.dataset.msgKey || '';
+    if (key) state.map.delete(key);
+    first.remove();
+  }
+}
+
+function flushMessageRender(channel = 'chat') {
+  const state = getRenderState(channel);
+  state.raf = 0;
+  const el = getRenderContainer(channel);
+  if (!el || state.queue.length === 0) return;
+  const keepBottom = isNearBottom(el);
+  const frag = document.createDocumentFragment();
+  const items = state.queue.splice(0, state.queue.length);
+  for (const item of items) {
+    const { node, key } = item;
+    if (key) {
+      const prev = state.map.get(key);
+      if (prev && prev.parentNode === el) prev.remove();
+      node.dataset.msgKey = key;
+      state.map.set(key, node);
+    }
+    frag.appendChild(node);
+  }
+  el.appendChild(frag);
+  trimRenderedMessages(channel);
+  if (keepBottom) requestAnimationFrame(() => scrollToBottom(el));
+}
+
+function queueMessageRender(channel = 'chat', node, key = '', autoscroll = true) {
+  const state = getRenderState(channel);
+  const el = getRenderContainer(channel);
+  if (!el || !node) return;
+  const shouldScroll = autoscroll && isNearBottom(el);
+  state.queue.push({ node, key, shouldScroll });
+  if (state.raf) return;
+  state.raf = requestAnimationFrame(() => {
+    flushMessageRender(channel);
+    if (shouldScroll) {
+      const target = getRenderContainer(channel);
+      requestAnimationFrame(() => scrollToBottom(target));
+    }
+  });
+}
+
+function replaceRenderedMessage(channel = 'chat', key, node) {
+  const state = getRenderState(channel);
+  const el = getRenderContainer(channel);
+  if (!el || !key || !node) return;
+  const current = state.map.get(key) || el.querySelector(`.chat-msg[data-msg-key="${CSS.escape(key)}"]`);
+  node.dataset.msgKey = key;
+  if (current && current.parentNode === el) {
+    const keepBottom = isNearBottom(el);
+    el.replaceChild(node, current);
+    state.map.set(key, node);
+    if (keepBottom) requestAnimationFrame(() => scrollToBottom(el));
+  } else {
+    queueMessageRender(channel, node, key, true);
+  }
+}
+
+function removeRenderedMessage(channel = 'chat', key) {
+  const state = getRenderState(channel);
+  const el = getRenderContainer(channel);
+  if (!el || !key) return;
+  const current = state.map.get(key) || el.querySelector(`.chat-msg[data-msg-key="${CSS.escape(key)}"]`);
+  if (current) current.remove();
+  state.map.delete(key);
+}
+
+function resetRenderedMessages(channel = 'chat') {
+  const state = getRenderState(channel);
+  const el = getRenderContainer(channel);
+  if (!el) return;
+  if (state.raf) {
+    cancelAnimationFrame(state.raf);
+    state.raf = 0;
+  }
+  state.queue = [];
+  state.map.clear();
+  el.innerHTML = '';
+}
+
+function getChatImageClassName(imageWide = false) {
+  return imageWide ? 'msg-image is-wide' : 'msg-image';
+}
+
+function getChatImageInlineStyle(imageWide = false) {
+  return imageWide ? 'width:100%;max-width:none;height:auto;object-fit:contain;' : '';
+}
+
+
+async function sendChat() {
   const inp = document.getElementById('chat-input');
+  if (!inp) return;
   const raw = inp.value.trim();
   if (!raw) return;
-  clearTypingState();
 
-  if (St.descMode && hasPerm('sendDesc')) {
-    inp.value = '';
-    sendMessage(St.myName, raw, 'dsec');
-    return;
-  }
+  const restoreInput = () => {
+    try { inp.value = raw; inp.focus(); } catch (e) {}
+  };
 
-  const m = raw.match(/^\/desc\s*([\s\S]*)$/i);
-  if (m) {
-    inp.value = '';
-    if (!hasPerm('sendDesc')) { showToast('desc 입력 권한이 없어요.'); return; }
-    const content = m[1].trim();
-    if (!content) return;
-    sendMessage(St.myName, content, 'dsec');
-    return;
-  }
+  try {
+    clearTypingState();
 
-  const wm = raw.match(/^\/w\s+(\S+)\s+([\s\S]+)$/i);
-  if (wm) {
-    inp.value = '';
-    const targetName = wm[1];
-    const whisperText = wm[2].trim();
-    if (!whisperText) return;
-    const players = St.players || {};
-    const target = Object.entries(players).find(([id, p]) => p.name === targetName);
-    if (target) {
-      sendWhisperMessage(St.myName, whisperText, target[0], targetName);
+    if (St.descMode && hasPerm('sendDesc')) {
+      inp.value = '';
+      await sendMessage(St.myName, raw, 'desc');
       return;
     }
-    const jTarget = _allJournals.find(j => (j.title || '') === targetName);
-    if (jTarget) {
-      const ownerId = jTarget.ownerId;
-      if (ownerId) {
-        sendWhisperMessage(St.speakAsJournalId ? (loadJournals().find(x=>x.id===St.speakAsJournalId)?.title||St.myName) : St.myName, whisperText, ownerId, targetName);
+
+    const m = raw.match(/^\/desc\s*([\s\S]*)$/i);
+    if (m) {
+      if (!hasPerm('sendDesc')) { showToast('desc 입력 권한이 없어요.'); return; }
+      const content = m[1].trim();
+      if (!content) return;
+      inp.value = '';
+      await sendMessage(St.myName, content, 'desc');
+      return;
+    }
+
+    const wm = raw.match(/^\/w\s+(\S+)\s+([\s\S]+)$/i);
+    if (wm) {
+      const targetName = wm[1];
+      const whisperText = wm[2].trim();
+      if (!whisperText) return;
+      const players = St.players || {};
+      const target = Object.entries(players).find(([id, p]) => p.name === targetName);
+      if (target) {
+        inp.value = '';
+        await sendWhisperMessage(St.myName, whisperText, target[0], targetName);
         return;
       }
-    }
-    showToast(`'${targetName}' 대상을 찾을 수 없어요.`);
-    return;
-  }
-
-  const cm = raw.match(/^\/choice\s*[\(\（](.+)[\)\）]$/i);
-  if (cm) {
-    inp.value = '';
-    const options = cm[1].split(',').map(s => s.trim()).filter(Boolean);
-    if (options.length < 2) { showToast('선택지를 2개 이상 입력해주세요.'); return; }
-    const picked = options[Math.floor(Math.random() * options.length)];
-    const senderName = St.speakAsJournalId ? (loadJournals().find(x=>x.id===St.speakAsJournalId)?.title || St.myName) : St.myName;
-    sendMessage(senderName, `🎯 Choice [${options.join(', ')}] → ${picked}`, 'normal');
-    return;
-  }
-
-  const dm = raw.match(/^\/(\d*d\d+.*)$/i);
-  if (dm) {
-    inp.value = '';
-    const formula = dm[1].trim();
-    rollFromFormula(formula);
-    return;
-  }
-
-  if (St.whisperTo) {
-    inp.value = '';
-    const senderName = St.speakAsJournalId ? (loadJournals().find(x=>x.id===St.speakAsJournalId)?.title || St.myName) : St.myName;
-    sendWhisperMessage(senderName, raw, St.whisperTo, St.whisperToName);
-    return;
-  }
-
-  inp.value = '';
-  if (_activeRightTab === 'casual') {
-    sendCasualMsg(_casualNickname || St.myName, raw);
-    return;
-  }
-  if (St.speakAsJournalId) {
-    const j = loadJournals().find(x => x.id === St.speakAsJournalId);
-    if (j) {
-      saSendMessage(j, raw);
+      const jTarget = _allJournals.find(j => (j.title || '') === targetName);
+      if (jTarget && jTarget.ownerId) {
+        inp.value = '';
+        const senderName = St.speakAsJournalId ? (loadJournals().find(x=>x.id===St.speakAsJournalId)?.title||St.myName) : St.myName;
+        await sendWhisperMessage(senderName, whisperText, jTarget.ownerId, targetName);
+        return;
+      }
+      showToast(`'${targetName}' 대상을 찾을 수 없어요.`);
       return;
     }
-    St.speakAsJournalId = null;
-    saRefreshBtn();
+
+    const cm = raw.match(/^\/choice\s*[\(\（](.+)[\)\）]$/i);
+    if (cm) {
+      const options = cm[1].split(',').map(s => s.trim()).filter(Boolean);
+      if (options.length < 2) { showToast('선택지를 2개 이상 입력해주세요.'); return; }
+      const picked = options[Math.floor(Math.random() * options.length)];
+      const senderName = St.speakAsJournalId ? (loadJournals().find(x=>x.id===St.speakAsJournalId)?.title || St.myName) : St.myName;
+      inp.value = '';
+      await sendMessage(senderName, `🎯 Choice [${options.join(', ')}] → ${picked}`, 'normal');
+      return;
+    }
+
+    const dm = raw.match(/^\/(\d*d\d+.*)$/i);
+    if (dm) {
+      inp.value = '';
+      rollFromFormula(dm[1].trim());
+      return;
+    }
+
+    if (St.whisperTo) {
+      const senderName = St.speakAsJournalId ? (loadJournals().find(x=>x.id===St.speakAsJournalId)?.title || St.myName) : St.myName;
+      inp.value = '';
+      await sendWhisperMessage(senderName, raw, St.whisperTo, St.whisperToName);
+      return;
+    }
+
+    inp.value = '';
+    if (_activeRightTab === 'casual') {
+      await sendCasualMsg(_casualNickname || St.myName, raw);
+      return;
+    }
+    if (St.speakAsJournalId) {
+      const j = loadJournals().find(x => x.id === St.speakAsJournalId);
+      if (j) {
+        if (typeof saSendMessage === 'function') {
+          await saSendMessage(j, raw);
+          return;
+        }
+      } else {
+        St.speakAsJournalId = null;
+        if (typeof saRefreshBtn === 'function') saRefreshBtn();
+      }
+    }
+    await sendMessage(St.myName, raw, 'normal');
+  } catch (err) {
+    console.error('sendChat failed', err);
+    restoreInput();
+    showToast('메시지 전송에 실패했어요. 다시 시도해주세요.');
   }
-  sendMessage(St.myName, raw, 'normal');
 }
 
 function sendMessage(name, text, type = 'normal') {
   const msg = { name, text, type, uid: St.myId, time: Date.now() };
-  if (type === 'normal' && St.myNameColor) msg.nameColor = St.myNameColor;
+  if ((type === 'normal' || type === 'desc') && St.myNameColor) msg.nameColor = St.myNameColor;
   if (window._FB?.CONFIGURED) {
     const { db, ref, push } = window._FB;
-    push(ref(db, `rooms/${St.roomCode}/chat`), msg);
-  } else {
-    appendChatMsg(name, text, type, St.myId, null, null, null, null, null, msg.nameColor || null);
+    if (!St.roomCode) return Promise.reject(new Error('roomCode missing'));
+    return push(ref(db, `rooms/${St.roomCode}/chat`), msg);
   }
+  appendChatMsg(name, text, type, St.myId, null, null, null, null, null, msg.nameColor || null);
+  return Promise.resolve();
 }
 
 function sendCasual() {
@@ -132,10 +270,11 @@ function sendCasualMsg(name, text) {
   const msg = { name, text, uid: St.myId, time: Date.now() };
   if (window._FB?.CONFIGURED) {
     const { db, ref, push } = window._FB;
-    push(ref(db, `rooms/${St.roomCode}/casual`), msg);
-  } else {
-    appendCasualMsg(name, text, St.myId, msg.time);
+    if (!St.roomCode) return Promise.reject(new Error('roomCode missing'));
+    return push(ref(db, `rooms/${St.roomCode}/casual`), msg);
   }
+  appendCasualMsg(name, text, St.myId, msg.time);
+  return Promise.resolve();
 }
 
 function refreshCasualNickDisplay() {
@@ -296,10 +435,11 @@ function sendWhisperMessage(senderName, text, targetUid, targetName) {
   };
   if (window._FB?.CONFIGURED) {
     const { db, ref, push } = window._FB;
-    push(ref(db, `rooms/${St.roomCode}/chat`), msg);
-  } else {
-    appendChatMsg(msg.name, text, 'whisper', St.myId, msg.time, null, null, targetUid, targetName);
+    if (!St.roomCode) return Promise.reject(new Error('roomCode missing'));
+    return push(ref(db, `rooms/${St.roomCode}/chat`), msg);
   }
+  appendChatMsg(msg.name, text, 'whisper', St.myId, msg.time, null, null, targetUid, targetName);
+  return Promise.resolve();
 }
 
 function handleChatImageUpload(input) {
@@ -417,7 +557,7 @@ function buildChatMsgElement(name, text, type, uid, timestamp, speakAsAvatar, sp
     return div;
   }
 
-  if (type === 'dsec') {
+  if (type === 'desc') {
     const div = document.createElement('div');
     div.className = 'chat-msg msg-dsec';
     div.innerHTML = `<div class="msg-body"><div class="msg-text">${fmtText(text)}</div></div>`;
@@ -463,7 +603,12 @@ function buildChatMsgElement(name, text, type, uid, timestamp, speakAsAvatar, sp
       : `<div class="msg-avatar ${sc} sa-avatar"><div class="msg-avatar-inner" style="border-radius:${r}">${esc((name || '?')[0].toUpperCase())}</div></div>`;
     const div = document.createElement('div');
     div.className = `chat-msg msg-speak-as msg-image-msg${imageWide ? ' msg-image-wide-row' : ''}`;
-    div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name sa-msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div><img class="${getChatImageClassName(imageWide)}" src="${esc(text)}" alt="첨부 이미지" loading="lazy" decoding="async" style="${getChatImageInlineStyle(imageWide)}" onclick="openLightbox(this.src)"></div>`;
+    if (imageWide) {
+      div.innerHTML = `${avatarHtml}<div class="msg-wide-head"><div class="msg-meta"><span class="msg-name sa-msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div></div><div class="msg-wide-image-wrap"><img class="${getChatImageClassName(true)}" src="${esc(text)}" alt="첨부 이미지" loading="lazy" decoding="async" style="${getChatImageInlineStyle(true)}" onclick="openLightbox(this.src)"></div>`;
+    } else {
+      div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name sa-msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div><img class="${getChatImageClassName(false)}" src="${esc(text)}" alt="첨부 이미지" loading="lazy" decoding="async" style="${getChatImageInlineStyle(false)}" onclick="openLightbox(this.src)"></div>`;
+    }
+    addMsgActions(div, uid, msgKey, channel || 'chat', text, type);
     return div;
   }
 
@@ -474,7 +619,12 @@ function buildChatMsgElement(name, text, type, uid, timestamp, speakAsAvatar, sp
     div.className = `chat-msg msg-image-msg${imageWide ? ' msg-image-wide-row' : ''}`;
     div.dataset.avatarUid = uid || '';
     div.dataset.avatarName = name || '';
-    div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div><img class="${getChatImageClassName(imageWide)}" src="${esc(text)}" alt="첨부 이미지" loading="lazy" decoding="async" style="${getChatImageInlineStyle(imageWide)}" onclick="openLightbox(this.src)"></div>`;
+    if (imageWide) {
+      div.innerHTML = `${avatarHtml}<div class="msg-wide-head"><div class="msg-meta"><span class="msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div></div><div class="msg-wide-image-wrap"><img class="${getChatImageClassName(true)}" src="${esc(text)}" alt="첨부 이미지" loading="lazy" decoding="async" style="${getChatImageInlineStyle(true)}" onclick="openLightbox(this.src)"></div>`;
+    } else {
+      div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div><img class="${getChatImageClassName(false)}" src="${esc(text)}" alt="첨부 이미지" loading="lazy" decoding="async" style="${getChatImageInlineStyle(false)}" onclick="openLightbox(this.src)"></div>`;
+    }
+    addMsgActions(div, uid, msgKey, channel || 'chat', text, type);
     return div;
   }
 
@@ -518,3 +668,15 @@ function replaceChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAs
 function removeChatMsg(msgKey, channel = 'chat') {
   removeRenderedMessage(channel, msgKey);
 }
+
+window.chatKeydown = chatKeydown;
+window.sendChat = sendChat;
+window.handleChatImageUpload = handleChatImageUpload;
+window.toggleDescMode = toggleDescMode;
+window.broadcastTyping = broadcastTyping;
+window.queueMessageRender = queueMessageRender;
+window.replaceRenderedMessage = replaceRenderedMessage;
+window.removeRenderedMessage = removeRenderedMessage;
+window.resetRenderedMessages = resetRenderedMessages;
+window.getChatImageClassName = getChatImageClassName;
+window.getChatImageInlineStyle = getChatImageInlineStyle;
