@@ -138,20 +138,42 @@ async function syncAvatarToFirebase(dataUrl) {
   const user = window._currentUser;
   if (!user || !window._FB?.CONFIGURED) return;
 
-  const { db, ref, update, set } = window._FB;
-
+  const { db, ref, update } = window._FB;
+  const now = Date.now();
   try {
-    await update(ref(db, `users/${user.uid}/profile`), { avatar: dataUrl, updatedAt: Date.now() });
+    await update(ref(db, `users/${user.uid}/profile`), { avatar: dataUrl || '', updatedAt: now });
   } catch (e) {}
 
   if (St.roomCode) {
     try {
-      await set(ref(db, `rooms/${St.roomCode}/avatars/${user.uid}`), dataUrl);
+      await update(ref(db, `rooms/${St.roomCode}/players/${user.uid}`), {
+        avatar: dataUrl || '',
+        name: St.myName || user.displayName || '플레이어',
+        updatedAt: now,
+      });
     } catch (e) {}
+
     try {
-      await update(ref(db, `rooms/${St.roomCode}/players/${user.uid}`), { avatar: dataUrl });
+      await update(ref(db, `rooms/${St.roomCode}/avatars/${user.uid}`), {
+        value: dataUrl || '',
+        updatedAt: now,
+      });
     } catch (e) {}
   }
+
+  window._avatarCache = window._avatarCache || {};
+  if (dataUrl) {
+    window._avatarCache[user.uid] = dataUrl;
+    window._avatarCache[St.myName || user.displayName || '플레이어'] = dataUrl;
+  }
+
+  document.dispatchEvent(new CustomEvent('itc:avatar-updated', {
+    detail: {
+      uid: user.uid,
+      name: St.myName || user.displayName || '플레이어',
+      avatar: dataUrl || '',
+    }
+  }));
 }
 
 async function applyCrop() {
@@ -168,10 +190,10 @@ async function applyCrop() {
   const y  = (256 - sh) / 2 + s.oy * r;
   ctx.drawImage(s.img, x, y, sw, sh);
 
-  const dataUrl = out.toDataURL('image/jpeg', 0.85);
+  const dataUrl = out.toDataURL('image/jpeg', 0.8);
   localStorage.setItem('itc_avatar_' + window._currentUser.uid, dataUrl);
-  refreshProfileAvatar();
   await syncAvatarToFirebase(dataUrl);
+  refreshProfileAvatar();
   document.getElementById('crop-zone').style.display = 'none';
   window._crop = null;
   showProfileMsg('프로필 사진이 업데이트됐어요!', 'ok');
@@ -190,7 +212,10 @@ async function saveNickname() {
     document.getElementById('user-name-nav').textContent = nick;
     if (window._FB?.CONFIGURED) {
       const { db, ref, update } = window._FB;
-      await update(ref(db, `users/${user.uid}/profile`), { name: nick });
+      await update(ref(db, `users/${user.uid}/profile`), { name: nick, updatedAt: Date.now() });
+      if (St.roomCode) {
+        await update(ref(db, `rooms/${St.roomCode}/players/${user.uid}`), { name: nick, updatedAt: Date.now() });
+      }
     }
     showProfileMsg('닉네임이 저장됐어요!', 'ok');
   } catch(e) {

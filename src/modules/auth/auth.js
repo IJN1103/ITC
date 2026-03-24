@@ -52,31 +52,40 @@ async function loadUserProfile(user) {
   const profileRef = ref(db, `users/${user.uid}/profile`);
   const snap = await get(profileRef);
 
+  const baseProfile = {
+    name: user.displayName || user.email?.split('@')[0] || '플레이어',
+    email: user.email || '',
+  };
+
   if (!snap.exists()) {
     await set(profileRef, {
-      name: user.displayName || user.email?.split('@')[0] || '플레이어',
-      email: user.email || '',
-      avatar: localStorage.getItem('itc_avatar_' + user.uid) || '',
+      ...baseProfile,
+      avatar: '',
       createdAt: Date.now(),
+      updatedAt: Date.now(),
     });
     return;
   }
 
   const profile = snap.val() || {};
-  if (profile.name && !user.displayName) St.myName = profile.name;
+  St.myName = profile.name || baseProfile.name;
+
   if (profile.avatar) {
-    try { localStorage.setItem('itc_avatar_' + user.uid, profile.avatar); } catch(e) {}
+    try { localStorage.setItem('itc_avatar_' + user.uid, profile.avatar); } catch (e) {}
+    window._avatarCache = window._avatarCache || {};
+    window._avatarCache[user.uid] = profile.avatar;
+    window._avatarCache[St.myName] = profile.avatar;
   }
 
   const patch = {};
-  if (!profile.name) patch.name = user.displayName || user.email?.split('@')[0] || '플레이어';
-  if (!profile.email && user.email) patch.email = user.email;
-  if (!profile.avatar) {
-    const localAvatar = localStorage.getItem('itc_avatar_' + user.uid) || '';
-    if (localAvatar) patch.avatar = localAvatar;
+  if (!profile.name && baseProfile.name) patch.name = baseProfile.name;
+  if (!profile.email && baseProfile.email) patch.email = baseProfile.email;
+  if (Object.keys(patch).length) {
+    patch.updatedAt = Date.now();
+    await update(profileRef, patch);
   }
-  if (Object.keys(patch).length) await update(profileRef, patch);
 }
+
 
 function switchAuthTab(tab, btn) {
   document.querySelectorAll('.auth-tab').forEach(b => b.classList.remove('on'));
