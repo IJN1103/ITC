@@ -49,7 +49,7 @@ function setupFirebaseListeners() {
           m.name, m.text, m.type || 'normal', m.uid, m.time, 
           m.speakAsAvatar || null, m.speakAsJournalId || null, 
           m.whisperTo || null, m.whisperToName || null, m.nameColor || null, 
-          m._key, 'chat', m.standingImg || null, m.tokenId || null, m.standingLabel || null, !!m.imageWide
+          m._key, 'chat', m.standingImg || null, m.tokenId || null, m.standingLabel || null
         );
         _processedChatKeys.add(m._key);
       }

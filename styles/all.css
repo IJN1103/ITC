@@ -658,46 +658,39 @@ to{transform:translateX(0);opacity:1;}
 .modal-info b{color:var(--text);}
 #yt-player{display:none;}
 
-/* Wide chat image layout overrides */
-.chat-msg.msg-image-wide-row{
-  display:grid;
-  grid-template-columns:38px minmax(0,1fr);
-  column-gap:10px;
-  row-gap:4px;
-  align-items:start;
-  overflow:visible;
+/* Wide image message layout override */
+.chat-msg.msg-image-wide-row {
+  overflow: visible !important;
+  margin-bottom: 18px !important;
 }
-.chat-msg.msg-image-wide-row .msg-avatar{
-  float:none;
-  grid-column:1;
-  grid-row:1;
-  width:38px;
-  height:38px;
-  margin:8px 0 0 0;
+.chat-msg.msg-image-wide-row .msg-avatar {
+  margin-top: 0 !important;
 }
-.chat-msg.msg-image-wide-row .msg-body{
-  display:contents;
-  overflow:visible;
-  max-width:none;
+.chat-msg.msg-image-wide-row .msg-body {
+  display: block !important;
+  overflow: visible !important;
+  max-width: calc(100% - 48px) !important;
 }
-.chat-msg.msg-image-wide-row .msg-meta{
-  grid-column:2;
-  grid-row:1;
-  display:flex;
-  align-items:baseline;
-  gap:6px;
-  flex-wrap:wrap;
-  min-width:0;
-  margin:8px 0 0 0;
-  padding:0;
+.chat-msg.msg-image-wide-row .msg-meta {
+  display: flex !important;
+  align-items: baseline !important;
+  gap: 6px !important;
+  min-height: 38px !important;
+  padding-top: 17px !important;
+  margin-bottom: 9px !important;
+  box-sizing: border-box !important;
+}
+.chat-msg.msg-image-wide-row .msg-name,
+.chat-msg.msg-image-wide-row .msg-time {
+  position: static !important;
+  transform: none !important;
+  line-height: 1 !important;
 }
 .chat-msg.msg-image-wide-row .msg-image,
-.chat-msg.msg-image-wide-row .msg-image.is-wide{
-  grid-column:1 / -1;
-  grid-row:2;
-  display:block;
-  width:100%;
-  max-width:none;
-  height:auto;
-  margin-top:0;
+.chat-msg.msg-image-wide-row .msg-image.is-wide {
+  display: block !important;
+  width: 100% !important;
+  max-width: none !important;
+  height: auto !important;
+  margin-top: 0 !important;
 }
