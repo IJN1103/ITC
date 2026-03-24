@@ -26,6 +26,26 @@ function setupFirebaseListeners() {
     renderPlayers(players);
   });
 
+  // 🔥 [완벽 버그 픽스] 사진 데이터만 따로 관리하는 전용 통로
+  onValue(ref(db, `rooms/${code}/avatars`), snap => {
+    const avatars = snap.val() || {};
+    if (!window._avatarCache) window._avatarCache = {};
+
+    Object.entries(avatars).forEach(([uid, avData]) => {
+      const avatarSrc = typeof avData === 'string' ? avData : (avData?.avatar || '');
+      if (!avatarSrc) return;
+      localStorage.setItem('itc_avatar_' + uid, avatarSrc);
+      window._avatarCache[uid] = avatarSrc;
+      if (St.players && St.players[uid] && St.players[uid].name) {
+        window._avatarCache[St.players[uid].name] = avatarSrc;
+      }
+    });
+
+    if (typeof rerenderExistingChatAvatars === 'function') {
+      rerenderExistingChatAvatars();
+    }
+  });
+
   onValue(ref(db, `rooms/${code}/chat`), snap => {
     const msgs = snap.val() || {};
     const entries = Object.entries(msgs).map(([k, m]) => ({ ...m, _key: k }));
@@ -160,9 +180,29 @@ async function enterGame() {
   if (myAv) {
     window._avatarCache[St.myId] = myAv;
     window._avatarCache[St.myName] = myAv;
-    if (window._FB?.CONFIGURED && St.roomCode) {
+    if (window._FB?.CONFIGURED) {
+      window._FB.set(window._FB.ref(window._FB.db, `rooms/${St.roomCode}/avatars/${St.myId}`), myAv).catch(()=>{});
       window._FB.update(window._FB.ref(window._FB.db, `rooms/${St.roomCode}/players/${St.myId}`), { avatar: myAv }).catch(()=>{});
     }
+  }
+
+  // 🔥 [새로 추가된 마법의 로직] 2초마다 내 프사 변경을 감지해서 자동으로 남들에게 쏴줍니다.
+  if (!window._avatarWatcher) {
+    let _lastAv = myAv;
+    window._avatarWatcher = setInterval(() => {
+      if (!St.roomCode || !window._FB?.CONFIGURED) return;
+      const currentAv = localStorage.getItem('itc_avatar_' + St.myId);
+      if (currentAv && currentAv !== _lastAv) {
+        _lastAv = currentAv;
+        window._avatarCache[St.myId] = currentAv;
+        window._avatarCache[St.myName] = currentAv;
+        window._FB.set(window._FB.ref(window._FB.db, `rooms/${St.roomCode}/avatars/${St.myId}`), currentAv).catch(()=>{});
+        window._FB.update(window._FB.ref(window._FB.db, `rooms/${St.roomCode}/players/${St.myId}`), { avatar: currentAv }).catch(()=>{});
+        if (typeof rerenderExistingChatAvatars === 'function') {
+          rerenderExistingChatAvatars();
+        }
+      }
+    }, 2000);
   }
 
   addLocalMessage('system', '', `${St.myName}님이 입장했습니다 — ${SYS_LABELS[St.system]}`);
@@ -184,33 +224,6 @@ function addPlayerChip(id, name, isMe, role, online) {
   row.appendChild(chip);
 }
 
-function cacheAvatarForPlayer(id, player) {
-  const avatar = player?.avatar || '';
-  if (!avatar) return;
-  if (!window._avatarCache) window._avatarCache = {};
-  window._avatarCache[id] = avatar;
-  if (player.name) window._avatarCache[player.name] = avatar;
-  try { localStorage.setItem('itc_avatar_' + id, avatar); } catch(e) {}
-}
-
-function hydrateMissingPlayerAvatars(players) {
-  if (!window._FB?.CONFIGURED) return;
-  const { db, ref, get, update } = window._FB;
-  Object.entries(players).forEach(([id, p]) => {
-    if (p?.avatar) return;
-    get(ref(db, `users/${id}/profile/avatar`)).then(snap => {
-      const avatar = snap.val();
-      if (!avatar) return;
-      cacheAvatarForPlayer(id, { ...p, avatar });
-      const msgEls = document.querySelectorAll(`.chat-msg[data-avatar-uid="${id}"]`);
-      if (msgEls.length && typeof refreshRenderedAvatars === 'function') refreshRenderedAvatars();
-      if (St.roomCode && id === St.myId) {
-        update(ref(db, `rooms/${St.roomCode}/players/${id}`), { avatar }).catch(() => {});
-      }
-    }).catch(() => {});
-  });
-}
-
 function renderPlayers(players) {
   document.getElementById('players-row').innerHTML = '';
   St.players = players;
@@ -221,17 +234,18 @@ function renderPlayers(players) {
   Object.entries(players).forEach(([id, p]) => {
     const online = p.online || id === St.myId;
     addPlayerChip(id, p.name, id === St.myId, p.role, online);
-    cacheAvatarForPlayer(id, p);
 
-    const localAv = localStorage.getItem('itc_avatar_' + id);
-    if (!p.avatar && localAv) {
-      window._avatarCache[id] = localAv;
-      if (p.name) window._avatarCache[p.name] = localAv;
+    const av = p.avatar || localStorage.getItem('itc_avatar_' + id);
+    if (av) {
+      localStorage.setItem('itc_avatar_' + id, av);
+      window._avatarCache[id] = av;
+      window._avatarCache[p.name] = av;
     }
   });
 
-  hydrateMissingPlayerAvatars(players);
-  if (typeof refreshRenderedAvatars === 'function') refreshRenderedAvatars();
+  if (typeof rerenderExistingChatAvatars === 'function') {
+    rerenderExistingChatAvatars();
+  }
 }
 
 async function initCharacter(sys) {

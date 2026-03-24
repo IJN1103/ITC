@@ -264,8 +264,8 @@ function appendCasualMsg(name, text, uid, timestamp, msgKey) {
   const avatarHtml = getAvatarHtml(name, uid || (name === St.myName ? St.myId : null));
   const div = document.createElement('div');
   div.className = 'chat-msg msg-normal';
-  div.dataset.avatarUid = uid || '';
-  div.dataset.avatarName = name || '';
+  if (uid) div.dataset.uid = uid;
+  if (name) div.dataset.name = name;
   div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-text">${fmtText(text)}</div></div>`;
   addMsgActions(div, uid, msgKey, 'casual', text, 'normal');
   container.appendChild(div);
@@ -363,36 +363,35 @@ function openLightbox(src) {
 
 function addLocalMessage(type, name, text) { appendChatMsg(name, text, type); }
 
-function resolveAvatarSrc(name, uid) {
-  if (uid && St.players?.[uid]?.avatar) return St.players[uid].avatar;
-  if (uid && window._avatarCache?.[uid]) return window._avatarCache[uid];
-  if (uid) {
-    const localAvatar = localStorage.getItem('itc_avatar_' + uid);
-    if (localAvatar) return localAvatar;
-  }
-  if (name && window._avatarCache?.[name]) return window._avatarCache[name];
-  return null;
-}
-
 function getAvatarHtml(name, uid) {
-  const imgSrc = resolveAvatarSrc(name, uid);
+  let imgSrc = null;
+
+  if (uid) {
+    imgSrc = localStorage.getItem('itc_avatar_' + uid);
+  }
+  if (!imgSrc && name) {
+    imgSrc = window._avatarCache?.[uid] || window._avatarCache?.[name];
+  }
+
   const initial = (name || '?')[0].toUpperCase();
   const shape_class = St.avatarShape === 'circle' ? 'shape-circle' : 'shape-rounded';
   const r = St.avatarShape === 'circle' ? '50%' : '6px';
   if (imgSrc) {
-    return `<div class="msg-avatar ${shape_class}"><img src="${imgSrc}" alt="${esc(initial)}" style="border-radius:${r}"></div>`;
+    return `<div class="msg-avatar ${shape_class}" data-avatar-holder="1"><img src="${imgSrc}" alt="${esc(initial)}" style="border-radius:${r}"></div>`;
   }
-  return `<div class="msg-avatar ${shape_class}"><div class="msg-avatar-inner" style="border-radius:${r}">${esc(initial)}</div></div>`;
+  return `<div class="msg-avatar ${shape_class}" data-avatar-holder="1"><div class="msg-avatar-inner" style="border-radius:${r}">${esc(initial)}</div></div>`;
 }
 
-function refreshRenderedAvatars() {
-  document.querySelectorAll('.chat-msg[data-avatar-name]').forEach(el => {
-    const name = el.dataset.avatarName || '';
-    const uid = el.dataset.avatarUid || '';
-    const avatarEl = el.querySelector('.msg-avatar');
-    if (!avatarEl) return;
-    avatarEl.outerHTML = getAvatarHtml(name, uid);
+function rerenderExistingChatAvatars() {
+  document.querySelectorAll('.chat-msg').forEach(div => {
+    const uid = div.dataset.uid || '';
+    const name = div.dataset.name || '';
+    const holder = div.querySelector('[data-avatar-holder="1"]');
+    if (!holder) return;
+    holder.outerHTML = getAvatarHtml(name, uid || null);
   });
+
+  refreshCasualNickDisplay();
 }
 
 function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId, whisperTo, whisperToName, nameColor, msgKey, channel, standingImg, tokenId, standingLabel) {
@@ -425,8 +424,8 @@ function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJ
     const tagText = isMine ? `→ ${esc(whisperToName || '?')}에게 귓말` : `→ 나에게 귓말`;
     const div = document.createElement('div');
     div.className = 'chat-msg msg-whisper';
-    div.dataset.avatarUid = uid || '';
-    div.dataset.avatarName = name || '';
+    if (uid) div.dataset.uid = uid;
+    if (name) div.dataset.name = name;
     div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name">${esc(name)}</span><span class="whisper-tag">${tagText}</span><span class="msg-time">${time}</span></div><div class="msg-text">${fmtText(text)}</div></div>`;
     addMsgActions(div, uid, msgKey, channel || 'chat', text, type);
     container.appendChild(div);
@@ -480,8 +479,8 @@ function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJ
   if (type === 'image') {
     const div = document.createElement('div');
     div.className = 'chat-msg msg-image-msg';
-    div.dataset.avatarUid = uid || '';
-    div.dataset.avatarName = name || '';
+    if (uid) div.dataset.uid = uid;
+    if (name) div.dataset.name = name;
     div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div><img class="msg-image" src="${esc(text)}" alt="첨부 이미지" style="display:block;max-width:220px;height:auto;margin-top:5px;border-radius:var(--r);border:1px solid var(--border);cursor:zoom-in" onclick="openLightbox(this.src)"></div>`;
     container.appendChild(div);
     container.scrollTop = container.scrollHeight;
@@ -490,8 +489,8 @@ function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJ
 
   const div = document.createElement('div');
   div.className = `chat-msg msg-${type}`;
-  div.dataset.avatarUid = uid || '';
-  div.dataset.avatarName = name || '';
+  if (uid) div.dataset.uid = uid;
+  if (name) div.dataset.name = name;
   const _nc = nameColor ? ` style="color:${nameColor}"` : '';
   if (type === 'dice') {
     const diceMatch = text.match(/🎲\s*(.+?)\s*→\s*(\d+)\s*\(([^)]+)\)/);
