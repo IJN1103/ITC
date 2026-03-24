@@ -362,7 +362,7 @@ function openLightbox(src) {
 function addLocalMessage(type, name, text) { appendChatMsg(name, text, type); }
 
 function getAvatarHtml(name, uid) {
-  const shape = St.avatarShape === 'circle' ? 'shape-circle' : 'shape-rounded';
+  const shapeClass = St.avatarShape === 'circle' ? 'shape-circle' : 'shape-rounded';
   let imgSrc = null;
 
   if (uid) {
@@ -373,12 +373,36 @@ function getAvatarHtml(name, uid) {
   }
 
   const initial = (name || '?')[0].toUpperCase();
-  const shape_class = St.avatarShape === 'circle' ? 'shape-circle' : 'shape-rounded';
+  const r = St.avatarShape === 'circle' ? '50%' : '6px';
+  const uidAttr = uid ? ` data-avatar-uid="${esc(uid)}"` : '';
+  const nameAttr = name ? ` data-avatar-name="${esc(name)}"` : '';
+  if (imgSrc) {
+    return `<div class="msg-avatar ${shapeClass}"${uidAttr}${nameAttr}><img src="${imgSrc}" alt="${esc(initial)}" style="border-radius:${r}"></div>`;
+  }
+  return `<div class="msg-avatar ${shapeClass}"${uidAttr}${nameAttr}><div class="msg-avatar-inner" style="border-radius:${r}">${esc(initial)}</div></div>`;
+}
+
+function rerenderAvatarNode(node) {
+  if (!node) return;
+  const uid = node.dataset.avatarUid || '';
+  const name = node.dataset.avatarName || '';
+  let imgSrc = '';
+  if (uid) imgSrc = localStorage.getItem('itc_avatar_' + uid) || '';
+  if (!imgSrc && name) imgSrc = window._avatarCache?.[name] || '';
+
+  const initial = (name || '?')[0].toUpperCase();
   const r = St.avatarShape === 'circle' ? '50%' : '6px';
   if (imgSrc) {
-    return `<div class="msg-avatar ${shape_class}"><img src="${imgSrc}" alt="${esc(initial)}" style="border-radius:${r}"></div>`;
+    node.innerHTML = `<img src="${imgSrc}" alt="${esc(initial)}" style="border-radius:${r}">`;
+  } else {
+    node.innerHTML = `<div class="msg-avatar-inner" style="border-radius:${r}">${esc(initial)}</div>`;
   }
-  return `<div class="msg-avatar ${shape_class}"><div class="msg-avatar-inner" style="border-radius:${r}">${esc(initial)}</div></div>`;
+}
+
+function refreshAllRenderedAvatars() {
+  document.querySelectorAll('.msg-avatar[data-avatar-uid], .msg-avatar[data-avatar-name]').forEach(rerenderAvatarNode);
+  if (typeof refreshCasualNickDisplay === 'function') refreshCasualNickDisplay();
+  if (typeof refreshProfileAvatar === 'function') refreshProfileAvatar();
 }
 
 function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId, whisperTo, whisperToName, nameColor, msgKey, channel, standingImg, tokenId, standingLabel) {

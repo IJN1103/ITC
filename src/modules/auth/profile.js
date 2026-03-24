@@ -26,7 +26,7 @@ function refreshProfileAvatar() {
   const user = window._currentUser;
   if (!user) return;
 
-  const saved    = localStorage.getItem('itc_avatar_' + user.uid);
+  const saved    = localStorage.getItem('itc_avatar_' + user.uid) || '';
   const initials = (user.displayName || St.myName || '?')[0].toUpperCase();
 
   const navEl = document.getElementById('user-avatar');
@@ -134,7 +134,20 @@ function setupCropDrag() {
   document.addEventListener('touchend', () => { if (window._crop) window._crop.drag = false; });
 }
 
-function applyCrop() {
+async function syncMyAvatarToFirebase(dataUrl) {
+  const user = window._currentUser;
+  if (!user || !window._FB?.CONFIGURED || !dataUrl) return;
+  const { db, ref, update, set } = window._FB;
+
+  await update(ref(db, `users/${user.uid}/profile`), { avatar: dataUrl });
+
+  if (St.roomCode) {
+    await set(ref(db, `rooms/${St.roomCode}/avatars/${user.uid}`), dataUrl);
+    await update(ref(db, `rooms/${St.roomCode}/players/${user.uid}`), { avatar: dataUrl });
+  }
+}
+
+async function applyCrop() {
   const s = window._crop;
   if (!s) return;
 
@@ -150,7 +163,18 @@ function applyCrop() {
 
   const dataUrl = out.toDataURL('image/jpeg', 0.85);
   localStorage.setItem('itc_avatar_' + window._currentUser.uid, dataUrl);
+  if (!window._avatarCache) window._avatarCache = {};
+  window._avatarCache[window._currentUser.uid] = dataUrl;
+  window._avatarCache[St.myName] = dataUrl;
+
+  try {
+    await syncMyAvatarToFirebase(dataUrl);
+  } catch (e) {
+    console.error('avatar sync failed', e);
+  }
+
   refreshProfileAvatar();
+  if (typeof refreshAllRenderedAvatars === 'function') refreshAllRenderedAvatars();
   document.getElementById('crop-zone').style.display = 'none';
   window._crop = null;
   showProfileMsg('프로필 사진이 업데이트됐어요!', 'ok');

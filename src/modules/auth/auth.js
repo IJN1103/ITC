@@ -49,13 +49,27 @@ function initAuthScreen() {
 async function loadUserProfile(user) {
   if (!window._FB?.CONFIGURED) return;
   const { db, ref, get, set } = window._FB;
-  const snap = await get(ref(db, `users/${user.uid}/profile`));
+  const profileRef = ref(db, `users/${user.uid}/profile`);
+  const snap = await get(profileRef);
   if (!snap.exists()) {
-    await set(ref(db, `users/${user.uid}/profile`), {
+    await set(profileRef, {
       name: user.displayName || user.email?.split('@')[0] || '플레이어',
       email: user.email || '',
       createdAt: Date.now(),
+      avatar: localStorage.getItem('itc_avatar_' + user.uid) || '',
     });
+    return;
+  }
+
+  const profile = snap.val() || {};
+  if (profile.name) {
+    St.myName = profile.name;
+  }
+  if (profile.avatar) {
+    localStorage.setItem('itc_avatar_' + user.uid, profile.avatar);
+    if (!window._avatarCache) window._avatarCache = {};
+    window._avatarCache[user.uid] = profile.avatar;
+    window._avatarCache[profile.name || St.myName] = profile.avatar;
   }
 }
 

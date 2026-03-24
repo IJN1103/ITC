@@ -30,15 +30,19 @@ function setupFirebaseListeners() {
   onValue(ref(db, `rooms/${code}/avatars`), snap => {
     const avatars = snap.val() || {};
     if (!window._avatarCache) window._avatarCache = {};
-    
+
     Object.entries(avatars).forEach(([uid, avData]) => {
+      if (!avData) return;
       localStorage.setItem('itc_avatar_' + uid, avData);
       window._avatarCache[uid] = avData;
-      // St.players에 해당 유저가 있다면 이름표에도 사진을 달아줍니다.
       if (St.players && St.players[uid] && St.players[uid].name) {
         window._avatarCache[St.players[uid].name] = avData;
       }
     });
+
+    if (typeof refreshAllRenderedAvatars === 'function') {
+      refreshAllRenderedAvatars();
+    }
   });
 
   onValue(ref(db, `rooms/${code}/chat`), snap => {
@@ -173,10 +177,11 @@ async function enterGame() {
   if (!window._avatarCache) window._avatarCache = {};
   const myAv = localStorage.getItem('itc_avatar_' + St.myId);
   if (myAv) {
+    window._avatarCache[St.myId] = myAv;
     window._avatarCache[St.myName] = myAv;
-    // 내가 방에 들어올 때 사진 데이터베이스(avatars)에 내 프사를 올립니다.
     if (window._FB?.CONFIGURED) {
       window._FB.set(window._FB.ref(window._FB.db, `rooms/${St.roomCode}/avatars/${St.myId}`), myAv).catch(()=>{});
+      window._FB.update(window._FB.ref(window._FB.db, `rooms/${St.roomCode}/players/${St.myId}`), { avatar: myAv }).catch(()=>{});
     }
   }
 
@@ -188,8 +193,11 @@ async function enterGame() {
       const currentAv = localStorage.getItem('itc_avatar_' + St.myId);
       if (currentAv && currentAv !== _lastAv) {
         _lastAv = currentAv;
+        window._avatarCache[St.myId] = currentAv;
         window._avatarCache[St.myName] = currentAv;
         window._FB.set(window._FB.ref(window._FB.db, `rooms/${St.roomCode}/avatars/${St.myId}`), currentAv).catch(()=>{});
+        window._FB.update(window._FB.ref(window._FB.db, `rooms/${St.roomCode}/players/${St.myId}`), { avatar: currentAv }).catch(()=>{});
+        if (typeof refreshAllRenderedAvatars === 'function') refreshAllRenderedAvatars();
       }
     }, 2000);
   }
@@ -224,9 +232,12 @@ function renderPlayers(players) {
     const online = p.online || id === St.myId;
     addPlayerChip(id, p.name, id === St.myId, p.role, online);
     
-    // 로컬에 백업해둔 프사가 있다면 일단 표시합니다. (실시간 교체는 맨 위 리스너가 담당)
-    const av = localStorage.getItem('itc_avatar_' + id);
-    if (av) window._avatarCache[p.name] = av;
+    const av = p.avatar || localStorage.getItem('itc_avatar_' + id);
+    if (av) {
+      localStorage.setItem('itc_avatar_' + id, av);
+      window._avatarCache[id] = av;
+      window._avatarCache[p.name] = av;
+    }
   });
 }
 
