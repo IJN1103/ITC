@@ -31,20 +31,18 @@ function setupFirebaseListeners() {
     const avatars = snap.val() || {};
     if (!window._avatarCache) window._avatarCache = {};
 
-    Object.entries(avatars).forEach(([uid, rawValue]) => {
-      const avatarSrc = (typeof rawValue === 'string') ? rawValue : (rawValue && rawValue.avatar) ? rawValue.avatar : '';
-      if (!avatarSrc) return;
-
-      localStorage.setItem('itc_avatar_' + uid, avatarSrc);
-      window._avatarCache[uid] = avatarSrc;
-
-      const playerName = (St.players && St.players[uid] && St.players[uid].name) ? St.players[uid].name : '';
-      if (playerName) window._avatarCache[playerName] = avatarSrc;
-
-      if (typeof refreshRenderedAvatars === 'function') {
-        refreshRenderedAvatars(uid, playerName, avatarSrc);
+    Object.entries(avatars).forEach(([uid, avData]) => {
+      const avatar = typeof normalizeAvatarValue === 'function' ? normalizeAvatarValue(avData) : (typeof avData === 'string' ? avData : (avData?.avatar || ''));
+      if (!avatar) return;
+      localStorage.setItem('itc_avatar_' + uid, avatar);
+      window._avatarCache[uid] = avatar;
+      if (St.players && St.players[uid] && St.players[uid].name) {
+        window._avatarCache[St.players[uid].name] = avatar;
       }
     });
+
+    if (typeof refreshRenderedAvatars === 'function') refreshRenderedAvatars();
+    if (typeof refreshCasualNickDisplay === 'function') refreshCasualNickDisplay();
   });
 
   onValue(ref(db, `rooms/${code}/chat`), snap => {
@@ -177,31 +175,28 @@ async function enterGame() {
   renderCharacterSheet(St.system);
   
   if (!window._avatarCache) window._avatarCache = {};
-  const myAv = localStorage.getItem('itc_avatar_' + St.myId);
+  const myAv = typeof getMyAvatarData === 'function' ? getMyAvatarData() : (localStorage.getItem('itc_avatar_' + St.myId) || '');
   if (myAv) {
+    localStorage.setItem('itc_avatar_' + St.myId, myAv);
     window._avatarCache[St.myId] = myAv;
     window._avatarCache[St.myName] = myAv;
-    if (window._FB?.CONFIGURED) {
-      window._FB.set(window._FB.ref(window._FB.db, `rooms/${St.roomCode}/avatars/${St.myId}`), myAv).catch(()=>{});
-    }
+  }
+  if (typeof syncMyAvatarEverywhere === 'function') {
+    syncMyAvatarEverywhere(myAv);
   }
 
-  // 🔥 [새로 추가된 마법의 로직] 2초마다 내 프사 변경을 감지해서 자동으로 남들에게 쏴줍니다.
   if (!window._avatarWatcher) {
     let _lastAv = myAv;
     window._avatarWatcher = setInterval(() => {
       if (!St.roomCode || !window._FB?.CONFIGURED) return;
-      const currentAv = localStorage.getItem('itc_avatar_' + St.myId);
+      const currentAv = typeof getMyAvatarData === 'function' ? getMyAvatarData() : (localStorage.getItem('itc_avatar_' + St.myId) || '');
       if (currentAv && currentAv !== _lastAv) {
         _lastAv = currentAv;
         window._avatarCache[St.myId] = currentAv;
         window._avatarCache[St.myName] = currentAv;
-        if (typeof refreshRenderedAvatars === 'function') {
-          refreshRenderedAvatars(St.myId, St.myName, currentAv);
-        }
-        window._FB.set(window._FB.ref(window._FB.db, `rooms/${St.roomCode}/avatars/${St.myId}`), currentAv).catch(()=>{});
+        if (typeof syncMyAvatarEverywhere === 'function') syncMyAvatarEverywhere(currentAv);
       }
-    }, 2000);
+    }, 1500);
   }
 
   addLocalMessage('system', '', `${St.myName}님이 입장했습니다 — ${SYS_LABELS[St.system]}`);
@@ -234,16 +229,20 @@ function renderPlayers(players) {
     const online = p.online || id === St.myId;
     addPlayerChip(id, p.name, id === St.myId, p.role, online);
     
-    // 로컬에 백업해둔 프사가 있다면 일단 표시합니다. (실시간 교체는 맨 위 리스너가 담당)
-    const av = localStorage.getItem('itc_avatar_' + id);
-    if (av) {
-      window._avatarCache[id] = av;
-      window._avatarCache[p.name] = av;
-      if (typeof refreshRenderedAvatars === 'function') {
-        refreshRenderedAvatars(id, p.name, av);
+    const playerAvatar = typeof normalizeAvatarValue === 'function' ? normalizeAvatarValue(p.avatar) : (p.avatar || '');
+    if (playerAvatar) {
+      localStorage.setItem('itc_avatar_' + id, playerAvatar);
+      window._avatarCache[id] = playerAvatar;
+      window._avatarCache[p.name] = playerAvatar;
+    } else {
+      const av = localStorage.getItem('itc_avatar_' + id);
+      if (av) {
+        window._avatarCache[id] = av;
+        window._avatarCache[p.name] = av;
       }
     }
   });
+  if (typeof refreshRenderedAvatars === 'function') refreshRenderedAvatars();
 }
 
 async function initCharacter(sys) {

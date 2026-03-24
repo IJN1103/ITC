@@ -22,11 +22,77 @@ function initProfileModal() {
   });
 }
 
+
+function normalizeAvatarValue(raw) {
+  if (!raw) return '';
+  if (typeof raw === 'string') return raw;
+  if (typeof raw === 'object') return raw.avatar || raw.src || raw.url || '';
+  return '';
+}
+
+function getStoredAvatarByUid(uid) {
+  if (!uid) return '';
+  return normalizeAvatarValue(localStorage.getItem('itc_avatar_' + uid));
+}
+
+function getProfileAvatarFromDB() {
+  const user = window._currentUser;
+  if (!user) return '';
+  try {
+    const raw = localStorage.getItem('itc_profile_' + user.uid);
+    if (!raw) return '';
+    const data = JSON.parse(raw);
+    return normalizeAvatarValue(data?.avatar);
+  } catch(e) {
+    return '';
+  }
+}
+
+function getMyAvatarData() {
+  const user = window._currentUser;
+  if (!user) return '';
+  return getStoredAvatarByUid(user.uid) || getProfileAvatarFromDB() || '';
+}
+
+async function syncMyAvatarEverywhere(avatarOverride) {
+  const user = window._currentUser;
+  if (!user || !window._FB?.CONFIGURED) return;
+
+  const avatar = normalizeAvatarValue(avatarOverride || getMyAvatarData());
+  if (!avatar) return;
+
+  try {
+    localStorage.setItem('itc_avatar_' + user.uid, avatar);
+  } catch(e) {}
+
+  const { db, ref, update, set } = window._FB;
+  const payload = { avatar, updatedAt: Date.now() };
+
+  try {
+    await update(ref(db, `users/${user.uid}/profile`), payload);
+  } catch(e) {}
+
+  if (St?.roomCode) {
+    try {
+      await set(ref(db, `rooms/${St.roomCode}/avatars/${user.uid}`), payload);
+    } catch(e) {}
+    try {
+      await update(ref(db, `rooms/${St.roomCode}/players/${user.uid}`), { avatar, avatarUpdatedAt: payload.updatedAt });
+    } catch(e) {}
+  }
+
+  if (!window._avatarCache) window._avatarCache = {};
+  window._avatarCache[user.uid] = avatar;
+  if (St?.myName) window._avatarCache[St.myName] = avatar;
+
+  if (typeof refreshRenderedAvatars === 'function') refreshRenderedAvatars();
+}
+
 function refreshProfileAvatar() {
   const user = window._currentUser;
   if (!user) return;
 
-  const saved    = localStorage.getItem('itc_avatar_' + user.uid);
+  const saved    = getMyAvatarData();
   const initials = (user.displayName || St.myName || '?')[0].toUpperCase();
 
   const navEl = document.getElementById('user-avatar');
@@ -149,25 +215,11 @@ function applyCrop() {
   ctx.drawImage(s.img, x, y, sw, sh);
 
   const dataUrl = out.toDataURL('image/jpeg', 0.85);
-  const uid = window._currentUser.uid;
-  localStorage.setItem('itc_avatar_' + uid, dataUrl);
-
-  if (!window._avatarCache) window._avatarCache = {};
-  window._avatarCache[uid] = dataUrl;
-  if (St.myName) window._avatarCache[St.myName] = dataUrl;
-
-  if (window._FB?.CONFIGURED && St.roomCode) {
-    const { db, ref, set } = window._FB;
-    set(ref(db, `rooms/${St.roomCode}/avatars/${uid}`), dataUrl).catch(() => {});
-  }
-
-  if (typeof refreshRenderedAvatars === 'function') {
-    refreshRenderedAvatars(uid, St.myName, dataUrl);
-  }
-
+  localStorage.setItem('itc_avatar_' + window._currentUser.uid, dataUrl);
   refreshProfileAvatar();
   document.getElementById('crop-zone').style.display = 'none';
   window._crop = null;
+  syncMyAvatarEverywhere(dataUrl);
   showProfileMsg('프로필 사진이 업데이트됐어요!', 'ok');
 }
 
@@ -185,6 +237,9 @@ async function saveNickname() {
     if (window._FB?.CONFIGURED) {
       const { db, ref, update } = window._FB;
       await update(ref(db, `users/${user.uid}/profile`), { name: nick });
+      if (St?.roomCode) {
+        await update(ref(db, `rooms/${St.roomCode}/players/${user.uid}`), { name: nick });
+      }
     }
     showProfileMsg('닉네임이 저장됐어요!', 'ok');
   } catch(e) {
@@ -231,3 +286,7 @@ function showProfileMsg(text, type) {
 
 let _activeRightTab = 'chat';
 let _casualNickname = '';
+
+window.normalizeAvatarValue = normalizeAvatarValue;
+window.getMyAvatarData = getMyAvatarData;
+window.syncMyAvatarEverywhere = syncMyAvatarEverywhere;

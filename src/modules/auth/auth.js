@@ -48,14 +48,40 @@ function initAuthScreen() {
 /* 유저 프로필 로드 / 최초 생성 */
 async function loadUserProfile(user) {
   if (!window._FB?.CONFIGURED) return;
-  const { db, ref, get, set } = window._FB;
-  const snap = await get(ref(db, `users/${user.uid}/profile`));
+  const { db, ref, get, set, update } = window._FB;
+  const profileRef = ref(db, `users/${user.uid}/profile`);
+  const snap = await get(profileRef);
+  const localAvatar = localStorage.getItem('itc_avatar_' + user.uid) || '';
+
   if (!snap.exists()) {
-    await set(ref(db, `users/${user.uid}/profile`), {
+    const payload = {
       name: user.displayName || user.email?.split('@')[0] || '플레이어',
       email: user.email || '',
       createdAt: Date.now(),
-    });
+    };
+    if (localAvatar) payload.avatar = localAvatar;
+    await set(profileRef, payload);
+    try { localStorage.setItem('itc_profile_' + user.uid, JSON.stringify(payload)); } catch(e) {}
+    if (payload.avatar) localStorage.setItem('itc_avatar_' + user.uid, payload.avatar);
+    if (payload.name) St.myName = payload.name;
+    return;
+  }
+
+  const profile = snap.val() || {};
+  try { localStorage.setItem('itc_profile_' + user.uid, JSON.stringify(profile)); } catch(e) {}
+
+  const dbAvatar = normalizeAvatarValue(profile.avatar);
+  if (dbAvatar) {
+    localStorage.setItem('itc_avatar_' + user.uid, dbAvatar);
+  } else if (localAvatar) {
+    try { await update(profileRef, { avatar: localAvatar, updatedAt: Date.now() }); } catch(e) {}
+  }
+
+  if (profile.name) {
+    St.myName = profile.name;
+  } else if (user.displayName) {
+    try { await update(profileRef, { name: user.displayName }); } catch(e) {}
+    St.myName = user.displayName;
   }
 }
 
