@@ -8,131 +8,6 @@ let _pendingChatImages = [];
 const MAX_PENDING_CHAT_IMAGES = 4;
 let _chatImageWideMode = false;
 
-
-function isScrolledNearBottom(container, threshold = 80) {
-  if (!container) return true;
-  const remaining = container.scrollHeight - container.clientHeight - container.scrollTop;
-  return remaining <= threshold;
-}
-
-function scrollContainerToBottom(container) {
-  if (!container) return;
-  container.scrollTop = container.scrollHeight;
-}
-
-function scheduleScrollToBottom(containerOrId, attempts = 4) {
-  const resolveContainer = () => {
-    if (!containerOrId) return null;
-    if (typeof containerOrId === 'string') return document.getElementById(containerOrId);
-    return containerOrId;
-  };
-  const run = (left) => {
-    const container = resolveContainer();
-    if (!container) return;
-    scrollContainerToBottom(container);
-    if (left > 1) {
-      requestAnimationFrame(() => run(left - 1));
-    }
-  };
-  requestAnimationFrame(() => run(attempts));
-}
-
-function bindImageBottomScroll(img, containerOrId) {
-  if (!img) return;
-  const handler = () => scheduleScrollToBottom(containerOrId, 6);
-  if (img.complete) {
-    handler();
-    return;
-  }
-  img.addEventListener('load', handler, { once: true });
-}
-
-function ensureChatAdminControls() {
-  const tabs = document.querySelector('.right-tabs');
-  if (!tabs) return null;
-
-  let actionBar = document.getElementById('chat-top-actions');
-  if (!actionBar) {
-    actionBar = document.createElement('div');
-    actionBar.id = 'chat-top-actions';
-    actionBar.className = 'chat-top-actions';
-    tabs.insertAdjacentElement('afterend', actionBar);
-  }
-
-  const popoutBtn = document.querySelector('.chat-popout-btn');
-  if (popoutBtn && popoutBtn.parentNode !== actionBar) {
-    actionBar.appendChild(popoutBtn);
-  }
-
-  let btn = document.getElementById('chat-clear-btn');
-  if (!btn) {
-    btn = document.createElement('button');
-    btn.id = 'chat-clear-btn';
-    btn.type = 'button';
-    btn.className = 'chat-clear-btn';
-    btn.textContent = '채팅 지우기';
-    btn.title = 'GM만 채팅/잡담 내역 전체를 지울 수 있습니다';
-    btn.onclick = clearAllChatHistory;
-  }
-  if (btn.parentNode !== actionBar) actionBar.appendChild(btn);
-
-  ['rtab-chat', 'rtab-casual', 'rtab-journal'].forEach(id => {
-    const tabBtn = document.getElementById(id);
-    if (!tabBtn || tabBtn.dataset.chatClearHooked === '1') return;
-    tabBtn.dataset.chatClearHooked = '1';
-    tabBtn.addEventListener('click', () => {
-      setTimeout(updateChatAdminButtonVisibility, 0);
-    });
-  });
-
-  updateChatAdminButtonVisibility();
-  return btn;
-}
-
-function updateChatAdminButtonVisibility() {
-  const btn = document.getElementById('chat-clear-btn');
-  const popoutBtn = document.querySelector('.chat-popout-btn');
-  const actionBar = document.getElementById('chat-top-actions');
-  if (!actionBar) return;
-  const currentTab = typeof _activeRightTab !== 'undefined' ? _activeRightTab : 'chat';
-  const inChatLikeTab = currentTab === 'chat' || currentTab === 'casual';
-  const clearVisible = !!St.isGM && inChatLikeTab;
-  if (btn) btn.style.display = clearVisible ? 'inline-flex' : 'none';
-  if (popoutBtn) popoutBtn.style.display = inChatLikeTab ? 'inline-flex' : 'none';
-  actionBar.style.display = inChatLikeTab ? 'flex' : 'none';
-}
-
-async function clearAllChatHistory() {
-  if (!St.isGM) {
-    showToast('GM만 사용할 수 있는 기능이에요.');
-    return;
-  }
-  if (!window._FB?.CONFIGURED || !St.roomCode) {
-    showToast('채팅을 지울 수 없는 상태예요.');
-    return;
-  }
-  const ok = confirm('채팅과 잡담 내역 전체를 지울까요?\n이 작업은 되돌릴 수 없어요.');
-  if (!ok) return;
-
-  const { db, ref, remove } = window._FB;
-  try {
-    await Promise.all([
-      remove(ref(db, `rooms/${St.roomCode}/chat`)),
-      remove(ref(db, `rooms/${St.roomCode}/casual`))
-    ]);
-    _processedChatKeys.clear();
-    _processedCasualKeys.clear();
-    const chatEl = document.getElementById('chat-messages');
-    const casualEl = document.getElementById('casual-messages');
-    if (chatEl) chatEl.innerHTML = '';
-    if (casualEl) casualEl.innerHTML = '';
-    showToast('채팅 내역을 모두 지웠어요.');
-  } catch (err) {
-    console.error(err);
-    showToast('채팅 내역을 지우지 못했어요.');
-  }
-}
-
 function ensureChatImageInputConfig() {
   const input = document.getElementById('chat-img-input');
   if (input) input.multiple = true;
@@ -247,7 +122,6 @@ function addPendingChatImages(items) {
     showToast('이미지는 한 번에 최대 4장까지 보낼 수 있어요.');
   }
   refreshPendingChatImageBox();
-  ensureChatAdminControls();
 }
 
 function removePendingChatImage(index) {
@@ -560,9 +434,8 @@ function appendCasualMsg(name, text, uid, timestamp, msgKey) {
   div.dataset.avatarName = name || '';
   div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-text">${fmtText(text)}</div></div>`;
   addMsgActions(div, uid, msgKey, 'casual', text, 'normal');
-  const stickToBottom = isScrolledNearBottom(container);
   container.appendChild(div);
-  if (stickToBottom) scheduleScrollToBottom(container, 4);
+  container.scrollTop = container.scrollHeight;
   if (typeof _popoutWins !== 'undefined') {
     const av = getPopoutAvatarUrl(name, uid);
     _popoutWins.filter(w => w && !w.closed).forEach(w => { if (w.addMsg) w.addMsg(name, text, 'normal', 'casual', '', av, time, fmtText(text)); });
@@ -709,9 +582,8 @@ function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJ
     const div = document.createElement('div');
     div.className = 'chat-msg msg-sys';
     div.innerHTML = `<div class="msg-text">${fmtText(text)}</div>`;
-    const stickToBottom = isScrolledNearBottom(container);
     container.appendChild(div);
-    if (stickToBottom) scheduleScrollToBottom(container, 4);
+    container.scrollTop = container.scrollHeight;
     return;
   }
 
@@ -720,9 +592,8 @@ function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJ
     div.className = 'chat-msg msg-dsec';
     div.innerHTML = `<div class="msg-body"><div class="msg-text">${fmtText(text)}</div></div>`;
     addMsgActions(div, uid, msgKey, channel || 'chat', text, type);
-    const stickToBottom = isScrolledNearBottom(container);
     container.appendChild(div);
-    if (stickToBottom) scheduleScrollToBottom(container, 4);
+    container.scrollTop = container.scrollHeight;
     return;
   }
 
@@ -736,9 +607,8 @@ function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJ
     div.dataset.avatarName = name || '';
     div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name">${esc(name)}</span><span class="whisper-tag">${tagText}</span><span class="msg-time">${time}</span></div><div class="msg-text">${fmtText(text)}</div></div>`;
     addMsgActions(div, uid, msgKey, channel || 'chat', text, type);
-    const stickToBottom = isScrolledNearBottom(container);
     container.appendChild(div);
-    if (stickToBottom) scheduleScrollToBottom(container, 4);
+    container.scrollTop = container.scrollHeight;
     return;
   }
 
@@ -758,9 +628,8 @@ function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJ
     const _nameStyle = _jColor ? ` style="color:${_jColor}"` : '';
     d2.innerHTML = `${avHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name sa-msg-name"${_nameStyle}>${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-text">${fmtText(text.replace(/@\S+/g,'').trim())}</div></div>`;
     addMsgActions(d2, uid, msgKey, channel || 'chat', text, type);
-    const stickToBottom = isScrolledNearBottom(container);
     container.appendChild(d2);
-    if (stickToBottom) scheduleScrollToBottom(container, 4);
+    container.scrollTop = container.scrollHeight;
     if (!timestamp || Date.now() - timestamp < 5000) {
       showDialogueBoxFromMsg(name, text, speakAsJournalId, standingImg, tokenId, standingLabel);
     }
@@ -783,11 +652,8 @@ function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJ
     } else {
       d2.innerHTML = `${avHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name sa-msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div><img class="${getChatImageClassName(imageWide)}" src="${esc(text)}" alt="첨부 이미지" style="${getChatImageInlineStyle(imageWide)}" onclick="openLightbox(this.src)"></div>`;
     }
-    const stickToBottom = isScrolledNearBottom(container);
     container.appendChild(d2);
-    const img = d2.querySelector('img.msg-image');
-    bindImageBottomScroll(img, container);
-    if (stickToBottom) scheduleScrollToBottom(container, 6);
+    container.scrollTop = container.scrollHeight;
     return;
   }
 
@@ -803,11 +669,8 @@ function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJ
     } else {
       div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div><img class="${getChatImageClassName(imageWide)}" src="${esc(text)}" alt="첨부 이미지" style="${getChatImageInlineStyle(imageWide)}" onclick="openLightbox(this.src)"></div>`;
     }
-    const stickToBottom = isScrolledNearBottom(container);
     container.appendChild(div);
-    const img = div.querySelector('img.msg-image');
-    bindImageBottomScroll(img, container);
-    if (stickToBottom) scheduleScrollToBottom(container, 6);
+    container.scrollTop = container.scrollHeight;
     return;
   }
 
@@ -830,19 +693,14 @@ function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJ
     div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name"${_nc}>${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-text">${fmtText(text)}</div></div>`;
   }
   addMsgActions(div, uid, msgKey, channel || 'chat', text, type);
-  const stickToBottom = isScrolledNearBottom(container);
   container.appendChild(div);
-  if (stickToBottom) scheduleScrollToBottom(container, 4);
+  container.scrollTop = container.scrollHeight;
 }
-
 
 
 window.clearPendingChatImage = clearPendingChatImage;
 window.removePendingChatImage = removePendingChatImage;
 window.setChatImageWideMode = setChatImageWideMode;
-window.clearAllChatHistory = clearAllChatHistory;
-window.updateChatAdminButtonVisibility = updateChatAdminButtonVisibility;
 
 loadChatImageWideMode();
 ensureChatImageInputConfig();
-ensureChatAdminControls();
