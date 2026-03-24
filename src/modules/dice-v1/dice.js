@@ -86,36 +86,75 @@ function showRollResult(roll) {
 
 function rollFromFormula(formula) {
   formula = formula.replace(/\s/g, '').toLowerCase();
-  const parts = formula.match(/^(\d+)?d(\d+)([+-]\d+)?$/);
-  if (!parts) {
-    const simpleNum = parseInt(formula);
-    if (!isNaN(simpleNum) && simpleNum > 0 && simpleNum <= 1000) {
-      const r = Math.ceil(Math.random() * simpleNum);
-      const rollObj = { total: r, detail: `1d${simpleNum}: [${r}] = ${r}`, rolls: [r] };
-      showRollResult(rollObj);
-      sendMessage(St.myName, `🎲 1d${simpleNum} → ${r}`, 'dice');
-      return;
+
+  // 수식을 +/- 기준으로 토큰 분리: "1d100+2d20-5" → ["+1d100", "+2d20", "-5"]
+  const tokens = [];
+  let buf = '';
+  for (let i = 0; i < formula.length; i++) {
+    const ch = formula[i];
+    if ((ch === '+' || ch === '-') && i > 0) {
+      tokens.push(buf);
+      buf = ch;
+    } else {
+      buf += ch;
     }
-    showToast('올바른 수식이 아니에요. 예: /d1d100, /d2d6+3');
+  }
+  if (buf) tokens.push(buf);
+
+  if (tokens.length === 0) { showToast('올바른 수식이 아니에요. 예: /1d100, /2d6+3'); return; }
+
+  let grandTotal = 0;
+  const allDetails = [];
+  const allRolls = [];
+  let labelParts = [];
+  let valid = true;
+
+  for (const token of tokens) {
+    // 부호 분리
+    let sign = 1;
+    let expr = token;
+    if (expr.startsWith('+')) { expr = expr.slice(1); }
+    else if (expr.startsWith('-')) { sign = -1; expr = expr.slice(1); }
+
+    // NdS 패턴
+    const diceMatch = expr.match(/^(\d+)?d(\d+)$/);
+    if (diceMatch) {
+      const count = parseInt(diceMatch[1] || '1');
+      const sides = parseInt(diceMatch[2]);
+      if (count < 1 || count > 100 || sides < 1 || sides > 10000) { valid = false; break; }
+      const rolls = [];
+      for (let i = 0; i < count; i++) rolls.push(Math.ceil(Math.random() * sides));
+      const sum = rolls.reduce((a, b) => a + b, 0);
+      grandTotal += sign * sum;
+      allRolls.push(...rolls);
+      allDetails.push((sign < 0 ? '-' : (allDetails.length > 0 ? '+' : '')) + `${count}d${sides}[${rolls.join(',')}]`);
+      labelParts.push((sign < 0 ? '-' : (labelParts.length > 0 ? '+' : '')) + `${count}d${sides}`);
+      continue;
+    }
+
+    // 상수
+    const num = parseInt(expr);
+    if (!isNaN(num)) {
+      grandTotal += sign * num;
+      allDetails.push((sign < 0 ? '-' : (allDetails.length > 0 ? '+' : '')) + String(num));
+      labelParts.push((sign < 0 ? '-' : (labelParts.length > 0 ? '+' : '')) + String(num));
+      continue;
+    }
+
+    valid = false;
+    break;
+  }
+
+  if (!valid) {
+    showToast('올바른 수식이 아니에요. 예: /1d100, /2d6+3, /1d100+2d20');
     return;
   }
-  const count = parseInt(parts[1] || '1');
-  const sides = parseInt(parts[2]);
-  const mod = parseInt(parts[3] || '0');
-  if (count < 1 || count > 100 || sides < 2 || sides > 10000) {
-    showToast('주사위 범위가 너무 크거나 작아요.');
-    return;
-  }
-  const rolls = [];
-  for (let i = 0; i < count; i++) rolls.push(Math.ceil(Math.random() * sides));
-  const sum = rolls.reduce((a, b) => a + b, 0);
-  const total = sum + mod;
-  const modStr = mod > 0 ? `+${mod}` : mod < 0 ? `${mod}` : '';
-  const detail = `${count}d${sides}${modStr}: [${rolls.join('+')}]${modStr ? modStr : ''} = ${total}`;
-  const label = `${count}d${sides}${modStr}`;
-  const rollObj = { playerId: St.myId, player: St.myName, dice: label, total, rolls, detail, time: Date.now() };
+
+  const label = labelParts.join('');
+  const detail = allDetails.join(' ') + ' = ' + grandTotal;
+  const rollObj = { playerId: St.myId, player: St.myName, dice: label, total: grandTotal, rolls: allRolls, detail, time: Date.now() };
   showRollResult(rollObj);
-  sendMessage(St.myName, `🎲 ${label} → ${total}  (${rolls.join(', ')})`, 'dice');
+  sendMessage(St.myName, `🎲 ${label} → ${grandTotal}  (${detail})`, 'dice');
   if (window._FB?.CONFIGURED) {
     const { db, ref, set } = window._FB;
     set(ref(db, `rooms/${St.roomCode}/lastRoll`), rollObj);
