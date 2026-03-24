@@ -28,7 +28,7 @@ function saGetAvatar(journalId) {
 
 function saSendMessage(journal, text) {
   const avatar = saGetAvatar(journal.id);
-  const standingImg = resolveStandingImage(journal, text);
+  resolveStandingImage(journal, text); // 발신자 로컬 상태 업데이트용
   const msg = {
     name: journal.title || '무제',
     text,
@@ -39,12 +39,16 @@ function saSendMessage(journal, text) {
     speakAsJournalId: journal.id,
     nameColor: journal.nameColor || '',
   };
-  if (standingImg) msg.standingImg = standingImg;
+  // base64 대신 토큰ID + 스탠딩 라벨만 전송 (수 바이트)
+  if (journal.assignedTokenId) {
+    msg.tokenId = journal.assignedTokenId;
+    msg.standingLabel = _vnCurrentStanding[journal.id] || '';
+  }
   if (window._FB?.CONFIGURED) {
     const { db, ref, push } = window._FB;
     push(ref(db, `rooms/${St.roomCode}/chat`), msg);
   } else {
-    appendChatMsg(msg.name, text, 'speak-as', St.myId, msg.time, msg.speakAsAvatar, msg.speakAsJournalId, null, null, msg.nameColor, null, 'chat', msg.standingImg);
+    appendChatMsg(msg.name, text, 'speak-as', St.myId, msg.time, msg.speakAsAvatar, msg.speakAsJournalId, null, null, msg.nameColor, null, 'chat', null, msg.tokenId, msg.standingLabel);
   }
 }
 
@@ -150,7 +154,7 @@ function hideDialogueBox() {
   if (_vnTimer) { clearTimeout(_vnTimer); _vnTimer = null; }
 }
 
-function showDialogueBoxFromMsg(name, text, journalId, standingImg) {
+function showDialogueBoxFromMsg(name, text, journalId, standingImg, tokenId, standingLabel) {
   const journal = journalId ? _allJournals.find(x => x.id === journalId) : null;
   const dialog = document.getElementById('vn-dialog');
   const nameEl = document.getElementById('vn-name');
@@ -163,12 +167,34 @@ function showDialogueBoxFromMsg(name, text, journalId, standingImg) {
   const cleanText = cleanDialogueText(text);
   textEl.innerHTML = esc(cleanText).replace(/\n/g, '<br>');
 
-  let resolvedStanding = null;
+  // 스탠딩 resolve: 3단계 fallback
+  let finalStanding = null;
+
+  // 1단계: 저널 기반 resolve (발신자/수신자 공통)
   if (journal) {
-    resolvedStanding = resolveStandingImage(journal, text);
+    finalStanding = resolveStandingImage(journal, text);
     updateTokenStandingOnMap(journal.id);
   }
-  const finalStanding = resolvedStanding || standingImg || null;
+
+  // 2단계: tokenId + standingLabel 기반 직접 resolve (수신자용)
+  if (!finalStanding && tokenId) {
+    const token = St.tokens[tokenId];
+    if (token) {
+      const standings = token.standings || [];
+      if (standingLabel) {
+        const found = standings.find(s => s.label === standingLabel && s.img);
+        if (found) finalStanding = found.img;
+      }
+      if (!finalStanding) {
+        const first = standings.find(s => s.img);
+        if (first) finalStanding = first.img;
+      }
+      if (!finalStanding && token.tokenImg) finalStanding = token.tokenImg;
+    }
+  }
+
+  // 3단계: 레거시 base64 fallback (이전 메시지 호환)
+  if (!finalStanding && standingImg) finalStanding = standingImg;
 
   if (finalStanding) {
     standingEl.innerHTML = `<img src="${finalStanding}" alt="">`;
