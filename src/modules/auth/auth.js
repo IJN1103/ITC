@@ -108,18 +108,38 @@ async function doSignUp() {
   const name  = document.getElementById('su-name').value.trim();
   const email = document.getElementById('su-email').value.trim();
   const pw    = document.getElementById('su-pw').value;
+
   if (!name)  { showErr('signup-err', '닉네임을 입력해 주세요.'); return; }
   if (!email) { showErr('signup-err', '이메일을 입력해 주세요.'); return; }
   if (!pw)    { showErr('signup-err', '비밀번호를 입력해 주세요.'); return; }
+
+  // 🔥 [추가된 부분] 파이어베이스는 비밀번호가 6자리 미만이면 에러를 냅니다. 미리 안내하기!
+  if (pw.length < 6) {
+    showErr('signup-err', '비밀번호는 6자 이상으로 설정해 주세요.');
+    return;
+  }
+
   setLoading('su', true);
   try {
     const { auth, createUserWithEmailAndPassword, updateProfile } = window._FB;
     const cred = await createUserWithEmailAndPassword(auth, email, pw);
     await updateProfile(cred.user, { displayName: name });
-    St.myName = name; St.myId = cred.user.uid;
+    St.myName = name; 
+    St.myId = cred.user.uid;
+
+    // 🔥 [추가된 부분] 가입 성공 시 로딩을 끄고, 비밀번호 칸을 비운 뒤 로비 화면으로 보내주기
+    setLoading('su', false);
+    document.getElementById('su-pw').value = '';
+    if (typeof showLobby === 'function') showLobby();
+
   } catch(e) {
     setLoading('su', false);
-    showErr('signup-err', fbErr(e.code));
+    // 🔥 [추가된 부분] 원인 모를 에러가 날 때 무조건 뭉뚱그려 말하지 않고, 진짜 원인(e.code)을 출력하게 만들기
+    let errorReason = fbErr(e.code);
+    if (errorReason === '오류가 발생했습니다. 다시 시도해 주세요.' || !errorReason) {
+      errorReason = `가입 실패 (${e.code}). 파이어베이스 설정을 확인해 주세요.`;
+    }
+    showErr('signup-err', errorReason);
   }
 }
 
