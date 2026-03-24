@@ -381,7 +381,7 @@ function getAvatarHtml(name, uid) {
   return `<div class="msg-avatar ${shape_class}"><div class="msg-avatar-inner" style="border-radius:${r}">${esc(initial)}</div></div>`;
 }
 
-function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId, whisperTo, whisperToName, nameColor, msgKey, channel, standingImg) {
+function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId, whisperTo, whisperToName, nameColor, msgKey, channel, standingImg, tokenId, standingLabel) {
   const container = document.getElementById('chat-messages');
   const d = timestamp ? new Date(timestamp) : new Date();
   const time = `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
@@ -437,7 +437,7 @@ function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJ
     container.appendChild(d2);
     container.scrollTop = container.scrollHeight;
     if (!timestamp || Date.now() - timestamp < 5000) {
-      showDialogueBoxFromMsg(name, text, speakAsJournalId, standingImg);
+      showDialogueBoxFromMsg(name, text, speakAsJournalId, standingImg, tokenId, standingLabel);
     }
     return;
   }
