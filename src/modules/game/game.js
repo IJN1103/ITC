@@ -54,6 +54,7 @@ function setupFirebaseListeners() {
         _processedChatKeys.add(m._key);
       }
     });
+    scheduleScrollToBottom('chat-messages', 8);
   });
 
   onValue(ref(db, `rooms/${code}/tokens`), snap => {
@@ -89,6 +90,7 @@ function setupFirebaseListeners() {
         _processedCasualKeys.add(m._key);
       }
     });
+    scheduleScrollToBottom('casual-messages', 8);
   });
 
   onValue(ref(db, `rooms/${code}/bgm`), snap => {
@@ -140,6 +142,8 @@ async function enterGame() {
 
   const gmBadge = document.getElementById('gm-badge');
   if (gmBadge) gmBadge.style.display = St.isGM ? 'inline-flex' : 'none';
+  if (typeof ensureChatAdminControls === 'function') ensureChatAdminControls();
+  if (typeof updateChatAdminButtonVisibility === 'function') updateChatAdminButtonVisibility();
   refreshPermUI();
   const toolbar = document.getElementById('chat-toolbar');
   if (toolbar) toolbar.classList.add('gm-visible');
@@ -170,6 +174,8 @@ async function enterGame() {
   loadCasualNick();
   loadMyNameColor();
   fetchJournalsFromFB();
+  scheduleScrollToBottom('chat-messages', 10);
+  scheduleScrollToBottom('casual-messages', 10);
 }
 
 function addPlayerChip(id, name, isMe, role, online) {
