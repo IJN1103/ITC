@@ -5,124 +5,190 @@
 
 let _processedChatKeys = new Set();
 let _processedCasualKeys = new Set();
-let _gameListenerUnsubs = [];
+let _roomUnsubs = [];
+let _autoSaveTimer = null;
+let _lastPlayersRenderKey = '';
 
-function teardownFirebaseListeners() {
-  _gameListenerUnsubs.forEach(unsub => {
-    try { if (typeof unsub === 'function') unsub(); } catch (e) {}
+function cleanupRoomListeners() {
+  _roomUnsubs.forEach(unsub => {
+    try { if (typeof unsub === 'function') unsub(); } catch(e) {}
   });
-  _gameListenerUnsubs = [];
+  _roomUnsubs = [];
 }
 
+function makePlayersRenderKey(players) {
+  return JSON.stringify(
+    Object.entries(players || {}).map(([id, p]) => [id, p?.name || '', p?.role || '', !!p?.online]).sort((a,b) => a[0].localeCompare(b[0]))
+  );
+}
+
+function removeMessageNode(containerId, msgKey) {
+  const container = document.getElementById(containerId);
+  if (!container || !msgKey) return;
+  const el = container.querySelector(`.chat-msg[data-msg-key="${msgKey}"]`);
+  if (el) el.remove();
+}
+
+function patchExistingMessage(containerId, msg, channelName) {
+  const container = document.getElementById(containerId);
+  if (!container || !msg?._key) return false;
+  const el = container.querySelector(`.chat-msg[data-msg-key="${msg._key}"]`);
+  if (!el) return false;
+
+  const type = msg.type || el.dataset.msgType || 'normal';
+  const text = typeof msg.text === 'string' ? msg.text : '';
+  const prevText = el.dataset.msgText || '';
+  if (prevText === text && (el.dataset.msgType || 'normal') === type) return true;
+
+  el.dataset.msgText = text;
+  el.dataset.msgType = type;
+  if (channelName) el.dataset.channel = channelName;
+
+  const timeEl = el.querySelector('.msg-time');
+  if (timeEl && msg.time) {
+    const d = new Date(msg.time);
+    timeEl.textContent = `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
+  }
+
+  if (type === 'image' || type === 'speak-as-image') {
+    const img = el.querySelector('.msg-image');
+    if (img && img.src !== text) img.src = text;
+    return true;
+  }
+
+  const textEl = el.querySelector('.msg-text');
+  if (!textEl) return true;
+  if (type === 'speak-as') {
+    textEl.innerHTML = fmtText(text.replace(/@\S+/g, '').trim());
+  } else {
+    textEl.innerHTML = fmtText(text);
+  }
+  return true;
+}
+
+function attachIncrementalChannel(path, processedSet, appendFn, filterFn, containerId, channelName) {
+  const { db, ref, query, limitToLast, onChildAdded, onChildChanged, onChildRemoved } = window._FB;
+  const q = query(ref(db, path), limitToLast(100));
+
+  const unsubAdded = onChildAdded(q, snap => {
+    const msg = snap.val() || {};
+    const key = snap.key;
+    if (!key) return;
+    if (filterFn && !filterFn(msg)) return;
+    if (processedSet.has(key)) return;
+    appendFn({ ...msg, _key: key });
+    processedSet.add(key);
+  });
+
+  const unsubChanged = onChildChanged(q, snap => {
+    const msg = snap.val() || {};
+    const key = snap.key;
+    if (!key) return;
+    if (filterFn && !filterFn(msg)) {
+      removeMessageNode(containerId, key);
+      processedSet.delete(key);
+      return;
+    }
+    if (!processedSet.has(key)) {
+      appendFn({ ...msg, _key: key });
+      processedSet.add(key);
+      return;
+    }
+    patchExistingMessage(containerId, { ...msg, _key: key }, channelName);
+  });
+
+  const unsubRemoved = onChildRemoved(q, snap => {
+    const key = snap.key;
+    if (!key) return;
+    removeMessageNode(containerId, key);
+    processedSet.delete(key);
+  });
+
+  _roomUnsubs.push(unsubAdded, unsubChanged, unsubRemoved);
+}
 
 function setupFirebaseListeners() {
   if (!window._FB?.CONFIGURED) return;
   const { db, ref, onValue } = window._FB;
   const code = St.roomCode;
 
-  teardownFirebaseListeners();
+  cleanupRoomListeners();
   _processedChatKeys.clear();
   _processedCasualKeys.clear();
+  _lastPlayersRenderKey = '';
 
-  const bindValue = (path, handler) => {
-    const unsub = onValue(ref(db, path), handler);
-    _gameListenerUnsubs.push(unsub);
-    return unsub;
-  };
+  const chatContainer = document.getElementById('chat-messages');
+  const casualContainer = document.getElementById('casual-messages');
+  if (chatContainer) chatContainer.innerHTML = '';
+  if (casualContainer) casualContainer.innerHTML = '';
 
-  bindValue(`rooms/${code}/players`, snap => {
+  _roomUnsubs.push(onValue(ref(db, `rooms/${code}/players`), snap => {
     const players = snap.val() || {};
     if (!players[St.myId] && St.roomCode) {
+      cleanupRoomListeners();
       alert('GM에 의해 방에서 강퇴되었습니다.');
       St.roomCode = '';
       document.getElementById('screen-game').style.display = 'none';
       document.getElementById('screen-lobby').style.display = 'flex';
       return;
     }
+    const nextKey = makePlayersRenderKey(players);
+    if (nextKey === _lastPlayersRenderKey) return;
+    _lastPlayersRenderKey = nextKey;
     renderPlayers(players);
-  });
+  }));
 
-  bindValue(`rooms/${code}/avatars`, snap => {
+  _roomUnsubs.push(onValue(ref(db, `rooms/${code}/avatars`), snap => {
     const avatars = snap.val() || {};
     if (!window._avatarCache) window._avatarCache = {};
-
-    Object.entries(avatars).forEach(([uid, raw]) => {
-      const avData = (raw && typeof raw === 'object') ? (raw.value || raw.avatar || '') : raw;
+    Object.entries(avatars).forEach(([uid, avData]) => {
       if (!avData) return;
-      try { localStorage.setItem('itc_avatar_' + uid, avData); } catch (e) {}
+      try { localStorage.setItem('itc_avatar_' + uid, avData); } catch(e) {}
       window._avatarCache[uid] = avData;
       if (St.players && St.players[uid] && St.players[uid].name) {
         window._avatarCache[St.players[uid].name] = avData;
       }
     });
-  });
+  }));
 
-  bindValue(`rooms/${code}/chat`, snap => {
-    const msgs = snap.val() || {};
-    const entries = Object.entries(msgs).map(([k, m]) => ({ ...m, _key: k }));
-    const sorted = entries.sort((a,b) => a.time - b.time)
-      .filter(m => {
-        if (m.type === 'whisper') return m.uid === St.myId || m.whisperTo === St.myId;
-        return true;
-      });
-    const container = document.getElementById('chat-messages');
-    if (!container) return;
-    const rendered = container.querySelectorAll('.chat-msg').length;
+  attachIncrementalChannel(
+    `rooms/${code}/chat`,
+    _processedChatKeys,
+    (m) => appendChatMsg(
+      m.name, m.text, m.type || 'normal', m.uid, m.time,
+      m.speakAsAvatar || null, m.speakAsJournalId || null,
+      m.whisperTo || null, m.whisperToName || null, m.nameColor || null,
+      m._key, 'chat', m.standingImg || null, m.tokenId || null, m.standingLabel || null
+    ),
+    (m) => m.type !== 'whisper' || m.uid === St.myId || m.whisperTo === St.myId,
+    'chat-messages',
+    'chat'
+  );
 
-    if (rendered > sorted.length) {
-      container.innerHTML = '';
-      _processedChatKeys.clear();
-    }
-
-    sorted.forEach(m => {
-      if (!_processedChatKeys.has(m._key)) {
-        appendChatMsg(
-          m.name, m.text, m.type || 'normal', m.uid, m.time, 
-          m.speakAsAvatar || null, m.speakAsJournalId || null, 
-          m.whisperTo || null, m.whisperToName || null, m.nameColor || null, 
-          m._key, 'chat', m.standingImg || null, m.tokenId || null, m.standingLabel || null
-        );
-        _processedChatKeys.add(m._key);
-      }
-    });
-  });
-
-  bindValue(`rooms/${code}/tokens`, snap => {
+  _roomUnsubs.push(onValue(ref(db, `rooms/${code}/tokens`), snap => {
     const tokens = snap.val() || {};
     St.tokens = tokens;
     renderAllTokens(tokens);
-  });
+  }));
 
-  bindValue(`rooms/${code}/journals`, snap => {
+  _roomUnsubs.push(onValue(ref(db, `rooms/${code}/journals`), snap => {
     _allJournals = [];
     const data = snap.val() || {};
     Object.entries(data).forEach(([id, j]) => { j.id = id; _allJournals.push(j); });
     renderJournalList();
     saRefreshToolbar();
-  });
+  }));
 
-  bindValue(`rooms/${code}/casual`, snap => {
-    const msgs = snap.val() || {};
-    const entries = Object.entries(msgs).map(([k, m]) => ({ ...m, _key: k }));
-    const sorted = entries.sort((a,b) => a.time - b.time);
-    const container = document.getElementById('casual-messages');
-    if (!container) return;
-    const rendered = container.querySelectorAll('.chat-msg').length;
+  attachIncrementalChannel(
+    `rooms/${code}/casual`,
+    _processedCasualKeys,
+    (m) => appendCasualMsg(m.name, m.text, m.uid, m.time, m._key),
+    null,
+    'casual-messages',
+    'casual'
+  );
 
-    if (rendered > sorted.length) {
-      container.innerHTML = '';
-      _processedCasualKeys.clear();
-    }
-
-    sorted.forEach(m => {
-      if (!_processedCasualKeys.has(m._key)) {
-        appendCasualMsg(m.name, m.text, m.uid, m.time, m._key);
-        _processedCasualKeys.add(m._key);
-      }
-    });
-  });
-
-  bindValue(`rooms/${code}/bgm`, snap => {
+  _roomUnsubs.push(onValue(ref(db, `rooms/${code}/bgm`), snap => {
     const bgm = snap.val();
     if (!bgm) return;
     if (bgm.playlist) { St.playlist = bgm.playlist; renderPlaylist(); }
@@ -130,23 +196,23 @@ function setupFirebaseListeners() {
       St.currentTrack = bgm.currentTrack;
       playTrack(St.currentTrack);
     }
-  });
+  }));
 
-  bindValue(`rooms/${code}/lastRoll`, snap => {
+  _roomUnsubs.push(onValue(ref(db, `rooms/${code}/lastRoll`), snap => {
     const roll = snap.val();
     if (!roll || roll.playerId === St.myId || roll.secret) return;
     showRollResult(roll);
-  });
+  }));
 
   const presRef = ref(db, `rooms/${code}/players/${St.myId}/online`);
   window._FB.set(presRef, true);
   window._FB.onDisconnect(presRef).set(false);
 
-  bindValue(`rooms/${code}/typing`, snap => {
+  _roomUnsubs.push(onValue(ref(db, `rooms/${code}/typing`), snap => {
     const typing = snap.val() || {};
     renderTypingIndicator('typing-chat', typing, 'chat');
     renderTypingIndicator('typing-casual', typing, 'casual');
-  });
+  }));
 }
 
 async function enterGame() {
@@ -187,26 +253,27 @@ async function enterGame() {
   renderCharacterSheet(St.system);
   
   if (!window._avatarCache) window._avatarCache = {};
-  const myAv = (() => {
-    try { return localStorage.getItem('itc_avatar_' + St.myId) || ''; } catch (e) { return ''; }
-  })();
+  const myAv = localStorage.getItem('itc_avatar_' + St.myId);
   if (myAv) {
-    window._avatarCache[St.myId] = myAv;
     window._avatarCache[St.myName] = myAv;
-    if (typeof syncAvatarToFirebase === 'function') {
-      syncAvatarToFirebase(myAv);
+    // 내가 방에 들어올 때 사진 데이터베이스(avatars)에 내 프사를 올립니다.
+    if (window._FB?.CONFIGURED) {
+      window._FB.set(window._FB.ref(window._FB.db, `rooms/${St.roomCode}/avatars/${St.myId}`), myAv).catch(()=>{});
     }
   }
 
-  if (!window._avatarEventBound) {
-    window._avatarEventBound = true;
-    document.addEventListener('itc:avatar-updated', e => {
-      const detail = e.detail || {};
-      if (!detail.uid || !detail.avatar) return;
-      window._avatarCache = window._avatarCache || {};
-      window._avatarCache[detail.uid] = detail.avatar;
-      if (detail.name) window._avatarCache[detail.name] = detail.avatar;
-    });
+  // 🔥 [새로 추가된 마법의 로직] 2초마다 내 프사 변경을 감지해서 자동으로 남들에게 쏴줍니다.
+  if (!window._avatarWatcher) {
+    let _lastAv = myAv;
+    window._avatarWatcher = setInterval(() => {
+      if (!St.roomCode || !window._FB?.CONFIGURED) return;
+      const currentAv = localStorage.getItem('itc_avatar_' + St.myId);
+      if (currentAv && currentAv !== _lastAv) {
+        _lastAv = currentAv;
+        window._avatarCache[St.myName] = currentAv;
+        window._FB.set(window._FB.ref(window._FB.db, `rooms/${St.roomCode}/avatars/${St.myId}`), currentAv).catch(()=>{});
+      }
+    }, 2000);
   }
 
   addLocalMessage('system', '', `${St.myName}님이 입장했습니다 — ${SYS_LABELS[St.system]}`);
@@ -239,12 +306,9 @@ function renderPlayers(players) {
     const online = p.online || id === St.myId;
     addPlayerChip(id, p.name, id === St.myId, p.role, online);
     
-    const av = p.avatar || localStorage.getItem('itc_avatar_' + id);
-    if (av) {
-      try { localStorage.setItem('itc_avatar_' + id, av); } catch (e) {}
-      window._avatarCache[id] = av;
-      window._avatarCache[p.name] = av;
-    }
+    // 로컬에 백업해둔 프사가 있다면 일단 표시합니다. (실시간 교체는 맨 위 리스너가 담당)
+    const av = localStorage.getItem('itc_avatar_' + id);
+    if (av) window._avatarCache[p.name] = av;
   });
 }
 
@@ -424,16 +488,19 @@ function updateBar(type) {
 
 function autoSave() {
   if (!window._FB?.CONFIGURED || !window._currentUser) return;
-  const { db, ref, set } = window._FB;
-  const uid = window._currentUser.uid;
-  const charData = { ...St.character, updatedAt: Date.now() };
-
-  if (St.roomCode) {
-    set(ref(db, `rooms/${St.roomCode}/characters/${uid}`), charData);
-  }
-  if (St.selectedCharId) {
-    set(ref(db, `users/${uid}/characters/${St.selectedCharId}`), charData);
-  }
+  if (_autoSaveTimer) clearTimeout(_autoSaveTimer);
+  _autoSaveTimer = setTimeout(() => {
+    const { db, ref, set } = window._FB;
+    const uid = window._currentUser.uid;
+    const charData = { ...St.character, updatedAt: Date.now() };
+    if (St.roomCode) {
+      set(ref(db, `rooms/${St.roomCode}/characters/${uid}`), charData);
+    }
+    if (St.selectedCharId) {
+      set(ref(db, `users/${uid}/characters/${St.selectedCharId}`), charData);
+    }
+    _autoSaveTimer = null;
+  }, 350);
 }
 
 function saveCharacter() {
@@ -445,6 +512,7 @@ function saveCharacter() {
 async function leaveRoom() {
   if (!confirm('방에서 완전히 나가시겠습니까?\n(나중에 코드로 다시 입장할 수 있어요)')) return;
   if (window._FB?.CONFIGURED) {
+    cleanupRoomListeners();
     const { db, ref, remove, get } = window._FB;
     await remove(ref(db, `rooms/${St.roomCode}/players/${St.myId}`));
     const snap = await get(ref(db, `rooms/${St.roomCode}/players`));
@@ -457,9 +525,13 @@ async function leaveRoom() {
   sessionStorage.removeItem('itc_session_sys');
   sessionStorage.removeItem('itc_session_role');
 
-  teardownFirebaseListeners();
   St.roomCode = ''; St.isGM = false;
-
+  
+  if (window._avatarWatcher) {
+    clearInterval(window._avatarWatcher);
+    window._avatarWatcher = null;
+  }
+  
   closeModal('modal-settings');
   showLobby();
 }

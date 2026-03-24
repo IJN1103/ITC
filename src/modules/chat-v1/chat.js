@@ -3,48 +3,6 @@
  * 채팅, 잡담, 귓말, 타이핑, 이미지 업로드
  */
 
-
-const CHAT_DOM_LIMIT = 120;
-const CASUAL_DOM_LIMIT = 120;
-const SCROLL_BOTTOM_THRESHOLD = 72;
-
-function isNearBottom(container) {
-  if (!container) return true;
-  const remaining = container.scrollHeight - container.scrollTop - container.clientHeight;
-  return remaining <= SCROLL_BOTTOM_THRESHOLD;
-}
-
-function smartAppendMessage(container, node, limit) {
-  if (!container || !node) return;
-  const stickToBottom = isNearBottom(container);
-  container.appendChild(node);
-  trimOldMessages(container, limit);
-  if (stickToBottom) {
-    requestAnimationFrame(() => {
-      container.scrollTop = container.scrollHeight;
-    });
-  }
-}
-
-function trimOldMessages(container, limit) {
-  if (!container || !limit || limit < 1) return;
-  const nodes = container.querySelectorAll('.chat-msg');
-  const overflow = nodes.length - limit;
-  if (overflow <= 0) return;
-  for (let i = 0; i < overflow; i += 1) {
-    nodes[i]?.remove();
-  }
-}
-
-function setImagePerfAttrs(root) {
-  if (!root) return;
-  root.querySelectorAll('img').forEach(img => {
-    img.loading = 'lazy';
-    img.decoding = 'async';
-    img.referrerPolicy = 'no-referrer';
-  });
-}
-
 function chatKeydown(e) {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); }
 }
@@ -286,6 +244,42 @@ function clearTypingState() {
   if (_typingTimer) { clearTimeout(_typingTimer); _typingTimer = null; }
 }
 
+
+
+function isNearBottom(container, threshold = 80) {
+  if (!container) return true;
+  return (container.scrollHeight - container.scrollTop - container.clientHeight) <= threshold;
+}
+
+function trimMessageContainer(container, maxCount = 120) {
+  if (!container) return;
+  while (container.children.length > maxCount) {
+    container.removeChild(container.firstElementChild);
+  }
+}
+
+function appendMessageNode(container, node) {
+  if (!container || !node) return;
+  const stick = isNearBottom(container);
+  container.appendChild(node);
+  trimMessageContainer(container, 120);
+  if (stick) {
+    requestAnimationFrame(() => {
+      container.scrollTop = container.scrollHeight;
+    });
+  }
+}
+
+function tagMessageNode(div, msgKey, channel, text, type, uid) {
+  if (!div) return div;
+  if (msgKey) div.dataset.msgKey = msgKey;
+  div.dataset.channel = channel || 'chat';
+  div.dataset.msgType = type || 'normal';
+  if (uid) div.dataset.uid = uid;
+  if (typeof text === 'string') div.dataset.msgText = text;
+  return div;
+}
+
 function saSendCasual(journal, text) {
   const name = journal.title || '무제';
   const avatar = saGetAvatar(journal.id);
@@ -307,9 +301,9 @@ function appendCasualMsg(name, text, uid, timestamp, msgKey) {
   const div = document.createElement('div');
   div.className = 'chat-msg msg-normal';
   div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-text">${fmtText(text)}</div></div>`;
+  tagMessageNode(div, msgKey, 'casual', text, 'normal', uid);
   addMsgActions(div, uid, msgKey, 'casual', text, 'normal');
-  setImagePerfAttrs(div);
-  smartAppendMessage(container, div, CASUAL_DOM_LIMIT);
+  appendMessageNode(container, div);
   if (typeof _popoutWins !== 'undefined') {
     const av = getPopoutAvatarUrl(name, uid);
     _popoutWins.filter(w => w && !w.closed).forEach(w => { if (w.addMsg) w.addMsg(name, text, 'normal', 'casual', '', av, time, fmtText(text)); });
@@ -432,8 +426,8 @@ function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJ
     const div = document.createElement('div');
     div.className = 'chat-msg msg-sys';
     div.innerHTML = `<div class="msg-text">${fmtText(text)}</div>`;
-    setImagePerfAttrs(div);
-    smartAppendMessage(container, div, CHAT_DOM_LIMIT);
+    tagMessageNode(div, msgKey, channel || 'chat', text, type, uid);
+    appendMessageNode(container, div);
     return;
   }
 
@@ -441,9 +435,9 @@ function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJ
     const div = document.createElement('div');
     div.className = 'chat-msg msg-dsec';
     div.innerHTML = `<div class="msg-body"><div class="msg-text">${fmtText(text)}</div></div>`;
+    tagMessageNode(div, msgKey, channel || 'chat', text, type, uid);
     addMsgActions(div, uid, msgKey, channel || 'chat', text, type);
-    setImagePerfAttrs(div);
-    smartAppendMessage(container, div, CHAT_DOM_LIMIT);
+    appendMessageNode(container, div);
     return;
   }
 
@@ -454,9 +448,9 @@ function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJ
     const div = document.createElement('div');
     div.className = 'chat-msg msg-whisper';
     div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name">${esc(name)}</span><span class="whisper-tag">${tagText}</span><span class="msg-time">${time}</span></div><div class="msg-text">${fmtText(text)}</div></div>`;
+    tagMessageNode(div, msgKey, channel || 'chat', text, type, uid);
     addMsgActions(div, uid, msgKey, channel || 'chat', text, type);
-    setImagePerfAttrs(div);
-    smartAppendMessage(container, div, CHAT_DOM_LIMIT);
+    appendMessageNode(container, div);
     return;
   }
 
@@ -475,9 +469,9 @@ function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJ
     const _jColor = nameColor || (speakAsJournalId ? (_allJournals.find(x => x.id === speakAsJournalId)?.nameColor || '') : '');
     const _nameStyle = _jColor ? ` style="color:${_jColor}"` : '';
     d2.innerHTML = `${avHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name sa-msg-name"${_nameStyle}>${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-text">${fmtText(text.replace(/@\S+/g,'').trim())}</div></div>`;
+    tagMessageNode(d2, msgKey, channel || 'chat', text, type, uid);
     addMsgActions(d2, uid, msgKey, channel || 'chat', text, type);
-    setImagePerfAttrs(d2);
-    smartAppendMessage(container, d2, CHAT_DOM_LIMIT);
+    appendMessageNode(container, d2);
     if (!timestamp || Date.now() - timestamp < 5000) {
       showDialogueBoxFromMsg(name, text, speakAsJournalId, standingImg, tokenId, standingLabel);
     }
@@ -495,9 +489,9 @@ function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJ
     }
     const d2 = document.createElement('div');
     d2.className = 'chat-msg msg-speak-as msg-image-msg';
-    d2.innerHTML = `${avHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name sa-msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div><img class="msg-image" src="${esc(text)}" alt="첨부 이미지" style="display:block;max-width:220px;height:auto;margin-top:5px;border-radius:var(--r);border:1px solid var(--border);cursor:zoom-in" onclick="openLightbox(this.src)"></div>`;
-    setImagePerfAttrs(d2);
-    smartAppendMessage(container, d2, CHAT_DOM_LIMIT);
+    d2.innerHTML = `${avHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name sa-msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div><img class="msg-image" src="${esc(text)}" alt="첨부 이미지" loading="lazy" decoding="async" style="display:block;max-width:220px;height:auto;margin-top:5px;border-radius:var(--r);border:1px solid var(--border);cursor:zoom-in" onclick="openLightbox(this.src)"></div>`;
+    tagMessageNode(d2, msgKey, channel || 'chat', text, type, uid);
+    appendMessageNode(container, d2);
     return;
   }
 
@@ -506,15 +500,16 @@ function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJ
   if (type === 'image') {
     const div = document.createElement('div');
     div.className = 'chat-msg msg-image-msg';
-    div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div><img class="msg-image" src="${esc(text)}" alt="첨부 이미지" style="display:block;max-width:220px;height:auto;margin-top:5px;border-radius:var(--r);border:1px solid var(--border);cursor:zoom-in" onclick="openLightbox(this.src)"></div>`;
-    setImagePerfAttrs(div);
-    smartAppendMessage(container, div, CHAT_DOM_LIMIT);
+    div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div><img class="msg-image" src="${esc(text)}" alt="첨부 이미지" loading="lazy" decoding="async" style="display:block;max-width:220px;height:auto;margin-top:5px;border-radius:var(--r);border:1px solid var(--border);cursor:zoom-in" onclick="openLightbox(this.src)"></div>`;
+    tagMessageNode(div, msgKey, channel || 'chat', text, type, uid);
+    appendMessageNode(container, div);
     return;
   }
 
   const div = document.createElement('div');
   div.className = `chat-msg msg-${type}`;
   const _nc = nameColor ? ` style="color:${nameColor}"` : '';
+  tagMessageNode(div, msgKey, channel || 'chat', text, type, uid);
   if (type === 'dice') {
     const diceMatch = text.match(/🎲\s*(.+?)\s*→\s*(\d+)\s*\(([^)]+)\)/);
     if (diceMatch) {
@@ -529,7 +524,6 @@ function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJ
     div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name"${_nc}>${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-text">${fmtText(text)}</div></div>`;
   }
   addMsgActions(div, uid, msgKey, channel || 'chat', text, type);
-  setImagePerfAttrs(div);
-  smartAppendMessage(container, div, CHAT_DOM_LIMIT);
+  appendMessageNode(container, div);
 }
 
