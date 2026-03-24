@@ -395,12 +395,12 @@ to{opacity:1}
 .chat-msg.msg-image-msg .msg-body{display:block;overflow:visible;max-width:calc(100% - 48px);}
 .chat-msg.msg-image-wide-row{display:grid;grid-template-columns:38px minmax(0,1fr);column-gap:10px;row-gap:8px;align-items:start;overflow:visible;}
 .chat-msg.msg-image-wide-row .msg-avatar{float:none;grid-column:1;grid-row:1;width:38px;height:38px;margin:0;align-self:start;transform:none;}
-.chat-msg.msg-image-wide-row .msg-wide-head{grid-column:2;grid-row:1;min-width:0;display:flex;align-items:flex-start;min-height:38px;padding-top:10px;}
+.chat-msg.msg-image-wide-row .msg-wide-head{grid-column:2;grid-row:1;min-width:0;display:flex;align-items:flex-start;min-height:38px;padding-top:0;transform:translateY(8px);}
 .chat-msg.msg-image-wide-row .msg-wide-image-wrap{grid-column:1 / -1;grid-row:2;min-width:0;width:100%;}
 .chat-msg.msg-image-wide-row .msg-body{display:contents;}
-.chat-msg.msg-image-wide-row .msg-meta{display:flex;align-items:flex-end;gap:6px;margin-bottom:0;min-width:0;flex-wrap:wrap;line-height:1;}
+.chat-msg.msg-image-wide-row .msg-meta{display:flex;align-items:flex-end;gap:6px;margin:0;min-width:0;flex-wrap:wrap;line-height:1;transform:translateY(0);}
 .chat-msg.msg-image-wide-row .msg-name{display:inline-flex;align-items:flex-end;line-height:1.15;}
-.chat-msg.msg-image-wide-row .msg-time{display:inline-flex;align-items:flex-end;line-height:1;transform:translateY(2px);}
+.chat-msg.msg-image-wide-row .msg-time{display:inline-flex;align-items:flex-end;line-height:1;transform:translateY(1px);}
 .chat-msg.msg-image-wide-row .msg-image.is-wide{display:block;width:100%;max-width:none;height:auto;object-fit:contain;margin-top:0;}
 .chat-msg.msg-image-wide-row + .chat-msg.msg-image-wide-row{margin-top:2px;}
 .chat-input-wrap{padding:8px;display:flex;gap:6px;}
