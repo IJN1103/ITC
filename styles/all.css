@@ -694,3 +694,26 @@ to{transform:translateX(0);opacity:1;}
   height: auto !important;
   margin-top: 0 !important;
 }
+
+
+/* Pending image upload UI */
+.chat-pending-upload-box{display:none;padding:8px 8px 0;border-top:1px solid var(--border);background:rgba(255,255,255,.01)}
+.chat-pending-top{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
+.chat-pending-count{font-size:11px;color:var(--muted);letter-spacing:.04em}
+.chat-wide-toggle{display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--dim);cursor:pointer}
+.chat-wide-toggle input{accent-color:var(--accent)}
+.chat-pending-grid{display:flex;gap:8px;flex-wrap:wrap;padding-bottom:8px}
+.chat-pending-thumb{position:relative;width:56px;height:56px;border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--s2)}
+.chat-pending-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.chat-pending-remove{position:absolute;top:3px;right:3px;width:18px;height:18px;border:none;border-radius:999px;background:rgba(0,0,0,.66);color:#fff;font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+
+/* Stable image message layout */
+.chat-msg.msg-image-msg,.chat-msg.msg-image-wide-row{overflow:visible}
+.msg-image{display:block;max-width:220px;height:auto;border-radius:var(--r);margin-top:5px;cursor:zoom-in;border:1px solid var(--border)}
+.msg-image.is-wide{display:block;width:100%;max-width:none;height:auto}
+.chat-msg.msg-image-wide-row .msg-avatar{float:none;display:inline-flex;vertical-align:top;margin:0 10px 0 0}
+.chat-msg.msg-image-wide-row .msg-body{display:inline-block;vertical-align:top;width:calc(100% - 48px);max-width:calc(100% - 48px);overflow:visible}
+.chat-msg.msg-image-wide-row .msg-meta{display:flex;align-items:flex-end;gap:6px;min-height:38px;margin-bottom:10px;padding-top:8px}
+.chat-msg.msg-image-wide-row .msg-name{line-height:1}
+.chat-msg.msg-image-wide-row .msg-time{line-height:1;position:relative;top:1px}
+.chat-msg.msg-image-wide-row .msg-image{width:100%;max-width:none;margin-top:0}

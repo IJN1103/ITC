@@ -14,7 +14,7 @@ import { initializeApp }        from "https://www.gstatic.com/firebasejs/10.12.0
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword,
          updateProfile, onAuthStateChanged, signOut, GoogleAuthProvider, signInWithPopup }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-import { getDatabase, ref, set, push, onValue, update, remove, get, serverTimestamp, onDisconnect }
+import { getDatabase, ref, set, push, onValue, update, remove, get, serverTimestamp, onDisconnect, query, limitToLast, onChildAdded, onChildChanged, onChildRemoved, off }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
 // ↓↓↓ 여기에 Firebase 설정을 붙여넣으세요 ↓↓↓
@@ -55,7 +55,7 @@ if (CONFIGURED) {
 /* 전역 노출 */
 window._FB = {
   CONFIGURED, auth, db,
-  ref, set, push, onValue, update, remove, get, serverTimestamp, onDisconnect,
+  ref, set, push, onValue, update, remove, get, serverTimestamp, onDisconnect, query, limitToLast, onChildAdded, onChildChanged, onChildRemoved, off,
   createUserWithEmailAndPassword, signInWithEmailAndPassword,
   updateProfile, onAuthStateChanged, signOut,
   GoogleAuthProvider, signInWithPopup,
@@ -422,7 +422,7 @@ window._FB = {
         </div>
         <div class="chat-input-wrap">
           <button class="chat-attach-btn" onclick="document.getElementById('chat-img-input').click()" title="사진/GIF 첨부">+</button>
-          <input type="file" id="chat-img-input" accept="image/png,image/jpeg,image/gif" style="display:none" onchange="handleChatImageUpload(this)">
+          <input type="file" id="chat-img-input" accept="image/png,image/jpeg,image/gif" multiple style="display:none" onchange="handleChatImageUpload(this)">
           <textarea class="chat-input" id="chat-input" placeholder="메시지 입력 (Enter 전송)" rows="1" onkeydown="chatKeydown(event)" oninput="broadcastTyping()"></textarea>
           <button class="send-btn" onclick="sendChat()">➤</button>
         </div>
