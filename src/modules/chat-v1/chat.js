@@ -37,10 +37,14 @@ function getChatImageWideMode() {
 }
 
 function getChatImageInlineStyle(isWide) {
-  const sizeStyle = isWide
-    ? 'width:100%;max-width:none;'
-    : 'max-width:220px;width:auto;';
-  return `display:block;${sizeStyle}height:auto;margin-top:5px;border-radius:var(--r);border:1px solid var(--border);cursor:zoom-in`;
+  if (isWide) {
+    return 'display:block;width:100%;max-width:none;height:auto;margin-top:5px;border-radius:var(--r);border:1px solid var(--border);cursor:zoom-in';
+  }
+  return 'display:block;max-width:220px;width:auto;height:auto;margin-top:5px;border-radius:var(--r);border:1px solid var(--border);cursor:zoom-in';
+}
+
+function getChatImageClassName(isWide) {
+  return `msg-image${isWide ? ' is-wide' : ''}`;
 }
 
 function getPendingChatImageBox() {
@@ -642,8 +646,8 @@ function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJ
       avHtml = `<div class="msg-avatar ${sc} sa-avatar"><div class="msg-avatar-inner" style="border-radius:${r}">${esc((name||'?')[0].toUpperCase())}</div></div>`;
     }
     const d2 = document.createElement('div');
-    d2.className = 'chat-msg msg-speak-as msg-image-msg';
-    d2.innerHTML = `${avHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name sa-msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div><img class="msg-image" src="${esc(text)}" alt="첨부 이미지" style="${getChatImageInlineStyle(imageWide)}" onclick="openLightbox(this.src)"></div>`;
+    d2.className = `chat-msg msg-speak-as msg-image-msg${imageWide ? ' msg-image-wide-row' : ''}`;
+    d2.innerHTML = `${avHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name sa-msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div><img class="${getChatImageClassName(imageWide)}" src="${esc(text)}" alt="첨부 이미지" style="${getChatImageInlineStyle(imageWide)}" onclick="openLightbox(this.src)"></div>`;
     container.appendChild(d2);
     container.scrollTop = container.scrollHeight;
     return;
@@ -653,10 +657,10 @@ function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJ
 
   if (type === 'image') {
     const div = document.createElement('div');
-    div.className = 'chat-msg msg-image-msg';
+    div.className = `chat-msg msg-image-msg${imageWide ? ' msg-image-wide-row' : ''}`;
     div.dataset.avatarUid = uid || '';
     div.dataset.avatarName = name || '';
-    div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div><img class="msg-image" src="${esc(text)}" alt="첨부 이미지" style="${getChatImageInlineStyle(imageWide)}" onclick="openLightbox(this.src)"></div>`;
+    div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div><img class="${getChatImageClassName(imageWide)}" src="${esc(text)}" alt="첨부 이미지" style="${getChatImageInlineStyle(imageWide)}" onclick="openLightbox(this.src)"></div>`;
     container.appendChild(div);
     container.scrollTop = container.scrollHeight;
     return;
