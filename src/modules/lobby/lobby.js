@@ -155,8 +155,10 @@ async function joinRoom() {
     if (!snap.exists()) { alert('방을 찾을 수 없습니다. 코드를 다시 확인해 주세요.'); return; }
 
     const playersSnap = await get(ref(db, `rooms/${code}/players`));
-    const playerCount = playersSnap.exists() ? Object.keys(playersSnap.val()).length : 0;
-    if (playerCount >= 5) {
+    const playersData = playersSnap.exists() ? playersSnap.val() : {};
+    const playerCount = Object.keys(playersData).length;
+    const alreadyJoined = !!playersData[St.myId];
+    if (playerCount >= 5 && !alreadyJoined) {
       alert('이 방은 이미 최대 인원(5명)에 도달했습니다.');
       return;
     }
