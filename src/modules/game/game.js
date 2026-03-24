@@ -167,7 +167,13 @@ async function enterGame() {
   renderCharacterSheet(St.system);
   if (!window._avatarCache) window._avatarCache = {};
   const myAv = localStorage.getItem('itc_avatar_' + St.myId);
-  if (myAv) window._avatarCache[St.myName] = myAv;
+  if (myAv) {
+    window._avatarCache[St.myName] = myAv;
+    // 🔥 [버그 수정] 내 프사를 다른 사람들도 볼 수 있게 파이어베이스 방 데이터에 올림!
+    if (window._FB?.CONFIGURED) {
+      window._FB.update(window._FB.ref(window._FB.db, `rooms/${St.roomCode}/players/${St.myId}`), { avatar: myAv });
+    }
+  }
 
   addLocalMessage('system', '', `${St.myName}님이 입장했습니다 — ${SYS_LABELS[St.system]}`);
   migrateLocalJournals();
@@ -197,8 +203,15 @@ function renderPlayers(players) {
   Object.entries(players).forEach(([id, p]) => {
     const online = p.online || id === St.myId;
     addPlayerChip(id, p.name, id === St.myId, p.role, online);
-    const av = localStorage.getItem('itc_avatar_' + id);
-    if (av) window._avatarCache[p.name] = av;
+    
+    // 🔥 [버그 수정] 파이어베이스(서버)에 상대방의 프사가 있으면 가져와서 캐시에 저장!
+    if (p.avatar) {
+      window._avatarCache[p.name] = p.avatar;
+      localStorage.setItem('itc_avatar_' + id, p.avatar); // 다음을 위해 내 컴퓨터에도 백업
+    } else {
+      const av = localStorage.getItem('itc_avatar_' + id);
+      if (av) window._avatarCache[p.name] = av;
+    }
   });
 }
 
