@@ -29,8 +29,7 @@ function getPendingChatImageBox() {
     box.innerHTML = `
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:8px;">
         <div style="min-width:0;">
-          <div style="font-size:12px;opacity:.8;">전송 대기 중인 이미지</div>
-          <div id="chat-pending-image-summary" style="font-size:11px;opacity:.65;margin-top:4px;">전송 버튼이나 Enter를 누르면 전송됩니다.</div>
+          <div id="chat-pending-image-summary" style="font-size:12px;opacity:.8;">0장 선택됨</div>
         </div>
         <button type="button" onclick="clearPendingChatImage()" title="선택한 이미지 전체 취소" style="border:1px solid var(--border);background:transparent;color:inherit;border-radius:8px;padding:4px 8px;cursor:pointer;line-height:1;">전체 취소</button>
       </div>
@@ -54,7 +53,7 @@ function refreshPendingChatImageBox() {
   }
   if (summary) {
     const count = _pendingChatImages.length;
-    summary.textContent = `${count}장 선택됨 · 전송 버튼이나 Enter를 누르면 한 장씩 순서대로 전송됩니다.`;
+    summary.textContent = `${count}장 선택됨`;
   }
   if (list) {
     list.innerHTML = _pendingChatImages.map((item, index) => `
