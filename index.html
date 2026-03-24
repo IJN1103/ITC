@@ -17,8 +17,6 @@ import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword,
 import { getDatabase, ref, set, push, onValue, update, remove, get, serverTimestamp, onDisconnect,
          query, limitToLast, onChildAdded, onChildChanged, onChildRemoved }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
-import { getStorage, ref as storageRef, uploadBytes, getDownloadURL }
-  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
 
 // ↓↓↓ 여기에 Firebase 설정을 붙여넣으세요 ↓↓↓
 const firebaseConfig = {
@@ -34,12 +32,11 @@ const firebaseConfig = {
 
 const CONFIGURED = firebaseConfig.apiKey !== "YOUR_API_KEY";
 
-let app, auth, db, storage;
+let app, auth, db;
 if (CONFIGURED) {
   app  = initializeApp(firebaseConfig);
   auth = getAuth(app);
   db   = getDatabase(app);
-  storage = getStorage(app);
 
   /* Auth 상태 감지 */
   onAuthStateChanged(auth, user => {
@@ -58,13 +55,47 @@ if (CONFIGURED) {
 
 /* 전역 노출 */
 window._FB = {
-  CONFIGURED, auth, db, storage,
+  CONFIGURED, app, auth, db, storage: null,
   ref, set, push, onValue, update, remove, get, serverTimestamp, onDisconnect,
-  storageRef, uploadBytes, getDownloadURL,
+  storageRef: null, uploadBytes: null, getDownloadURL: null,
   query, limitToLast, onChildAdded, onChildChanged, onChildRemoved,
   createUserWithEmailAndPassword, signInWithEmailAndPassword,
   updateProfile, onAuthStateChanged, signOut,
   GoogleAuthProvider, signInWithPopup,
+  _storageReady: false,
+  _storageLoadPromise: null,
+  async ensureStorage() {
+    if (!this.CONFIGURED || !this.app) return null;
+    if (this._storageReady && this.storage && this.storageRef && this.uploadBytes && this.getDownloadURL) {
+      return {
+        storage: this.storage,
+        storageRef: this.storageRef,
+        uploadBytes: this.uploadBytes,
+        getDownloadURL: this.getDownloadURL,
+      };
+    }
+    if (!this._storageLoadPromise) {
+      this._storageLoadPromise = import("https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js")
+        .then((mod) => {
+          this.storage = mod.getStorage(this.app);
+          this.storageRef = mod.ref;
+          this.uploadBytes = mod.uploadBytes;
+          this.getDownloadURL = mod.getDownloadURL;
+          this._storageReady = true;
+          return {
+            storage: this.storage,
+            storageRef: this.storageRef,
+            uploadBytes: this.uploadBytes,
+            getDownloadURL: this.getDownloadURL,
+          };
+        })
+        .catch((err) => {
+          this._storageLoadPromise = null;
+          throw err;
+        });
+    }
+    return this._storageLoadPromise;
+  },
 };
 
 </script>

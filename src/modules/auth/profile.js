@@ -49,6 +49,40 @@ function refreshProfileAvatar() {
 }
 
 
+
+function withTimeout(promise, ms = 3500) {
+  return new Promise((resolve, reject) => {
+    let done = false;
+    const timer = setTimeout(() => {
+      if (done) return;
+      done = true;
+      reject(new Error('timeout'));
+    }, ms);
+    Promise.resolve(promise).then((value) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      resolve(value);
+    }).catch((err) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      reject(err);
+    });
+  });
+}
+
+async function getStorageApiQuick() {
+  const fb = window._FB;
+  if (!fb?.CONFIGURED || typeof fb.ensureStorage !== 'function') return null;
+  try {
+    return await withTimeout(fb.ensureStorage(), 2200);
+  } catch (err) {
+    console.warn('storage api unavailable, fallback to inline avatar', err);
+    return null;
+  }
+}
+
 function inferStorageContentTypeFromDataUrl(dataUrl) {
   const m = String(dataUrl || '').match(/^data:([^;,]+)[;,]/i);
   return m ? m[1].toLowerCase() : 'image/jpeg';
@@ -66,20 +100,20 @@ function blobFromDataUrl(dataUrl) {
 }
 
 async function uploadAvatarDataUrlToStorage(dataUrl, userId) {
-  const fb = window._FB;
-  if (!fb?.CONFIGURED || !fb.storage || !fb.storageRef || !fb.uploadBytes || !fb.getDownloadURL) {
+  const storageApi = await getStorageApiQuick();
+  if (!storageApi?.storage || !storageApi.storageRef || !storageApi.uploadBytes || !storageApi.getDownloadURL) {
     return null;
   }
   const contentType = inferStorageContentTypeFromDataUrl(dataUrl);
   const ext = contentType.includes('png') ? 'png' : (contentType.includes('webp') ? 'webp' : 'jpg');
   const path = `avatars/${userId}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
   const blob = blobFromDataUrl(dataUrl);
-  const storageRefObj = fb.storageRef(fb.storage, path);
-  await fb.uploadBytes(storageRefObj, blob, {
+  const storageRefObj = storageApi.storageRef(storageApi.storage, path);
+  await withTimeout(storageApi.uploadBytes(storageRefObj, blob, {
     contentType,
     cacheControl: 'public,max-age=31536000,immutable',
-  });
-  const url = await fb.getDownloadURL(storageRefObj);
+  }), 2800);
+  const url = await withTimeout(storageApi.getDownloadURL(storageRefObj), 1800);
   return { url, path, contentType };
 }
 
