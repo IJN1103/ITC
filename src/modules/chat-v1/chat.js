@@ -6,11 +6,41 @@
 
 let _pendingChatImages = [];
 const MAX_PENDING_CHAT_IMAGES = 4;
+let _chatImageWideMode = false;
 
 function ensureChatImageInputConfig() {
   const input = document.getElementById('chat-img-input');
   if (input) input.multiple = true;
   return input;
+}
+
+function loadChatImageWideMode() {
+  try {
+    _chatImageWideMode = localStorage.getItem('itc_chat_image_wide_mode') === '1';
+  } catch (e) {
+    _chatImageWideMode = false;
+  }
+}
+
+function setChatImageWideMode(enabled) {
+  _chatImageWideMode = !!enabled;
+  try {
+    localStorage.setItem('itc_chat_image_wide_mode', _chatImageWideMode ? '1' : '0');
+  } catch (e) {}
+  const checkbox = document.getElementById('chat-image-wide-toggle');
+  if (checkbox) checkbox.checked = _chatImageWideMode;
+}
+
+function getChatImageWideMode() {
+  const checkbox = document.getElementById('chat-image-wide-toggle');
+  return checkbox ? !!checkbox.checked : _chatImageWideMode;
+}
+
+function getChatImageInlineStyle(isWide) {
+  const sizeStyle = isWide
+    ? 'max-width:min(100%, 560px);width:auto;'
+    : 'max-width:220px;width:auto;';
+  return `display:block;${sizeStyle}height:auto;margin-top:5px;border-radius:var(--r);border:1px solid var(--border);cursor:zoom-in`;
 }
 
 function getPendingChatImageBox() {
@@ -30,6 +60,10 @@ function getPendingChatImageBox() {
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:8px;">
         <div style="min-width:0;">
           <div id="chat-pending-image-summary" style="font-size:12px;opacity:.8;">0장 선택됨</div>
+          <label style="display:inline-flex;align-items:center;gap:6px;margin-top:6px;font-size:11px;opacity:.82;cursor:pointer;user-select:none;">
+            <input id="chat-image-wide-toggle" type="checkbox" onchange="setChatImageWideMode(this.checked)" style="margin:0;accent-color:var(--accent,#8b5cf6);">
+            <span>가로 제한 해제</span>
+          </label>
         </div>
         <button type="button" onclick="clearPendingChatImage()" title="선택한 이미지 전체 취소" style="border:1px solid var(--border);background:transparent;color:inherit;border-radius:8px;padding:4px 8px;cursor:pointer;line-height:1;">전체 취소</button>
       </div>
@@ -37,6 +71,8 @@ function getPendingChatImageBox() {
     `;
     inputWrap.parentNode.insertBefore(box, inputWrap);
   }
+  const checkbox = document.getElementById('chat-image-wide-toggle');
+  if (checkbox) checkbox.checked = _chatImageWideMode;
   return box;
 }
 
@@ -53,7 +89,7 @@ function refreshPendingChatImageBox() {
   }
   if (summary) {
     const count = _pendingChatImages.length;
-    summary.textContent = `${count}장 선택됨`;
+    summary.textContent = `${count}장 선택됨`; 
   }
   if (list) {
     list.innerHTML = _pendingChatImages.map((item, index) => `
@@ -97,7 +133,7 @@ function clearPendingChatImage() {
   refreshPendingChatImageBox();
 }
 
-function sendPreparedChatImage(dataUrl) {
+function sendPreparedChatImage(dataUrl, wideMode = false) {
   if (!dataUrl) return;
   const saJId = St.speakAsJournalId;
   const saJournal = saJId ? loadJournals().find(x => x.id === saJId) : null;
@@ -107,17 +143,17 @@ function sendPreparedChatImage(dataUrl) {
   if (saJournal) {
     const msg = {
       name: saName, text: dataUrl, type: 'speak-as-image',
-      uid: St.myId, time: Date.now(),
+      uid: St.myId, time: Date.now(), imageWide: !!wideMode,
       speakAsAvatar: saAvatar, speakAsJournalId: saJId
     };
     if (window._FB?.CONFIGURED) {
       const { db, ref, push } = window._FB;
       push(ref(db, `rooms/${St.roomCode}/chat`), msg);
     } else {
-      appendChatMsg(msg.name, dataUrl, 'speak-as-image', St.myId, msg.time, saAvatar, saJId);
+      appendChatMsg(msg.name, dataUrl, 'speak-as-image', St.myId, msg.time, saAvatar, saJId, null, null, null, null, null, null, null, null, !!wideMode);
     }
   } else {
-    sendMessage(St.myName, dataUrl, 'image');
+    sendMessage(St.myName, dataUrl, 'image', { imageWide: !!wideMode });
   }
 }
 
@@ -146,7 +182,8 @@ function sendChat() {
   clearTypingState();
 
   if (pendingImages.length) {
-    pendingImages.forEach(item => sendPreparedChatImage(item.dataUrl));
+    const imageWide = getChatImageWideMode();
+    pendingImages.forEach(item => sendPreparedChatImage(item.dataUrl, imageWide));
     clearPendingChatImage();
     if (!raw) return;
   }
@@ -234,14 +271,14 @@ function sendChat() {
   sendMessage(St.myName, raw, 'normal');
 }
 
-function sendMessage(name, text, type = 'normal') {
-  const msg = { name, text, type, uid: St.myId, time: Date.now() };
+function sendMessage(name, text, type = 'normal', extra = null) {
+  const msg = { name, text, type, uid: St.myId, time: Date.now(), ...(extra || {}) };
   if (type === 'normal' && St.myNameColor) msg.nameColor = St.myNameColor;
   if (window._FB?.CONFIGURED) {
     const { db, ref, push } = window._FB;
     push(ref(db, `rooms/${St.roomCode}/chat`), msg);
   } else {
-    appendChatMsg(name, text, type, St.myId, null, null, null, null, null, msg.nameColor || null);
+    appendChatMsg(name, text, type, St.myId, null, null, null, null, null, msg.nameColor || null, null, null, null, null, null, !!msg.imageWide);
   }
 }
 
@@ -532,7 +569,7 @@ function refreshRenderedAvatars() {
   });
 }
 
-function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId, whisperTo, whisperToName, nameColor, msgKey, channel, standingImg, tokenId, standingLabel) {
+function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId, whisperTo, whisperToName, nameColor, msgKey, channel, standingImg, tokenId, standingLabel, imageWide = false) {
   const container = document.getElementById('chat-messages');
   const d = timestamp ? new Date(timestamp) : new Date();
   const time = `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
@@ -606,7 +643,7 @@ function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJ
     }
     const d2 = document.createElement('div');
     d2.className = 'chat-msg msg-speak-as msg-image-msg';
-    d2.innerHTML = `${avHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name sa-msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div><img class="msg-image" src="${esc(text)}" alt="첨부 이미지" style="display:block;max-width:220px;height:auto;margin-top:5px;border-radius:var(--r);border:1px solid var(--border);cursor:zoom-in" onclick="openLightbox(this.src)"></div>`;
+    d2.innerHTML = `${avHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name sa-msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div><img class="msg-image" src="${esc(text)}" alt="첨부 이미지" style="${getChatImageInlineStyle(imageWide)}" onclick="openLightbox(this.src)"></div>`;
     container.appendChild(d2);
     container.scrollTop = container.scrollHeight;
     return;
@@ -619,7 +656,7 @@ function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJ
     div.className = 'chat-msg msg-image-msg';
     div.dataset.avatarUid = uid || '';
     div.dataset.avatarName = name || '';
-    div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div><img class="msg-image" src="${esc(text)}" alt="첨부 이미지" style="display:block;max-width:220px;height:auto;margin-top:5px;border-radius:var(--r);border:1px solid var(--border);cursor:zoom-in" onclick="openLightbox(this.src)"></div>`;
+    div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div><img class="msg-image" src="${esc(text)}" alt="첨부 이미지" style="${getChatImageInlineStyle(imageWide)}" onclick="openLightbox(this.src)"></div>`;
     container.appendChild(div);
     container.scrollTop = container.scrollHeight;
     return;
@@ -651,5 +688,7 @@ function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJ
 
 window.clearPendingChatImage = clearPendingChatImage;
 window.removePendingChatImage = removePendingChatImage;
+window.setChatImageWideMode = setChatImageWideMode;
 
+loadChatImageWideMode();
 ensureChatImageInputConfig();
