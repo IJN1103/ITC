@@ -50,6 +50,20 @@ function bindImageBottomScroll(img, containerOrId) {
 function ensureChatAdminControls() {
   const tabs = document.querySelector('.right-tabs');
   if (!tabs) return null;
+
+  let actionBar = document.getElementById('chat-top-actions');
+  if (!actionBar) {
+    actionBar = document.createElement('div');
+    actionBar.id = 'chat-top-actions';
+    actionBar.className = 'chat-top-actions';
+    tabs.insertAdjacentElement('afterend', actionBar);
+  }
+
+  const popoutBtn = document.querySelector('.chat-popout-btn');
+  if (popoutBtn && popoutBtn.parentNode !== actionBar) {
+    actionBar.appendChild(popoutBtn);
+  }
+
   let btn = document.getElementById('chat-clear-btn');
   if (!btn) {
     btn = document.createElement('button');
@@ -59,13 +73,8 @@ function ensureChatAdminControls() {
     btn.textContent = '채팅 지우기';
     btn.title = 'GM만 채팅/잡담 내역 전체를 지울 수 있습니다';
     btn.onclick = clearAllChatHistory;
-    const popoutBtn = document.querySelector('.chat-popout-btn');
-    if (popoutBtn && popoutBtn.parentNode === tabs) {
-      popoutBtn.insertAdjacentElement('afterend', btn);
-    } else {
-      tabs.appendChild(btn);
-    }
   }
+  if (btn.parentNode !== actionBar) actionBar.appendChild(btn);
 
   ['rtab-chat', 'rtab-casual', 'rtab-journal'].forEach(id => {
     const tabBtn = document.getElementById(id);
@@ -82,10 +91,15 @@ function ensureChatAdminControls() {
 
 function updateChatAdminButtonVisibility() {
   const btn = document.getElementById('chat-clear-btn');
-  if (!btn) return;
+  const popoutBtn = document.querySelector('.chat-popout-btn');
+  const actionBar = document.getElementById('chat-top-actions');
+  if (!actionBar) return;
   const currentTab = typeof _activeRightTab !== 'undefined' ? _activeRightTab : 'chat';
-  const visible = !!St.isGM && (currentTab === 'chat' || currentTab === 'casual');
-  btn.style.display = visible ? 'inline-flex' : 'none';
+  const inChatLikeTab = currentTab === 'chat' || currentTab === 'casual';
+  const clearVisible = !!St.isGM && inChatLikeTab;
+  if (btn) btn.style.display = clearVisible ? 'inline-flex' : 'none';
+  if (popoutBtn) popoutBtn.style.display = inChatLikeTab ? 'inline-flex' : 'none';
+  actionBar.style.display = inChatLikeTab ? 'flex' : 'none';
 }
 
 async function clearAllChatHistory() {
