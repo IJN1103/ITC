@@ -65,8 +65,36 @@ async function clearAllChatHistory() {
 }
 
 const _renderState = {
-  chat: { containerId: 'chat-messages', raf: 0, queue: [], map: new Map(), max: 120 },
-  casual: { containerId: 'casual-messages', raf: 0, queue: [], map: new Map(), max: 120 },
+  chat: {
+    containerId: 'chat-messages',
+    raf: 0,
+    queue: [],
+    map: new Map(),
+    max: 140,
+    maxMemory: 260,
+    loadStep: 36,
+    storeOrder: [],
+    storeMap: new Map(),
+    scrollBound: false,
+    scrollTick: 0,
+    stickyToBottom: true,
+    pendingBottomNotice: 0,
+  },
+  casual: {
+    containerId: 'casual-messages',
+    raf: 0,
+    queue: [],
+    map: new Map(),
+    max: 140,
+    maxMemory: 260,
+    loadStep: 36,
+    storeOrder: [],
+    storeMap: new Map(),
+    scrollBound: false,
+    scrollTick: 0,
+    stickyToBottom: true,
+    pendingBottomNotice: 0,
+  },
 };
 
 function getRenderState(channel = 'chat') {
@@ -83,9 +111,86 @@ function isNearBottom(el, threshold = 56) {
   return (el.scrollHeight - el.scrollTop - el.clientHeight) <= threshold;
 }
 
+function isNearTop(el, threshold = 56) {
+  if (!el) return true;
+  return el.scrollTop <= threshold;
+}
+
 function scrollToBottom(el) {
   if (!el) return;
   el.scrollTop = el.scrollHeight;
+}
+
+function makeStoredMessageKey(channel = 'chat', key = '') {
+  return key || `__local_${channel}_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function getRenderedKeyList(channel = 'chat') {
+  const el = getRenderContainer(channel);
+  if (!el) return [];
+  return Array.from(el.children)
+    .map(node => node?.dataset?.msgKey || '')
+    .filter(Boolean);
+}
+
+function syncStickyState(channel = 'chat', el = null) {
+  const target = el || getRenderContainer(channel);
+  const state = getRenderState(channel);
+  state.stickyToBottom = isNearBottom(target);
+  const notice = target ? target.querySelector('.chat-history-notice') : null;
+  if (notice) {
+    notice.style.display = state.pendingBottomNotice > 0 ? '' : 'none';
+    if (state.pendingBottomNotice > 0) {
+      notice.textContent = `새 메시지 ${state.pendingBottomNotice}개 · 아래로 이동`;
+    }
+  }
+}
+
+function upsertStoredMessage(channel = 'chat', key, record) {
+  const state = getRenderState(channel);
+  const safeKey = makeStoredMessageKey(channel, key);
+  const existing = state.storeMap.has(safeKey);
+
+  if (!existing) {
+    state.storeOrder.push(safeKey);
+  }
+  state.storeMap.set(safeKey, { ...(record || {}), _key: safeKey });
+
+  while (state.storeOrder.length > state.maxMemory) {
+    const dropKey = state.storeOrder.shift();
+    if (!dropKey) break;
+    state.storeMap.delete(dropKey);
+    const dropNode = state.map.get(dropKey);
+    if (dropNode && dropNode.parentNode) dropNode.remove();
+    state.map.delete(dropKey);
+  }
+  return safeKey;
+}
+
+function removeStoredMessage(channel = 'chat', key) {
+  const state = getRenderState(channel);
+  if (!key) return;
+  const idx = state.storeOrder.indexOf(key);
+  if (idx >= 0) state.storeOrder.splice(idx, 1);
+  state.storeMap.delete(key);
+}
+
+function getStoredRecord(channel = 'chat', key) {
+  const state = getRenderState(channel);
+  return state.storeMap.get(key) || null;
+}
+
+function buildMessageNodeFromRecord(channel = 'chat', record) {
+  if (!record) return null;
+  if (channel === 'casual') {
+    return buildCasualMsgElement(record.name, record.text, record.uid, record.timestamp, record._key);
+  }
+  return buildChatMsgElement(
+    record.name, record.text, record.type, record.uid, record.timestamp,
+    record.speakAsAvatar, record.speakAsJournalId, record.whisperTo, record.whisperToName,
+    record.nameColor, record._key, channel, record.standingImg, record.tokenId,
+    record.standingLabel, !!record.imageWide
+  );
 }
 
 function trimRenderedMessages(channel = 'chat') {
@@ -93,12 +198,109 @@ function trimRenderedMessages(channel = 'chat') {
   const el = getRenderContainer(channel);
   if (!el) return;
   while (el.children.length > state.max) {
-    const first = el.firstElementChild;
-    if (!first) break;
-    const key = first.dataset.msgKey || '';
+    let removable = el.firstElementChild;
+    if (removable && removable.classList.contains('chat-history-notice')) {
+      removable = removable.nextElementSibling;
+    }
+    if (!removable) break;
+    const key = removable.dataset.msgKey || '';
     if (key) state.map.delete(key);
-    first.remove();
+    removable.remove();
   }
+}
+
+function ensureHistoryNotice(channel = 'chat') {
+  const el = getRenderContainer(channel);
+  if (!el) return null;
+  let notice = el.querySelector('.chat-history-notice');
+  if (!notice) {
+    notice = document.createElement('button');
+    notice.type = 'button';
+    notice.className = 'chat-history-notice';
+    notice.style.cssText = 'display:none;width:100%;margin:0 0 8px;padding:8px 10px;border:1px solid rgba(255,255,255,.08);border-radius:10px;background:rgba(255,255,255,.04);color:#cfd3dc;font-size:12px;cursor:pointer;';
+    notice.addEventListener('click', () => {
+      const target = getRenderContainer(channel);
+      if (!target) return;
+      scrollToBottom(target);
+      const state = getRenderState(channel);
+      state.pendingBottomNotice = 0;
+      syncStickyState(channel, target);
+    });
+    el.prepend(notice);
+  }
+  return notice;
+}
+
+function prependStoredWindow(channel = 'chat', count = 0) {
+  const state = getRenderState(channel);
+  const el = getRenderContainer(channel);
+  if (!el || !state.storeOrder.length) return false;
+
+  const renderedKeys = getRenderedKeyList(channel);
+  const firstRenderedKey = renderedKeys[0] || '';
+  const firstIndex = firstRenderedKey ? state.storeOrder.indexOf(firstRenderedKey) : state.storeOrder.length;
+  if (firstIndex <= 0) return false;
+
+  const step = Math.max(1, count || state.loadStep);
+  const start = Math.max(0, firstIndex - step);
+  const keysToAdd = state.storeOrder.slice(start, firstIndex);
+  if (!keysToAdd.length) return false;
+
+  const prevHeight = el.scrollHeight;
+  const prevTop = el.scrollTop;
+  const frag = document.createDocumentFragment();
+
+  keysToAdd.forEach(key => {
+    const record = getStoredRecord(channel, key);
+    const node = buildMessageNodeFromRecord(channel, record);
+    if (!node) return;
+    node.dataset.msgKey = key;
+    state.map.set(key, node);
+    frag.appendChild(node);
+  });
+
+  const notice = ensureHistoryNotice(channel);
+  if (notice && notice.parentNode === el) {
+    el.insertBefore(frag, notice.nextSibling);
+  } else {
+    el.prepend(frag);
+  }
+
+  trimRenderedMessages(channel);
+  const nextHeight = el.scrollHeight;
+  el.scrollTop = prevTop + (nextHeight - prevHeight);
+  return true;
+}
+
+function appendStoredWindow(channel = 'chat', count = 0) {
+  const state = getRenderState(channel);
+  const el = getRenderContainer(channel);
+  if (!el || !state.storeOrder.length) return false;
+
+  const renderedKeys = getRenderedKeyList(channel);
+  const lastRenderedKey = renderedKeys[renderedKeys.length - 1] || '';
+  const lastIndex = lastRenderedKey ? state.storeOrder.indexOf(lastRenderedKey) : -1;
+  if (lastIndex >= state.storeOrder.length - 1) return false;
+
+  const step = Math.max(1, count || state.loadStep);
+  const end = Math.min(state.storeOrder.length, lastIndex + 1 + step);
+  const keysToAdd = state.storeOrder.slice(lastIndex + 1, end);
+  if (!keysToAdd.length) return false;
+
+  const keepBottom = isNearBottom(el);
+  const frag = document.createDocumentFragment();
+  keysToAdd.forEach(key => {
+    const record = getStoredRecord(channel, key);
+    const node = buildMessageNodeFromRecord(channel, record);
+    if (!node) return;
+    node.dataset.msgKey = key;
+    state.map.set(key, node);
+    frag.appendChild(node);
+  });
+  el.appendChild(frag);
+  trimRenderedMessages(channel);
+  if (keepBottom) requestAnimationFrame(() => scrollToBottom(el));
+  return true;
 }
 
 function flushMessageRender(channel = 'chat') {
@@ -106,38 +308,47 @@ function flushMessageRender(channel = 'chat') {
   state.raf = 0;
   const el = getRenderContainer(channel);
   if (!el || state.queue.length === 0) return;
+
+  ensureHistoryNotice(channel);
   const keepBottom = isNearBottom(el);
-  const frag = document.createDocumentFragment();
   const items = state.queue.splice(0, state.queue.length);
-  for (const item of items) {
+
+  items.forEach((item) => {
     const { node, key } = item;
-    if (key) {
-      const prev = state.map.get(key);
-      if (prev && prev.parentNode === el) prev.remove();
-      node.dataset.msgKey = key;
+    if (!node || !key) return;
+    const current = state.map.get(key);
+    if (current && current.parentNode === el) {
+      el.replaceChild(node, current);
       state.map.set(key, node);
+      return;
     }
-    frag.appendChild(node);
-  }
-  el.appendChild(frag);
+    state.map.set(key, node);
+    el.appendChild(node);
+  });
+
   trimRenderedMessages(channel);
-  if (keepBottom) requestAnimationFrame(() => scrollToBottom(el));
+
+  if (keepBottom || state.stickyToBottom) {
+    state.pendingBottomNotice = 0;
+    requestAnimationFrame(() => {
+      scrollToBottom(el);
+      syncStickyState(channel, el);
+    });
+  } else {
+    state.pendingBottomNotice += items.length;
+    syncStickyState(channel, el);
+  }
 }
 
 function queueMessageRender(channel = 'chat', node, key = '', autoscroll = true) {
   const state = getRenderState(channel);
   const el = getRenderContainer(channel);
   if (!el || !node) return;
-  const shouldScroll = autoscroll && isNearBottom(el);
-  state.queue.push({ node, key, shouldScroll });
+  if (key) node.dataset.msgKey = key;
+  if (autoscroll) syncStickyState(channel, el);
+  state.queue.push({ node, key });
   if (state.raf) return;
-  state.raf = requestAnimationFrame(() => {
-    flushMessageRender(channel);
-    if (shouldScroll) {
-      const target = getRenderContainer(channel);
-      requestAnimationFrame(() => scrollToBottom(target));
-    }
-  });
+  state.raf = requestAnimationFrame(() => flushMessageRender(channel));
 }
 
 function replaceRenderedMessage(channel = 'chat', key, node) {
@@ -152,7 +363,8 @@ function replaceRenderedMessage(channel = 'chat', key, node) {
     state.map.set(key, node);
     if (keepBottom) requestAnimationFrame(() => scrollToBottom(el));
   } else {
-    queueMessageRender(channel, node, key, true);
+    const safeKey = upsertStoredMessage(channel, key, getStoredRecord(channel, key) || {});
+    queueMessageRender(channel, node, safeKey, true);
   }
 }
 
@@ -163,19 +375,55 @@ function removeRenderedMessage(channel = 'chat', key) {
   const current = state.map.get(key) || el.querySelector(`.chat-msg[data-msg-key="${CSS.escape(key)}"]`);
   if (current) current.remove();
   state.map.delete(key);
+  removeStoredMessage(channel, key);
+  syncStickyState(channel, el);
+}
+
+function bindMessageViewport(channel = 'chat') {
+  const state = getRenderState(channel);
+  const el = getRenderContainer(channel);
+  if (!el || state.scrollBound) return;
+  state.scrollBound = true;
+  ensureHistoryNotice(channel);
+  el.addEventListener('scroll', () => {
+    if (state.scrollTick) cancelAnimationFrame(state.scrollTick);
+    state.scrollTick = requestAnimationFrame(() => {
+      state.scrollTick = 0;
+      syncStickyState(channel, el);
+      if (isNearTop(el, 28)) prependStoredWindow(channel);
+      else if (isNearBottom(el, 28)) {
+        if (appendStoredWindow(channel)) {
+          requestAnimationFrame(() => syncStickyState(channel, el));
+        } else {
+          state.pendingBottomNotice = 0;
+          syncStickyState(channel, el);
+        }
+      }
+    });
+  }, { passive: true });
 }
 
 function resetRenderedMessages(channel = 'chat') {
   const state = getRenderState(channel);
   const el = getRenderContainer(channel);
-  if (!el) return;
   if (state.raf) {
     cancelAnimationFrame(state.raf);
     state.raf = 0;
   }
+  if (state.scrollTick) {
+    cancelAnimationFrame(state.scrollTick);
+    state.scrollTick = 0;
+  }
   state.queue = [];
   state.map.clear();
+  state.storeOrder = [];
+  state.storeMap.clear();
+  state.pendingBottomNotice = 0;
+  state.stickyToBottom = true;
+  if (!el) return;
   el.innerHTML = '';
+  ensureHistoryNotice(channel);
+  syncStickyState(channel, el);
 }
 
 function getChatImageClassName(imageWide = false) {
@@ -404,6 +652,8 @@ async function sendPendingChatImages() {
 
 function initChatImageComposer() {
   renderPendingChatImages();
+  bindMessageViewport('chat');
+  bindMessageViewport('casual');
 }
 
 
@@ -708,8 +958,10 @@ function buildCasualMsgElement(name, text, uid, timestamp, msgKey) {
 }
 
 function appendCasualMsg(name, text, uid, timestamp, msgKey) {
-  const div = buildCasualMsgElement(name, text, uid, timestamp, msgKey);
-  queueMessageRender('casual', div, msgKey, true);
+  const safeKey = upsertStoredMessage('casual', msgKey, { name, text, uid, timestamp });
+  bindMessageViewport('casual');
+  const div = buildCasualMsgElement(name, text, uid, timestamp, safeKey);
+  queueMessageRender('casual', div, safeKey, true);
   if (typeof _popoutWins !== 'undefined') {
     const av = getPopoutAvatarUrl(name, uid);
     const renderedTime = div.querySelector('.msg-time')?.textContent || '';
@@ -718,8 +970,10 @@ function appendCasualMsg(name, text, uid, timestamp, msgKey) {
 }
 
 function replaceCasualMsg(name, text, uid, timestamp, msgKey) {
-  const div = buildCasualMsgElement(name, text, uid, timestamp, msgKey);
-  replaceRenderedMessage('casual', msgKey, div);
+  const safeKey = upsertStoredMessage('casual', msgKey, { name, text, uid, timestamp });
+  bindMessageViewport('casual');
+  const div = buildCasualMsgElement(name, text, uid, timestamp, safeKey);
+  replaceRenderedMessage('casual', safeKey, div);
 }
 
 function removeCasualMsg(msgKey) {
@@ -898,8 +1152,13 @@ function buildChatMsgElement(name, text, type, uid, timestamp, speakAsAvatar, sp
 
 function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId, whisperTo, whisperToName, nameColor, msgKey, channel, standingImg, tokenId, standingLabel, imageWide = false) {
   const actualChannel = channel || 'chat';
-  const div = buildChatMsgElement(name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId, whisperTo, whisperToName, nameColor, msgKey, actualChannel, standingImg, tokenId, standingLabel, imageWide);
-  queueMessageRender(actualChannel, div, msgKey, true);
+  const safeKey = upsertStoredMessage(actualChannel, msgKey, {
+    name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId,
+    whisperTo, whisperToName, nameColor, standingImg, tokenId, standingLabel, imageWide
+  });
+  bindMessageViewport(actualChannel);
+  const div = buildChatMsgElement(name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId, whisperTo, whisperToName, nameColor, safeKey, actualChannel, standingImg, tokenId, standingLabel, imageWide);
+  queueMessageRender(actualChannel, div, safeKey, true);
   if (type === 'speak-as' && (!timestamp || Date.now() - timestamp < 5000)) {
     showDialogueBoxFromMsg(name, text, speakAsJournalId, standingImg, tokenId, standingLabel);
   }
@@ -907,8 +1166,13 @@ function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJ
 
 function replaceChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId, whisperTo, whisperToName, nameColor, msgKey, channel, standingImg, tokenId, standingLabel, imageWide = false) {
   const actualChannel = channel || 'chat';
-  const div = buildChatMsgElement(name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId, whisperTo, whisperToName, nameColor, msgKey, actualChannel, standingImg, tokenId, standingLabel, imageWide);
-  replaceRenderedMessage(actualChannel, msgKey, div);
+  const safeKey = upsertStoredMessage(actualChannel, msgKey, {
+    name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId,
+    whisperTo, whisperToName, nameColor, standingImg, tokenId, standingLabel, imageWide
+  });
+  bindMessageViewport(actualChannel);
+  const div = buildChatMsgElement(name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId, whisperTo, whisperToName, nameColor, safeKey, actualChannel, standingImg, tokenId, standingLabel, imageWide);
+  replaceRenderedMessage(actualChannel, safeKey, div);
 }
 
 function removeChatMsg(msgKey, channel = 'chat') {
