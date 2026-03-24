@@ -116,17 +116,17 @@ async function createRoom() {
 
   if (window._FB?.CONFIGURED) {
     const { db, ref, set } = window._FB;
-    const myAvatar = typeof getMyAvatarData === 'function' ? getMyAvatarData() : (localStorage.getItem('itc_avatar_' + St.myId) || '');
     await set(ref(db, `rooms/${code}/meta`), {
       system: selectedSystem, createdAt: Date.now(),
       createdBy: St.myName, ownerId: St.myId, title: roomTitle,
     });
     await set(ref(db, `rooms/${code}/players/${St.myId}`), {
-      name: St.myName, joinedAt: Date.now(), uid: St.myId, role: 'gm', avatar: myAvatar || '',
+      name: St.myName,
+      joinedAt: Date.now(),
+      uid: St.myId,
+      role: 'gm',
+      avatar: localStorage.getItem('itc_avatar_' + St.myId) || '',
     });
-    if (myAvatar) {
-      await set(ref(db, `rooms/${code}/avatars/${St.myId}`), { avatar: myAvatar, updatedAt: Date.now() });
-    }
     await set(ref(db, `users/${St.myId}/rooms/${code}`), {
       code, title: roomTitle, system: selectedSystem,
       role: 'gm', ownerId: St.myId, joinedAt: Date.now(),
@@ -149,7 +149,6 @@ async function joinRoom() {
 
   if (window._FB?.CONFIGURED) {
     const { db, ref, get, set } = window._FB;
-    const myAvatar = typeof getMyAvatarData === 'function' ? getMyAvatarData() : (localStorage.getItem('itc_avatar_' + St.myId) || '');
     let snap;
     try {
       snap = await get(ref(db, `rooms/${code}/meta`));
@@ -174,11 +173,12 @@ async function joinRoom() {
     const role = meta.ownerId === St.myId ? 'gm' : 'player';
     St.isGM = (role === 'gm');
     await set(ref(db, `rooms/${code}/players/${St.myId}`), {
-      name: St.myName, joinedAt: Date.now(), uid: St.myId, role, avatar: myAvatar || '',
+      name: St.myName,
+      joinedAt: Date.now(),
+      uid: St.myId,
+      role,
+      avatar: localStorage.getItem('itc_avatar_' + St.myId) || '',
     });
-    if (myAvatar) {
-      await set(ref(db, `rooms/${code}/avatars/${St.myId}`), { avatar: myAvatar, updatedAt: Date.now() });
-    }
     await set(ref(db, `users/${St.myId}/rooms/${code}`), {
       code, title: meta.title || '무제 세션',
       system: meta.system || 'coc7',
