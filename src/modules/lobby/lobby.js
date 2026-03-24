@@ -4,6 +4,7 @@
  */
 
 let selectedSystem = 'coc7';
+let _myCharsUnsub = null;
 
 function showLobby() {
   document.getElementById('screen-auth').style.display  = 'none';
@@ -19,8 +20,10 @@ function showLobby() {
 async function loadMyCharacters() {
   if (!window._FB?.CONFIGURED || !window._currentUser) return;
   const { db, ref, onValue } = window._FB;
-  onValue(ref(db, `users/${St.myId}/characters`), snap => {
+  if (_myCharsUnsub) { _myCharsUnsub(); _myCharsUnsub = null; }
+  _myCharsUnsub = onValue(ref(db, `users/${St.myId}/characters`), snap => {
     const chars = snap.val() || {};
+    window._cachedChars = chars;
     renderCharCards(chars);
   });
 }
@@ -102,6 +105,30 @@ function genCode() {
 }
 function genId() { return Math.random().toString(36).slice(2, 10); }
 
+function getPlayerPayload(role) {
+  const avatar = (() => {
+    try { return localStorage.getItem('itc_avatar_' + St.myId) || ''; } catch (e) { return ''; }
+  })();
+  const casualNick = (() => {
+    try { return localStorage.getItem('itc_casual_nick_' + St.myId) || ''; } catch (e) { return ''; }
+  })();
+  const nameColor = (() => {
+    try { return localStorage.getItem('itc_name_color_' + St.myId) || ''; } catch (e) { return ''; }
+  })();
+
+  return {
+    name: St.myName,
+    joinedAt: Date.now(),
+    uid: St.myId,
+    role,
+    avatar,
+    casualNick,
+    nameColor,
+    online: true,
+    updatedAt: Date.now(),
+  };
+}
+
 async function createRoom() {
   if (window._FB?.CONFIGURED && !window._currentUser) {
     alert('방을 만들려면 로그인이 필요합니다.');
@@ -120,13 +147,7 @@ async function createRoom() {
       system: selectedSystem, createdAt: Date.now(),
       createdBy: St.myName, ownerId: St.myId, title: roomTitle,
     });
-    await set(ref(db, `rooms/${code}/players/${St.myId}`), {
-      name: St.myName,
-      joinedAt: Date.now(),
-      uid: St.myId,
-      role: 'gm',
-      avatar: localStorage.getItem('itc_avatar_' + St.myId) || '',
-    });
+    await set(ref(db, `rooms/${code}/players/${St.myId}`), getPlayerPayload('gm'));
     await set(ref(db, `users/${St.myId}/rooms/${code}`), {
       code, title: roomTitle, system: selectedSystem,
       role: 'gm', ownerId: St.myId, joinedAt: Date.now(),
@@ -172,13 +193,7 @@ async function joinRoom() {
     const meta = snap.val();
     const role = meta.ownerId === St.myId ? 'gm' : 'player';
     St.isGM = (role === 'gm');
-    await set(ref(db, `rooms/${code}/players/${St.myId}`), {
-      name: St.myName,
-      joinedAt: Date.now(),
-      uid: St.myId,
-      role,
-      avatar: localStorage.getItem('itc_avatar_' + St.myId) || '',
-    });
+    await set(ref(db, `rooms/${code}/players/${St.myId}`), getPlayerPayload(role));
     await set(ref(db, `users/${St.myId}/rooms/${code}`), {
       code, title: meta.title || '무제 세션',
       system: meta.system || 'coc7',
