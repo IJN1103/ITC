@@ -38,7 +38,7 @@ function getChatImageWideMode() {
 
 function getChatImageInlineStyle(isWide) {
   const sizeStyle = isWide
-    ? 'max-width:min(100%, 560px);width:auto;'
+    ? 'width:100%;max-width:none;'
     : 'max-width:220px;width:auto;';
   return `display:block;${sizeStyle}height:auto;margin-top:5px;border-radius:var(--r);border:1px solid var(--border);cursor:zoom-in`;
 }
