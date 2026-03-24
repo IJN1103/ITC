@@ -387,7 +387,7 @@ to{opacity:1}
 .dice-card-result{font-size:34px;font-weight:800;color:var(--accent);font-family:var(--font-mono);line-height:1.2;}
 .dice-card-rolls{font-size:14px;color:var(--dim);font-family:var(--font-mono);margin-top:4px;}
 .msg-sys .msg-text{color:var(--muted);font-size:12px;font-style:italic;}
-.msg-image{display:block;width:100%;height:100%;border-radius:var(--r);cursor:zoom-in;border:1px solid var(--border);background:transparent;opacity:0;transition:opacity .18s ease;}
+.msg-image{display:block;width:100%;height:100%;object-fit:contain;object-position:center center;border-radius:var(--r);cursor:zoom-in;border:1px solid var(--border);background:transparent;opacity:0;transition:opacity .18s ease;}
 .msg-image.is-ready{opacity:1;}
 .msg-image-shell{display:block;width:min(220px,100%);max-width:220px;margin-top:5px;border-radius:var(--r);overflow:hidden;background:rgba(255,255,255,.03);position:relative;}
 .msg-image-shell.is-wide{width:min(100%,520px);max-width:100%;}
