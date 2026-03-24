@@ -120,13 +120,9 @@ async function createRoom() {
       system: selectedSystem, createdAt: Date.now(),
       createdBy: St.myName, ownerId: St.myId, title: roomTitle,
     });
-    const myAvatar = localStorage.getItem('itc_avatar_' + St.myId) || '';
     await set(ref(db, `rooms/${code}/players/${St.myId}`), {
-      name: St.myName, joinedAt: Date.now(), uid: St.myId, role: 'gm', avatar: myAvatar,
+      name: St.myName, joinedAt: Date.now(), uid: St.myId, role: 'gm',
     });
-    if (myAvatar) {
-      await set(ref(db, `rooms/${code}/avatars/${St.myId}`), myAvatar);
-    }
     await set(ref(db, `users/${St.myId}/rooms/${code}`), {
       code, title: roomTitle, system: selectedSystem,
       role: 'gm', ownerId: St.myId, joinedAt: Date.now(),
@@ -172,13 +168,9 @@ async function joinRoom() {
     const meta = snap.val();
     const role = meta.ownerId === St.myId ? 'gm' : 'player';
     St.isGM = (role === 'gm');
-    const myAvatar = localStorage.getItem('itc_avatar_' + St.myId) || '';
     await set(ref(db, `rooms/${code}/players/${St.myId}`), {
-      name: St.myName, joinedAt: Date.now(), uid: St.myId, role, avatar: myAvatar,
+      name: St.myName, joinedAt: Date.now(), uid: St.myId, role,
     });
-    if (myAvatar) {
-      await set(ref(db, `rooms/${code}/avatars/${St.myId}`), myAvatar);
-    }
     await set(ref(db, `users/${St.myId}/rooms/${code}`), {
       code, title: meta.title || '무제 세션',
       system: meta.system || 'coc7',
