@@ -699,9 +699,7 @@ function getChatImageClassName(imageWide = false) {
 }
 
 function getChatImageInlineStyle(imageWide = false) {
-  return imageWide
-    ? 'display:block;width:100%;max-width:none;height:auto;object-fit:contain;'
-    : 'display:block;width:100%;height:auto;object-fit:contain;';
+  return imageWide ? 'width:100%;max-width:none;height:auto;object-fit:contain;' : '';
 }
 
 const CHAT_IMAGE_PLACEHOLDER = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==';
@@ -717,15 +715,8 @@ function normalizeChatImageMeta(imageMeta = null) {
 
 function getChatImageShellStyle(imageWide = false, imageMeta = null) {
   const meta = normalizeChatImageMeta(imageMeta);
-  if (imageWide) {
-    const ratio = meta ? `${meta.width} / ${meta.height}` : '16 / 9';
-    return `aspect-ratio:${ratio};`;
-  }
-  if (meta) {
-    const clampedWidth = Math.max(72, Math.min(220, meta.width));
-    return `width:min(100%, ${clampedWidth}px);`;
-  }
-  return 'width:min(100%, 220px);';
+  const ratio = meta ? `${meta.width} / ${meta.height}` : (imageWide ? '16 / 9' : '4 / 3');
+  return `aspect-ratio:${ratio};`;
 }
 
 function activateDeferredChatImage(img, force = false) {
@@ -975,34 +966,89 @@ async function queuePendingChatImages(files) {
   renderPendingChatImages();
 }
 
+
+function inferStorageContentTypeFromDataUrl(dataUrl) {
+  const m = String(dataUrl || '').match(/^data:([^;,]+)[;,]/i);
+  return m ? m[1].toLowerCase() : 'image/jpeg';
+}
+
+function blobFromDataUrl(dataUrl) {
+  const parts = String(dataUrl || '').split(',');
+  if (parts.length < 2) throw new Error('이미지 데이터 형식이 올바르지 않아요.');
+  const contentType = inferStorageContentTypeFromDataUrl(dataUrl);
+  const binary = atob(parts[1]);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return { blob: new Blob([bytes], { type: contentType }), contentType };
+}
+
+async function uploadChatImageDataUrl(dataUrl, roomCode) {
+  const fb = window._FB;
+  if (!fb?.CONFIGURED || !fb.storage || !fb.storageRef || !fb.uploadBytes || !fb.getDownloadURL || !roomCode) {
+    return null;
+  }
+  const { blob, contentType } = blobFromDataUrl(dataUrl);
+  const ext = contentType.includes('gif') ? 'gif' : (contentType.includes('png') ? 'png' : (contentType.includes('webp') ? 'webp' : 'jpg'));
+  const path = `rooms/${roomCode}/chat-images/${St.myId || 'guest'}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
+  const storageRefObj = fb.storageRef(fb.storage, path);
+  await fb.uploadBytes(storageRefObj, blob, {
+    contentType,
+    cacheControl: 'public,max-age=31536000,immutable',
+  });
+  const url = await fb.getDownloadURL(storageRefObj);
+  return { url, path, contentType };
+}
+
 async function sendPreparedChatImage(dataUrl, imageWide = false, imageMeta = null) {
   const saJId = St.speakAsJournalId;
   const saJournal = saJId ? loadJournals().find(x => x.id === saJId) : null;
   const saName = saJournal ? (saJournal.title || '무제') : null;
   const saAvatar = saJId ? saGetAvatar(saJId) : null;
+  const normalizedMeta = normalizeChatImageMeta(imageMeta);
+
+  let finalSrc = dataUrl;
+  let storageMeta = null;
+  if (window._FB?.CONFIGURED && St.roomCode) {
+    try {
+      const uploaded = await uploadChatImageDataUrl(dataUrl, St.roomCode);
+      if (uploaded?.url) {
+        finalSrc = uploaded.url;
+        storageMeta = uploaded;
+      }
+    } catch (err) {
+      console.warn('chat image storage upload failed, fallback to inline data url', err);
+    }
+  }
 
   if (saJournal) {
     const msg = {
       name: saName,
-      text: dataUrl,
+      text: finalSrc,
       type: 'speak-as-image',
       uid: St.myId,
       time: Date.now(),
       speakAsAvatar: saAvatar,
       speakAsJournalId: saJId,
       imageWide: !!imageWide,
-      imageMeta: normalizeChatImageMeta(imageMeta),
+      imageMeta: normalizedMeta,
+      imageStoragePath: storageMeta?.path || '',
+      imageContentType: storageMeta?.contentType || inferStorageContentTypeFromDataUrl(dataUrl),
     };
     if (window._FB?.CONFIGURED) {
       const { db, ref, push } = window._FB;
       if (!St.roomCode) throw new Error('roomCode missing');
       return push(ref(db, `rooms/${St.roomCode}/chat`), msg);
     }
-    appendChatMsg(msg.name, dataUrl, 'speak-as-image', St.myId, msg.time, saAvatar, saJId, null, null, null, null, 'chat', null, null, null, !!imageWide, normalizeChatImageMeta(imageMeta));
+    appendChatMsg(msg.name, finalSrc, 'speak-as-image', St.myId, msg.time, saAvatar, saJId, null, null, null, null, 'chat', null, null, null, !!imageWide, normalizedMeta);
     return Promise.resolve();
   }
 
-  return sendMessage(St.myName, dataUrl, 'image', { imageWide: !!imageWide, imageMeta: normalizeChatImageMeta(imageMeta) });
+  return sendMessage(St.myName, finalSrc, 'image', {
+    imageWide: !!imageWide,
+    imageMeta: normalizedMeta,
+    imageStoragePath: storageMeta?.path || '',
+    imageContentType: storageMeta?.contentType || inferStorageContentTypeFromDataUrl(dataUrl),
+  });
 }
 
 async function sendPendingChatImages() {

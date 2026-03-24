@@ -17,6 +17,8 @@ function syncMyAvatarToRoom(avatarOverride = undefined, force = false) {
     : (() => {
         try { return localStorage.getItem('itc_avatar_' + St.myId) || ''; } catch (e) { return ''; }
       })();
+  let avatarStoragePath = '';
+  try { avatarStoragePath = localStorage.getItem('itc_avatar_path_' + St.myId) || ''; } catch (e) {}
 
   if (!window._avatarCache) window._avatarCache = {};
   window._avatarCache[St.myId] = nextAvatar;
@@ -27,8 +29,17 @@ function syncMyAvatarToRoom(avatarOverride = undefined, force = false) {
 
   const { db, ref, set, update } = window._FB;
   return Promise.all([
-    set(ref(db, `rooms/${St.roomCode}/avatars/${St.myId}`), nextAvatar).catch(() => {}),
-    update(ref(db, `rooms/${St.roomCode}/players/${St.myId}`), { avatar: nextAvatar }).catch(() => {}),
+    set(ref(db, `rooms/${St.roomCode}/avatars/${St.myId}`), {
+      value: nextAvatar,
+      url: nextAvatar,
+      storagePath: avatarStoragePath,
+      updatedAt: Date.now(),
+    }).catch(() => {}),
+    update(ref(db, `rooms/${St.roomCode}/players/${St.myId}`), {
+      avatar: nextAvatar,
+      avatarUrl: nextAvatar,
+      avatarStoragePath,
+    }).catch(() => {}),
   ]).then(() => {
     if (typeof rerenderExistingChatAvatars === 'function') rerenderExistingChatAvatars();
   });
@@ -43,6 +54,10 @@ function bindRoomStabilityEvents() {
     const targetUid = detail.uid || window._currentUser?.uid || St.myId;
     if (!targetUid || targetUid !== St.myId) return;
     const avatar = detail.avatar || '';
+    try {
+      if (detail.avatarStoragePath) localStorage.setItem('itc_avatar_path_' + St.myId, detail.avatarStoragePath);
+      else localStorage.removeItem('itc_avatar_path_' + St.myId);
+    } catch (e) {}
     _lastSyncedRoomAvatar = null;
     syncMyAvatarToRoom(avatar, true);
   });
@@ -287,9 +302,12 @@ function renderPlayers(players) {
     const online = p.online || id === St.myId;
     addPlayerChip(id, p.name, id === St.myId, p.role, online);
 
-    const av = p.avatar || localStorage.getItem('itc_avatar_' + id);
+    const av = p.avatarUrl || p.avatar || localStorage.getItem('itc_avatar_' + id);
     if (av) {
       localStorage.setItem('itc_avatar_' + id, av);
+      if (p.avatarStoragePath) {
+        try { localStorage.setItem('itc_avatar_path_' + id, p.avatarStoragePath); } catch (e) {}
+      }
       window._avatarCache[id] = av;
       window._avatarCache[p.name] = av;
     }

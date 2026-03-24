@@ -48,6 +48,41 @@ function refreshProfileAvatar() {
   }
 }
 
+
+function inferStorageContentTypeFromDataUrl(dataUrl) {
+  const m = String(dataUrl || '').match(/^data:([^;,]+)[;,]/i);
+  return m ? m[1].toLowerCase() : 'image/jpeg';
+}
+
+function blobFromDataUrl(dataUrl) {
+  const parts = String(dataUrl || '').split(',');
+  if (parts.length < 2) throw new Error('이미지 데이터 형식이 올바르지 않아요.');
+  const contentType = inferStorageContentTypeFromDataUrl(dataUrl);
+  const binary = atob(parts[1]);
+  const len = binary.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i += 1) bytes[i] = binary.charCodeAt(i);
+  return new Blob([bytes], { type: contentType });
+}
+
+async function uploadAvatarDataUrlToStorage(dataUrl, userId) {
+  const fb = window._FB;
+  if (!fb?.CONFIGURED || !fb.storage || !fb.storageRef || !fb.uploadBytes || !fb.getDownloadURL) {
+    return null;
+  }
+  const contentType = inferStorageContentTypeFromDataUrl(dataUrl);
+  const ext = contentType.includes('png') ? 'png' : (contentType.includes('webp') ? 'webp' : 'jpg');
+  const path = `avatars/${userId}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
+  const blob = blobFromDataUrl(dataUrl);
+  const storageRefObj = fb.storageRef(fb.storage, path);
+  await fb.uploadBytes(storageRefObj, blob, {
+    contentType,
+    cacheControl: 'public,max-age=31536000,immutable',
+  });
+  const url = await fb.getDownloadURL(storageRefObj);
+  return { url, path, contentType };
+}
+
 function handleAvatarUpload(input) {
   const file = input.files[0];
   if (!file) return;
@@ -134,20 +169,29 @@ function setupCropDrag() {
   document.addEventListener('touchend', () => { if (window._crop) window._crop.drag = false; });
 }
 
-async function syncAvatarToFirebase(dataUrl) {
+async function syncAvatarToFirebase(avatarSrc, meta = null) {
   const user = window._currentUser;
   if (!user || !window._FB?.CONFIGURED) return;
 
   const { db, ref, update } = window._FB;
   const now = Date.now();
+  const avatarValue = avatarSrc || '';
+  const avatarStoragePath = meta?.path || '';
   try {
-    await update(ref(db, `users/${user.uid}/profile`), { avatar: dataUrl || '', updatedAt: now });
+    await update(ref(db, `users/${user.uid}/profile`), {
+      avatar: avatarValue,
+      avatarUrl: avatarValue,
+      avatarStoragePath,
+      updatedAt: now,
+    });
   } catch (e) {}
 
   if (St.roomCode) {
     try {
       await update(ref(db, `rooms/${St.roomCode}/players/${user.uid}`), {
-        avatar: dataUrl || '',
+        avatar: avatarValue,
+        avatarUrl: avatarValue,
+        avatarStoragePath,
         name: St.myName || user.displayName || '플레이어',
         updatedAt: now,
       });
@@ -155,23 +199,26 @@ async function syncAvatarToFirebase(dataUrl) {
 
     try {
       await update(ref(db, `rooms/${St.roomCode}/avatars/${user.uid}`), {
-        value: dataUrl || '',
+        value: avatarValue,
+        url: avatarValue,
+        storagePath: avatarStoragePath,
         updatedAt: now,
       });
     } catch (e) {}
   }
 
   window._avatarCache = window._avatarCache || {};
-  if (dataUrl) {
-    window._avatarCache[user.uid] = dataUrl;
-    window._avatarCache[St.myName || user.displayName || '플레이어'] = dataUrl;
+  if (avatarValue) {
+    window._avatarCache[user.uid] = avatarValue;
+    window._avatarCache[St.myName || user.displayName || '플레이어'] = avatarValue;
   }
 
   document.dispatchEvent(new CustomEvent('itc:avatar-updated', {
     detail: {
       uid: user.uid,
       name: St.myName || user.displayName || '플레이어',
-      avatar: dataUrl || '',
+      avatar: avatarValue,
+      avatarStoragePath,
     }
   }));
 }
@@ -191,8 +238,25 @@ async function applyCrop() {
   ctx.drawImage(s.img, x, y, sw, sh);
 
   const dataUrl = out.toDataURL('image/jpeg', 0.8);
-  localStorage.setItem('itc_avatar_' + window._currentUser.uid, dataUrl);
-  await syncAvatarToFirebase(dataUrl);
+  let finalAvatarSrc = dataUrl;
+  let uploadMeta = null;
+
+  try {
+    const uploaded = await uploadAvatarDataUrlToStorage(dataUrl, window._currentUser.uid);
+    if (uploaded?.url) {
+      finalAvatarSrc = uploaded.url;
+      uploadMeta = uploaded;
+    }
+  } catch (e) {
+    console.warn('avatar storage upload failed, fallback to inline data url', e);
+  }
+
+  localStorage.setItem('itc_avatar_' + window._currentUser.uid, finalAvatarSrc);
+  try {
+    if (uploadMeta?.path) localStorage.setItem('itc_avatar_path_' + window._currentUser.uid, uploadMeta.path);
+    else localStorage.removeItem('itc_avatar_path_' + window._currentUser.uid);
+  } catch (e) {}
+  await syncAvatarToFirebase(finalAvatarSrc, uploadMeta);
   refreshProfileAvatar();
   document.getElementById('crop-zone').style.display = 'none';
   window._crop = null;

@@ -17,6 +17,8 @@ import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword,
 import { getDatabase, ref, set, push, onValue, update, remove, get, serverTimestamp, onDisconnect,
          query, limitToLast, onChildAdded, onChildChanged, onChildRemoved }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+import { getStorage, ref as storageRef, uploadBytes, getDownloadURL }
+  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
 
 // ↓↓↓ 여기에 Firebase 설정을 붙여넣으세요 ↓↓↓
 const firebaseConfig = {
@@ -32,11 +34,12 @@ const firebaseConfig = {
 
 const CONFIGURED = firebaseConfig.apiKey !== "YOUR_API_KEY";
 
-let app, auth, db;
+let app, auth, db, storage;
 if (CONFIGURED) {
   app  = initializeApp(firebaseConfig);
   auth = getAuth(app);
   db   = getDatabase(app);
+  storage = getStorage(app);
 
   /* Auth 상태 감지 */
   onAuthStateChanged(auth, user => {
@@ -55,8 +58,9 @@ if (CONFIGURED) {
 
 /* 전역 노출 */
 window._FB = {
-  CONFIGURED, auth, db,
+  CONFIGURED, auth, db, storage,
   ref, set, push, onValue, update, remove, get, serverTimestamp, onDisconnect,
+  storageRef, uploadBytes, getDownloadURL,
   query, limitToLast, onChildAdded, onChildChanged, onChildRemoved,
   createUserWithEmailAndPassword, signInWithEmailAndPassword,
   updateProfile, onAuthStateChanged, signOut,
@@ -427,21 +431,8 @@ window._FB = {
         </div>
         <div class="chat-input-wrap">
           <button class="chat-attach-btn" onclick="document.getElementById('chat-img-input').click()" title="사진/GIF 첨부">+</button>
-          <input type="file" id="chat-img-input" accept="image/png,image/jpeg,image/gif" multiple style="display:none" onchange="handleChatImageUpload(this)">
-          <div class="chat-composer-stack">
-            <div class="chat-image-queue" id="chat-image-queue" style="display:none">
-              <div class="chat-image-queue-head">
-                <span class="chat-image-queue-title">첨부 이미지</span>
-                <label class="chat-wide-toggle">
-                  <input type="checkbox" id="chat-image-wide-toggle" onchange="togglePendingChatImageWide(this.checked)">
-                  <span>가로폭 채우기</span>
-                </label>
-              </div>
-              <div class="chat-image-preview-list" id="chat-image-preview-list"></div>
-              <div class="chat-image-queue-help">최대 4장 · 드래그로 순서 변경 · X로 전송 취소</div>
-            </div>
-            <textarea class="chat-input" id="chat-input" placeholder="메시지 입력 (Enter 전송)" rows="1" onkeydown="chatKeydown(event)" oninput="broadcastTyping()"></textarea>
-          </div>
+          <input type="file" id="chat-img-input" accept="image/png,image/jpeg,image/gif" style="display:none" onchange="handleChatImageUpload(this)">
+          <textarea class="chat-input" id="chat-input" placeholder="메시지 입력 (Enter 전송)" rows="1" onkeydown="chatKeydown(event)" oninput="broadcastTyping()"></textarea>
           <button class="send-btn" onclick="sendChat()">➤</button>
         </div>
       </div>

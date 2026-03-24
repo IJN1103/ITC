@@ -70,11 +70,16 @@ async function loadUserProfile(user) {
   const profile = snap.val() || {};
   St.myName = profile.name || baseProfile.name;
 
-  if (profile.avatar) {
-    try { localStorage.setItem('itc_avatar_' + user.uid, profile.avatar); } catch (e) {}
+  const avatarSrc = profile.avatarUrl || profile.avatar || '';
+  if (avatarSrc) {
+    try { localStorage.setItem('itc_avatar_' + user.uid, avatarSrc); } catch (e) {}
+    try {
+      if (profile.avatarStoragePath) localStorage.setItem('itc_avatar_path_' + user.uid, profile.avatarStoragePath);
+      else localStorage.removeItem('itc_avatar_path_' + user.uid);
+    } catch (e) {}
     window._avatarCache = window._avatarCache || {};
-    window._avatarCache[user.uid] = profile.avatar;
-    window._avatarCache[St.myName] = profile.avatar;
+    window._avatarCache[user.uid] = avatarSrc;
+    window._avatarCache[St.myName] = avatarSrc;
   }
 
   const patch = {};
