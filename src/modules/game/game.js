@@ -3,10 +3,18 @@
  * Firebase 리스너, 게임 진입, 플레이어 관리, 캐릭터 시트
  */
 
+// 채팅 중복 렌더링 방지를 위한 고유 키 저장소
+let _processedChatKeys = new Set();
+let _processedCasualKeys = new Set();
+
 function setupFirebaseListeners() {
   if (!window._FB?.CONFIGURED) return;
   const { db, ref, onValue } = window._FB;
   const code = St.roomCode;
+
+  // 방에 입장하거나 리스너가 재실행될 때 추적 기록 초기화
+  _processedChatKeys.clear();
+  _processedCasualKeys.clear();
 
   onValue(ref(db, `rooms/${code}/players`), snap => {
     const players = snap.val() || {};
@@ -20,6 +28,7 @@ function setupFirebaseListeners() {
     renderPlayers(players);
   });
 
+  // 🔥 메인 채팅방 동기화 (버그 수정됨)
   onValue(ref(db, `rooms/${code}/chat`), snap => {
     const msgs = snap.val() || {};
     const entries = Object.entries(msgs).map(([k, m]) => ({ ...m, _key: k }));
@@ -28,16 +37,29 @@ function setupFirebaseListeners() {
         if (m.type === 'whisper') return m.uid === St.myId || m.whisperTo === St.myId;
         return true;
       });
+    
     const container = document.getElementById('chat-messages');
-
+    if (!container) return;
     const rendered = container.querySelectorAll('.chat-msg').length;
-    const toAdd = sorted.slice(rendered);
-    toAdd.forEach(m => appendChatMsg(m.name, m.text, m.type || 'normal', m.uid, m.time, m.speakAsAvatar || null, m.speakAsJournalId || null, m.whisperTo || null, m.whisperToName || null, m.nameColor || null, m._key, 'chat', m.standingImg || null, m.tokenId || null, m.standingLabel || null));
 
-    if (toAdd.length === 0 && rendered > sorted.length) {
+    // 만약 누군가 메시지를 삭제해서 화면의 메시지 수가 서버 데이터보다 많아진 경우, 화면을 싹 비우고 리셋합니다.
+    if (rendered > sorted.length) {
       container.innerHTML = '';
-      sorted.forEach(m => appendChatMsg(m.name, m.text, m.type || 'normal', m.uid, m.time, m.speakAsAvatar || null, m.speakAsJournalId || null, m.whisperTo || null, m.whisperToName || null, m.nameColor || null, m._key, 'chat', m.standingImg || null, m.tokenId || null, m.standingLabel || null));
+      _processedChatKeys.clear();
     }
+
+    // 개수로 자르지 않고, 기록된 적 없는 고유 키(_key)만 화면에 추가합니다.
+    sorted.forEach(m => {
+      if (!_processedChatKeys.has(m._key)) {
+        appendChatMsg(
+          m.name, m.text, m.type || 'normal', m.uid, m.time, 
+          m.speakAsAvatar || null, m.speakAsJournalId || null, 
+          m.whisperTo || null, m.whisperToName || null, m.nameColor || null, 
+          m._key, 'chat', m.standingImg || null, m.tokenId || null, m.standingLabel || null
+        );
+        _processedChatKeys.add(m._key);
+      }
+    });
   });
 
   onValue(ref(db, `rooms/${code}/tokens`), snap => {
@@ -54,6 +76,7 @@ function setupFirebaseListeners() {
     saRefreshToolbar();
   });
 
+  // 🔥 잡담(Casual) 채팅방 동기화 (버그 수정됨)
   onValue(ref(db, `rooms/${code}/casual`), snap => {
     const msgs = snap.val() || {};
     const entries = Object.entries(msgs).map(([k, m]) => ({ ...m, _key: k }));
@@ -61,12 +84,20 @@ function setupFirebaseListeners() {
     const container = document.getElementById('casual-messages');
     if (!container) return;
     const rendered = container.querySelectorAll('.chat-msg').length;
-    const toAdd = sorted.slice(rendered);
-    toAdd.forEach(m => appendCasualMsg(m.name, m.text, m.uid, m.time, m._key));
-    if (toAdd.length === 0 && rendered > sorted.length) {
+
+    // 삭제 처리 리셋 로직
+    if (rendered > sorted.length) {
       container.innerHTML = '';
-      sorted.forEach(m => appendCasualMsg(m.name, m.text, m.uid, m.time, m._key));
+      _processedCasualKeys.clear();
     }
+
+    // 중복 방지 렌더링
+    sorted.forEach(m => {
+      if (!_processedCasualKeys.has(m._key)) {
+        appendCasualMsg(m.name, m.text, m.uid, m.time, m._key);
+        _processedCasualKeys.add(m._key);
+      }
+    });
   });
 
   onValue(ref(db, `rooms/${code}/bgm`), snap => {
