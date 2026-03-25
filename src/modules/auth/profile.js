@@ -44,7 +44,10 @@ function refreshProfileAvatar() {
   const saved = (() => {
     try {
       const localValue = sanitizePersistentAvatarSrc(localStorage.getItem('itc_avatar_' + user.uid));
-      if (!localValue) localStorage.removeItem('itc_avatar_' + user.uid);
+      if (!localValue) {
+        localStorage.removeItem('itc_avatar_' + user.uid);
+        localStorage.removeItem('itc_avatar_path_' + user.uid);
+      }
       return localValue
         || sanitizePersistentAvatarSrc(window._avatarCache && (window._avatarCache[user.uid] || window._avatarCache[St.myName]))
         || sanitizePersistentAvatarSrc(user.photoURL)

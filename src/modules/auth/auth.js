@@ -3,21 +3,11 @@
  * 로그인, 회원가입, Google 로그인, 로그아웃
  */
 
-
-function isLegacyBase64ImageSrc(src) {
-  return typeof src === 'string' && /^data:image\//i.test(src.trim());
-}
-
-function sanitizeStoredAvatarSrc(src, storageKey = '') {
-  const normalized = String(src || '').trim();
-  if (!normalized) return '';
-  if (isLegacyBase64ImageSrc(normalized)) {
-    if (storageKey) {
-      try { localStorage.removeItem(storageKey); } catch (e) {}
-    }
-    return '';
-  }
-  return normalized;
+function sanitizePersistentAvatarSrc(src) {
+  const value = String(src || '').trim();
+  if (!value) return '';
+  if (/^data:image\//i.test(value) || /^blob:/i.test(value)) return '';
+  return value;
 }
 
 function initAuthScreen() {
@@ -93,7 +83,9 @@ async function loadUserProfile(user) {
   const profile = snap.val() || {};
   St.myName = profile.name || baseProfile.name;
 
-  const avatarSrc = sanitizeStoredAvatarSrc(profile.avatarUrl || profile.avatar || '', 'itc_avatar_' + user.uid);
+  const rawAvatarSrc = profile.avatarUrl || profile.avatar || '';
+  const avatarSrc = sanitizePersistentAvatarSrc(rawAvatarSrc);
+
   if (avatarSrc) {
     try { localStorage.setItem('itc_avatar_' + user.uid, avatarSrc); } catch (e) {}
     try {
@@ -105,9 +97,17 @@ async function loadUserProfile(user) {
     window._avatarCache[St.myName] = avatarSrc;
   } else {
     try { localStorage.removeItem('itc_avatar_' + user.uid); } catch (e) {}
+    try { localStorage.removeItem('itc_avatar_path_' + user.uid); } catch (e) {}
+    window._avatarCache = window._avatarCache || {};
+    delete window._avatarCache[user.uid];
   }
 
   const patch = {};
+  if (rawAvatarSrc && !avatarSrc) {
+    patch.avatar = '';
+    patch.avatarUrl = '';
+    patch.avatarStoragePath = '';
+  }
   if (!profile.name && baseProfile.name) patch.name = baseProfile.name;
   if (!profile.email && baseProfile.email) patch.email = baseProfile.email;
   if (Object.keys(patch).length) {
