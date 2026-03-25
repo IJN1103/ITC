@@ -3,6 +3,8 @@
  * 프로필 수정, 아바타 크롭, 닉네임/비밀번호 변경
  */
 
+let _isApplyingProfileCrop = false;
+
 function initProfileModal() {
   const user = window._currentUser;
   if (!user) return;
@@ -37,7 +39,32 @@ function sanitizePersistentAvatarSrc(src) {
   return value;
 }
 
-function refreshProfileAvatar() {
+function getFriendlyUploadErrorMessage(err, fallback = '업로드에 실패했어요. 다시 시도해 주세요.') {
+  const raw = String(err?.message || err || '').toLowerCase();
+  if (!raw) return fallback;
+  if (raw.includes('cloudinary-config-missing')) return '이미지 업로드 설정이 비어 있어요. 설정을 다시 확인해 주세요.';
+  if (raw.includes('timeout') || raw.includes('timed out') || raw.includes('abort')) return '업로드 시간이 너무 오래 걸렸어요. 잠시 후 다시 시도해 주세요.';
+  if (raw.includes('network')) return '네트워크 연결이 불안정해요. 잠시 후 다시 시도해 주세요.';
+  if (raw.includes('blob 생성 실패')) return '이미지 처리 중 문제가 생겼어요. 다른 이미지를 한 번 시도해 주세요.';
+  if (raw.includes('invalid') || raw.includes('preset') || raw.includes('unsigned')) return '업로드 설정에 문제가 있어요. preset 설정을 다시 확인해 주세요.';
+  return fallback;
+}
+
+function setProfileCropBusy(isBusy) {
+  _isApplyingProfileCrop = !!isBusy;
+  const applyBtn = document.querySelector('#crop-zone .profile-save-btn');
+  const fileInput = document.getElementById('avatar-file-input');
+  const scaleInput = document.getElementById('crop-scale');
+  const viewport = document.getElementById('crop-viewport');
+
+  if (applyBtn) {
+    applyBtn.disabled = !!isBusy;
+    applyBtn.textContent = isBusy ? '업로드 중...' : '이 이미지로 적용 ✓';
+  }
+  if (fileInput) fileInput.disabled = !!isBusy;
+  if (scaleInput) scaleInput.disabled = !!isBusy;
+  if (viewport) viewport.style.pointerEvents = isBusy ? 'none' : '';
+}
   const user = window._currentUser;
   if (!user) return;
 
@@ -122,7 +149,8 @@ async function getStorageApiQuick() {
 
 async function uploadAvatarBlobToCloudinary(blob, fileName = 'avatar.jpg') {
   const cfg = getCloudinaryRuntimeConfig();
-  if (!cfg || !blob) return null;
+  if (!cfg) throw new Error('cloudinary-config-missing');
+  if (!blob) throw new Error('empty-avatar-blob');
   const formData = new FormData();
   formData.append('file', blob, fileName);
   formData.append('upload_preset', cfg.unsignedPreset);
@@ -143,13 +171,27 @@ async function uploadAvatarBlobToCloudinary(blob, fileName = 'avatar.jpg') {
       path: payload.public_id || '',
       contentType: blob.type || 'image/jpeg',
     };
+  } catch (err) {
+    if (err?.name === 'AbortError') throw new Error('timeout');
+    throw err;
   } finally {
     if (timer) clearTimeout(timer);
   }
 }
 
+async function uploadAvatarDataUrlToStorage(dataUrl, userId) {
+  const avatarBlob = blobFromDataUrl(dataUrl);
+  const uploadedCloudinary = await uploadAvatarBlobToCloudinary(avatarBlob, `avatar_${userId || 'user'}_${Date.now()}.jpg`);
+  if (!uploadedCloudinary?.url) return null;
+  return uploadedCloudinary;
+}
 
 function handleAvatarUpload(input) {
+  if (_isApplyingProfileCrop) {
+    showProfileMsg('이미지 업로드가 끝날 때까지 잠시만 기다려 주세요.', 'err');
+    input.value = '';
+    return;
+  }
   const file = input.files[0];
   if (!file) return;
   if (file.size > 5 * 1024 * 1024) {
@@ -296,7 +338,7 @@ async function syncAvatarToFirebase(avatarSrc, meta = null) {
 
 async function applyCrop() {
   const s = window._crop;
-  if (!s) return;
+  if (!s || _isApplyingProfileCrop) return;
 
   const out = document.createElement('canvas');
   out.width = out.height = 256;
@@ -310,6 +352,9 @@ async function applyCrop() {
 
   let finalAvatarSrc = '';
   let uploadMeta = null;
+
+  setProfileCropBusy(true);
+  showProfileMsg('프로필 사진 업로드 중이에요...', '');
 
   try {
     const avatarBlob = await new Promise((resolve, reject) => {
@@ -329,10 +374,14 @@ async function applyCrop() {
     }
   } catch (e) {
     console.warn('avatar upload failed', e);
+    showProfileMsg(getFriendlyUploadErrorMessage(e, '프로필 사진 업로드에 실패했어요. 다시 시도해 주세요.'), 'err');
+    setProfileCropBusy(false);
+    return;
   }
 
   if (!finalAvatarSrc) {
     showProfileMsg('프로필 사진 업로드에 실패했어요. 다시 시도해 주세요.', 'err');
+    setProfileCropBusy(false);
     return;
   }
 
@@ -351,6 +400,7 @@ async function applyCrop() {
 
   document.getElementById('crop-zone').style.display = 'none';
   window._crop = null;
+  setProfileCropBusy(false);
   showProfileMsg('프로필 사진이 업데이트됐어요!', 'ok');
 }
 
