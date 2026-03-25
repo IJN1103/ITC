@@ -8,6 +8,61 @@ let _jdAssignedTokenId = null;
 let _sheetIsNew = false;
 let _sheetAssignedTo = [];
 
+let _sheetAvatarData = null;
+let _sheetAvatarStoredUrl = null;
+let _sheetAvatarUploadPromise = null;
+
+function getCloudinaryJournalConfig() {
+  const cfg = window._ITC_CLOUDINARY || {};
+  if (!cfg.cloudName || !cfg.unsignedPreset) return null;
+  return cfg;
+}
+
+function blobFromCanvas(canvas, type = 'image/jpeg', quality = 0.82) {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(blob => {
+      if (blob) resolve(blob);
+      else reject(new Error('blob 생성 실패'));
+    }, type, quality);
+  });
+}
+
+async function makeJournalAvatarBlob(file) {
+  const bitmap = await createImageBitmap(file);
+  const canvas = document.createElement('canvas');
+  const size = 256;
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d', { alpha: false });
+  const min = Math.min(bitmap.width, bitmap.height);
+  const sx = Math.floor((bitmap.width - min) / 2);
+  const sy = Math.floor((bitmap.height - min) / 2);
+  ctx.drawImage(bitmap, sx, sy, min, min, 0, 0, size, size);
+  if (typeof bitmap.close === 'function') bitmap.close();
+  return blobFromCanvas(canvas, 'image/jpeg', 0.84);
+}
+
+async function uploadJournalAvatarToCloudinary(file, journalId) {
+  const cfg = getCloudinaryJournalConfig();
+  if (!cfg) throw new Error('Cloudinary 설정이 비어 있어요.');
+  const blob = await makeJournalAvatarBlob(file);
+  const form = new FormData();
+  form.append('file', blob, `journal-avatar-${journalId || Date.now()}.jpg`);
+  form.append('upload_preset', cfg.unsignedPreset);
+  form.append('folder', 'itc/journal-avatars');
+  if (journalId) form.append('public_id', `journal-${journalId}-${Date.now()}`);
+  const res = await fetch(`https://api.cloudinary.com/v1_1/${cfg.cloudName}/image/upload`, {
+    method: 'POST',
+    body: form,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.secure_url) {
+    throw new Error(data?.error?.message || 'Cloudinary 업로드 실패');
+  }
+  return data.secure_url;
+}
+
+
 function journalKey() { return 'itc_journals_' + St.myId + '_' + St.roomCode; }
 
 function loadJournals() {
@@ -559,6 +614,8 @@ function openSheet(journalId) {
   if (hint) hint.textContent = '';
 
   _sheetAvatarData = saGetAvatar(journalId) || data.avatar || null;
+  _sheetAvatarStoredUrl = _sheetAvatarData || null;
+  _sheetAvatarUploadPromise = null;
   if (_sheetAvatarData) saSetAvatar(journalId, _sheetAvatarData);  // 캐시 워밍
   refreshSheetAvatar(_sheetAvatarData, (data.name || j?.title || '?')[0]?.toUpperCase());
 
@@ -578,43 +635,80 @@ function closeSheet() {
   _sheetIsNew = false;
   _jdAssignedTokenId = null;
   _sheetAssignedTo = [];
+  _sheetAvatarUploadPromise = null;
+  _sheetAvatarStoredUrl = null;
+  if (_sheetAvatarData && /^blob:/i.test(_sheetAvatarData)) {
+    try { URL.revokeObjectURL(_sheetAvatarData); } catch (e) {}
+  }
+  _sheetAvatarData = null;
   const hint = document.getElementById('sheet-hint');
   if (hint) hint.textContent = '';
   renderJournalList();
 }
 
 let _combatRowCount = 0;
-let _sheetAvatarData = null;
 
-function handleSheetAvatar(input) {
+async function handleSheetAvatar(input) {
   const file = input.files[0];
   if (!file) return;
-  if (file.size > 3 * 1024 * 1024) { showToast('이미지는 3MB 이하여야 해요.'); return; }
-  const reader = new FileReader();
-  reader.onload = ev => {
-    const img = new Image();
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      const SIZE = 128;
-      canvas.width = canvas.height = SIZE;
-      const ctx = canvas.getContext('2d');
-      const min = Math.min(img.width, img.height);
-      ctx.drawImage(img, (img.width-min)/2, (img.height-min)/2, min, min, 0, 0, SIZE, SIZE);
-      _sheetAvatarData = canvas.toDataURL('image/jpeg', 0.82);
-      refreshSheetAvatar();
-      if (capturedId) {
-        saSetAvatar(capturedId, _sheetAvatarData);      // 인메모리 + localStorage
-        try {
-          const _avJ = _allJournals.find(x => x.id === capturedId);
-          if (_avJ) { _avJ.avatar = _sheetAvatarData; saveJournalFB(_avJ); }
-        } catch(e) {}
-        saRefreshToolbar();
+  if (file.size > 10 * 1024 * 1024) { showToast('이미지는 10MB 이하여야 해요.'); input.value = ''; return; }
+
+  const journalId = _sheetJournalId;
+  const hint = document.getElementById('sheet-hint');
+  const prevPreview = _sheetAvatarData;
+  const prevStored = _sheetAvatarStoredUrl || _sheetAvatarData || null;
+  const previewUrl = URL.createObjectURL(file);
+
+  if (_sheetAvatarData && /^blob:/i.test(_sheetAvatarData)) {
+    try { URL.revokeObjectURL(_sheetAvatarData); } catch (e) {}
+  }
+  _sheetAvatarData = previewUrl;
+  refreshSheetAvatar(previewUrl);
+  if (hint) hint.textContent = '아바타 업로드 중...';
+
+  const task = uploadJournalAvatarToCloudinary(file, journalId)
+    .then(url => {
+      if (_sheetAvatarData === previewUrl) {
+        try { URL.revokeObjectURL(previewUrl); } catch (e) {}
+        _sheetAvatarData = url;
       }
-    };
-    img.src = ev.target.result;
-  };
-  reader.readAsDataURL(file);
+      _sheetAvatarStoredUrl = url;
+      if (journalId) {
+        saSetAvatar(journalId, url);
+        const target = _allJournals.find(x => x.id === journalId);
+        if (target) {
+          target.avatar = url;
+          if (target.sheet && typeof target.sheet === 'object') target.sheet.avatar = url;
+          saveJournalFB(target);
+        }
+        saRefreshToolbar();
+        renderJournalList();
+      }
+      refreshSheetAvatar(url);
+      if (hint) hint.textContent = '아바타 업로드 완료 ✓';
+      setTimeout(() => {
+        const liveHint = document.getElementById('sheet-hint');
+        if (liveHint && liveHint.textContent === '아바타 업로드 완료 ✓') liveHint.textContent = '';
+      }, 1800);
+      return url;
+    })
+    .catch(err => {
+      console.error('journal avatar upload failed', err);
+      try { URL.revokeObjectURL(previewUrl); } catch (e) {}
+      _sheetAvatarData = prevStored || prevPreview || null;
+      _sheetAvatarStoredUrl = prevStored || null;
+      refreshSheetAvatar(_sheetAvatarData);
+      if (hint) hint.textContent = '';
+      showToast('아바타 업로드에 실패했어요. 잠시 후 다시 시도해주세요.');
+      return null;
+    })
+    .finally(() => {
+      if (_sheetAvatarUploadPromise === task) _sheetAvatarUploadPromise = null;
+    });
+
+  _sheetAvatarUploadPromise = task;
   input.value = '';
+  await task;
 }
 
 function refreshSheetAvatar(src, initials) {
@@ -646,7 +740,7 @@ function addCombatRow() {
   tbody.appendChild(tr);
 }
 
-function saveSheet() {
+async function saveSheet() {
   if (!_sheetJournalId) return;
   const data = {};
 
@@ -702,10 +796,17 @@ function saveSheet() {
     data['bs_'+k] = document.getElementById('sh-bs-'+k)?.value || '';
   });
 
+  if (_sheetAvatarUploadPromise) {
+    const hint = document.getElementById('sheet-hint');
+    if (hint) hint.textContent = '아바타 업로드 완료를 기다리는 중...';
+    await _sheetAvatarUploadPromise;
+  }
+
   const list = _allJournals;
   const existing = list.find(j => j.id === _sheetJournalId);
   if (existing) {
-    const _keepAv = _sheetAvatarData
+    const _keepAv = _sheetAvatarStoredUrl
+      || _sheetAvatarData
       || localStorage.getItem('itc_av_' + _sheetJournalId)
       || existing.avatar
       || null;
@@ -732,10 +833,11 @@ function saveSheet() {
       assignedTokenId: _jdAssignedTokenId || null,
       assignedTo: _sheetAssignedTo || [],
     };
-    if (_sheetAvatarData) {
-      newJ.avatar = _sheetAvatarData;
-      data.avatar = _sheetAvatarData;
-      saSetAvatar(_sheetJournalId, _sheetAvatarData);
+    const newAvatar = _sheetAvatarStoredUrl || _sheetAvatarData || null;
+    if (newAvatar) {
+      newJ.avatar = newAvatar;
+      data.avatar = newAvatar;
+      saSetAvatar(_sheetJournalId, newAvatar);
     }
     saveJournalFB(newJ);
     if (_sheetIsNew) {

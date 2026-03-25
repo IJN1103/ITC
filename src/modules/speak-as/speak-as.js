@@ -5,10 +5,17 @@
 
 const _JAV = {};
 
-function saSetAvatar(journalId, dataUrl) {
-  if (!journalId || !dataUrl) return;
-  _JAV[journalId] = dataUrl;                          // 인메모리 (1순위)
-  try { localStorage.setItem('itc_av_' + journalId, dataUrl); } catch(e) {}
+function saIsEphemeralAvatarSrc(src) {
+  return typeof src === 'string' && /^blob:/i.test(src);
+}
+
+function saSetAvatar(journalId, src) {
+  if (!journalId || !src) return;
+  _JAV[journalId] = src;
+  try {
+    if (saIsEphemeralAvatarSrc(src)) localStorage.removeItem('itc_av_' + journalId);
+    else localStorage.setItem('itc_av_' + journalId, src);
+  } catch(e) {}
 }
 
 function saGetAvatar(journalId) {
@@ -16,7 +23,8 @@ function saGetAvatar(journalId) {
   if (_JAV[journalId]) return _JAV[journalId];
   try {
     const ls = localStorage.getItem('itc_av_' + journalId);
-    if (ls) { _JAV[journalId] = ls; return ls; }
+    if (ls && !saIsEphemeralAvatarSrc(ls)) { _JAV[journalId] = ls; return ls; }
+    if (ls && saIsEphemeralAvatarSrc(ls)) localStorage.removeItem('itc_av_' + journalId);
   } catch(e) {}
   try {
     const j = _allJournals.find(x => x.id === journalId);
