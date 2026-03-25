@@ -30,13 +30,6 @@ const firebaseConfig = {
 };
 // ↑↑↑ 여기까지
 
-// Cloudinary 설정 (무료 이미지 업로드용)
-// cloudName / unsignedPreset 을 채우면 채팅 이미지와 프로필 아바타 업로드에 사용됩니다.
-window._ITC_CLOUDINARY = {
-  cloudName: "",
-  unsignedPreset: "",
-};
-
 const CONFIGURED = firebaseConfig.apiKey !== "YOUR_API_KEY";
 
 let app, auth, db;
@@ -61,6 +54,11 @@ if (CONFIGURED) {
 }
 
 /* 전역 노출 */
+window._ITC_CLOUDINARY = {
+  cloudName: "dnr5jzdnp",
+  unsignedPreset: "itc_unsigned_upload",
+};
+
 window._FB = {
   CONFIGURED, app, auth, db, storage: null,
   ref, set, push, onValue, update, remove, get, serverTimestamp, onDisconnect,
@@ -469,8 +467,23 @@ window._FB = {
         </div>
         <div class="chat-input-wrap">
           <button class="chat-attach-btn" onclick="document.getElementById('chat-img-input').click()" title="사진/GIF 첨부">+</button>
-          <input type="file" id="chat-img-input" accept="image/png,image/jpeg,image/gif" style="display:none" onchange="handleChatImageUpload(this)">
-          <textarea class="chat-input" id="chat-input" placeholder="메시지 입력 (Enter 전송)" rows="1" onkeydown="chatKeydown(event)" oninput="broadcastTyping()"></textarea>
+          <input type="file" id="chat-img-input" accept="image/png,image/jpeg,image/gif" multiple style="display:none" onchange="handleChatImageUpload(this)">
+          <div class="chat-composer-stack">
+            <div class="chat-image-queue" id="chat-image-queue" style="display:none">
+              <div class="chat-image-queue-head">
+                <div>
+                  <div class="chat-image-queue-title">첨부된 이미지</div>
+                  <div class="chat-image-queue-help">최대 4장 · ✕로 삭제 · 드래그로 순서 변경</div>
+                </div>
+                <label class="chat-wide-toggle" for="chat-image-wide-toggle">
+                  <input type="checkbox" id="chat-image-wide-toggle" onchange="togglePendingChatImageWide(this.checked)">
+                  <span>가로폭 채우기</span>
+                </label>
+              </div>
+              <div class="chat-image-preview-list" id="chat-image-preview-list"></div>
+            </div>
+            <textarea class="chat-input" id="chat-input" placeholder="메시지 입력 (Enter 전송)" rows="1" onkeydown="chatKeydown(event)" oninput="broadcastTyping()"></textarea>
+          </div>
           <button class="send-btn" onclick="sendChat()">➤</button>
         </div>
       </div>
