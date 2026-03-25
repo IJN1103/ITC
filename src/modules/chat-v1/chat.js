@@ -850,7 +850,8 @@ function renderPendingChatImages() {
 function removePendingChatImage(imageId) {
   const idx = _pendingChatImages.findIndex(item => item.id === imageId);
   if (idx < 0) return;
-  _pendingChatImages.splice(idx, 1);
+  const [removed] = _pendingChatImages.splice(idx, 1);
+  revokePendingChatImagePreview(removed);
   renderPendingChatImages();
 }
 
@@ -864,13 +865,40 @@ function movePendingChatImage(fromId, toId) {
   renderPendingChatImages();
 }
 
+function revokePendingChatImagePreview(item) {
+  if (!item) return;
+  if (item.previewUrl && String(item.previewUrl).startsWith('blob:')) {
+    try { URL.revokeObjectURL(item.previewUrl); } catch (e) {}
+  }
+}
+
 function clearPendingChatImages() {
+  _pendingChatImages.forEach(revokePendingChatImagePreview);
   _pendingChatImages.length = 0;
   renderPendingChatImages();
 }
 
 function togglePendingChatImageWide(checked) {
   _pendingChatImageWide = !!checked;
+}
+
+async function getImageSizeFromObjectUrl(objectUrl) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve({ width: img.width || 0, height: img.height || 0 });
+    img.onerror = () => reject(new Error('이미지 처리에 실패했어요.'));
+    img.src = objectUrl;
+  });
+}
+
+async function canvasToBlobSafe(canvas, type, quality) {
+  if (canvas.toBlob) {
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, type, quality));
+    if (blob) return blob;
+  }
+  const dataUrl = canvas.toDataURL(type, quality);
+  const res = await fetch(dataUrl);
+  return res.blob();
 }
 
 async function fileToPreparedChatImage(file) {
@@ -880,64 +908,67 @@ async function fileToPreparedChatImage(file) {
     throw new Error(isGif ? 'GIF는 5MB 이하만 가능해요.' : '이미지는 3MB 이하만 가능해요.');
   }
 
-  const dataUrl = await new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = ev => resolve(ev.target.result);
-    reader.onerror = () => reject(new Error('이미지를 읽지 못했어요.'));
-    reader.readAsDataURL(file);
-  });
+  const sourceUrl = URL.createObjectURL(file);
+  try {
+    const rawMeta = await getImageSizeFromObjectUrl(sourceUrl);
 
-  const rawMeta = await new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => resolve({ width: img.width || 0, height: img.height || 0 });
-    img.onerror = () => reject(new Error('이미지 처리에 실패했어요.'));
-    img.src = dataUrl;
-  });
+    if (isGif) {
+      return {
+        id: makePendingChatImageId(),
+        previewUrl: sourceUrl,
+        uploadBlob: file,
+        uploadContentType: file.type || 'image/gif',
+        isGif: true,
+        width: rawMeta.width || 0,
+        height: rawMeta.height || 0,
+      };
+    }
 
-  if (isGif) {
+    const compressed = await new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = async () => {
+        try {
+          const MAX = 800;
+          let w = img.width, h = img.height;
+          if (w > MAX || h > MAX) {
+            const r = Math.min(MAX / w, MAX / h);
+            w = Math.round(w * r);
+            h = Math.round(h * r);
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            reject(new Error('이미지 처리에 실패했어요.'));
+            return;
+          }
+          ctx.drawImage(img, 0, 0, w, h);
+          const blob = await canvasToBlobSafe(canvas, 'image/jpeg', 0.82);
+          const previewUrl = URL.createObjectURL(blob);
+          resolve({ blob, previewUrl, width: w, height: h });
+        } catch (err) {
+          reject(err instanceof Error ? err : new Error('이미지 처리에 실패했어요.'));
+        }
+      };
+      img.onerror = () => reject(new Error('이미지 처리에 실패했어요.'));
+      img.src = sourceUrl;
+    });
+
+    try { URL.revokeObjectURL(sourceUrl); } catch (e) {}
     return {
       id: makePendingChatImageId(),
-      previewUrl: dataUrl,
-      dataUrl,
-      isGif: true,
-      width: rawMeta.width || 0,
-      height: rawMeta.height || 0,
+      previewUrl: compressed.previewUrl,
+      uploadBlob: compressed.blob,
+      uploadContentType: compressed.blob?.type || 'image/jpeg',
+      isGif: false,
+      width: compressed.width || rawMeta.width || 0,
+      height: compressed.height || rawMeta.height || 0,
     };
+  } catch (err) {
+    try { URL.revokeObjectURL(sourceUrl); } catch (e) {}
+    throw err;
   }
-
-  const compressed = await new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => {
-      const MAX = 800;
-      let w = img.width, h = img.height;
-      if (w > MAX || h > MAX) {
-        const r = Math.min(MAX / w, MAX / h);
-        w = Math.round(w * r);
-        h = Math.round(h * r);
-      }
-      const canvas = document.createElement('canvas');
-      canvas.width = w;
-      canvas.height = h;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) {
-        reject(new Error('이미지 처리에 실패했어요.'));
-        return;
-      }
-      ctx.drawImage(img, 0, 0, w, h);
-      resolve({ dataUrl: canvas.toDataURL('image/jpeg', 0.82), width: w, height: h });
-    };
-    img.onerror = () => reject(new Error('이미지 처리에 실패했어요.'));
-    img.src = dataUrl;
-  });
-
-  return {
-    id: makePendingChatImageId(),
-    previewUrl: compressed.dataUrl,
-    dataUrl: compressed.dataUrl,
-    isGif: false,
-    width: compressed.width || rawMeta.width || 0,
-    height: compressed.height || rawMeta.height || 0,
-  };
 }
 
 async function queuePendingChatImages(files) {
@@ -1001,60 +1032,52 @@ async function getStorageApiQuick() {
   }
 }
 
-function inferStorageContentTypeFromDataUrl(dataUrl) {
-  const m = String(dataUrl || '').match(/^data:([^;,]+)[;,]/i);
-  return m ? m[1].toLowerCase() : 'image/jpeg';
+function inferStorageContentTypeFromBlob(blob, fallback = 'image/jpeg') {
+  const type = String(blob?.type || '').trim().toLowerCase();
+  return type || fallback;
 }
 
-function blobFromDataUrl(dataUrl) {
-  const parts = String(dataUrl || '').split(',');
-  if (parts.length < 2) throw new Error('이미지 데이터 형식이 올바르지 않아요.');
-  const contentType = inferStorageContentTypeFromDataUrl(dataUrl);
-  const binary = atob(parts[1]);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
-  return { blob: new Blob([bytes], { type: contentType }), contentType };
-}
-
-async function uploadChatImageDataUrl(dataUrl, roomCode) {
+async function uploadChatImageBlob(blob, roomCode, fallbackContentType = 'image/jpeg') {
   const fb = window._FB;
-  if (!fb?.CONFIGURED || !roomCode) return null;
+  if (!fb?.CONFIGURED || !roomCode) throw new Error('storage-not-ready');
   const storageApi = await getStorageApiQuick();
   if (!storageApi?.storage || !storageApi.storageRef || !storageApi.uploadBytes || !storageApi.getDownloadURL) {
-    return null;
+    throw new Error('storage-not-ready');
   }
-  const { blob, contentType } = blobFromDataUrl(dataUrl);
+  const contentType = inferStorageContentTypeFromBlob(blob, fallbackContentType);
   const ext = contentType.includes('gif') ? 'gif' : (contentType.includes('png') ? 'png' : (contentType.includes('webp') ? 'webp' : 'jpg'));
   const path = `rooms/${roomCode}/chat-images/${St.myId || 'guest'}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
   const storageRefObj = storageApi.storageRef(storageApi.storage, path);
   await withTimeout(storageApi.uploadBytes(storageRefObj, blob, {
     contentType,
     cacheControl: 'public,max-age=31536000,immutable',
-  }), 2800);
-  const url = await withTimeout(storageApi.getDownloadURL(storageRefObj), 1800);
+  }), 12000);
+  const url = await withTimeout(storageApi.getDownloadURL(storageRefObj), 6000);
   return { url, path, contentType };
 }
 
-async function sendPreparedChatImage(dataUrl, imageWide = false, imageMeta = null) {
+async function sendPreparedChatImage(preparedImage, imageWide = false, imageMeta = null) {
   const saJId = St.speakAsJournalId;
   const saJournal = saJId ? loadJournals().find(x => x.id === saJId) : null;
   const saName = saJournal ? (saJournal.title || '무제') : null;
   const saAvatar = saJId ? saGetAvatar(saJId) : null;
   const normalizedMeta = normalizeChatImageMeta(imageMeta);
 
-  let finalSrc = dataUrl;
-  let storageMeta = null;
-  if (window._FB?.CONFIGURED && St.roomCode) {
-    try {
-      const uploaded = await uploadChatImageDataUrl(dataUrl, St.roomCode);
-      if (uploaded?.url) {
-        finalSrc = uploaded.url;
-        storageMeta = uploaded;
-      }
-    } catch (err) {
-      console.warn('chat image storage upload failed, fallback to inline data url', err);
-    }
+  const uploadBlob = preparedImage?.uploadBlob || null;
+  const fallbackContentType = preparedImage?.uploadContentType || 'image/jpeg';
+  if (!uploadBlob) throw new Error('이미지 업로드 데이터가 없어요.');
+  if (!window._FB?.CONFIGURED || !St.roomCode) {
+    throw new Error('이미지 업로드를 위한 저장소 연결이 필요해요.');
   }
+
+  let storageMeta = null;
+  try {
+    storageMeta = await uploadChatImageBlob(uploadBlob, St.roomCode, fallbackContentType);
+  } catch (err) {
+    console.warn('chat image storage upload failed', err);
+    throw new Error('이미지 업로드에 실패했어요. 잠시 후 다시 시도해주세요.');
+  }
+  const finalSrc = storageMeta.url;
 
   if (saJournal) {
     const msg = {
@@ -1068,7 +1091,7 @@ async function sendPreparedChatImage(dataUrl, imageWide = false, imageMeta = nul
       imageWide: !!imageWide,
       imageMeta: normalizedMeta,
       imageStoragePath: storageMeta?.path || '',
-      imageContentType: storageMeta?.contentType || inferStorageContentTypeFromDataUrl(dataUrl),
+      imageContentType: storageMeta?.contentType || fallbackContentType,
     };
     if (window._FB?.CONFIGURED) {
       const { db, ref, push } = window._FB;
@@ -1083,7 +1106,7 @@ async function sendPreparedChatImage(dataUrl, imageWide = false, imageMeta = nul
     imageWide: !!imageWide,
     imageMeta: normalizedMeta,
     imageStoragePath: storageMeta?.path || '',
-    imageContentType: storageMeta?.contentType || inferStorageContentTypeFromDataUrl(dataUrl),
+    imageContentType: storageMeta?.contentType || fallbackContentType,
   });
 }
 
@@ -1097,7 +1120,8 @@ async function sendPendingChatImages() {
   renderPendingChatImages();
   try {
     for (const item of items) {
-      await sendPreparedChatImage(item.dataUrl, _pendingChatImageWide, { width: item.width, height: item.height });
+      await sendPreparedChatImage(item, _pendingChatImageWide, { width: item.width, height: item.height });
+      revokePendingChatImagePreview(item);
     }
     return true;
   } catch (err) {
