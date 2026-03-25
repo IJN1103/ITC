@@ -90,44 +90,42 @@ function getCloudinaryRuntimeConfig() {
   return { cloudName, unsignedPreset };
 }
 
-async function getStorageApiQuick() {
-  const fb = window._FB;
-  if (!fb?.CONFIGURED || typeof fb.ensureStorage !== 'function') return null;
-  try {
-    return await withTimeout(fb.ensureStorage(), 2200);
-  } catch (err) {
-    console.warn('storage api unavailable', err);
-    return null;
-  }
+function revokeCropSourceUrl(url) {
+  if (!url || typeof url !== 'string' || !url.startsWith('blob:')) return;
+  try { URL.revokeObjectURL(url); } catch (e) {}
 }
 
+function clearCropSession() {
+  const current = window._crop;
+  if (current?.sourceUrl) revokeCropSourceUrl(current.sourceUrl);
+  window._crop = null;
+}
 
 function handleAvatarUpload(input) {
   const file = input.files[0];
   if (!file) return;
   if (file.size > 5 * 1024 * 1024) {
     showProfileMsg('이미지는 5MB 이하여야 해요.', 'err');
+    input.value = '';
     return;
   }
 
-  const objectUrl = URL.createObjectURL(file);
+  const sourceUrl = URL.createObjectURL(file);
   const img = new Image();
-
   img.onload = () => {
-    try { URL.revokeObjectURL(objectUrl); } catch (e) {}
-    window._crop = { img, scale: 1, ox: 0, oy: 0, drag: false, lx: 0, ly: 0 };
+    const prevSourceUrl = window._crop?.sourceUrl || '';
+    window._crop = { img, scale: 1, ox: 0, oy: 0, drag: false, lx: 0, ly: 0, sourceUrl };
+    if (prevSourceUrl && prevSourceUrl !== sourceUrl) revokeCropSourceUrl(prevSourceUrl);
     document.getElementById('crop-scale').value = 100;
     document.getElementById('crop-scale-val').textContent = '100%';
     document.getElementById('crop-zone').style.display = 'block';
     setTimeout(() => { setupCropCanvas(); drawCrop(); setupCropDrag(); }, 50);
   };
-
   img.onerror = () => {
-    try { URL.revokeObjectURL(objectUrl); } catch (e) {}
-    showProfileMsg('이미지를 읽지 못했어요. 다른 파일로 다시 시도해 주세요.', 'err');
+    revokeCropSourceUrl(sourceUrl);
+    showProfileMsg('이미지를 불러오지 못했어요. 다른 파일로 다시 시도해 주세요.', 'err');
   };
-
-  img.src = objectUrl;
+  img.src = sourceUrl;
   input.value = '';
 }
 
@@ -255,6 +253,10 @@ async function applyCrop() {
   const out = document.createElement('canvas');
   out.width = out.height = 256;
   const ctx = out.getContext('2d');
+  if (!ctx) {
+    showProfileMsg('프로필 사진 처리에 실패했어요. 다시 시도해 주세요.', 'err');
+    return;
+  }
   const r = 256 / 220;
   const sw = s.img.width  * s.scale * r;
   const sh = s.img.height * s.scale * r;
@@ -269,18 +271,13 @@ async function applyCrop() {
     const avatarBlob = await new Promise((resolve, reject) => {
       out.toBlob((blob) => {
         if (!blob) {
-          reject(new Error('blob 생성 실패'));
+          reject(new Error('avatar blob failed'));
           return;
         }
         resolve(blob);
       }, 'image/jpeg', 0.8);
     });
-
-    const uploaded = await uploadAvatarBlobToCloudinary(
-      avatarBlob,
-      `avatar_${window._currentUser?.uid || 'user'}_${Date.now()}.jpg`
-    );
-
+    const uploaded = await uploadAvatarBlobToCloudinary(avatarBlob, `avatar_${window._currentUser.uid || 'user'}_${Date.now()}.jpg`);
     if (uploaded?.url) {
       finalAvatarSrc = uploaded.url;
       uploadMeta = uploaded;
@@ -302,7 +299,7 @@ async function applyCrop() {
   await syncAvatarToFirebase(finalAvatarSrc, uploadMeta);
   refreshProfileAvatar();
   document.getElementById('crop-zone').style.display = 'none';
-  window._crop = null;
+  clearCropSession();
   showProfileMsg('프로필 사진이 업데이트됐어요!', 'ok');
 }
 
