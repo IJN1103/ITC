@@ -289,6 +289,103 @@ function renderCampaigns(rooms) {
   }).join('');
 }
 
+
+function getCloudinaryConfig() {
+  const cfg = window._ITC_CLOUDINARY || {};
+  if (!cfg.cloudName || !cfg.unsignedPreset) return null;
+  return cfg;
+}
+
+function lobbyWithTimeout(promise, ms = 12000) {
+  return new Promise((resolve, reject) => {
+    let done = false;
+    const timer = setTimeout(() => {
+      if (done) return;
+      done = true;
+      reject(new Error('timeout'));
+    }, ms);
+    Promise.resolve(promise).then((value) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      resolve(value);
+    }).catch((err) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      reject(err);
+    });
+  });
+}
+
+function lobbyCanvasToBlob(canvas, type = 'image/jpeg', quality = 0.82) {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) resolve(blob);
+      else reject(new Error('blob 생성 실패'));
+    }, type, quality);
+  });
+}
+
+async function uploadLobbyBlobToCloudinary(blob, folder = 'itc/session-covers') {
+  const cfg = getCloudinaryConfig();
+  if (!cfg) return null;
+  const form = new FormData();
+  form.append('file', blob);
+  form.append('upload_preset', cfg.unsignedPreset);
+  form.append('folder', folder);
+  const url = `https://api.cloudinary.com/v1_1/${cfg.cloudName}/image/upload`;
+  const res = await lobbyWithTimeout(fetch(url, { method: 'POST', body: form }), 15000);
+  if (!res.ok) throw new Error(`cloudinary upload failed: ${res.status}`);
+  const json = await res.json();
+  if (!json?.secure_url) throw new Error('cloudinary secure_url missing');
+  return json.secure_url;
+}
+
+async function makeCoverBlobFromFile(file) {
+  const bmp = await createImageBitmap(file);
+  try {
+    const W = 960, H = 540;
+    const canvas = document.createElement('canvas');
+    canvas.width = W;
+    canvas.height = H;
+    const ctx = canvas.getContext('2d');
+    const srcR = bmp.width / bmp.height;
+    const dstR = 16 / 9;
+    let sx, sy, sw, sh;
+    if (srcR > dstR) {
+      sh = bmp.height;
+      sw = Math.round(sh * dstR);
+      sx = Math.round((bmp.width - sw) / 2);
+      sy = 0;
+    } else {
+      sw = bmp.width;
+      sh = Math.round(sw / dstR);
+      sx = 0;
+      sy = Math.round((bmp.height - sh) / 2);
+    }
+    ctx.drawImage(bmp, sx, sy, sw, sh, 0, 0, W, H);
+    return await lobbyCanvasToBlob(canvas, 'image/jpeg', 0.82);
+  } finally {
+    if (bmp && typeof bmp.close === 'function') bmp.close();
+  }
+}
+
+function setSessionEditMessage(text, type = '') {
+  const m = document.getElementById('se-msg');
+  if (!m) return;
+  m.textContent = text || '';
+  m.className = type ? `profile-msg ${type}` : 'profile-msg';
+}
+
+function revokeSessionEditPreview() {
+  const sess = window._editSession;
+  if (sess?._pendingCoverPreview && String(sess._pendingCoverPreview).startsWith('blob:')) {
+    try { URL.revokeObjectURL(sess._pendingCoverPreview); } catch (e) {}
+  }
+  if (sess) sess._pendingCoverPreview = '';
+}
+
 async function enterCampaign(code) {
   document.getElementById('join-code').value = code;
   await joinRoom();
@@ -321,42 +418,20 @@ function handleSessionCoverUpload(input) {
   const file = input.files[0];
   if (!file) return;
   if (file.size > 8 * 1024 * 1024) {
-    const m = document.getElementById('se-msg');
-    if (m) { m.textContent = '이미지는 8MB 이하여야 해요.'; m.className = 'profile-msg err'; }
+    setSessionEditMessage('이미지는 8MB 이하여야 해요.', 'err');
     return;
   }
-  const capturedId = _sheetJournalId;  // 비동기 전에 캡처 (sheet 닫혀도 안전)
-  const reader = new FileReader();
-  reader.onload = ev => {
-    const img = new Image();
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      const W = 960, H = 540;
-      canvas.width = W; canvas.height = H;
-      const ctx = canvas.getContext('2d');
-      const srcR = img.width / img.height;
-      const dstR = 16 / 9;
-      let sx, sy, sw, sh;
-      if (srcR > dstR) {
-        sh = img.height; sw = Math.round(sh * dstR);
-        sx = Math.round((img.width - sw) / 2); sy = 0;
-      } else {
-        sw = img.width; sh = Math.round(sw / dstR);
-        sx = 0; sy = Math.round((img.height - sh) / 2);
-      }
-      ctx.drawImage(img, sx, sy, sw, sh, 0, 0, W, H);
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
-
-      const imgCont = document.getElementById('se-thumb-img');
-      if (imgCont) imgCont.innerHTML = `<img src="${dataUrl}" style="width:100%;height:100%;object-fit:cover;display:block">`;
-
-      if (window._editSession) window._editSession.pendingCover = dataUrl;
-    };
-    img.src = ev.target.result;
-  };
-  reader.readAsDataURL(file);
+  const sess = window._editSession || (window._editSession = {});
+  revokeSessionEditPreview();
+  const previewUrl = URL.createObjectURL(file);
+  const imgCont = document.getElementById('se-thumb-img');
+  if (imgCont) imgCont.innerHTML = `<img src="${previewUrl}" style="width:100%;height:100%;object-fit:cover;display:block">`;
+  sess.pendingCoverFile = file;
+  sess._pendingCoverPreview = previewUrl;
+  setSessionEditMessage('커버 이미지를 적용할 준비가 됐어요. 저장을 누르면 업로드돼요.', 'ok');
   input.value = '';
 }
+
 
 async function saveSessionEdit() {
   const sess = window._editSession;
@@ -370,12 +445,22 @@ async function saveSessionEdit() {
     return;
   }
 
-  if (sess.pendingCover) {
-    localStorage.setItem('itc_cover_' + sess.code, sess.pendingCover);
+  let finalCover = null;
+  if (sess.pendingCoverFile) {
+    try {
+      setSessionEditMessage('커버 이미지를 업로드하는 중이에요…', '');
+      const coverBlob = await makeCoverBlobFromFile(sess.pendingCoverFile);
+      finalCover = await uploadLobbyBlobToCloudinary(coverBlob, `itc/session-covers/${sess.code}`);
+    } catch (err) {
+      console.error('session cover upload failed', err);
+      setSessionEditMessage('커버 업로드에 실패했어요. 다시 시도해 주세요.', 'err');
+      return;
+    }
+    localStorage.setItem('itc_cover_' + sess.code, finalCover);
     if (window._FB?.CONFIGURED) {
       const { db, ref, update } = window._FB;
-      await update(ref(db, `rooms/${sess.code}/meta`),            { cover: sess.pendingCover });
-      await update(ref(db, `users/${St.myId}/rooms/${sess.key}`), { cover: sess.pendingCover });
+      await update(ref(db, `rooms/${sess.code}/meta`),            { cover: finalCover });
+      await update(ref(db, `users/${St.myId}/rooms/${sess.key}`), { cover: finalCover });
     }
   }
 
@@ -388,6 +473,7 @@ async function saveSessionEdit() {
   if (msgEl) { msgEl.textContent = '저장됐어요!'; msgEl.className = 'profile-msg ok'; }
   setTimeout(() => closeModal('modal-session-edit'), 900);
 
+  revokeSessionEditPreview();
   window._editSession = null;
   loadMyCampaigns(); // 카드 목록 갱신
 }
@@ -399,7 +485,7 @@ async function removeCampaign(e, code, key) {
   await remove(ref(db, `users/${St.myId}/rooms/${key}`));
 }
 
-function handleCoverUpload(e, code, key) {
+async function handleCoverUpload(e, code, key) {
   e.stopPropagation();
   const file = e.target.files[0];
   if (!file) return;
@@ -407,47 +493,24 @@ function handleCoverUpload(e, code, key) {
     showToast('이미지는 8MB 이하여야 해요.');
     return;
   }
-  const reader = new FileReader();
-  reader.onload = ev => {
-    const img = new Image();
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      const OUT_W = 960, OUT_H = 540;
-      canvas.width  = OUT_W;
-      canvas.height = OUT_H;
-      const ctx = canvas.getContext('2d');
-
-      const srcRatio = img.width / img.height;
-      const dstRatio = 16 / 9;
-      let sx, sy, sw, sh;
-      if (srcRatio > dstRatio) {
-        sh = img.height;
-        sw = Math.round(img.height * dstRatio);
-        sx = Math.round((img.width - sw) / 2);
-        sy = 0;
-      } else {
-        sw = img.width;
-        sh = Math.round(img.width / dstRatio);
-        sx = 0;
-        sy = Math.round((img.height - sh) / 2);
-      }
-      ctx.drawImage(img, sx, sy, sw, sh, 0, 0, OUT_W, OUT_H);
-
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
-      localStorage.setItem('itc_cover_' + code, dataUrl);
-
-      if (window._FB?.CONFIGURED) {
-        const { db, ref, update } = window._FB;
-        update(ref(db, `rooms/${code}/meta`), { cover: dataUrl });
-        update(ref(db, `users/${St.myId}/rooms/${key}`), { cover: dataUrl });
-      }
-
-      loadMyCampaigns();
-      showToast('커버 이미지가 업데이트됐어요!');
-    };
-    img.src = ev.target.result;
-  };
-  reader.readAsDataURL(file);
-  e.target.value = '';
+  try {
+    showToast('커버 이미지를 업로드하는 중이에요…');
+    const coverBlob = await makeCoverBlobFromFile(file);
+    const coverUrl = await uploadLobbyBlobToCloudinary(coverBlob, `itc/session-covers/${code}`);
+    localStorage.setItem('itc_cover_' + code, coverUrl);
+    if (window._FB?.CONFIGURED) {
+      const { db, ref, update } = window._FB;
+      await update(ref(db, `rooms/${code}/meta`), { cover: coverUrl });
+      await update(ref(db, `users/${St.myId}/rooms/${key}`), { cover: coverUrl });
+    }
+    loadMyCampaigns();
+    showToast('커버 이미지가 업데이트됐어요!');
+  } catch (err) {
+    console.error('campaign cover upload failed', err);
+    showToast('커버 이미지 업로드에 실패했어요. 다시 시도해 주세요.');
+  } finally {
+    e.target.value = '';
+  }
 }
+
 

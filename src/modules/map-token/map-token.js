@@ -6,6 +6,101 @@
 let _mapScale = 1;
 let _mapPanX = 0, _mapPanY = 0;
 
+
+let _teTokenImgBlob = null;
+
+function getCloudinaryConfigForToken() {
+  const cfg = window._ITC_CLOUDINARY || {};
+  if (!cfg.cloudName || !cfg.unsignedPreset) return null;
+  return cfg;
+}
+
+function mapTokenWithTimeout(promise, ms = 15000) {
+  return new Promise((resolve, reject) => {
+    let done = false;
+    const timer = setTimeout(() => {
+      if (done) return;
+      done = true;
+      reject(new Error('timeout'));
+    }, ms);
+    Promise.resolve(promise).then((value) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      resolve(value);
+    }).catch((err) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      reject(err);
+    });
+  });
+}
+
+function mapTokenCanvasToBlob(canvas, type = 'image/png', quality) {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) resolve(blob);
+      else reject(new Error('blob 생성 실패'));
+    }, type, quality);
+  });
+}
+
+async function makeTokenImageBlob(file, max = 800) {
+  const bmp = await createImageBitmap(file);
+  try {
+    let w = bmp.width, h = bmp.height;
+    if (w > max || h > max) {
+      const r = Math.min(max / w, max / h);
+      w = Math.round(w * r);
+      h = Math.round(h * r);
+    }
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    canvas.getContext('2d').drawImage(bmp, 0, 0, w, h);
+    const isPng = /png/i.test(file.type || '');
+    return await mapTokenCanvasToBlob(canvas, isPng ? 'image/png' : 'image/jpeg', isPng ? undefined : 0.9);
+  } finally {
+    if (bmp && typeof bmp.close === 'function') bmp.close();
+  }
+}
+
+async function uploadTokenBlobToCloudinary(blob, folder = 'itc/tokens') {
+  const cfg = getCloudinaryConfigForToken();
+  if (!cfg) return null;
+  const form = new FormData();
+  form.append('file', blob);
+  form.append('upload_preset', cfg.unsignedPreset);
+  form.append('folder', folder);
+  const url = `https://api.cloudinary.com/v1_1/${cfg.cloudName}/image/upload`;
+  const res = await mapTokenWithTimeout(fetch(url, { method: 'POST', body: form }), 20000);
+  if (!res.ok) throw new Error(`cloudinary upload failed: ${res.status}`);
+  const json = await res.json();
+  if (!json?.secure_url) throw new Error('cloudinary secure_url missing');
+  return json.secure_url;
+}
+
+function revokeTokenPreviewUrl(url) {
+  if (url && String(url).startsWith('blob:')) {
+    try { URL.revokeObjectURL(url); } catch (e) {}
+  }
+}
+
+function cleanupTokenEditPendingAssets() {
+  revokeTokenPreviewUrl(_teTokenImgData);
+  _teTokenImgBlob = null;
+  const list = document.getElementById('te-standing-list');
+  if (list) {
+    list.querySelectorAll('.te-standing-row').forEach((row) => {
+      if (row._pendingPreviewUrl) revokeTokenPreviewUrl(row._pendingPreviewUrl);
+      row._pendingPreviewUrl = '';
+      row._pendingBlob = null;
+    });
+  }
+}
+
+
 function applyMapTransform() {
   const inner = document.getElementById('map-inner');
   if (inner) inner.style.transform = `translate(${_mapPanX}px,${_mapPanY}px) scale(${_mapScale})`;
@@ -294,6 +389,7 @@ function openTokenEdit(tokenId) {
 }
 
 function closeTokenEdit() {
+  cleanupTokenEditPendingAssets();
   document.getElementById('te-overlay').classList.remove('open');
   _teTokenId = null;
   _teTokenImgData = null;
@@ -312,27 +408,27 @@ function teRefreshTokenImgPreview() {
   }
 }
 
-function teHandleTokenImg(input) {
+async function teHandleTokenImg(input) {
   const file = input.files[0]; if (!file) return;
   if (file.size > 3*1024*1024) { showToast('이미지는 3MB 이하만 가능해요.'); return; }
-  const reader = new FileReader();
-  reader.onload = ev => {
-    const img = new Image();
-    img.onload = () => {
-      const MAX = 800; let w = img.width, h = img.height;
-      if (w > MAX || h > MAX) { const r = Math.min(MAX/w, MAX/h); w = Math.round(w*r); h = Math.round(h*r); }
-      const c = document.createElement('canvas'); c.width = w; c.height = h;
-      c.getContext('2d').drawImage(img, 0, 0, w, h);
-      _teTokenImgData = c.toDataURL('image/png');
-      teRefreshTokenImgPreview();
-    };
-    img.src = ev.target.result;
-  };
-  reader.readAsDataURL(file);
-  input.value = '';
+  try {
+    const blob = await makeTokenImageBlob(file, 800);
+    revokeTokenPreviewUrl(_teTokenImgData);
+    _teTokenImgBlob = blob;
+    _teTokenImgData = URL.createObjectURL(blob);
+    teRefreshTokenImgPreview();
+  } catch (err) {
+    console.error('token image prepare failed', err);
+    showToast('토큰 이미지를 준비하지 못했어요. 다시 시도해 주세요.');
+  } finally {
+    input.value = '';
+  }
 }
 
+
 function teClearTokenImg() {
+  revokeTokenPreviewUrl(_teTokenImgData);
+  _teTokenImgBlob = null;
   _teTokenImgData = null;
   teRefreshTokenImgPreview();
 }
@@ -378,31 +474,30 @@ function teRemoveStandingAt(idx) {
     });
   }
 }
-function teHandleStandingImg(input, idx) {
+async function teHandleStandingImg(input, idx) {
   const file = input.files[0]; if (!file) return;
   if (file.size > 3*1024*1024) { showToast('이미지는 3MB 이하만 가능해요.'); return; }
-  const reader = new FileReader();
-  reader.onload = ev => {
-    const img = new Image();
-    img.onload = () => {
-      const MAX = 800; let w = img.width, h = img.height;
-      if (w > MAX || h > MAX) { const r = Math.min(MAX/w, MAX/h); w = Math.round(w*r); h = Math.round(h*r); }
-      const c = document.createElement('canvas'); c.width = w; c.height = h;
-      c.getContext('2d').drawImage(img, 0, 0, w, h);
-      const dataUrl = c.toDataURL('image/png');
-      const list = document.getElementById('te-standing-list');
-      const row = list.children[idx];
-      if (row) {
-        row.dataset.img = dataUrl;
-        row.classList.add('has-img');
-        const thumb = row.querySelector('.te-st-thumb');
-        if (thumb) thumb.innerHTML = `<img src="${dataUrl}" alt=""><input type="file" accept="image/*" style="display:none" onchange="teHandleStandingImg(this,${idx})">`;
-      }
-    };
-    img.src = ev.target.result;
-  };
-  reader.readAsDataURL(file);
+  try {
+    const blob = await makeTokenImageBlob(file, 800);
+    const list = document.getElementById('te-standing-list');
+    const row = list.children[idx];
+    if (!row) return;
+    if (row._pendingPreviewUrl) revokeTokenPreviewUrl(row._pendingPreviewUrl);
+    const previewUrl = URL.createObjectURL(blob);
+    row._pendingBlob = blob;
+    row._pendingPreviewUrl = previewUrl;
+    row.dataset.img = previewUrl;
+    row.classList.add('has-img');
+    const thumb = row.querySelector('.te-st-thumb');
+    if (thumb) thumb.innerHTML = `<img src="${previewUrl}" alt=""><input type="file" accept="image/*" style="display:none" onchange="teHandleStandingImg(this,${idx})">`;
+  } catch (err) {
+    console.error('standing image prepare failed', err);
+    showToast('스탠딩 이미지를 준비하지 못했어요. 다시 시도해 주세요.');
+  } finally {
+    input.value = '';
+  }
 }
+
 
 function teAddStatus(label, cur, max) {
   const list = document.getElementById('te-status-list');
@@ -433,7 +528,7 @@ function teRemoveParam() {
   if (list.lastChild) list.removeChild(list.lastChild);
 }
 
-function saveTokenEdit() {
+async function saveTokenEdit() {
   if (!_teTokenId) return;
   const t = St.tokens[_teTokenId];
   if (!t) return;
@@ -446,19 +541,47 @@ function saveTokenEdit() {
   t.y = parseFloat(document.getElementById('te-y').value) || t.y;
   t.refUrl = document.getElementById('te-url').value.trim();
   t.chatPalette = document.getElementById('te-chatpal').value;
-  t.tokenImg = _teTokenImgData || null;
   t.hideStatus = document.getElementById('te-hide-status').checked;
   t.hideChat = document.getElementById('te-hide-chat').checked;
   t.hideList = document.getElementById('te-hide-list').checked;
   t.standingAsToken = document.getElementById('te-standing-as-token').checked;
 
+  const hint = document.getElementById('te-hint');
+  if (hint) hint.textContent = '이미지를 업로드하는 중이에요…';
+
+  if (_teTokenImgBlob) {
+    try {
+      t.tokenImg = await uploadTokenBlobToCloudinary(_teTokenImgBlob, `itc/tokens/${St.roomCode}`);
+    } catch (err) {
+      console.error('token image upload failed', err);
+      if (hint) hint.textContent = '토큰 이미지 업로드에 실패했어요.';
+      return;
+    }
+  } else if (_teTokenImgData && !_teTokenImgData.startsWith('blob:')) {
+    t.tokenImg = _teTokenImgData;
+  } else if (!_teTokenImgData) {
+    t.tokenImg = null;
+  }
+
   t.standings = [];
-  document.getElementById('te-standing-list').querySelectorAll('.te-standing-row').forEach(row => {
+  const standingRows = Array.from(document.getElementById('te-standing-list').querySelectorAll('.te-standing-row'));
+  for (const row of standingRows) {
     const inputs = row.querySelectorAll('input[type="text"],input:not([type])');
     const label = inputs[0]?.value?.trim() || '';
-    const img = row.dataset.img || '';
+    let img = row.dataset.img || '';
+    if (row._pendingBlob) {
+      try {
+        img = await uploadTokenBlobToCloudinary(row._pendingBlob, `itc/standings/${St.roomCode}`);
+      } catch (err) {
+        console.error('standing image upload failed', err);
+        if (hint) hint.textContent = '스탠딩 이미지 업로드에 실패했어요.';
+        return;
+      }
+    } else if (img.startsWith('blob:')) {
+      img = '';
+    }
     if (label || img) t.standings.push({ label, img });
-  });
+  }
 
   t.statuses = [];
   document.getElementById('te-status-list').querySelectorAll('.te-status-row').forEach(row => {
@@ -484,8 +607,10 @@ function saveTokenEdit() {
     renderAllTokens(St.tokens);
   }
 
-  const hint = document.getElementById('te-hint');
   if (hint) { hint.textContent = '저장됐어요 ✓'; setTimeout(() => { if(hint) hint.textContent=''; }, 2000); }
+  cleanupTokenEditPendingAssets();
+  _teTokenImgData = t.tokenImg || null;
+  _teTokenImgBlob = null;
 }
 
 function deleteTokenFromEdit() {
