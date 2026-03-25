@@ -341,6 +341,10 @@ async function initCharacter(sys) {
 
 function renderCharacterSheet(sys) {
   const c = document.getElementById('sheet-container');
+  if (!c) {
+    console.warn('[game] sheet-container not found; skip renderCharacterSheet');
+    return;
+  }
 
   if (sys === 'coc7') {
     c.innerHTML = `
