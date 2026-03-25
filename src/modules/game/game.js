@@ -63,6 +63,19 @@ function bindRoomStabilityEvents() {
   });
 }
 
+function refreshTopbarProfileSafe() {
+  try {
+    const navName = document.getElementById('user-name-nav');
+    if (navName && St.myName) navName.textContent = St.myName;
+  } catch (e) {}
+
+  try {
+    if (typeof refreshProfileAvatar === 'function') refreshProfileAvatar();
+  } catch (e) {
+    console.warn('[game] refreshProfileAvatar failed', e);
+  }
+}
+
 function cleanupFirebaseListeners() {
   _firebaseUnsubs.forEach(unsub => { try { if (typeof unsub === 'function') unsub(); } catch (e) {} });
   _firebaseUnsubs = [];
@@ -243,6 +256,7 @@ async function enterGame() {
   document.getElementById('room-code-disp').textContent = St.roomCode;
   document.getElementById('system-disp').textContent = SYS_LABELS[St.system];
   document.getElementById('myname-disp').textContent = St.myName;
+  refreshTopbarProfileSafe();
 
   _playerDigest = '';
   addPlayerChip(St.myId, St.myName, true, St.isGM ? 'gm' : 'player');
