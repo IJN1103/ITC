@@ -873,6 +873,28 @@ function togglePendingChatImageWide(checked) {
   _pendingChatImageWide = !!checked;
 }
 
+const _chatImageStorageHealth = {
+  disabledUntil: 0,
+  lastError: '',
+  warned: false,
+};
+
+function shouldBypassChatImageStorage() {
+  return Date.now() < (_chatImageStorageHealth.disabledUntil || 0);
+}
+
+function markChatImageStorageUnavailable(err) {
+  const msg = String(err?.message || err?.code || err || '').toLowerCase();
+  _chatImageStorageHealth.lastError = msg;
+  const looksPersistent = msg.includes('timeout') || msg.includes('cors') || msg.includes('unauthorized') || msg.includes('permission') || msg.includes('network') || msg.includes('failed');
+  _chatImageStorageHealth.disabledUntil = Date.now() + (looksPersistent ? 5 * 60 * 1000 : 60 * 1000);
+  if (!_chatImageStorageHealth.warned) {
+    _chatImageStorageHealth.warned = true;
+    setTimeout(() => { _chatImageStorageHealth.warned = false; }, 5000);
+    try { showToast('이미지 업로드 서버가 불안정해서 임시로 기본 전송 방식으로 보내요.'); } catch (_) {}
+  }
+}
+
 async function fileToPreparedChatImage(file) {
   const isGif = file.type === 'image/gif';
   const maxSize = isGif ? 5 * 1024 * 1024 : 3 * 1024 * 1024;
@@ -991,12 +1013,14 @@ function withTimeout(promise, ms = 3500) {
 }
 
 async function getStorageApiQuick() {
+  if (shouldBypassChatImageStorage()) return null;
   const fb = window._FB;
   if (!fb?.CONFIGURED || typeof fb.ensureStorage !== 'function') return null;
   try {
     return await withTimeout(fb.ensureStorage(), 2200);
   } catch (err) {
     console.warn('storage api unavailable, fallback to inline image', err);
+    markChatImageStorageUnavailable(err);
     return null;
   }
 }
@@ -1018,7 +1042,7 @@ function blobFromDataUrl(dataUrl) {
 
 async function uploadChatImageDataUrl(dataUrl, roomCode) {
   const fb = window._FB;
-  if (!fb?.CONFIGURED || !roomCode) return null;
+  if (!fb?.CONFIGURED || !roomCode || shouldBypassChatImageStorage()) return null;
   const storageApi = await getStorageApiQuick();
   if (!storageApi?.storage || !storageApi.storageRef || !storageApi.uploadBytes || !storageApi.getDownloadURL) {
     return null;
@@ -1027,12 +1051,17 @@ async function uploadChatImageDataUrl(dataUrl, roomCode) {
   const ext = contentType.includes('gif') ? 'gif' : (contentType.includes('png') ? 'png' : (contentType.includes('webp') ? 'webp' : 'jpg'));
   const path = `rooms/${roomCode}/chat-images/${St.myId || 'guest'}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
   const storageRefObj = storageApi.storageRef(storageApi.storage, path);
-  await withTimeout(storageApi.uploadBytes(storageRefObj, blob, {
-    contentType,
-    cacheControl: 'public,max-age=31536000,immutable',
-  }), 2800);
-  const url = await withTimeout(storageApi.getDownloadURL(storageRefObj), 1800);
-  return { url, path, contentType };
+  try {
+    await withTimeout(storageApi.uploadBytes(storageRefObj, blob, {
+      contentType,
+      cacheControl: 'public,max-age=31536000,immutable',
+    }), 2800);
+    const url = await withTimeout(storageApi.getDownloadURL(storageRefObj), 1800);
+    return { url, path, contentType };
+  } catch (err) {
+    markChatImageStorageUnavailable(err);
+    throw err;
+  }
 }
 
 async function sendPreparedChatImage(dataUrl, imageWide = false, imageMeta = null) {
