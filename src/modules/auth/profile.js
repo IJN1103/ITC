@@ -22,18 +22,41 @@ function initProfileModal() {
   });
 }
 
+
+function isLegacyBase64AvatarSrc(src) {
+  return typeof src === 'string' && /^data:image\//i.test(src);
+}
+
+function sanitizeProfileAvatarSrc(src, storageKey = '') {
+  if (!src || typeof src !== 'string') return '';
+  const trimmed = src.trim();
+  if (!trimmed) return '';
+  if (isLegacyBase64AvatarSrc(trimmed)) {
+    if (storageKey) {
+      try { localStorage.removeItem(storageKey); } catch (e) {}
+    }
+    return '';
+  }
+  return trimmed;
+}
+
 function refreshProfileAvatar() {
   const user = window._currentUser;
   if (!user) return;
 
   const saved = (() => {
+    const storageKey = 'itc_avatar_' + user.uid;
     try {
-      return localStorage.getItem('itc_avatar_' + user.uid)
-        || (window._avatarCache && (window._avatarCache[user.uid] || window._avatarCache[St.myName]))
-        || user.photoURL
-        || '';
+      const fromStorage = sanitizeProfileAvatarSrc(localStorage.getItem(storageKey), storageKey);
+      const fromCacheUid = sanitizeProfileAvatarSrc(window._avatarCache && window._avatarCache[user.uid], '');
+      const fromCacheName = sanitizeProfileAvatarSrc(window._avatarCache && window._avatarCache[St.myName], '');
+      const fromUser = sanitizeProfileAvatarSrc(user.photoURL, '');
+      return fromStorage || fromCacheUid || fromCacheName || fromUser || '';
     } catch (e) {
-      return (window._avatarCache && (window._avatarCache[user.uid] || window._avatarCache[St.myName])) || user.photoURL || '';
+      const fromCacheUid = sanitizeProfileAvatarSrc(window._avatarCache && window._avatarCache[user.uid], '');
+      const fromCacheName = sanitizeProfileAvatarSrc(window._avatarCache && window._avatarCache[St.myName], '');
+      const fromUser = sanitizeProfileAvatarSrc(user.photoURL, '');
+      return fromCacheUid || fromCacheName || fromUser || '';
     }
   })();
   const initials = (user.displayName || St.myName || '?')[0].toUpperCase();

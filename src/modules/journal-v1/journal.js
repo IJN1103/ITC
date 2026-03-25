@@ -12,6 +12,24 @@ let _sheetAvatarData = null;
 let _sheetAvatarStoredUrl = null;
 let _sheetAvatarUploadPromise = null;
 
+
+function journalIsLegacyBase64AvatarSrc(src) {
+  return typeof src === 'string' && /^data:image\//i.test(src);
+}
+
+function journalSanitizeAvatarSrc(src, journalId = '') {
+  if (!src || typeof src !== 'string') return null;
+  const trimmed = src.trim();
+  if (!trimmed) return null;
+  if (journalIsLegacyBase64AvatarSrc(trimmed)) {
+    if (journalId) {
+      try { localStorage.removeItem('itc_av_' + journalId); } catch (e) {}
+    }
+    return null;
+  }
+  return trimmed;
+}
+
 function getCloudinaryJournalConfig() {
   const cfg = window._ITC_CLOUDINARY || {};
   if (!cfg.cloudName || !cfg.unsignedPreset) return null;
@@ -156,7 +174,7 @@ function renderJournalList() {
     const ds  = `${d.getMonth()+1}/${d.getDate()} ${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
     const pre = (j.body || '').replace(/\n/g,' ').slice(0,40) || '내용 없음';
     const initials = (j.title || '저').trim()[0]?.toUpperCase() || '?';
-    const imgSrc    = saGetAvatar(j.id) || '';
+    const imgSrc    = journalSanitizeAvatarSrc(saGetAvatar(j.id) || j.avatar || j.sheet?.avatar || '', j.id) || '';
     const avatarHtml = imgSrc
       ? `<div class="journal-avatar"><img src="${imgSrc}" alt="avatar"></div>`
       : `<div class="journal-avatar">${esc(initials)}</div>`;
@@ -613,8 +631,8 @@ function openSheet(journalId) {
   const hint = document.getElementById('sheet-hint');
   if (hint) hint.textContent = '';
 
-  _sheetAvatarData = saGetAvatar(journalId) || data.avatar || null;
-  _sheetAvatarStoredUrl = _sheetAvatarData || null;
+  _sheetAvatarData = journalSanitizeAvatarSrc(saGetAvatar(journalId) || data.avatar || j?.avatar || null, journalId);
+  _sheetAvatarStoredUrl = journalSanitizeAvatarSrc(_sheetAvatarData || null, journalId) || null;
   _sheetAvatarUploadPromise = null;
   if (_sheetAvatarData) saSetAvatar(journalId, _sheetAvatarData);  // 캐시 워밍
   refreshSheetAvatar(_sheetAvatarData, (data.name || j?.title || '?')[0]?.toUpperCase());
@@ -656,7 +674,7 @@ async function handleSheetAvatar(input) {
   const journalId = _sheetJournalId;
   const hint = document.getElementById('sheet-hint');
   const prevPreview = _sheetAvatarData;
-  const prevStored = _sheetAvatarStoredUrl || _sheetAvatarData || null;
+  const prevStored = journalSanitizeAvatarSrc(_sheetAvatarStoredUrl || _sheetAvatarData || null, journalId);
   const previewUrl = URL.createObjectURL(file);
 
   if (_sheetAvatarData && /^blob:/i.test(_sheetAvatarData)) {
@@ -714,7 +732,7 @@ async function handleSheetAvatar(input) {
 function refreshSheetAvatar(src, initials) {
   const el = document.getElementById('sh-avatar');
   if (!el) return;
-  const imgSrc = src || _sheetAvatarData;
+  const imgSrc = journalSanitizeAvatarSrc(src || _sheetAvatarData, _sheetJournalId);
   if (imgSrc) {
     el.innerHTML = `<img src="${imgSrc}" alt="avatar"><div class="av-ov">📷</div>`;
   } else {
@@ -805,11 +823,14 @@ async function saveSheet() {
   const list = _allJournals;
   const existing = list.find(j => j.id === _sheetJournalId);
   if (existing) {
-    const _keepAv = _sheetAvatarStoredUrl
+    const _keepAv = journalSanitizeAvatarSrc(
+      _sheetAvatarStoredUrl
       || _sheetAvatarData
       || localStorage.getItem('itc_av_' + _sheetJournalId)
       || existing.avatar
-      || null;
+      || null,
+      _sheetJournalId
+    );
     if (_keepAv) {
       data.avatar      = _keepAv;
       existing.avatar = _keepAv;
@@ -833,7 +854,7 @@ async function saveSheet() {
       assignedTokenId: _jdAssignedTokenId || null,
       assignedTo: _sheetAssignedTo || [],
     };
-    const newAvatar = _sheetAvatarStoredUrl || _sheetAvatarData || null;
+    const newAvatar = journalSanitizeAvatarSrc(_sheetAvatarStoredUrl || _sheetAvatarData || null, _sheetJournalId);
     if (newAvatar) {
       newJ.avatar = newAvatar;
       data.avatar = newAvatar;

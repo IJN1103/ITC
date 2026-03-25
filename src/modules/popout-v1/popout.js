@@ -251,9 +251,31 @@ function popoutChat() {
   showToast('채팅이 새 창으로 분리됐어요! (' + _popoutWins.length + '/3)');
 }
 
+
+function popoutIsLegacyBase64AvatarSrc(src) {
+  return typeof src === 'string' && /^data:image\//i.test(src);
+}
+
+function sanitizePopoutAvatarSrc(src, storageKey = '') {
+  if (!src || typeof src !== 'string') return '';
+  const trimmed = src.trim();
+  if (!trimmed) return '';
+  if (popoutIsLegacyBase64AvatarSrc(trimmed)) {
+    if (storageKey) {
+      try { localStorage.removeItem(storageKey); } catch (e) {}
+    }
+    return '';
+  }
+  return trimmed;
+}
+
 function getPopoutAvatarUrl(name, uid) {
-  if (window._avatarCache && window._avatarCache[name]) return window._avatarCache[name];
-  const av = localStorage.getItem('itc_avatar_' + (uid || ''));
+  const cacheByName = sanitizePopoutAvatarSrc(window._avatarCache && window._avatarCache[name], '');
+  if (cacheByName) return cacheByName;
+  const cacheByUid = sanitizePopoutAvatarSrc(window._avatarCache && window._avatarCache[uid || ''], '');
+  if (cacheByUid) return cacheByUid;
+  const storageKey = 'itc_avatar_' + (uid || '');
+  const av = sanitizePopoutAvatarSrc(localStorage.getItem(storageKey), storageKey);
   if (av) return av;
   return '';
 }
