@@ -292,6 +292,22 @@ async function syncAvatarToFirebase(avatarSrc, meta = null) {
   }));
 }
 
+function canvasToBlob(canvas, type = 'image/jpeg', quality = 0.8) {
+  return new Promise((resolve, reject) => {
+    try {
+      canvas.toBlob((blob) => {
+        if (!blob) {
+          reject(new Error('blob 생성 실패'));
+          return;
+        }
+        resolve(blob);
+      }, type, quality);
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
 async function applyCrop() {
   const s = window._crop;
   if (!s) return;
@@ -306,12 +322,12 @@ async function applyCrop() {
   const y  = (256 - sh) / 2 + s.oy * r;
   ctx.drawImage(s.img, x, y, sw, sh);
 
-  const dataUrl = out.toDataURL('image/jpeg', 0.8);
   let finalAvatarSrc = '';
   let uploadMeta = null;
 
   try {
-    const uploaded = await uploadAvatarDataUrlToStorage(dataUrl, window._currentUser.uid);
+    const avatarBlob = await canvasToBlob(out, 'image/jpeg', 0.8);
+    const uploaded = await uploadAvatarBlobToCloudinary(avatarBlob, `avatar_${window._currentUser.uid}_${Date.now()}.jpg`);
     if (uploaded?.url) {
       finalAvatarSrc = uploaded.url;
       uploadMeta = uploaded;
