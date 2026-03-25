@@ -17,6 +17,9 @@ function initAuthScreen() {
     St.myName = user.displayName || user.email?.split('@')[0] || '플레이어';
     St.myId   = user.uid;
     await loadUserProfile(user);
+    if (typeof refreshProfileAvatar === 'function') {
+      try { refreshProfileAvatar(); } catch (e) {}
+    }
     loadRecentRooms();
 
     const savedCode = sessionStorage.getItem('itc_session_code');
@@ -64,6 +67,9 @@ async function loadUserProfile(user) {
       createdAt: Date.now(),
       updatedAt: Date.now(),
     });
+    if (typeof refreshProfileAvatar === 'function') {
+      try { refreshProfileAvatar(); } catch (e) {}
+    }
     return;
   }
 
@@ -88,6 +94,10 @@ async function loadUserProfile(user) {
   if (Object.keys(patch).length) {
     patch.updatedAt = Date.now();
     await update(profileRef, patch);
+  }
+
+  if (typeof refreshProfileAvatar === 'function') {
+    try { refreshProfileAvatar(); } catch (e) {}
   }
 }
 
