@@ -90,6 +90,34 @@ function getCloudinaryRuntimeConfig() {
   return { cloudName, unsignedPreset };
 }
 
+async function uploadAvatarBlobToCloudinary(blob, fileName = 'avatar.jpg') {
+  const cfg = getCloudinaryRuntimeConfig();
+  if (!cfg || !blob) return null;
+  const formData = new FormData();
+  formData.append('file', blob, fileName);
+  formData.append('upload_preset', cfg.unsignedPreset);
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timer = controller ? setTimeout(() => controller.abort(), 20000) : null;
+  try {
+    const res = await fetch(`https://api.cloudinary.com/v1_1/${encodeURIComponent(cfg.cloudName)}/image/upload`, {
+      method: 'POST',
+      body: formData,
+      signal: controller?.signal,
+    });
+    const payload = await res.json().catch(() => ({}));
+    if (!res.ok || !payload?.secure_url) {
+      throw new Error(payload?.error?.message || 'cloudinary upload failed');
+    }
+    return {
+      url: payload.secure_url,
+      path: payload.public_id || '',
+      contentType: blob.type || 'image/jpeg',
+    };
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 function revokeCropSourceUrl(url) {
   if (!url || typeof url !== 'string' || !url.startsWith('blob:')) return;
   try { URL.revokeObjectURL(url); } catch (e) {}
@@ -100,6 +128,7 @@ function clearCropSession() {
   if (current?.sourceUrl) revokeCropSourceUrl(current.sourceUrl);
   window._crop = null;
 }
+
 
 function handleAvatarUpload(input) {
   const file = input.files[0];
@@ -277,7 +306,10 @@ async function applyCrop() {
         resolve(blob);
       }, 'image/jpeg', 0.8);
     });
-    const uploaded = await uploadAvatarBlobToCloudinary(avatarBlob, `avatar_${window._currentUser.uid || 'user'}_${Date.now()}.jpg`);
+    const uploaded = await uploadAvatarBlobToCloudinary(
+      avatarBlob,
+      `avatar_${window._currentUser?.uid || 'user'}_${Date.now()}.jpg`
+    );
     if (uploaded?.url) {
       finalAvatarSrc = uploaded.url;
       uploadMeta = uploaded;
