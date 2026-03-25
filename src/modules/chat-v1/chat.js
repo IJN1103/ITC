@@ -702,6 +702,21 @@ function getChatImageInlineStyle(imageWide = false) {
   return imageWide ? 'width:100%;max-width:none;height:auto;object-fit:contain;' : '';
 }
 
+function isLegacyBase64ImageSrc(src) {
+  return typeof src === 'string' && /^data:image\//i.test(String(src).trim());
+}
+
+function isEphemeralObjectUrl(src) {
+  return typeof src === 'string' && /^blob:/i.test(String(src).trim());
+}
+
+function sanitizePersistentAvatarSrc(src) {
+  const value = String(src || '').trim();
+  if (!value) return '';
+  if (isLegacyBase64ImageSrc(value) || isEphemeralObjectUrl(value)) return '';
+  return value;
+}
+
 const CHAT_IMAGE_PLACEHOLDER = 'about:blank';
 let _deferredChatImageObserver = null;
 
@@ -890,6 +905,10 @@ function getCloudinaryRuntimeConfig() {
   return { cloudName, unsignedPreset };
 }
 
+async function fileToObjectUrl(file) {
+  if (!(file instanceof Blob)) throw new Error('이미지를 읽지 못했어요.');
+  return URL.createObjectURL(file);
+}
 
 async function canvasToJpegBlob(canvas, quality = 0.84) {
   return new Promise((resolve, reject) => {
@@ -908,6 +927,7 @@ function makePreparedChatImageBase(meta = {}) {
     id: makePendingChatImageId(),
     previewUrl: meta.previewUrl || '',
     previewKind: meta.previewKind || 'object-url',
+    dataUrl: '',
     uploadBlob: meta.uploadBlob || null,
     uploadMime: meta.uploadMime || '',
     uploadFileName: meta.uploadFileName || '',
@@ -968,7 +988,7 @@ async function fileToPreparedChatImage(file) {
     });
   }
 
-  const loadUrl = URL.createObjectURL(file);
+  const imageUrl = await fileToObjectUrl(file);
   const compressed = await new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = async () => {
@@ -999,14 +1019,14 @@ async function fileToPreparedChatImage(file) {
       } catch (err) {
         reject(err);
       } finally {
-        try { URL.revokeObjectURL(loadUrl); } catch (e) {}
+        try { URL.revokeObjectURL(imageUrl); } catch (e) {}
       }
     };
     img.onerror = () => {
-      try { URL.revokeObjectURL(loadUrl); } catch (e) {}
+      try { URL.revokeObjectURL(imageUrl); } catch (e) {}
       reject(new Error('이미지 처리에 실패했어요.'));
     };
-    img.src = loadUrl;
+    img.src = imageUrl;
   });
 
   return makePreparedChatImageBase({
@@ -1080,7 +1100,6 @@ async function getStorageApiQuick() {
   }
 }
 
-
 async function uploadChatImageBlobToCloudinary(blob, fileName = 'chat.jpg') {
   const cfg = getCloudinaryRuntimeConfig();
   if (!cfg || !blob) return null;
@@ -1109,12 +1128,17 @@ async function uploadChatImageBlobToCloudinary(blob, fileName = 'chat.jpg') {
   }
 }
 
-async function uploadPreparedChatImage(preparedItem) {
+async function uploadPreparedChatImage(preparedItem = null) {
   const uploadBlob = preparedItem?.uploadBlob || null;
   const uploadFileName = preparedItem?.uploadFileName || '';
-  if (!uploadBlob) throw new Error('이미지 업로드 데이터가 없어요.');
+  if (!(uploadBlob instanceof Blob)) {
+    throw new Error('업로드할 이미지 데이터가 없어요.');
+  }
 
-  const uploadedCloudinary = await uploadChatImageBlobToCloudinary(uploadBlob, uploadFileName || `chat_${Date.now()}.jpg`);
+  const uploadedCloudinary = await uploadChatImageBlobToCloudinary(
+    uploadBlob,
+    uploadFileName || `chat_${Date.now()}.jpg`
+  );
   if (!uploadedCloudinary?.url) return null;
 
   return {
@@ -1131,12 +1155,15 @@ async function sendPreparedChatImage(preparedOrDataUrl, imageWide = false, image
   const saAvatar = saJId ? saGetAvatar(saJId) : null;
   const normalizedMeta = normalizeChatImageMeta(imageMeta);
 
-  const prepared = (preparedOrDataUrl && typeof preparedOrDataUrl === 'object' && ('uploadBlob' in preparedOrDataUrl))
+  const prepared = (preparedOrDataUrl && typeof preparedOrDataUrl === 'object' && ('uploadBlob' in preparedOrDataUrl || 'previewUrl' in preparedOrDataUrl))
     ? preparedOrDataUrl
-    : { uploadBlob: null, uploadMime: '', uploadFileName: '' };
+    : null;
   let finalSrc = '';
   let storageMeta = null;
 
+  if (!prepared?.uploadBlob) {
+    throw new Error('업로드할 이미지 데이터가 없어요.');
+  }
   if (!St.roomCode) {
     throw new Error('이미지 업로드를 위한 방 정보가 없어요.');
   }
@@ -1160,7 +1187,7 @@ async function sendPreparedChatImage(preparedOrDataUrl, imageWide = false, image
       imageWide: !!imageWide,
       imageMeta: normalizedMeta,
       imageStoragePath: storageMeta?.path || '',
-      imageContentType: storageMeta?.contentType || prepared?.uploadMime || prepared?.uploadBlob?.type || 'image/jpeg',
+      imageContentType: storageMeta?.contentType || prepared.uploadMime || prepared.uploadBlob.type || 'image/jpeg',
     };
     if (window._FB?.CONFIGURED) {
       const { db, ref, push } = window._FB;
@@ -1175,7 +1202,7 @@ async function sendPreparedChatImage(preparedOrDataUrl, imageWide = false, image
     imageWide: !!imageWide,
     imageMeta: normalizedMeta,
     imageStoragePath: storageMeta?.path || '',
-    imageContentType: storageMeta?.contentType || prepared?.uploadMime || prepared?.uploadBlob?.type || 'image/jpeg',
+    imageContentType: storageMeta?.contentType || prepared.uploadMime || prepared.uploadBlob.type || 'image/jpeg',
   });
 }
 
@@ -1378,24 +1405,17 @@ function sendCasualMsg(name, text) {
   return Promise.resolve();
 }
 
-function sanitizeStoredAvatarSrc(src, storageKey = '') {
-  if (!src || typeof src !== 'string') return '';
-  if (/^data:image\//i.test(src)) {
-    if (storageKey) {
-      try { localStorage.removeItem(storageKey); } catch (e) {}
-    }
-    return '';
-  }
-  return src;
-}
-
 function refreshCasualNickDisplay() {
   const el = document.getElementById('casual-nick-name');
   if (el) el.textContent = _casualNickname || St.myName;
   const avEl = document.getElementById('casual-nick-avatar');
   if (avEl) {
-    const avatarKey = 'itc_avatar_' + St.myId;
-    const avSrc = sanitizeStoredAvatarSrc(localStorage.getItem(avatarKey) || '', avatarKey);
+    let avSrc = '';
+    try {
+      avSrc = sanitizePersistentAvatarSrc(localStorage.getItem('itc_avatar_' + St.myId));
+      if (!avSrc) localStorage.removeItem('itc_avatar_' + St.myId);
+    } catch (e) {}
+    if (!avSrc) avSrc = sanitizePersistentAvatarSrc(window._avatarCache?.[St.myId] || window._avatarCache?.[St.myName]);
     if (avSrc) {
       avEl.innerHTML = `<img src="${avSrc}" alt="">`;
     } else {
@@ -1580,14 +1600,16 @@ function openLightbox(src) {
 function addLocalMessage(type, name, text) { appendChatMsg(name, text, type); }
 
 function getAvatarHtml(name, uid) {
-  let imgSrc = null;
+  let imgSrc = '';
 
   if (uid) {
-    const avatarKey = 'itc_avatar_' + uid;
-    imgSrc = sanitizeStoredAvatarSrc(localStorage.getItem(avatarKey), avatarKey);
+    try {
+      imgSrc = sanitizePersistentAvatarSrc(localStorage.getItem('itc_avatar_' + uid));
+      if (!imgSrc) localStorage.removeItem('itc_avatar_' + uid);
+    } catch (e) {}
   }
   if (!imgSrc && name) {
-    imgSrc = sanitizeStoredAvatarSrc(window._avatarCache?.[uid] || window._avatarCache?.[name] || '', '');
+    imgSrc = sanitizePersistentAvatarSrc(window._avatarCache?.[uid] || window._avatarCache?.[name]);
   }
 
   const initial = (name || '?')[0].toUpperCase();

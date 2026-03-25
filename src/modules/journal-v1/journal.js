@@ -12,13 +12,6 @@ let _sheetAvatarData = null;
 let _sheetAvatarStoredUrl = null;
 let _sheetAvatarUploadPromise = null;
 
-function sanitizeJournalAvatarSrc(src) {
-  if (!src || typeof src !== 'string') return '';
-  if (/^data:image\//i.test(src)) return '';
-  return src;
-}
-
-
 function getCloudinaryJournalConfig() {
   const cfg = window._ITC_CLOUDINARY || {};
   if (!cfg.cloudName || !cfg.unsignedPreset) return null;
@@ -812,13 +805,13 @@ async function saveSheet() {
   const list = _allJournals;
   const existing = list.find(j => j.id === _sheetJournalId);
   if (existing) {
-    const _keepAv = sanitizeJournalAvatarSrc(
+    const _keepAv = sanitizePersistentAvatarSrc(
       _sheetAvatarStoredUrl
       || _sheetAvatarData
       || localStorage.getItem('itc_av_' + _sheetJournalId)
       || existing.avatar
       || null
-    ) || null;
+    );
     if (_keepAv) {
       data.avatar      = _keepAv;
       existing.avatar = _keepAv;
@@ -842,7 +835,7 @@ async function saveSheet() {
       assignedTokenId: _jdAssignedTokenId || null,
       assignedTo: _sheetAssignedTo || [],
     };
-    const newAvatar = sanitizeJournalAvatarSrc(_sheetAvatarStoredUrl || _sheetAvatarData || null) || null;
+    const newAvatar = sanitizePersistentAvatarSrc(_sheetAvatarStoredUrl || _sheetAvatarData || null);
     if (newAvatar) {
       newJ.avatar = newAvatar;
       data.avatar = newAvatar;

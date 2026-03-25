@@ -105,21 +105,15 @@ function genCode() {
 }
 function genId() { return Math.random().toString(36).slice(2, 10); }
 
-function sanitizePlayerAvatarSrc(src, storageKey = '') {
-  if (!src || typeof src !== 'string') return '';
-  if (/^data:image\//i.test(src)) {
-    if (storageKey) {
-      try { localStorage.removeItem(storageKey); } catch (e) {}
-    }
-    return '';
-  }
-  return src;
-}
-
 function getPlayerPayload(role) {
   const avatar = (() => {
-    const storageKey = 'itc_avatar_' + St.myId;
-    try { return sanitizePlayerAvatarSrc(localStorage.getItem(storageKey) || '', storageKey); } catch (e) { return ''; }
+    try {
+      const value = sanitizePersistentAvatarSrc(localStorage.getItem('itc_avatar_' + St.myId));
+      if (!value) localStorage.removeItem('itc_avatar_' + St.myId);
+      return value;
+    } catch (e) {
+      return '';
+    }
   })();
   const casualNick = (() => {
     try { return localStorage.getItem('itc_casual_nick_' + St.myId) || ''; } catch (e) { return ''; }

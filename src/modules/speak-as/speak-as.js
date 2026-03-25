@@ -5,55 +5,42 @@
 
 const _JAV = {};
 
-function saIsEphemeralAvatarSrc(src) {
-  return typeof src === 'string' && /^blob:/i.test(src);
-}
-
 function saIsLegacyBase64AvatarSrc(src) {
-  return typeof src === 'string' && /^data:image\//i.test(src);
+  return typeof src === 'string' && /^data:image\//i.test(String(src).trim());
 }
 
-function saSanitizeAvatarSrc(src, storageKey = '') {
-  if (!src || typeof src !== 'string') return '';
-  if (saIsLegacyBase64AvatarSrc(src)) {
-    if (storageKey) {
-      try { localStorage.removeItem(storageKey); } catch (e) {}
-    }
-    return '';
-  }
-  return src;
+function saIsEphemeralAvatarSrc(src) {
+  return typeof src === 'string' && /^blob:/i.test(String(src).trim());
+}
+
+function saSanitizePersistentAvatarSrc(src) {
+  const value = String(src || '').trim();
+  if (!value) return '';
+  if (saIsLegacyBase64AvatarSrc(value) || saIsEphemeralAvatarSrc(value)) return '';
+  return value;
 }
 
 function saSetAvatar(journalId, src) {
   if (!journalId || !src) return;
-  const storageKey = 'itc_av_' + journalId;
-  const safeSrc = saSanitizeAvatarSrc(src, storageKey);
-  if (!safeSrc) {
-    delete _JAV[journalId];
-    return;
-  }
-  _JAV[journalId] = safeSrc;
+  const safeSrc = saSanitizePersistentAvatarSrc(src);
+  _JAV[journalId] = safeSrc || src;
   try {
-    if (saIsEphemeralAvatarSrc(safeSrc)) localStorage.removeItem(storageKey);
-    else localStorage.setItem(storageKey, safeSrc);
+    if (!safeSrc) localStorage.removeItem('itc_av_' + journalId);
+    else localStorage.setItem('itc_av_' + journalId, safeSrc);
   } catch(e) {}
 }
 
 function saGetAvatar(journalId) {
   if (!journalId) return null;
-  const mem = saSanitizeAvatarSrc(_JAV[journalId] || '', '');
-  if (mem) return mem;
-  if (_JAV[journalId] && !mem) delete _JAV[journalId];
+  if (_JAV[journalId]) return _JAV[journalId];
   try {
-    const storageKey = 'itc_av_' + journalId;
-    const ls = localStorage.getItem(storageKey);
-    const safeLs = saSanitizeAvatarSrc(ls, storageKey);
-    if (safeLs && !saIsEphemeralAvatarSrc(safeLs)) { _JAV[journalId] = safeLs; return safeLs; }
-    if (ls && (!safeLs || saIsEphemeralAvatarSrc(ls))) localStorage.removeItem(storageKey);
+    const ls = saSanitizePersistentAvatarSrc(localStorage.getItem('itc_av_' + journalId));
+    if (ls) { _JAV[journalId] = ls; return ls; }
+    localStorage.removeItem('itc_av_' + journalId);
   } catch(e) {}
   try {
     const j = _allJournals.find(x => x.id === journalId);
-    const av = saSanitizeAvatarSrc(j?.avatar || j?.sheet?.avatar || null, '');
+    const av = saSanitizePersistentAvatarSrc(j?.avatar || j?.sheet?.avatar || null);
     if (av) { _JAV[journalId] = av; return av; }
   } catch(e) {}
   return null;

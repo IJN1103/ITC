@@ -15,7 +15,13 @@ function syncMyAvatarToRoom(avatarOverride = undefined, force = false) {
   const nextAvatar = avatarOverride !== undefined
     ? (avatarOverride || '')
     : (() => {
-        try { return localStorage.getItem('itc_avatar_' + St.myId) || ''; } catch (e) { return ''; }
+        try {
+          const value = sanitizePersistentAvatarSrc(localStorage.getItem('itc_avatar_' + St.myId));
+          if (!value) localStorage.removeItem('itc_avatar_' + St.myId);
+          return value;
+        } catch (e) {
+          return '';
+        }
       })();
   let avatarStoragePath = '';
   try { avatarStoragePath = localStorage.getItem('itc_avatar_path_' + St.myId) || ''; } catch (e) {}
@@ -316,10 +322,9 @@ function renderPlayers(players) {
     const online = p.online || id === St.myId;
     addPlayerChip(id, p.name, id === St.myId, p.role, online);
 
-    const avatarKey = 'itc_avatar_' + id;
-    const av = sanitizeRoomAvatarSrc(p.avatarUrl || p.avatar || localStorage.getItem(avatarKey), avatarKey);
+    const av = sanitizePersistentAvatarSrc(p.avatarUrl || p.avatar || localStorage.getItem('itc_avatar_' + id));
     if (av) {
-      localStorage.setItem(avatarKey, av);
+      localStorage.setItem('itc_avatar_' + id, av);
       if (p.avatarStoragePath) {
         try { localStorage.setItem('itc_avatar_path_' + id, p.avatarStoragePath); } catch (e) {}
       }

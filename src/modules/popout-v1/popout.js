@@ -5,17 +5,12 @@
 
 let _popoutWins = [];
 
-function sanitizePopoutAvatarSrc(src, storageKey = '') {
-  if (!src || typeof src !== 'string') return '';
-  if (/^data:image\//i.test(src)) {
-    if (storageKey) {
-      try { localStorage.removeItem(storageKey); } catch (e) {}
-    }
-    return '';
-  }
-  return src;
+function sanitizePersistentAvatarSrc(src) {
+  const value = String(src || '').trim();
+  if (!value) return '';
+  if (/^data:image\//i.test(value) || /^blob:/i.test(value)) return '';
+  return value;
 }
-
 
 function buildPopoutHtml() {
   const S = '<' + 'script>';
@@ -264,11 +259,13 @@ function popoutChat() {
 }
 
 function getPopoutAvatarUrl(name, uid) {
-  const cacheAv = sanitizePopoutAvatarSrc(window._avatarCache && window._avatarCache[name], '');
-  if (cacheAv) return cacheAv;
-  const storageKey = 'itc_avatar_' + (uid || '');
-  const av = sanitizePopoutAvatarSrc(localStorage.getItem(storageKey), storageKey);
-  if (av) return av;
+  const cached = sanitizePersistentAvatarSrc(window._avatarCache?.[name] || window._avatarCache?.[uid]);
+  if (cached) return cached;
+  try {
+    const av = sanitizePersistentAvatarSrc(localStorage.getItem('itc_avatar_' + (uid || '')));
+    if (!av) localStorage.removeItem('itc_avatar_' + (uid || ''));
+    if (av) return av;
+  } catch (e) {}
   return '';
 }
 
