@@ -59,6 +59,7 @@ function refreshProfileAvatar() {
 
 
 
+
 function withTimeout(promise, ms = 3500) {
   return new Promise((resolve, reject) => {
     let done = false;
@@ -81,13 +82,21 @@ function withTimeout(promise, ms = 3500) {
   });
 }
 
+function getCloudinaryRuntimeConfig() {
+  const cfg = window._ITC_CLOUDINARY || {};
+  const cloudName = String(cfg.cloudName || '').trim();
+  const unsignedPreset = String(cfg.unsignedPreset || '').trim();
+  if (!cloudName || !unsignedPreset) return null;
+  return { cloudName, unsignedPreset };
+}
+
 async function getStorageApiQuick() {
   const fb = window._FB;
   if (!fb?.CONFIGURED || typeof fb.ensureStorage !== 'function') return null;
   try {
     return await withTimeout(fb.ensureStorage(), 2200);
   } catch (err) {
-    console.warn('storage api unavailable, fallback to inline avatar', err);
+    console.warn('storage api unavailable', err);
     return null;
   }
 }
@@ -108,22 +117,39 @@ function blobFromDataUrl(dataUrl) {
   return new Blob([bytes], { type: contentType });
 }
 
-async function uploadAvatarDataUrlToStorage(dataUrl, userId) {
-  const storageApi = await getStorageApiQuick();
-  if (!storageApi?.storage || !storageApi.storageRef || !storageApi.uploadBytes || !storageApi.getDownloadURL) {
-    return null;
+async function uploadAvatarBlobToCloudinary(blob, fileName = 'avatar.jpg') {
+  const cfg = getCloudinaryRuntimeConfig();
+  if (!cfg || !blob) return null;
+  const formData = new FormData();
+  formData.append('file', blob, fileName);
+  formData.append('upload_preset', cfg.unsignedPreset);
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timer = controller ? setTimeout(() => controller.abort(), 20000) : null;
+  try {
+    const res = await fetch(`https://api.cloudinary.com/v1_1/${encodeURIComponent(cfg.cloudName)}/image/upload`, {
+      method: 'POST',
+      body: formData,
+      signal: controller?.signal,
+    });
+    const payload = await res.json().catch(() => ({}));
+    if (!res.ok || !payload?.secure_url) {
+      throw new Error(payload?.error?.message || 'cloudinary upload failed');
+    }
+    return {
+      url: payload.secure_url,
+      path: payload.public_id || '',
+      contentType: blob.type || 'image/jpeg',
+    };
+  } finally {
+    if (timer) clearTimeout(timer);
   }
-  const contentType = inferStorageContentTypeFromDataUrl(dataUrl);
-  const ext = contentType.includes('png') ? 'png' : (contentType.includes('webp') ? 'webp' : 'jpg');
-  const path = `avatars/${userId}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
-  const blob = blobFromDataUrl(dataUrl);
-  const storageRefObj = storageApi.storageRef(storageApi.storage, path);
-  await withTimeout(storageApi.uploadBytes(storageRefObj, blob, {
-    contentType,
-    cacheControl: 'public,max-age=31536000,immutable',
-  }), 2800);
-  const url = await withTimeout(storageApi.getDownloadURL(storageRefObj), 1800);
-  return { url, path, contentType };
+}
+
+async function uploadAvatarDataUrlToStorage(dataUrl, userId) {
+  const avatarBlob = blobFromDataUrl(dataUrl);
+  const uploadedCloudinary = await uploadAvatarBlobToCloudinary(avatarBlob, `avatar_${userId || 'user'}_${Date.now()}.jpg`);
+  if (!uploadedCloudinary?.url) return null;
+  return uploadedCloudinary;
 }
 
 function handleAvatarUpload(input) {
@@ -281,7 +307,7 @@ async function applyCrop() {
   ctx.drawImage(s.img, x, y, sw, sh);
 
   const dataUrl = out.toDataURL('image/jpeg', 0.8);
-  let finalAvatarSrc = dataUrl;
+  let finalAvatarSrc = '';
   let uploadMeta = null;
 
   try {
@@ -291,7 +317,12 @@ async function applyCrop() {
       uploadMeta = uploaded;
     }
   } catch (e) {
-    console.warn('avatar storage upload failed, fallback to inline data url', e);
+    console.warn('avatar upload failed', e);
+  }
+
+  if (!finalAvatarSrc) {
+    showProfileMsg('프로필 사진 업로드에 실패했어요. 다시 시도해 주세요.', 'err');
+    return;
   }
 
   localStorage.setItem('itc_avatar_' + window._currentUser.uid, finalAvatarSrc);
