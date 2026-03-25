@@ -1378,12 +1378,24 @@ function sendCasualMsg(name, text) {
   return Promise.resolve();
 }
 
+function sanitizeStoredAvatarSrc(src, storageKey = '') {
+  if (!src || typeof src !== 'string') return '';
+  if (/^data:image\//i.test(src)) {
+    if (storageKey) {
+      try { localStorage.removeItem(storageKey); } catch (e) {}
+    }
+    return '';
+  }
+  return src;
+}
+
 function refreshCasualNickDisplay() {
   const el = document.getElementById('casual-nick-name');
   if (el) el.textContent = _casualNickname || St.myName;
   const avEl = document.getElementById('casual-nick-avatar');
   if (avEl) {
-    const avSrc = localStorage.getItem('itc_avatar_' + St.myId) || '';
+    const avatarKey = 'itc_avatar_' + St.myId;
+    const avSrc = sanitizeStoredAvatarSrc(localStorage.getItem(avatarKey) || '', avatarKey);
     if (avSrc) {
       avEl.innerHTML = `<img src="${avSrc}" alt="">`;
     } else {
@@ -1571,10 +1583,11 @@ function getAvatarHtml(name, uid) {
   let imgSrc = null;
 
   if (uid) {
-    imgSrc = localStorage.getItem('itc_avatar_' + uid);
+    const avatarKey = 'itc_avatar_' + uid;
+    imgSrc = sanitizeStoredAvatarSrc(localStorage.getItem(avatarKey), avatarKey);
   }
   if (!imgSrc && name) {
-    imgSrc = window._avatarCache?.[uid] || window._avatarCache?.[name];
+    imgSrc = sanitizeStoredAvatarSrc(window._avatarCache?.[uid] || window._avatarCache?.[name] || '', '');
   }
 
   const initial = (name || '?')[0].toUpperCase();

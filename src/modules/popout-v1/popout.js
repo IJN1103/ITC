@@ -5,6 +5,18 @@
 
 let _popoutWins = [];
 
+function sanitizePopoutAvatarSrc(src, storageKey = '') {
+  if (!src || typeof src !== 'string') return '';
+  if (/^data:image\//i.test(src)) {
+    if (storageKey) {
+      try { localStorage.removeItem(storageKey); } catch (e) {}
+    }
+    return '';
+  }
+  return src;
+}
+
+
 function buildPopoutHtml() {
   const S = '<' + 'script>';
   const SE = '</' + 'script>';
@@ -251,29 +263,9 @@ function popoutChat() {
   showToast('채팅이 새 창으로 분리됐어요! (' + _popoutWins.length + '/3)');
 }
 
-
-function popoutIsLegacyBase64AvatarSrc(src) {
-  return typeof src === 'string' && /^data:image\//i.test(src);
-}
-
-function sanitizePopoutAvatarSrc(src, storageKey = '') {
-  if (!src || typeof src !== 'string') return '';
-  const trimmed = src.trim();
-  if (!trimmed) return '';
-  if (popoutIsLegacyBase64AvatarSrc(trimmed)) {
-    if (storageKey) {
-      try { localStorage.removeItem(storageKey); } catch (e) {}
-    }
-    return '';
-  }
-  return trimmed;
-}
-
 function getPopoutAvatarUrl(name, uid) {
-  const cacheByName = sanitizePopoutAvatarSrc(window._avatarCache && window._avatarCache[name], '');
-  if (cacheByName) return cacheByName;
-  const cacheByUid = sanitizePopoutAvatarSrc(window._avatarCache && window._avatarCache[uid || ''], '');
-  if (cacheByUid) return cacheByUid;
+  const cacheAv = sanitizePopoutAvatarSrc(window._avatarCache && window._avatarCache[name], '');
+  if (cacheAv) return cacheAv;
   const storageKey = 'itc_avatar_' + (uid || '');
   const av = sanitizePopoutAvatarSrc(localStorage.getItem(storageKey), storageKey);
   if (av) return av;

@@ -10,30 +10,12 @@ let _playerDigest = '';
 let _roomAvatarSyncBound = false;
 let _lastSyncedRoomAvatar = null;
 
-
-function isLegacyBase64ImageSrc(src) {
-  return typeof src === 'string' && /^data:image\//i.test(src.trim());
-}
-
-function sanitizeRuntimeAvatarSrc(src, storageKey = '') {
-  const normalized = String(src || '').trim();
-  if (!normalized) return '';
-  if (isLegacyBase64ImageSrc(normalized)) {
-    if (storageKey) {
-      try { localStorage.removeItem(storageKey); } catch (e) {}
-    }
-    return '';
-  }
-  return normalized;
-}
-
-
 function syncMyAvatarToRoom(avatarOverride = undefined, force = false) {
   if (!window._FB?.CONFIGURED || !St.roomCode || !St.myId) return Promise.resolve();
   const nextAvatar = avatarOverride !== undefined
     ? (avatarOverride || '')
     : (() => {
-        try { return sanitizeRuntimeAvatarSrc(localStorage.getItem('itc_avatar_' + St.myId), 'itc_avatar_' + St.myId) || ''; } catch (e) { return ''; }
+        try { return localStorage.getItem('itc_avatar_' + St.myId) || ''; } catch (e) { return ''; }
       })();
   let avatarStoragePath = '';
   try { avatarStoragePath = localStorage.getItem('itc_avatar_path_' + St.myId) || ''; } catch (e) {}
@@ -71,7 +53,7 @@ function bindRoomStabilityEvents() {
     const detail = ev?.detail || {};
     const targetUid = detail.uid || window._currentUser?.uid || St.myId;
     if (!targetUid || targetUid !== St.myId) return;
-    const avatar = sanitizeRuntimeAvatarSrc(detail.avatar || '', 'itc_avatar_' + St.myId);
+    const avatar = detail.avatar || '';
     try {
       if (detail.avatarStoragePath) localStorage.setItem('itc_avatar_path_' + St.myId, detail.avatarStoragePath);
       else localStorage.removeItem('itc_avatar_path_' + St.myId);
@@ -334,18 +316,15 @@ function renderPlayers(players) {
     const online = p.online || id === St.myId;
     addPlayerChip(id, p.name, id === St.myId, p.role, online);
 
-    const av = sanitizeRuntimeAvatarSrc(p.avatarUrl || p.avatar || localStorage.getItem('itc_avatar_' + id), 'itc_avatar_' + id);
+    const avatarKey = 'itc_avatar_' + id;
+    const av = sanitizeRoomAvatarSrc(p.avatarUrl || p.avatar || localStorage.getItem(avatarKey), avatarKey);
     if (av) {
-      localStorage.setItem('itc_avatar_' + id, av);
+      localStorage.setItem(avatarKey, av);
       if (p.avatarStoragePath) {
         try { localStorage.setItem('itc_avatar_path_' + id, p.avatarStoragePath); } catch (e) {}
       }
       window._avatarCache[id] = av;
       window._avatarCache[p.name] = av;
-    } else {
-      try { localStorage.removeItem('itc_avatar_' + id); } catch (e) {}
-      delete window._avatarCache[id];
-      if (p.name) delete window._avatarCache[p.name];
     }
   });
 

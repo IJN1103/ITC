@@ -13,29 +13,48 @@ function saIsLegacyBase64AvatarSrc(src) {
   return typeof src === 'string' && /^data:image\//i.test(src);
 }
 
+function saSanitizeAvatarSrc(src, storageKey = '') {
+  if (!src || typeof src !== 'string') return '';
+  if (saIsLegacyBase64AvatarSrc(src)) {
+    if (storageKey) {
+      try { localStorage.removeItem(storageKey); } catch (e) {}
+    }
+    return '';
+  }
+  return src;
+}
+
 function saSetAvatar(journalId, src) {
-  if (!journalId || !src || saIsLegacyBase64AvatarSrc(src)) return;
-  _JAV[journalId] = src;
+  if (!journalId || !src) return;
+  const storageKey = 'itc_av_' + journalId;
+  const safeSrc = saSanitizeAvatarSrc(src, storageKey);
+  if (!safeSrc) {
+    delete _JAV[journalId];
+    return;
+  }
+  _JAV[journalId] = safeSrc;
   try {
-    if (saIsEphemeralAvatarSrc(src)) localStorage.removeItem('itc_av_' + journalId);
-    else localStorage.setItem('itc_av_' + journalId, src);
+    if (saIsEphemeralAvatarSrc(safeSrc)) localStorage.removeItem(storageKey);
+    else localStorage.setItem(storageKey, safeSrc);
   } catch(e) {}
 }
 
 function saGetAvatar(journalId) {
   if (!journalId) return null;
-  if (_JAV[journalId] && !saIsLegacyBase64AvatarSrc(_JAV[journalId])) return _JAV[journalId];
-  if (_JAV[journalId] && saIsLegacyBase64AvatarSrc(_JAV[journalId])) delete _JAV[journalId];
+  const mem = saSanitizeAvatarSrc(_JAV[journalId] || '', '');
+  if (mem) return mem;
+  if (_JAV[journalId] && !mem) delete _JAV[journalId];
   try {
-    const ls = localStorage.getItem('itc_av_' + journalId);
-    if (ls && saIsLegacyBase64AvatarSrc(ls)) localStorage.removeItem('itc_av_' + journalId);
-    else if (ls && !saIsEphemeralAvatarSrc(ls)) { _JAV[journalId] = ls; return ls; }
-    else if (ls && saIsEphemeralAvatarSrc(ls)) localStorage.removeItem('itc_av_' + journalId);
+    const storageKey = 'itc_av_' + journalId;
+    const ls = localStorage.getItem(storageKey);
+    const safeLs = saSanitizeAvatarSrc(ls, storageKey);
+    if (safeLs && !saIsEphemeralAvatarSrc(safeLs)) { _JAV[journalId] = safeLs; return safeLs; }
+    if (ls && (!safeLs || saIsEphemeralAvatarSrc(ls))) localStorage.removeItem(storageKey);
   } catch(e) {}
   try {
     const j = _allJournals.find(x => x.id === journalId);
-    const av = j?.avatar || j?.sheet?.avatar || null;
-    if (av && !saIsLegacyBase64AvatarSrc(av)) { _JAV[journalId] = av; return av; }
+    const av = saSanitizeAvatarSrc(j?.avatar || j?.sheet?.avatar || null, '');
+    if (av) { _JAV[journalId] = av; return av; }
   } catch(e) {}
   return null;
 }
@@ -207,8 +226,8 @@ function showDialogueBoxFromMsg(name, text, journalId, standingImg, tokenId, sta
     }
   }
 
-  // 3단계: 레거시 값은 URL만 허용
-  if (!finalStanding && standingImg && !saIsLegacyBase64AvatarSrc(standingImg)) finalStanding = standingImg;
+  // 3단계: 레거시 base64 fallback (이전 메시지 호환)
+  if (!finalStanding && standingImg) finalStanding = standingImg;
 
   if (finalStanding) {
     standingEl.innerHTML = `<img src="${finalStanding}" alt="">`;
