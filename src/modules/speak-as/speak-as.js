@@ -9,26 +9,54 @@ function saIsEphemeralAvatarSrc(src) {
   return typeof src === 'string' && /^blob:/i.test(src);
 }
 
+function saIsLegacyBase64ImageSrc(src) {
+  return typeof src === 'string' && /^data:image\//i.test(src.trim());
+}
+
+function saSanitizeAvatarSrc(src, storageKey = '') {
+  const normalized = String(src || '').trim();
+  if (!normalized) return '';
+  if (saIsEphemeralAvatarSrc(normalized)) {
+    if (storageKey) {
+      try { localStorage.removeItem(storageKey); } catch (e) {}
+    }
+    return normalized;
+  }
+  if (saIsLegacyBase64ImageSrc(normalized)) {
+    if (storageKey) {
+      try { localStorage.removeItem(storageKey); } catch (e) {}
+    }
+    return '';
+  }
+  return normalized;
+}
+
 function saSetAvatar(journalId, src) {
   if (!journalId || !src) return;
-  _JAV[journalId] = src;
+  const sanitized = saSanitizeAvatarSrc(src, 'itc_av_' + journalId);
+  if (!sanitized) {
+    delete _JAV[journalId];
+    return;
+  }
+  _JAV[journalId] = sanitized;
   try {
-    if (saIsEphemeralAvatarSrc(src)) localStorage.removeItem('itc_av_' + journalId);
-    else localStorage.setItem('itc_av_' + journalId, src);
+    if (saIsEphemeralAvatarSrc(sanitized)) localStorage.removeItem('itc_av_' + journalId);
+    else localStorage.setItem('itc_av_' + journalId, sanitized);
   } catch(e) {}
 }
 
 function saGetAvatar(journalId) {
   if (!journalId) return null;
-  if (_JAV[journalId]) return _JAV[journalId];
+  const runtimeAvatar = saSanitizeAvatarSrc(_JAV[journalId]);
+  if (runtimeAvatar) return runtimeAvatar;
+  if (_JAV[journalId] && !runtimeAvatar) delete _JAV[journalId];
   try {
-    const ls = localStorage.getItem('itc_av_' + journalId);
+    const ls = saSanitizeAvatarSrc(localStorage.getItem('itc_av_' + journalId), 'itc_av_' + journalId);
     if (ls && !saIsEphemeralAvatarSrc(ls)) { _JAV[journalId] = ls; return ls; }
-    if (ls && saIsEphemeralAvatarSrc(ls)) localStorage.removeItem('itc_av_' + journalId);
   } catch(e) {}
   try {
     const j = _allJournals.find(x => x.id === journalId);
-    const av = j?.avatar || j?.sheet?.avatar || null;
+    const av = saSanitizeAvatarSrc(j?.avatar || j?.sheet?.avatar || null);
     if (av) { _JAV[journalId] = av; return av; }
   } catch(e) {}
   return null;

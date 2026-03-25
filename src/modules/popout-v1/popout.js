@@ -269,10 +269,13 @@ function popoutChat() {
 }
 
 function getPopoutAvatarUrl(name, uid) {
-  const cached = sanitizePopoutAvatarSrc(window._avatarCache && window._avatarCache[name]);
-  if (cached) return cached;
-  const av = sanitizePopoutAvatarSrc(localStorage.getItem('itc_avatar_' + (uid || '')), 'itc_avatar_' + (uid || ''));
+  const localKey = uid ? ('itc_avatar_' + uid) : '';
+  const av = uid ? sanitizePopoutAvatarSrc(localStorage.getItem(localKey), localKey) : '';
   if (av) return av;
+  const cachedByUid = sanitizePopoutAvatarSrc(window._avatarCache && uid && window._avatarCache[uid]);
+  if (cachedByUid) return cachedByUid;
+  const cachedByName = sanitizePopoutAvatarSrc(window._avatarCache && window._avatarCache[name]);
+  if (cachedByName) return cachedByName;
   return '';
 }
 

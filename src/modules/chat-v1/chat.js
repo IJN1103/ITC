@@ -3,6 +3,36 @@
  * 채팅, 잡담, 귓말, 타이핑, 이미지 업로드
  */
 
+function isLegacyBase64ImageSrc(src) {
+  return typeof src === 'string' && /^data:image\//i.test(src.trim());
+}
+
+function sanitizeChatAvatarSrc(src, storageKey = '') {
+  const normalized = String(src || '').trim();
+  if (!normalized) return '';
+  if (isLegacyBase64ImageSrc(normalized)) {
+    if (storageKey) {
+      try { localStorage.removeItem(storageKey); } catch (e) {}
+    }
+    return '';
+  }
+  return normalized;
+}
+
+function getCachedAvatarSrc(uid, name) {
+  const localKey = uid ? ('itc_avatar_' + uid) : '';
+  const fromLocal = uid ? sanitizeChatAvatarSrc(localStorage.getItem(localKey), localKey) : '';
+  if (fromLocal) return fromLocal;
+
+  const fromUidCache = sanitizeChatAvatarSrc(uid ? window._avatarCache?.[uid] : '');
+  if (fromUidCache) return fromUidCache;
+
+  const fromNameCache = sanitizeChatAvatarSrc(name ? window._avatarCache?.[name] : '');
+  if (fromNameCache) return fromNameCache;
+
+  return '';
+}
+
 function chatKeydown(e) {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); }
 }
@@ -1372,7 +1402,7 @@ function refreshCasualNickDisplay() {
   if (el) el.textContent = _casualNickname || St.myName;
   const avEl = document.getElementById('casual-nick-avatar');
   if (avEl) {
-    const avSrc = localStorage.getItem('itc_avatar_' + St.myId) || '';
+    const avSrc = getCachedAvatarSrc(St.myId, _casualNickname || St.myName);
     if (avSrc) {
       avEl.innerHTML = `<img src="${avSrc}" alt="">`;
     } else {
@@ -1557,14 +1587,7 @@ function openLightbox(src) {
 function addLocalMessage(type, name, text) { appendChatMsg(name, text, type); }
 
 function getAvatarHtml(name, uid) {
-  let imgSrc = null;
-
-  if (uid) {
-    imgSrc = localStorage.getItem('itc_avatar_' + uid);
-  }
-  if (!imgSrc && name) {
-    imgSrc = window._avatarCache?.[uid] || window._avatarCache?.[name];
-  }
+  const imgSrc = getCachedAvatarSrc(uid, name);
 
   const initial = (name || '?')[0].toUpperCase();
   const shape_class = St.avatarShape === 'circle' ? 'shape-circle' : 'shape-rounded';
