@@ -44,10 +44,7 @@ function refreshProfileAvatar() {
   const saved = (() => {
     try {
       const localValue = sanitizePersistentAvatarSrc(localStorage.getItem('itc_avatar_' + user.uid));
-      if (!localValue) {
-        localStorage.removeItem('itc_avatar_' + user.uid);
-        localStorage.removeItem('itc_avatar_path_' + user.uid);
-      }
+      if (!localValue) localStorage.removeItem('itc_avatar_' + user.uid);
       return localValue
         || sanitizePersistentAvatarSrc(window._avatarCache && (window._avatarCache[user.uid] || window._avatarCache[St.myName]))
         || sanitizePersistentAvatarSrc(user.photoURL)
@@ -151,12 +148,6 @@ async function uploadAvatarBlobToCloudinary(blob, fileName = 'avatar.jpg') {
   }
 }
 
-async function uploadAvatarDataUrlToStorage(dataUrl, userId) {
-  const avatarBlob = blobFromDataUrl(dataUrl);
-  const uploadedCloudinary = await uploadAvatarBlobToCloudinary(avatarBlob, `avatar_${userId || 'user'}_${Date.now()}.jpg`);
-  if (!uploadedCloudinary?.url) return null;
-  return uploadedCloudinary;
-}
 
 function handleAvatarUpload(input) {
   const file = input.files[0];

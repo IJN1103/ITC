@@ -927,7 +927,6 @@ function makePreparedChatImageBase(meta = {}) {
     id: makePendingChatImageId(),
     previewUrl: meta.previewUrl || '',
     previewKind: meta.previewKind || 'object-url',
-    dataUrl: '',
     uploadBlob: meta.uploadBlob || null,
     uploadMime: meta.uploadMime || '',
     uploadFileName: meta.uploadFileName || '',

@@ -1,0 +1,1 @@
+No remaining matches for readAsDataURL / toDataURL / data:image/ / dataUrl
