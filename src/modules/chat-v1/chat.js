@@ -3,36 +3,6 @@
  * 채팅, 잡담, 귓말, 타이핑, 이미지 업로드
  */
 
-function isLegacyBase64ImageSrc(src) {
-  return typeof src === 'string' && /^data:image\//i.test(src.trim());
-}
-
-function sanitizeChatAvatarSrc(src, storageKey = '') {
-  const normalized = String(src || '').trim();
-  if (!normalized) return '';
-  if (isLegacyBase64ImageSrc(normalized)) {
-    if (storageKey) {
-      try { localStorage.removeItem(storageKey); } catch (e) {}
-    }
-    return '';
-  }
-  return normalized;
-}
-
-function getCachedAvatarSrc(uid, name) {
-  const localKey = uid ? ('itc_avatar_' + uid) : '';
-  const fromLocal = uid ? sanitizeChatAvatarSrc(localStorage.getItem(localKey), localKey) : '';
-  if (fromLocal) return fromLocal;
-
-  const fromUidCache = sanitizeChatAvatarSrc(uid ? window._avatarCache?.[uid] : '');
-  if (fromUidCache) return fromUidCache;
-
-  const fromNameCache = sanitizeChatAvatarSrc(name ? window._avatarCache?.[name] : '');
-  if (fromNameCache) return fromNameCache;
-
-  return '';
-}
-
 function chatKeydown(e) {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); }
 }
@@ -920,11 +890,20 @@ function getCloudinaryRuntimeConfig() {
   return { cloudName, unsignedPreset };
 }
 
-async function loadImageFromObjectUrl(objectUrl) {
+async function loadChatImageFromFile(file) {
+  const objectUrl = URL.createObjectURL(file);
   return new Promise((resolve, reject) => {
     const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error('이미지 처리에 실패했어요.'));
+    img.onload = () => resolve({
+      img,
+      objectUrl,
+      width: img.width || 0,
+      height: img.height || 0,
+    });
+    img.onerror = () => {
+      try { URL.revokeObjectURL(objectUrl); } catch (e) {}
+      reject(new Error('이미지 처리에 실패했어요.'));
+    };
     img.src = objectUrl;
   });
 }
@@ -962,23 +941,12 @@ async function fileToPreparedChatImage(file) {
     throw new Error(isGif ? 'GIF는 5MB 이하만 가능해요.' : '이미지는 3MB 이하만 가능해요.');
   }
 
-  const objectUrl = URL.createObjectURL(file);
-  const rawMeta = await new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => {
-      resolve({ width: img.width || 0, height: img.height || 0 });
-      try { URL.revokeObjectURL(objectUrl); } catch (e) {}
-    };
-    img.onerror = () => {
-      try { URL.revokeObjectURL(objectUrl); } catch (e) {}
-      reject(new Error('이미지 처리에 실패했어요.'));
-    };
-    img.src = objectUrl;
-  });
+  const loaded = await loadChatImageFromFile(file);
+  const rawMeta = { width: loaded.width, height: loaded.height };
 
   if (isGif) {
     return makePreparedChatImageBase({
-      previewUrl: URL.createObjectURL(file),
+      previewUrl: loaded.objectUrl,
       previewKind: 'object-url',
       uploadBlob: file,
       uploadMime: file.type || 'image/gif',
@@ -995,7 +963,7 @@ async function fileToPreparedChatImage(file) {
 
   if (!needsCompress) {
     return makePreparedChatImageBase({
-      previewUrl: URL.createObjectURL(file),
+      previewUrl: loaded.objectUrl,
       previewKind: 'object-url',
       uploadBlob: file,
       uploadMime: file.type || 'image/jpeg',
@@ -1006,25 +974,21 @@ async function fileToPreparedChatImage(file) {
     });
   }
 
-  const sourceUrl = URL.createObjectURL(file);
   try {
-    const img = await loadImageFromObjectUrl(sourceUrl);
-    let w = img.width;
-    let h = img.height;
+    let w = loaded.img.width;
+    let h = loaded.img.height;
     if (w > maxEdge || h > maxEdge) {
       const ratio = Math.min(maxEdge / w, maxEdge / h);
       w = Math.max(1, Math.round(w * ratio));
       h = Math.max(1, Math.round(h * ratio));
     }
-
     const canvas = document.createElement('canvas');
     canvas.width = w;
     canvas.height = h;
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error('이미지 처리에 실패했어요.');
-    ctx.drawImage(img, 0, 0, w, h);
+    ctx.drawImage(loaded.img, 0, 0, w, h);
     const blob = await canvasToJpegBlob(canvas, 0.84);
-
     return makePreparedChatImageBase({
       previewUrl: URL.createObjectURL(blob),
       previewKind: 'object-url',
@@ -1036,7 +1000,7 @@ async function fileToPreparedChatImage(file) {
       height: h || rawMeta.height || 0,
     });
   } finally {
-    try { URL.revokeObjectURL(sourceUrl); } catch (e) {}
+    try { URL.revokeObjectURL(loaded.objectUrl); } catch (e) {}
   }
 }
 
@@ -1127,14 +1091,12 @@ async function uploadChatImageBlobToCloudinary(blob, fileName = 'chat.jpg') {
   }
 }
 
-async function uploadPreparedChatImage(preparedItem = null) {
+async function uploadPreparedChatImage(preparedItem) {
   const uploadBlob = preparedItem?.uploadBlob || null;
-  const uploadFileName = preparedItem?.uploadFileName || '';
   if (!uploadBlob) throw new Error('이미지 업로드 데이터가 없어요.');
-
-  const uploadedCloudinary = await uploadChatImageBlobToCloudinary(uploadBlob, uploadFileName || `chat_${Date.now()}.jpg`);
+  const uploadFileName = preparedItem?.uploadFileName || `chat_${Date.now()}.jpg`;
+  const uploadedCloudinary = await uploadChatImageBlobToCloudinary(uploadBlob, uploadFileName);
   if (!uploadedCloudinary?.url) return null;
-
   return {
     url: uploadedCloudinary.url,
     path: uploadedCloudinary.path || '',
@@ -1142,17 +1104,28 @@ async function uploadPreparedChatImage(preparedItem = null) {
   };
 }
 
-async function sendPreparedChatImage(preparedItem, imageWide = false, imageMeta = null) {
+function sanitizeAvatarSrc(src, storageKey = '') {
+  const safe = typeof src === 'string' ? src.trim() : '';
+  if (!safe) return '';
+  if (/^data:image\//i.test(safe)) {
+    if (storageKey) {
+      try { localStorage.removeItem(storageKey); } catch (e) {}
+    }
+    return '';
+  }
+  return safe;
+}
+
+async function sendPreparedChatImage(preparedOrDataUrl, imageWide = false, imageMeta = null) {
   const saJId = St.speakAsJournalId;
   const saJournal = saJId ? loadJournals().find(x => x.id === saJId) : null;
   const saName = saJournal ? (saJournal.title || '무제') : null;
   const saAvatar = saJId ? saGetAvatar(saJId) : null;
   const normalizedMeta = normalizeChatImageMeta(imageMeta);
 
-  if (!preparedItem || typeof preparedItem !== 'object' || !preparedItem.uploadBlob) {
-    throw new Error('이미지 업로드 데이터가 없어요.');
-  }
-
+  const prepared = (preparedOrDataUrl && typeof preparedOrDataUrl === 'object' && 'uploadBlob' in preparedOrDataUrl)
+    ? preparedOrDataUrl
+    : null;
   let finalSrc = '';
   let storageMeta = null;
 
@@ -1160,7 +1133,11 @@ async function sendPreparedChatImage(preparedItem, imageWide = false, imageMeta 
     throw new Error('이미지 업로드를 위한 방 정보가 없어요.');
   }
 
-  const uploaded = await uploadPreparedChatImage(preparedItem);
+  if (!prepared?.uploadBlob) {
+    throw new Error('이미지 업로드 데이터가 없어요.');
+  }
+
+  const uploaded = await uploadPreparedChatImage(prepared);
   if (!uploaded?.url) {
     throw new Error('이미지 업로드에 실패했어요. 다시 시도해 주세요.');
   }
@@ -1179,7 +1156,7 @@ async function sendPreparedChatImage(preparedItem, imageWide = false, imageMeta 
       imageWide: !!imageWide,
       imageMeta: normalizedMeta,
       imageStoragePath: storageMeta?.path || '',
-      imageContentType: storageMeta?.contentType || preparedItem.uploadMime || preparedItem.uploadBlob.type || 'image/jpeg',
+      imageContentType: storageMeta?.contentType || prepared?.uploadMime || prepared?.uploadBlob?.type || 'image/jpeg',
     };
     if (window._FB?.CONFIGURED) {
       const { db, ref, push } = window._FB;
@@ -1194,7 +1171,7 @@ async function sendPreparedChatImage(preparedItem, imageWide = false, imageMeta 
     imageWide: !!imageWide,
     imageMeta: normalizedMeta,
     imageStoragePath: storageMeta?.path || '',
-    imageContentType: storageMeta?.contentType || preparedItem.uploadMime || preparedItem.uploadBlob.type || 'image/jpeg',
+    imageContentType: storageMeta?.contentType || prepared?.uploadMime || prepared?.uploadBlob?.type || 'image/jpeg',
   });
 }
 
@@ -1402,7 +1379,7 @@ function refreshCasualNickDisplay() {
   if (el) el.textContent = _casualNickname || St.myName;
   const avEl = document.getElementById('casual-nick-avatar');
   if (avEl) {
-    const avSrc = getCachedAvatarSrc(St.myId, _casualNickname || St.myName);
+    const avSrc = sanitizeAvatarSrc(localStorage.getItem('itc_avatar_' + St.myId) || '', 'itc_avatar_' + St.myId);
     if (avSrc) {
       avEl.innerHTML = `<img src="${avSrc}" alt="">`;
     } else {
@@ -1587,7 +1564,14 @@ function openLightbox(src) {
 function addLocalMessage(type, name, text) { appendChatMsg(name, text, type); }
 
 function getAvatarHtml(name, uid) {
-  const imgSrc = getCachedAvatarSrc(uid, name);
+  let imgSrc = null;
+
+  if (uid) {
+    imgSrc = sanitizeAvatarSrc(localStorage.getItem('itc_avatar_' + uid), 'itc_avatar_' + uid);
+  }
+  if (!imgSrc && name) {
+    imgSrc = sanitizeAvatarSrc(window._avatarCache?.[uid] || window._avatarCache?.[name] || '');
+  }
 
   const initial = (name || '?')[0].toUpperCase();
   const shape_class = St.avatarShape === 'circle' ? 'shape-circle' : 'shape-rounded';

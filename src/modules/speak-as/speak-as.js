@@ -9,55 +9,33 @@ function saIsEphemeralAvatarSrc(src) {
   return typeof src === 'string' && /^blob:/i.test(src);
 }
 
-function saIsLegacyBase64ImageSrc(src) {
-  return typeof src === 'string' && /^data:image\//i.test(src.trim());
-}
-
-function saSanitizeAvatarSrc(src, storageKey = '') {
-  const normalized = String(src || '').trim();
-  if (!normalized) return '';
-  if (saIsEphemeralAvatarSrc(normalized)) {
-    if (storageKey) {
-      try { localStorage.removeItem(storageKey); } catch (e) {}
-    }
-    return normalized;
-  }
-  if (saIsLegacyBase64ImageSrc(normalized)) {
-    if (storageKey) {
-      try { localStorage.removeItem(storageKey); } catch (e) {}
-    }
-    return '';
-  }
-  return normalized;
+function saIsLegacyBase64AvatarSrc(src) {
+  return typeof src === 'string' && /^data:image\//i.test(src);
 }
 
 function saSetAvatar(journalId, src) {
-  if (!journalId || !src) return;
-  const sanitized = saSanitizeAvatarSrc(src, 'itc_av_' + journalId);
-  if (!sanitized) {
-    delete _JAV[journalId];
-    return;
-  }
-  _JAV[journalId] = sanitized;
+  if (!journalId || !src || saIsLegacyBase64AvatarSrc(src)) return;
+  _JAV[journalId] = src;
   try {
-    if (saIsEphemeralAvatarSrc(sanitized)) localStorage.removeItem('itc_av_' + journalId);
-    else localStorage.setItem('itc_av_' + journalId, sanitized);
+    if (saIsEphemeralAvatarSrc(src)) localStorage.removeItem('itc_av_' + journalId);
+    else localStorage.setItem('itc_av_' + journalId, src);
   } catch(e) {}
 }
 
 function saGetAvatar(journalId) {
   if (!journalId) return null;
-  const runtimeAvatar = saSanitizeAvatarSrc(_JAV[journalId]);
-  if (runtimeAvatar) return runtimeAvatar;
-  if (_JAV[journalId] && !runtimeAvatar) delete _JAV[journalId];
+  if (_JAV[journalId] && !saIsLegacyBase64AvatarSrc(_JAV[journalId])) return _JAV[journalId];
+  if (_JAV[journalId] && saIsLegacyBase64AvatarSrc(_JAV[journalId])) delete _JAV[journalId];
   try {
-    const ls = saSanitizeAvatarSrc(localStorage.getItem('itc_av_' + journalId), 'itc_av_' + journalId);
-    if (ls && !saIsEphemeralAvatarSrc(ls)) { _JAV[journalId] = ls; return ls; }
+    const ls = localStorage.getItem('itc_av_' + journalId);
+    if (ls && saIsLegacyBase64AvatarSrc(ls)) localStorage.removeItem('itc_av_' + journalId);
+    else if (ls && !saIsEphemeralAvatarSrc(ls)) { _JAV[journalId] = ls; return ls; }
+    else if (ls && saIsEphemeralAvatarSrc(ls)) localStorage.removeItem('itc_av_' + journalId);
   } catch(e) {}
   try {
     const j = _allJournals.find(x => x.id === journalId);
-    const av = saSanitizeAvatarSrc(j?.avatar || j?.sheet?.avatar || null);
-    if (av) { _JAV[journalId] = av; return av; }
+    const av = j?.avatar || j?.sheet?.avatar || null;
+    if (av && !saIsLegacyBase64AvatarSrc(av)) { _JAV[journalId] = av; return av; }
   } catch(e) {}
   return null;
 }
@@ -90,18 +68,6 @@ function saSendMessage(journal, text) {
 
 let _vnCurrentStanding = {};  // journalId → 현재 스탠딩 라벨
 let _vnTimer = null;
-
-
-function isLegacyBase64ImageSrc(src) {
-  return typeof src === 'string' && /^data:image\//i.test(src.trim());
-}
-
-function sanitizeStandingImageSrc(src) {
-  const normalized = String(src || '').trim();
-  if (!normalized) return '';
-  if (isLegacyBase64ImageSrc(normalized)) return '';
-  return normalized;
-}
 
 function getJournalToken(journal) {
   const j = typeof journal === 'string' ? _allJournals.find(x => x.id === journal) : journal;
@@ -241,8 +207,8 @@ function showDialogueBoxFromMsg(name, text, journalId, standingImg, tokenId, sta
     }
   }
 
-  // 3단계: 레거시 base64 fallback (이전 메시지 호환)
-  if (!finalStanding) finalStanding = sanitizeStandingImageSrc(standingImg);
+  // 3단계: 레거시 값은 URL만 허용
+  if (!finalStanding && standingImg && !saIsLegacyBase64AvatarSrc(standingImg)) finalStanding = standingImg;
 
   if (finalStanding) {
     standingEl.innerHTML = `<img src="${finalStanding}" alt="">`;
