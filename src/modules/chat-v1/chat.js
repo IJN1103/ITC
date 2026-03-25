@@ -889,6 +889,8 @@ function getCloudinaryRuntimeConfig() {
   if (!cloudName || !unsignedPreset) return null;
   return { cloudName, unsignedPreset };
 }
+
+
 async function canvasToJpegBlob(canvas, quality = 0.84) {
   return new Promise((resolve, reject) => {
     canvas.toBlob((blob) => {
@@ -922,96 +924,101 @@ async function fileToPreparedChatImage(file) {
     throw new Error(isGif ? 'GIF는 5MB 이하만 가능해요.' : '이미지는 3MB 이하만 가능해요.');
   }
 
-  const sourceUrl = URL.createObjectURL(file);
-  let rawMeta;
-  try {
-    rawMeta = await new Promise((resolve, reject) => {
-      const img = new Image();
-      img.onload = () => {
-        resolve({ width: img.width || 0, height: img.height || 0 });
-      };
-      img.onerror = () => reject(new Error('이미지 처리에 실패했어요.'));
-      img.src = sourceUrl;
-    });
+  const objectUrl = URL.createObjectURL(file);
+  const rawMeta = await new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      resolve({ width: img.width || 0, height: img.height || 0 });
+      try { URL.revokeObjectURL(objectUrl); } catch (e) {}
+    };
+    img.onerror = () => {
+      try { URL.revokeObjectURL(objectUrl); } catch (e) {}
+      reject(new Error('이미지 처리에 실패했어요.'));
+    };
+    img.src = objectUrl;
+  });
 
-    if (isGif) {
-      return makePreparedChatImageBase({
-        previewUrl: URL.createObjectURL(file),
-        previewKind: 'object-url',
-        uploadBlob: file,
-        uploadMime: file.type || 'image/gif',
-        uploadFileName: file.name || `chat_${Date.now()}.gif`,
-        isGif: true,
-        width: rawMeta.width,
-        height: rawMeta.height,
-      });
-    }
-
-    const maxEdge = 1280;
-    const needsResize = rawMeta.width > maxEdge || rawMeta.height > maxEdge;
-    const needsCompress = file.type !== 'image/jpeg' || file.size > 900 * 1024 || needsResize;
-
-    if (!needsCompress) {
-      return makePreparedChatImageBase({
-        previewUrl: URL.createObjectURL(file),
-        previewKind: 'object-url',
-        uploadBlob: file,
-        uploadMime: file.type || 'image/jpeg',
-        uploadFileName: file.name || `chat_${Date.now()}.jpg`,
-        isGif: false,
-        width: rawMeta.width,
-        height: rawMeta.height,
-      });
-    }
-
-    const compressed = await new Promise((resolve, reject) => {
-      const img = new Image();
-      img.onload = async () => {
-        try {
-          let w = img.width;
-          let h = img.height;
-          if (w > maxEdge || h > maxEdge) {
-            const ratio = Math.min(maxEdge / w, maxEdge / h);
-            w = Math.max(1, Math.round(w * ratio));
-            h = Math.max(1, Math.round(h * ratio));
-          }
-          const canvas = document.createElement('canvas');
-          canvas.width = w;
-          canvas.height = h;
-          const ctx = canvas.getContext('2d');
-          if (!ctx) {
-            reject(new Error('이미지 처리에 실패했어요.'));
-            return;
-          }
-          ctx.drawImage(img, 0, 0, w, h);
-          const blob = await canvasToJpegBlob(canvas, 0.84);
-          resolve({
-            blob,
-            width: w,
-            height: h,
-            previewUrl: URL.createObjectURL(blob),
-          });
-        } catch (err) {
-          reject(err);
-        }
-      };
-      img.onerror = () => reject(new Error('이미지 처리에 실패했어요.'));
-      img.src = sourceUrl;
-    });
-
+  if (isGif) {
     return makePreparedChatImageBase({
-      previewUrl: compressed.previewUrl,
+      previewUrl: URL.createObjectURL(file),
       previewKind: 'object-url',
-      uploadBlob: compressed.blob,
-      uploadMime: 'image/jpeg',
-      uploadFileName: `chat_${Date.now()}.jpg`,
-      isGif: false,
-      width: compressed.width || rawMeta.width || 0,
-      height: compressed.height || rawMeta.height || 0,
+      uploadBlob: file,
+      uploadMime: file.type || 'image/gif',
+      uploadFileName: file.name || `chat_${Date.now()}.gif`,
+      isGif: true,
+      width: rawMeta.width,
+      height: rawMeta.height,
     });
-  } finally {
-    try { URL.revokeObjectURL(sourceUrl); } catch (e) {}
   }
+
+  const maxEdge = 1280;
+  const needsResize = rawMeta.width > maxEdge || rawMeta.height > maxEdge;
+  const needsCompress = file.type !== 'image/jpeg' || file.size > 900 * 1024 || needsResize;
+
+  if (!needsCompress) {
+    return makePreparedChatImageBase({
+      previewUrl: URL.createObjectURL(file),
+      previewKind: 'object-url',
+      uploadBlob: file,
+      uploadMime: file.type || 'image/jpeg',
+      uploadFileName: file.name || `chat_${Date.now()}.jpg`,
+      isGif: false,
+      width: rawMeta.width,
+      height: rawMeta.height,
+    });
+  }
+
+  const loadUrl = URL.createObjectURL(file);
+  const compressed = await new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = async () => {
+      try {
+        let w = img.width;
+        let h = img.height;
+        if (w > maxEdge || h > maxEdge) {
+          const ratio = Math.min(maxEdge / w, maxEdge / h);
+          w = Math.max(1, Math.round(w * ratio));
+          h = Math.max(1, Math.round(h * ratio));
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          reject(new Error('이미지 처리에 실패했어요.'));
+          return;
+        }
+        ctx.drawImage(img, 0, 0, w, h);
+        const blob = await canvasToJpegBlob(canvas, 0.84);
+        resolve({
+          blob,
+          width: w,
+          height: h,
+          previewUrl: URL.createObjectURL(blob),
+        });
+      } catch (err) {
+        reject(err);
+      } finally {
+        try { URL.revokeObjectURL(loadUrl); } catch (e) {}
+      }
+    };
+    img.onerror = () => {
+      try { URL.revokeObjectURL(loadUrl); } catch (e) {}
+      reject(new Error('이미지 처리에 실패했어요.'));
+    };
+    img.src = loadUrl;
+  });
+
+  return makePreparedChatImageBase({
+    previewUrl: compressed.previewUrl,
+    previewKind: 'object-url',
+    uploadBlob: compressed.blob,
+    uploadMime: 'image/jpeg',
+    uploadFileName: `chat_${Date.now()}.jpg`,
+    isGif: false,
+    width: compressed.width || rawMeta.width || 0,
+    height: compressed.height || rawMeta.height || 0,
+  });
 }
 
 async function queuePendingChatImages(files) {
@@ -1072,6 +1079,8 @@ async function getStorageApiQuick() {
     return null;
   }
 }
+
+
 async function uploadChatImageBlobToCloudinary(blob, fileName = 'chat.jpg') {
   const cfg = getCloudinaryRuntimeConfig();
   if (!cfg || !blob) return null;
@@ -1100,12 +1109,10 @@ async function uploadChatImageBlobToCloudinary(blob, fileName = 'chat.jpg') {
   }
 }
 
-async function uploadPreparedChatImage(preparedItem = null) {
+async function uploadPreparedChatImage(preparedItem) {
   const uploadBlob = preparedItem?.uploadBlob || null;
   const uploadFileName = preparedItem?.uploadFileName || '';
-  if (!uploadBlob) {
-    throw new Error('업로드할 이미지 데이터가 없어요.');
-  }
+  if (!uploadBlob) throw new Error('이미지 업로드 데이터가 없어요.');
 
   const uploadedCloudinary = await uploadChatImageBlobToCloudinary(uploadBlob, uploadFileName || `chat_${Date.now()}.jpg`);
   if (!uploadedCloudinary?.url) return null;
@@ -1124,9 +1131,9 @@ async function sendPreparedChatImage(preparedOrDataUrl, imageWide = false, image
   const saAvatar = saJId ? saGetAvatar(saJId) : null;
   const normalizedMeta = normalizeChatImageMeta(imageMeta);
 
-  const prepared = (preparedOrDataUrl && typeof preparedOrDataUrl === 'object' && 'uploadBlob' in preparedOrDataUrl)
+  const prepared = (preparedOrDataUrl && typeof preparedOrDataUrl === 'object' && ('uploadBlob' in preparedOrDataUrl))
     ? preparedOrDataUrl
-    : null;
+    : { uploadBlob: null, uploadMime: '', uploadFileName: '' };
   let finalSrc = '';
   let storageMeta = null;
 
@@ -1153,7 +1160,7 @@ async function sendPreparedChatImage(preparedOrDataUrl, imageWide = false, image
       imageWide: !!imageWide,
       imageMeta: normalizedMeta,
       imageStoragePath: storageMeta?.path || '',
-      imageContentType: storageMeta?.contentType || prepared?.uploadMime || 'image/jpeg',
+      imageContentType: storageMeta?.contentType || prepared?.uploadMime || prepared?.uploadBlob?.type || 'image/jpeg',
     };
     if (window._FB?.CONFIGURED) {
       const { db, ref, push } = window._FB;
@@ -1168,7 +1175,7 @@ async function sendPreparedChatImage(preparedOrDataUrl, imageWide = false, image
     imageWide: !!imageWide,
     imageMeta: normalizedMeta,
     imageStoragePath: storageMeta?.path || '',
-    imageContentType: storageMeta?.contentType || prepared?.uploadMime || 'image/jpeg',
+    imageContentType: storageMeta?.contentType || prepared?.uploadMime || prepared?.uploadBlob?.type || 'image/jpeg',
   });
 }
 

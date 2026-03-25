@@ -100,6 +100,23 @@ async function getStorageApiQuick() {
     return null;
   }
 }
+
+function inferStorageContentTypeFromDataUrl(dataUrl) {
+  const m = String(dataUrl || '').match(/^data:([^;,]+)[;,]/i);
+  return m ? m[1].toLowerCase() : 'image/jpeg';
+}
+
+function blobFromDataUrl(dataUrl) {
+  const parts = String(dataUrl || '').split(',');
+  if (parts.length < 2) throw new Error('이미지 데이터 형식이 올바르지 않아요.');
+  const contentType = inferStorageContentTypeFromDataUrl(dataUrl);
+  const binary = atob(parts[1]);
+  const len = binary.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i += 1) bytes[i] = binary.charCodeAt(i);
+  return new Blob([bytes], { type: contentType });
+}
+
 async function uploadAvatarBlobToCloudinary(blob, fileName = 'avatar.jpg') {
   const cfg = getCloudinaryRuntimeConfig();
   if (!cfg || !blob) return null;
@@ -127,6 +144,14 @@ async function uploadAvatarBlobToCloudinary(blob, fileName = 'avatar.jpg') {
     if (timer) clearTimeout(timer);
   }
 }
+
+async function uploadAvatarDataUrlToStorage(dataUrl, userId) {
+  const avatarBlob = blobFromDataUrl(dataUrl);
+  const uploadedCloudinary = await uploadAvatarBlobToCloudinary(avatarBlob, `avatar_${userId || 'user'}_${Date.now()}.jpg`);
+  if (!uploadedCloudinary?.url) return null;
+  return uploadedCloudinary;
+}
+
 function handleAvatarUpload(input) {
   const file = input.files[0];
   if (!file) return;
@@ -134,12 +159,10 @@ function handleAvatarUpload(input) {
     showProfileMsg('이미지는 5MB 이하여야 해요.', 'err');
     return;
   }
-
   const objectUrl = URL.createObjectURL(file);
   const img = new Image();
   img.onload = () => {
-    try { URL.revokeObjectURL(objectUrl); } catch (e) {}
-    window._crop = { img, scale: 1, ox: 0, oy: 0, drag: false, lx: 0, ly: 0 };
+    window._crop = { img, scale: 1, ox: 0, oy: 0, drag: false, lx: 0, ly: 0, objectUrl };
     document.getElementById('crop-scale').value = 100;
     document.getElementById('crop-scale-val').textContent = '100%';
     document.getElementById('crop-zone').style.display = 'block';
@@ -147,7 +170,7 @@ function handleAvatarUpload(input) {
   };
   img.onerror = () => {
     try { URL.revokeObjectURL(objectUrl); } catch (e) {}
-    showProfileMsg('이미지를 읽지 못했어요. 다른 파일로 다시 시도해 주세요.', 'err');
+    showProfileMsg('이미지를 불러오지 못했어요. 다시 시도해 주세요.', 'err');
   };
   img.src = objectUrl;
   input.value = '';
@@ -270,18 +293,6 @@ async function syncAvatarToFirebase(avatarSrc, meta = null) {
   }));
 }
 
-async function canvasToAvatarBlob(canvas, quality = 0.8) {
-  return new Promise((resolve, reject) => {
-    canvas.toBlob((blob) => {
-      if (!blob) {
-        reject(new Error('아바타 이미지 생성에 실패했어요.'));
-        return;
-      }
-      resolve(blob);
-    }, 'image/jpeg', quality);
-  });
-}
-
 async function applyCrop() {
   const s = window._crop;
   if (!s) return;
@@ -300,11 +311,16 @@ async function applyCrop() {
   let uploadMeta = null;
 
   try {
-    const avatarBlob = await canvasToAvatarBlob(out, 0.8);
-    const uploaded = await uploadAvatarBlobToCloudinary(
-      avatarBlob,
-      `avatar_${window._currentUser?.uid || 'user'}_${Date.now()}.jpg`
-    );
+    const avatarBlob = await new Promise((resolve, reject) => {
+      out.toBlob((blob) => {
+        if (!blob) {
+          reject(new Error('avatar blob failed'));
+          return;
+        }
+        resolve(blob);
+      }, 'image/jpeg', 0.8);
+    });
+    const uploaded = await uploadAvatarBlobToCloudinary(avatarBlob, `avatar_${window._currentUser.uid || 'user'}_${Date.now()}.jpg`);
     if (uploaded?.url) {
       finalAvatarSrc = uploaded.url;
       uploadMeta = uploaded;
@@ -326,6 +342,9 @@ async function applyCrop() {
   await syncAvatarToFirebase(finalAvatarSrc, uploadMeta);
   refreshProfileAvatar();
   document.getElementById('crop-zone').style.display = 'none';
+  if (s.objectUrl) {
+    try { URL.revokeObjectURL(s.objectUrl); } catch (e) {}
+  }
   window._crop = null;
   showProfileMsg('프로필 사진이 업데이트됐어요!', 'ok');
 }
