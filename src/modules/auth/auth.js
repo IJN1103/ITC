@@ -3,6 +3,23 @@
  * 로그인, 회원가입, Google 로그인, 로그아웃
  */
 
+
+function isLegacyBase64ImageSrc(src) {
+  return typeof src === 'string' && /^data:image\//i.test(src.trim());
+}
+
+function sanitizeStoredAvatarSrc(src, storageKey = '') {
+  const normalized = String(src || '').trim();
+  if (!normalized) return '';
+  if (isLegacyBase64ImageSrc(normalized)) {
+    if (storageKey) {
+      try { localStorage.removeItem(storageKey); } catch (e) {}
+    }
+    return '';
+  }
+  return normalized;
+}
+
 function initAuthScreen() {
   const fb = window._FB;
 
@@ -76,7 +93,7 @@ async function loadUserProfile(user) {
   const profile = snap.val() || {};
   St.myName = profile.name || baseProfile.name;
 
-  const avatarSrc = profile.avatarUrl || profile.avatar || '';
+  const avatarSrc = sanitizeStoredAvatarSrc(profile.avatarUrl || profile.avatar || '', 'itc_avatar_' + user.uid);
   if (avatarSrc) {
     try { localStorage.setItem('itc_avatar_' + user.uid, avatarSrc); } catch (e) {}
     try {
@@ -86,6 +103,8 @@ async function loadUserProfile(user) {
     window._avatarCache = window._avatarCache || {};
     window._avatarCache[user.uid] = avatarSrc;
     window._avatarCache[St.myName] = avatarSrc;
+  } else {
+    try { localStorage.removeItem('itc_avatar_' + user.uid); } catch (e) {}
   }
 
   const patch = {};

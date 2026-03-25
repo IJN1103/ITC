@@ -5,6 +5,23 @@
 
 let _popoutWins = [];
 
+
+function isLegacyBase64ImageSrc(src) {
+  return typeof src === 'string' && /^data:image\//i.test(src.trim());
+}
+
+function sanitizePopoutAvatarSrc(src, storageKey = '') {
+  const normalized = String(src || '').trim();
+  if (!normalized) return '';
+  if (isLegacyBase64ImageSrc(normalized)) {
+    if (storageKey) {
+      try { localStorage.removeItem(storageKey); } catch (e) {}
+    }
+    return '';
+  }
+  return normalized;
+}
+
 function buildPopoutHtml() {
   const S = '<' + 'script>';
   const SE = '</' + 'script>';
@@ -252,8 +269,9 @@ function popoutChat() {
 }
 
 function getPopoutAvatarUrl(name, uid) {
-  if (window._avatarCache && window._avatarCache[name]) return window._avatarCache[name];
-  const av = localStorage.getItem('itc_avatar_' + (uid || ''));
+  const cached = sanitizePopoutAvatarSrc(window._avatarCache && window._avatarCache[name]);
+  if (cached) return cached;
+  const av = sanitizePopoutAvatarSrc(localStorage.getItem('itc_avatar_' + (uid || '')), 'itc_avatar_' + (uid || ''));
   if (av) return av;
   return '';
 }

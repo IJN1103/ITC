@@ -702,7 +702,7 @@ function getChatImageInlineStyle(imageWide = false) {
   return imageWide ? 'width:100%;max-width:none;height:auto;object-fit:contain;' : '';
 }
 
-const CHAT_IMAGE_PLACEHOLDER = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==';
+const CHAT_IMAGE_PLACEHOLDER = 'about:blank';
 let _deferredChatImageObserver = null;
 
 function normalizeChatImageMeta(imageMeta = null) {

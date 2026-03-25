@@ -28,12 +28,12 @@ function refreshProfileAvatar() {
 
   const saved = (() => {
     try {
-      return localStorage.getItem('itc_avatar_' + user.uid)
-        || (window._avatarCache && (window._avatarCache[user.uid] || window._avatarCache[St.myName]))
-        || user.photoURL
+      return sanitizeAvatarSrc(localStorage.getItem('itc_avatar_' + user.uid), 'itc_avatar_' + user.uid)
+        || sanitizeAvatarSrc(window._avatarCache && (window._avatarCache[user.uid] || window._avatarCache[St.myName]))
+        || sanitizeAvatarSrc(user.photoURL)
         || '';
     } catch (e) {
-      return (window._avatarCache && (window._avatarCache[user.uid] || window._avatarCache[St.myName])) || user.photoURL || '';
+      return sanitizeAvatarSrc(window._avatarCache && (window._avatarCache[user.uid] || window._avatarCache[St.myName])) || sanitizeAvatarSrc(user.photoURL) || '';
     }
   })();
   const initials = (user.displayName || St.myName || '?')[0].toUpperCase();
@@ -59,6 +59,21 @@ function refreshProfileAvatar() {
 
 
 
+function isLegacyBase64ImageSrc(src) {
+  return typeof src === 'string' && /^data:image\//i.test(src.trim());
+}
+
+function sanitizeAvatarSrc(src, storageKey = '') {
+  const normalized = String(src || '').trim();
+  if (!normalized) return '';
+  if (isLegacyBase64ImageSrc(normalized)) {
+    if (storageKey) {
+      try { localStorage.removeItem(storageKey); } catch (e) {}
+    }
+    return '';
+  }
+  return normalized;
+}
 
 function withTimeout(promise, ms = 3500) {
   return new Promise((resolve, reject) => {
@@ -227,7 +242,7 @@ async function syncAvatarToFirebase(avatarSrc, meta = null) {
 
   const { db, ref, update } = window._FB;
   const now = Date.now();
-  const avatarValue = avatarSrc || '';
+  const avatarValue = sanitizeAvatarSrc(avatarSrc) || '';
   const avatarStoragePath = meta?.path || '';
   try {
     await update(ref(db, `users/${user.uid}/profile`), {

@@ -6,6 +6,23 @@
 let selectedSystem = 'coc7';
 let _myCharsUnsub = null;
 
+
+function isLegacyBase64ImageSrc(src) {
+  return typeof src === 'string' && /^data:image\//i.test(src.trim());
+}
+
+function sanitizeLobbyAvatarSrc(src, storageKey = '') {
+  const normalized = String(src || '').trim();
+  if (!normalized) return '';
+  if (isLegacyBase64ImageSrc(normalized)) {
+    if (storageKey) {
+      try { localStorage.removeItem(storageKey); } catch (e) {}
+    }
+    return '';
+  }
+  return normalized;
+}
+
 function showLobby() {
   document.getElementById('screen-auth').style.display  = 'none';
   document.getElementById('screen-game').style.display  = 'none';
@@ -107,7 +124,7 @@ function genId() { return Math.random().toString(36).slice(2, 10); }
 
 function getPlayerPayload(role) {
   const avatar = (() => {
-    try { return localStorage.getItem('itc_avatar_' + St.myId) || ''; } catch (e) { return ''; }
+    try { return sanitizeLobbyAvatarSrc(localStorage.getItem('itc_avatar_' + St.myId), 'itc_avatar_' + St.myId) || ''; } catch (e) { return ''; }
   })();
   const casualNick = (() => {
     try { return localStorage.getItem('itc_casual_nick_' + St.myId) || ''; } catch (e) { return ''; }

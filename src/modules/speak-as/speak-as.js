@@ -63,6 +63,18 @@ function saSendMessage(journal, text) {
 let _vnCurrentStanding = {};  // journalId → 현재 스탠딩 라벨
 let _vnTimer = null;
 
+
+function isLegacyBase64ImageSrc(src) {
+  return typeof src === 'string' && /^data:image\//i.test(src.trim());
+}
+
+function sanitizeStandingImageSrc(src) {
+  const normalized = String(src || '').trim();
+  if (!normalized) return '';
+  if (isLegacyBase64ImageSrc(normalized)) return '';
+  return normalized;
+}
+
 function getJournalToken(journal) {
   const j = typeof journal === 'string' ? _allJournals.find(x => x.id === journal) : journal;
   if (!j?.assignedTokenId) return null;
@@ -202,7 +214,7 @@ function showDialogueBoxFromMsg(name, text, journalId, standingImg, tokenId, sta
   }
 
   // 3단계: 레거시 base64 fallback (이전 메시지 호환)
-  if (!finalStanding && standingImg) finalStanding = standingImg;
+  if (!finalStanding) finalStanding = sanitizeStandingImageSrc(standingImg);
 
   if (finalStanding) {
     standingEl.innerHTML = `<img src="${finalStanding}" alt="">`;
