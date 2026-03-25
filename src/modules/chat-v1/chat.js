@@ -890,14 +890,6 @@ function getCloudinaryRuntimeConfig() {
   return { cloudName, unsignedPreset };
 }
 
-async function fileToDataUrl(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = ev => resolve(ev.target.result);
-    reader.onerror = () => reject(new Error('이미지를 읽지 못했어요.'));
-    reader.readAsDataURL(file);
-  });
-}
 
 async function canvasToJpegBlob(canvas, quality = 0.84) {
   return new Promise((resolve, reject) => {
@@ -915,8 +907,7 @@ function makePreparedChatImageBase(meta = {}) {
   return {
     id: makePendingChatImageId(),
     previewUrl: meta.previewUrl || '',
-    previewKind: meta.previewKind || 'data-url',
-    dataUrl: meta.dataUrl || '',
+    previewKind: meta.previewKind || 'object-url',
     uploadBlob: meta.uploadBlob || null,
     uploadMime: meta.uploadMime || '',
     uploadFileName: meta.uploadFileName || '',
@@ -977,7 +968,6 @@ async function fileToPreparedChatImage(file) {
     });
   }
 
-  const dataUrl = await fileToDataUrl(file);
   const compressed = await new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = async () => {
@@ -1010,13 +1000,14 @@ async function fileToPreparedChatImage(file) {
       }
     };
     img.onerror = () => reject(new Error('이미지 처리에 실패했어요.'));
-    img.src = dataUrl;
+    img.src = objectUrl;
   });
+
+  try { URL.revokeObjectURL(objectUrl); } catch (e) {}
 
   return makePreparedChatImageBase({
     previewUrl: compressed.previewUrl,
     previewKind: 'object-url',
-    dataUrl,
     uploadBlob: compressed.blob,
     uploadMime: 'image/jpeg',
     uploadFileName: `chat_${Date.now()}.jpg`,
@@ -1085,19 +1076,8 @@ async function getStorageApiQuick() {
   }
 }
 
-function inferStorageContentTypeFromDataUrl(dataUrl) {
-  const m = String(dataUrl || '').match(/^data:([^;,]+)[;,]/i);
-  return m ? m[1].toLowerCase() : 'image/jpeg';
-}
-
-function blobFromDataUrl(dataUrl) {
-  const parts = String(dataUrl || '').split(',');
-  if (parts.length < 2) throw new Error('이미지 데이터 형식이 올바르지 않아요.');
-  const contentType = inferStorageContentTypeFromDataUrl(dataUrl);
-  const binary = atob(parts[1]);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
-  return { blob: new Blob([bytes], { type: contentType }), contentType };
+function inferContentTypeFromPreparedChatImage(preparedItem = null) {
+  return preparedItem?.uploadMime || preparedItem?.uploadBlob?.type || 'image/jpeg';
 }
 
 async function uploadChatImageBlobToCloudinary(blob, fileName = 'chat.jpg') {
@@ -1128,20 +1108,18 @@ async function uploadChatImageBlobToCloudinary(blob, fileName = 'chat.jpg') {
   }
 }
 
-async function uploadChatImageDataUrl(dataUrl, roomCode, preparedItem = null) {
+async function uploadPreparedChatImage(preparedItem = null) {
   const uploadBlob = preparedItem?.uploadBlob || null;
   const uploadFileName = preparedItem?.uploadFileName || '';
-  const blobInfo = uploadBlob
-    ? { blob: uploadBlob, contentType: preparedItem?.uploadMime || uploadBlob.type || 'image/jpeg' }
-    : blobFromDataUrl(dataUrl);
+  if (!uploadBlob) throw new Error('업로드할 이미지 데이터가 없어요.');
 
-  const uploadedCloudinary = await uploadChatImageBlobToCloudinary(blobInfo.blob, uploadFileName || `chat_${Date.now()}.jpg`);
+  const uploadedCloudinary = await uploadChatImageBlobToCloudinary(uploadBlob, uploadFileName || `chat_${Date.now()}.jpg`);
   if (!uploadedCloudinary?.url) return null;
 
   return {
     url: uploadedCloudinary.url,
     path: uploadedCloudinary.path || '',
-    contentType: uploadedCloudinary.contentType || blobInfo.contentType || 'image/jpeg',
+    contentType: uploadedCloudinary.contentType || inferContentTypeFromPreparedChatImage(preparedItem),
   };
 }
 
@@ -1152,18 +1130,20 @@ async function sendPreparedChatImage(preparedOrDataUrl, imageWide = false, image
   const saAvatar = saJId ? saGetAvatar(saJId) : null;
   const normalizedMeta = normalizeChatImageMeta(imageMeta);
 
-  const prepared = (preparedOrDataUrl && typeof preparedOrDataUrl === 'object' && ('dataUrl' in preparedOrDataUrl || 'uploadBlob' in preparedOrDataUrl))
+  const prepared = (preparedOrDataUrl && typeof preparedOrDataUrl === 'object' && 'uploadBlob' in preparedOrDataUrl)
     ? preparedOrDataUrl
-    : { dataUrl: String(preparedOrDataUrl || '') };
-  const dataUrl = prepared.dataUrl || '';
+    : null;
   let finalSrc = '';
   let storageMeta = null;
 
   if (!St.roomCode) {
     throw new Error('이미지 업로드를 위한 방 정보가 없어요.');
   }
+  if (!prepared?.uploadBlob) {
+    throw new Error('업로드할 이미지 데이터가 없어요. 다시 첨부해 주세요.');
+  }
 
-  const uploaded = await uploadChatImageDataUrl(dataUrl, St.roomCode, prepared);
+  const uploaded = await uploadPreparedChatImage(prepared);
   if (!uploaded?.url) {
     throw new Error('이미지 업로드에 실패했어요. 다시 시도해 주세요.');
   }
@@ -1182,7 +1162,7 @@ async function sendPreparedChatImage(preparedOrDataUrl, imageWide = false, image
       imageWide: !!imageWide,
       imageMeta: normalizedMeta,
       imageStoragePath: storageMeta?.path || '',
-      imageContentType: storageMeta?.contentType || inferStorageContentTypeFromDataUrl(dataUrl),
+      imageContentType: storageMeta?.contentType || inferContentTypeFromPreparedChatImage(prepared),
     };
     if (window._FB?.CONFIGURED) {
       const { db, ref, push } = window._FB;
@@ -1197,7 +1177,7 @@ async function sendPreparedChatImage(preparedOrDataUrl, imageWide = false, image
     imageWide: !!imageWide,
     imageMeta: normalizedMeta,
     imageStoragePath: storageMeta?.path || '',
-    imageContentType: storageMeta?.contentType || inferStorageContentTypeFromDataUrl(dataUrl),
+    imageContentType: storageMeta?.contentType || inferContentTypeFromPreparedChatImage(prepared),
   });
 }
 
