@@ -847,19 +847,10 @@ function renderPendingChatImages() {
   });
 }
 
-
-function revokePreparedChatImagePreview(item) {
-  if (!item || !item.previewUrl) return;
-  if (item.previewKind === 'object-url') {
-    try { URL.revokeObjectURL(item.previewUrl); } catch (e) {}
-  }
-}
-
 function removePendingChatImage(imageId) {
   const idx = _pendingChatImages.findIndex(item => item.id === imageId);
   if (idx < 0) return;
-  const [removed] = _pendingChatImages.splice(idx, 1);
-  revokePreparedChatImagePreview(removed);
+  _pendingChatImages.splice(idx, 1);
   renderPendingChatImages();
 }
 
@@ -874,56 +865,12 @@ function movePendingChatImage(fromId, toId) {
 }
 
 function clearPendingChatImages() {
-  _pendingChatImages.splice(0, _pendingChatImages.length).forEach(revokePreparedChatImagePreview);
+  _pendingChatImages.length = 0;
   renderPendingChatImages();
 }
 
 function togglePendingChatImageWide(checked) {
   _pendingChatImageWide = !!checked;
-}
-
-function getCloudinaryRuntimeConfig() {
-  const cfg = window._ITC_CLOUDINARY || {};
-  const cloudName = String(cfg.cloudName || '').trim();
-  const unsignedPreset = String(cfg.unsignedPreset || '').trim();
-  if (!cloudName || !unsignedPreset) return null;
-  return { cloudName, unsignedPreset };
-}
-
-async function fileToDataUrl(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = ev => resolve(ev.target.result);
-    reader.onerror = () => reject(new Error('이미지를 읽지 못했어요.'));
-    reader.readAsDataURL(file);
-  });
-}
-
-async function canvasToJpegBlob(canvas, quality = 0.84) {
-  return new Promise((resolve, reject) => {
-    canvas.toBlob((blob) => {
-      if (!blob) {
-        reject(new Error('이미지 처리에 실패했어요.'));
-        return;
-      }
-      resolve(blob);
-    }, 'image/jpeg', quality);
-  });
-}
-
-function makePreparedChatImageBase(meta = {}) {
-  return {
-    id: makePendingChatImageId(),
-    previewUrl: meta.previewUrl || '',
-    previewKind: meta.previewKind || 'data-url',
-    dataUrl: meta.dataUrl || '',
-    uploadBlob: meta.uploadBlob || null,
-    uploadMime: meta.uploadMime || '',
-    uploadFileName: meta.uploadFileName || '',
-    isGif: !!meta.isGif,
-    width: meta.width || 0,
-    height: meta.height || 0,
-  };
 }
 
 async function fileToPreparedChatImage(file) {
@@ -933,97 +880,64 @@ async function fileToPreparedChatImage(file) {
     throw new Error(isGif ? 'GIF는 5MB 이하만 가능해요.' : '이미지는 3MB 이하만 가능해요.');
   }
 
-  const objectUrl = URL.createObjectURL(file);
+  const dataUrl = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = ev => resolve(ev.target.result);
+    reader.onerror = () => reject(new Error('이미지를 읽지 못했어요.'));
+    reader.readAsDataURL(file);
+  });
+
   const rawMeta = await new Promise((resolve, reject) => {
     const img = new Image();
-    img.onload = () => {
-      resolve({ width: img.width || 0, height: img.height || 0 });
-      try { URL.revokeObjectURL(objectUrl); } catch (e) {}
-    };
-    img.onerror = () => {
-      try { URL.revokeObjectURL(objectUrl); } catch (e) {}
-      reject(new Error('이미지 처리에 실패했어요.'));
-    };
-    img.src = objectUrl;
+    img.onload = () => resolve({ width: img.width || 0, height: img.height || 0 });
+    img.onerror = () => reject(new Error('이미지 처리에 실패했어요.'));
+    img.src = dataUrl;
   });
 
   if (isGif) {
-    return makePreparedChatImageBase({
-      previewUrl: URL.createObjectURL(file),
-      previewKind: 'object-url',
-      uploadBlob: file,
-      uploadMime: file.type || 'image/gif',
-      uploadFileName: file.name || `chat_${Date.now()}.gif`,
+    return {
+      id: makePendingChatImageId(),
+      previewUrl: dataUrl,
+      dataUrl,
       isGif: true,
-      width: rawMeta.width,
-      height: rawMeta.height,
-    });
+      width: rawMeta.width || 0,
+      height: rawMeta.height || 0,
+    };
   }
 
-  const maxEdge = 1280;
-  const needsResize = rawMeta.width > maxEdge || rawMeta.height > maxEdge;
-  const needsCompress = file.type !== 'image/jpeg' || file.size > 900 * 1024 || needsResize;
-
-  if (!needsCompress) {
-    return makePreparedChatImageBase({
-      previewUrl: URL.createObjectURL(file),
-      previewKind: 'object-url',
-      uploadBlob: file,
-      uploadMime: file.type || 'image/jpeg',
-      uploadFileName: file.name || `chat_${Date.now()}.jpg`,
-      isGif: false,
-      width: rawMeta.width,
-      height: rawMeta.height,
-    });
-  }
-
-  const dataUrl = await fileToDataUrl(file);
   const compressed = await new Promise((resolve, reject) => {
     const img = new Image();
-    img.onload = async () => {
-      try {
-        let w = img.width;
-        let h = img.height;
-        if (w > maxEdge || h > maxEdge) {
-          const ratio = Math.min(maxEdge / w, maxEdge / h);
-          w = Math.max(1, Math.round(w * ratio));
-          h = Math.max(1, Math.round(h * ratio));
-        }
-        const canvas = document.createElement('canvas');
-        canvas.width = w;
-        canvas.height = h;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) {
-          reject(new Error('이미지 처리에 실패했어요.'));
-          return;
-        }
-        ctx.drawImage(img, 0, 0, w, h);
-        const blob = await canvasToJpegBlob(canvas, 0.84);
-        resolve({
-          blob,
-          width: w,
-          height: h,
-          previewUrl: URL.createObjectURL(blob),
-        });
-      } catch (err) {
-        reject(err);
+    img.onload = () => {
+      const MAX = 800;
+      let w = img.width, h = img.height;
+      if (w > MAX || h > MAX) {
+        const r = Math.min(MAX / w, MAX / h);
+        w = Math.round(w * r);
+        h = Math.round(h * r);
       }
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        reject(new Error('이미지 처리에 실패했어요.'));
+        return;
+      }
+      ctx.drawImage(img, 0, 0, w, h);
+      resolve({ dataUrl: canvas.toDataURL('image/jpeg', 0.82), width: w, height: h });
     };
     img.onerror = () => reject(new Error('이미지 처리에 실패했어요.'));
     img.src = dataUrl;
   });
 
-  return makePreparedChatImageBase({
-    previewUrl: compressed.previewUrl,
-    previewKind: 'object-url',
-    dataUrl,
-    uploadBlob: compressed.blob,
-    uploadMime: 'image/jpeg',
-    uploadFileName: `chat_${Date.now()}.jpg`,
+  return {
+    id: makePendingChatImageId(),
+    previewUrl: compressed.dataUrl,
+    dataUrl: compressed.dataUrl,
     isGif: false,
     width: compressed.width || rawMeta.width || 0,
     height: compressed.height || rawMeta.height || 0,
-  });
+  };
 }
 
 async function queuePendingChatImages(files) {
@@ -1051,6 +965,8 @@ async function queuePendingChatImages(files) {
   }
   renderPendingChatImages();
 }
+
+
 
 function withTimeout(promise, ms = 3500) {
   return new Promise((resolve, reject) => {
@@ -1100,57 +1016,18 @@ function blobFromDataUrl(dataUrl) {
   return { blob: new Blob([bytes], { type: contentType }), contentType };
 }
 
-async function uploadChatImageBlobToCloudinary(blob, fileName = 'chat.jpg') {
-  const cfg = getCloudinaryRuntimeConfig();
-  if (!cfg || !blob) return null;
-  const formData = new FormData();
-  formData.append('file', blob, fileName);
-  formData.append('upload_preset', cfg.unsignedPreset);
-  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-  const timer = controller ? setTimeout(() => controller.abort(), 20000) : null;
-  try {
-    const res = await fetch(`https://api.cloudinary.com/v1_1/${encodeURIComponent(cfg.cloudName)}/image/upload`, {
-      method: 'POST',
-      body: formData,
-      signal: controller?.signal,
-    });
-    const payload = await res.json().catch(() => ({}));
-    if (!res.ok || !payload?.secure_url) {
-      throw new Error(payload?.error?.message || 'cloudinary upload failed');
-    }
-    return {
-      url: payload.secure_url,
-      path: payload.public_id || '',
-      contentType: blob.type || 'image/jpeg',
-    };
-  } finally {
-    if (timer) clearTimeout(timer);
-  }
-}
-
-async function uploadChatImageDataUrl(dataUrl, roomCode, preparedItem = null) {
-  const uploadBlob = preparedItem?.uploadBlob || null;
-  const uploadMime = preparedItem?.uploadMime || '';
-  const uploadFileName = preparedItem?.uploadFileName || '';
-  if (uploadBlob) {
-    const uploadedCloudinary = await uploadChatImageBlobToCloudinary(uploadBlob, uploadFileName || `chat_${Date.now()}.jpg`);
-    if (uploadedCloudinary?.url) return uploadedCloudinary;
-  }
-
+async function uploadChatImageDataUrl(dataUrl, roomCode) {
   const fb = window._FB;
   if (!fb?.CONFIGURED || !roomCode) return null;
   const storageApi = await getStorageApiQuick();
   if (!storageApi?.storage || !storageApi.storageRef || !storageApi.uploadBytes || !storageApi.getDownloadURL) {
     return null;
   }
-  const blobInfo = uploadBlob
-    ? { blob: uploadBlob, contentType: uploadMime || uploadBlob.type || 'image/jpeg' }
-    : blobFromDataUrl(dataUrl);
-  const contentType = blobInfo.contentType || 'image/jpeg';
+  const { blob, contentType } = blobFromDataUrl(dataUrl);
   const ext = contentType.includes('gif') ? 'gif' : (contentType.includes('png') ? 'png' : (contentType.includes('webp') ? 'webp' : 'jpg'));
   const path = `rooms/${roomCode}/chat-images/${St.myId || 'guest'}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
   const storageRefObj = storageApi.storageRef(storageApi.storage, path);
-  await withTimeout(storageApi.uploadBytes(storageRefObj, blobInfo.blob, {
+  await withTimeout(storageApi.uploadBytes(storageRefObj, blob, {
     contentType,
     cacheControl: 'public,max-age=31536000,immutable',
   }), 2800);
@@ -1158,28 +1035,24 @@ async function uploadChatImageDataUrl(dataUrl, roomCode, preparedItem = null) {
   return { url, path, contentType };
 }
 
-async function sendPreparedChatImage(preparedOrDataUrl, imageWide = false, imageMeta = null) {
+async function sendPreparedChatImage(dataUrl, imageWide = false, imageMeta = null) {
   const saJId = St.speakAsJournalId;
   const saJournal = saJId ? loadJournals().find(x => x.id === saJId) : null;
   const saName = saJournal ? (saJournal.title || '무제') : null;
   const saAvatar = saJId ? saGetAvatar(saJId) : null;
   const normalizedMeta = normalizeChatImageMeta(imageMeta);
 
-  const prepared = (preparedOrDataUrl && typeof preparedOrDataUrl === 'object' && ('dataUrl' in preparedOrDataUrl || 'uploadBlob' in preparedOrDataUrl))
-    ? preparedOrDataUrl
-    : { dataUrl: String(preparedOrDataUrl || '') };
-  const dataUrl = prepared.dataUrl || '';
   let finalSrc = dataUrl;
   let storageMeta = null;
-  if (St.roomCode) {
+  if (window._FB?.CONFIGURED && St.roomCode) {
     try {
-      const uploaded = await uploadChatImageDataUrl(dataUrl, St.roomCode, prepared);
+      const uploaded = await uploadChatImageDataUrl(dataUrl, St.roomCode);
       if (uploaded?.url) {
         finalSrc = uploaded.url;
         storageMeta = uploaded;
       }
     } catch (err) {
-      console.warn('chat image upload failed, fallback to inline data url', err);
+      console.warn('chat image storage upload failed, fallback to inline data url', err);
     }
   }
 
@@ -1224,8 +1097,7 @@ async function sendPendingChatImages() {
   renderPendingChatImages();
   try {
     for (const item of items) {
-      await sendPreparedChatImage(item, _pendingChatImageWide, { width: item.width, height: item.height });
-      revokePreparedChatImagePreview(item);
+      await sendPreparedChatImage(item.dataUrl, _pendingChatImageWide, { width: item.width, height: item.height });
     }
     return true;
   } catch (err) {
@@ -1622,8 +1494,8 @@ function getAvatarHtml(name, uid) {
 
 function rerenderExistingChatAvatars() {
   document.querySelectorAll('.chat-msg').forEach(div => {
-    const uid = div.dataset.uid || '';
-    const name = div.dataset.name || '';
+    const uid = div.dataset.avatarUid || div.dataset.uid || '';
+    const name = div.dataset.avatarName || div.dataset.name || '';
     const holder = div.querySelector('[data-avatar-holder="1"]');
     if (!holder) return;
     holder.outerHTML = getAvatarHtml(name, uid || null);
