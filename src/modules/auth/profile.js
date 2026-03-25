@@ -50,6 +50,7 @@ function refreshProfileAvatar() {
 
 
 
+
 function withTimeout(promise, ms = 3500) {
   return new Promise((resolve, reject) => {
     let done = false;
@@ -70,6 +71,14 @@ function withTimeout(promise, ms = 3500) {
       reject(err);
     });
   });
+}
+
+function getCloudinaryRuntimeConfig() {
+  const cfg = window._ITC_CLOUDINARY || {};
+  const cloudName = String(cfg.cloudName || '').trim();
+  const unsignedPreset = String(cfg.unsignedPreset || '').trim();
+  if (!cloudName || !unsignedPreset) return null;
+  return { cloudName, unsignedPreset };
 }
 
 async function getStorageApiQuick() {
@@ -99,7 +108,39 @@ function blobFromDataUrl(dataUrl) {
   return new Blob([bytes], { type: contentType });
 }
 
+async function uploadAvatarBlobToCloudinary(blob, fileName = 'avatar.jpg') {
+  const cfg = getCloudinaryRuntimeConfig();
+  if (!cfg || !blob) return null;
+  const formData = new FormData();
+  formData.append('file', blob, fileName);
+  formData.append('upload_preset', cfg.unsignedPreset);
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timer = controller ? setTimeout(() => controller.abort(), 20000) : null;
+  try {
+    const res = await fetch(`https://api.cloudinary.com/v1_1/${encodeURIComponent(cfg.cloudName)}/image/upload`, {
+      method: 'POST',
+      body: formData,
+      signal: controller?.signal,
+    });
+    const payload = await res.json().catch(() => ({}));
+    if (!res.ok || !payload?.secure_url) {
+      throw new Error(payload?.error?.message || 'cloudinary upload failed');
+    }
+    return {
+      url: payload.secure_url,
+      path: payload.public_id || '',
+      contentType: blob.type || 'image/jpeg',
+    };
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 async function uploadAvatarDataUrlToStorage(dataUrl, userId) {
+  const avatarBlob = blobFromDataUrl(dataUrl);
+  const uploadedCloudinary = await uploadAvatarBlobToCloudinary(avatarBlob, `avatar_${userId || 'user'}_${Date.now()}.jpg`);
+  if (uploadedCloudinary?.url) return uploadedCloudinary;
+
   const storageApi = await getStorageApiQuick();
   if (!storageApi?.storage || !storageApi.storageRef || !storageApi.uploadBytes || !storageApi.getDownloadURL) {
     return null;
@@ -107,9 +148,8 @@ async function uploadAvatarDataUrlToStorage(dataUrl, userId) {
   const contentType = inferStorageContentTypeFromDataUrl(dataUrl);
   const ext = contentType.includes('png') ? 'png' : (contentType.includes('webp') ? 'webp' : 'jpg');
   const path = `avatars/${userId}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
-  const blob = blobFromDataUrl(dataUrl);
   const storageRefObj = storageApi.storageRef(storageApi.storage, path);
-  await withTimeout(storageApi.uploadBytes(storageRefObj, blob, {
+  await withTimeout(storageApi.uploadBytes(storageRefObj, avatarBlob, {
     contentType,
     cacheControl: 'public,max-age=31536000,immutable',
   }), 2800);
