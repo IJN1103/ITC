@@ -114,23 +114,31 @@ function fetchHandoutsFromFB() {
 function saveHandoutFB(handout) {
   if (!handout?.id) return;
   if (!handout.ownerId) handout.ownerId = St.myId;
+  const normalized = { ...handout };
+  const idx = _allHandouts.findIndex(h => h.id === normalized.id);
+  if (idx >= 0) _allHandouts[idx] = normalized;
+  else _allHandouts.push(normalized);
+  try { localStorage.setItem(handoutKey(), JSON.stringify(_allHandouts)); } catch (e) {}
+  renderHandoutList();
   if (window._FB?.CONFIGURED) {
     const { db, ref, set } = window._FB;
-    set(ref(db, `rooms/${St.roomCode}/handouts/${handout.id}`), handout);
-  } else {
-    const idx = _allHandouts.findIndex(h => h.id === handout.id);
-    if (idx >= 0) _allHandouts[idx] = handout; else _allHandouts.push(handout);
-    localStorage.setItem(handoutKey(), JSON.stringify(_allHandouts));
+    set(ref(db, `rooms/${St.roomCode}/handouts/${normalized.id}`), normalized).catch(err => {
+      console.error('handout save failed', err);
+      showToast('핸드아웃 저장에 실패했어요.');
+    });
   }
 }
 
 function deleteHandoutFB(id) {
+  _allHandouts = _allHandouts.filter(h => h.id !== id);
+  try { localStorage.setItem(handoutKey(), JSON.stringify(_allHandouts)); } catch (e) {}
+  renderHandoutList();
   if (window._FB?.CONFIGURED) {
     const { db, ref, remove } = window._FB;
-    remove(ref(db, `rooms/${St.roomCode}/handouts/${id}`));
-  } else {
-    _allHandouts = _allHandouts.filter(h => h.id !== id);
-    localStorage.setItem(handoutKey(), JSON.stringify(_allHandouts));
+    remove(ref(db, `rooms/${St.roomCode}/handouts/${id}`)).catch(err => {
+      console.error('handout delete failed', err);
+      showToast('핸드아웃 삭제에 실패했어요.');
+    });
   }
 }
 
