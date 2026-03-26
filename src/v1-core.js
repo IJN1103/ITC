@@ -113,7 +113,7 @@ function switchRightTab(tab) {
   }
   if (typeof refreshChatActionButtons === 'function') refreshChatActionButtons();
   if (tab === 'journal') {
-    renderJournalList();
+    if (typeof renderJournalList === 'function') renderJournalList();
     if (typeof renderHandoutList === 'function') renderHandoutList();
   }
 }

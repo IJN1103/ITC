@@ -216,13 +216,6 @@ function setupFirebaseListeners() {
     saRefreshToolbar();
   }));
 
-  trackFirebaseListener(onValue(ref(db, `rooms/${code}/handouts`), snap => {
-    _allHandouts = [];
-    const data = snap.val() || {};
-    Object.entries(data).forEach(([id, h]) => { h.id = id; _allHandouts.push(h); });
-    if (typeof renderHandoutList === 'function') renderHandoutList();
-  }));
-
   trackFirebaseListener(onValue(ref(db, `rooms/${code}/bgm`), snap => {
     const bgm = snap.val();
     if (!bgm) return;
@@ -296,6 +289,7 @@ async function enterGame() {
 
   addLocalMessage('system', '', `${St.myName}님이 입장했습니다 — ${SYS_LABELS[St.system]}`);
   migrateLocalJournals();
+  if (typeof migrateLocalHandouts === 'function') migrateLocalHandouts();
   loadCasualNick();
   loadMyNameColor();
   fetchJournalsFromFB();

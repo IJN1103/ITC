@@ -494,26 +494,25 @@ window._FB = {
 
       <!-- 문서 패널 -->
       <div class="right-pane" id="rpane-journal">
-        <div class="docs-pane" id="journal-list-view">
-          <div class="docs-section">
+        <div class="journal-pane docs-pane" id="journal-list-view">
+          <section class="docs-section">
             <div class="docs-section-head">
               <div class="docs-section-title">저널</div>
-              <button class="journal-add-btn" onclick="createNewJournal()" title="새 저널 만들기">+</button>
+              <button class="doc-add-square" onclick="createNewJournal()" title="새 저널 만들기">+</button>
             </div>
-            <div class="journal-list" id="journal-list-container">
+            <div class="journal-list docs-list" id="journal-list-container">
               <div class="journal-empty" id="journal-empty">저널이 없어요.<br>위 + 버튼으로 새 저널을 만들어보세요.</div>
             </div>
-          </div>
-
-          <div class="docs-section handout-section">
+          </section>
+          <section class="docs-section docs-section-handout">
             <div class="docs-section-head">
               <div class="docs-section-title">핸드아웃</div>
-              <button class="journal-add-btn gm-only" onclick="createNewHandout()" title="새 핸드아웃 만들기">+</button>
+              <button class="doc-add-square gm-only" onclick="createNewHandout()" title="새 핸드아웃 만들기">+</button>
             </div>
-            <div class="handout-list" id="handout-list-container">
-              <div class="journal-empty" id="handout-empty">핸드아웃이 없어요.<br>GM이 + 버튼으로 새 핸드아웃을 만들 수 있어요.</div>
+            <div class="handout-list docs-list" id="handout-list-container">
+              <div class="journal-empty" id="handout-empty">핸드아웃이 없어요.<br>위 + 버튼으로 새 핸드아웃을 만들어보세요.</div>
             </div>
-          </div>
+          </section>
         </div>
       </div>
 
@@ -774,54 +773,55 @@ window._FB = {
       <button class="jd-save-btn" onclick="saveJournalFromDrawer()">저장</button>
     </div>
   </div>
-
 </div>
 
-<!-- 핸드아웃 드로어 -->
-<div id="handout-drawer">
-  <div class="jd-backdrop" onclick="closeHandoutDrawer()"></div>
-  <div class="jd-panel hd-panel">
-    <div class="jd-header hd-header">
-      <button class="jd-close" onclick="closeHandoutDrawer()" title="닫기">‹</button>
-      <input class="jd-title-input hd-title-input" id="hd-title" placeholder="핸드아웃 제목">
-      <button class="jd-del-btn" id="hd-delete-btn" onclick="deleteHandoutFromDrawer()" title="삭제">🗑 삭제</button>
-    </div>
-    <div class="jd-meta hd-meta">
-      <span id="hd-meta-date">—</span>
-      <span id="hd-save-hint" style="color:var(--muted)"></span>
-    </div>
-    <div class="hd-access-bar" id="hd-access-bar" style="display:none">
-      <div class="hd-access-label">열람 가능 플레이어</div>
-      <div class="hd-access-list" id="hd-access-list"></div>
+<!-- 핸드아웃 편집 / 열람 모달 -->
+<div class="hd-overlay" id="handout-drawer" onclick="closeHandoutDrawer()">
+  <div class="hd-modal" onclick="event.stopPropagation()">
+    <div class="hd-header">
+      <div class="hd-header-main">
+        <input class="hd-title-input" id="hd-title" placeholder="핸드아웃 제목">
+        <div class="hd-meta" id="hd-meta-date">—</div>
+      </div>
+      <div class="hd-header-actions">
+        <button class="hd-del-btn" id="hd-del-btn" onclick="deleteHandoutFromDrawer()">삭제</button>
+        <button class="hd-close" onclick="closeHandoutDrawer()">✕</button>
+      </div>
     </div>
     <div class="hd-toolbar" id="hd-toolbar">
-      <button class="hd-tool-btn" type="button" onclick="formatHandout('bold')"><b>B</b></button>
-      <button class="hd-tool-btn" type="button" onclick="formatHandout('italic')"><i>I</i></button>
-      <button class="hd-tool-btn" type="button" onclick="formatHandout('insertUnorderedList')">• 목록</button>
-      <div class="hd-tool-sep"></div>
-      <label class="hd-toolbar-label" for="hd-font-size">글자 크기</label>
-      <div class="hd-font-size-wrap">
-        <input class="hd-tool-input" id="hd-font-size" type="number" min="8" max="36" step="1" placeholder="14" onkeydown="if(event.key==='Enter'){applyHandoutFontSize(this.value)}">
-        <span class="hd-tool-unit">pt</span>
-        <button class="hd-tool-apply" type="button" onclick="applyHandoutFontSize(document.getElementById('hd-font-size').value)">적용</button>
+      <div class="hd-toolbar-group">
+        <button type="button" class="hd-tool-btn" onclick="applyHandoutTextAlign('left')" title="좌측 정렬" aria-label="좌측 정렬">
+          <span class="align-icon align-left"></span>
+        </button>
+        <button type="button" class="hd-tool-btn" onclick="applyHandoutTextAlign('center')" title="가운데 정렬" aria-label="가운데 정렬">
+          <span class="align-icon align-center"></span>
+        </button>
+        <button type="button" class="hd-tool-btn" onclick="applyHandoutTextAlign('right')" title="우측 정렬" aria-label="우측 정렬">
+          <span class="align-icon align-right"></span>
+        </button>
       </div>
-      <div class="hd-tool-sep"></div>
-      <div class="hd-align-group" role="group" aria-label="글자 정렬">
-        <button class="hd-icon-btn" type="button" onclick="applyHandoutTextAlign('left')" title="좌측 정렬" aria-label="좌측 정렬"><span class="hd-align-icon left"><span></span><span></span><span></span></span></button>
-        <button class="hd-icon-btn" type="button" onclick="applyHandoutTextAlign('center')" title="가운데 정렬" aria-label="가운데 정렬"><span class="hd-align-icon center"><span></span><span></span><span></span></span></button>
-        <button class="hd-icon-btn" type="button" onclick="applyHandoutTextAlign('right')" title="우측 정렬" aria-label="우측 정렬"><span class="hd-align-icon right"><span></span><span></span><span></span></span></button>
+      <div class="hd-toolbar-group hd-font-group">
+        <label for="hd-font-size">글자 크기</label>
+        <input id="hd-font-size" type="number" min="8" max="36" step="1" placeholder="12">
+        <span>pt</span>
+        <button type="button" class="hd-tool-btn hd-apply-btn" onclick="applyHandoutFontSizeFromInput()">적용</button>
       </div>
-      <div class="hd-tool-sep"></div>
-      <button class="hd-tool-btn" type="button" onclick="document.getElementById('hd-image-input').click()">이미지</button>
-      <input type="file" id="hd-image-input" accept="image/*" style="display:none" onchange="handleHandoutImage(this)">
+      <div class="hd-toolbar-group hd-toolbar-group-end">
+        <input type="file" id="hd-image-input" accept="image/*" style="display:none" onchange="handleHandoutImage(this)">
+        <button type="button" class="hd-tool-btn" onclick="triggerHandoutImagePicker()">이미지</button>
+      </div>
     </div>
-    <div class="hd-body-wrap">
-      <div class="hd-body-editor" id="hd-body" contenteditable="true" data-placeholder="핸드아웃 내용을 입력하세요. 텍스트와 이미지를 함께 넣을 수 있어요."></div>
-      <div class="hd-body-view" id="hd-body-view" style="display:none"></div>
+    <div class="hd-access-bar" id="hd-access-bar">
+      <div class="hd-access-title">열람 가능 플레이어</div>
+      <div class="hd-access-list" id="hd-access-list"></div>
     </div>
-    <div class="jd-footer hd-footer">
-      <span class="jd-save-hint" id="hd-footer-hint"></span>
-      <button class="jd-save-btn" id="hd-save-btn" onclick="saveHandoutFromDrawer()">저장</button>
+    <div class="hd-editor-wrap">
+      <div class="hd-body-editor" id="hd-body" contenteditable="true" data-placeholder="텍스트와 이미지를 함께 기록할 수 있어요."></div>
+      <div class="hd-body-view" id="hd-body-view"></div>
+    </div>
+    <div class="hd-footer">
+      <span class="hd-footer-hint" id="hd-footer-hint"></span>
+      <button class="hd-save-btn" id="hd-save-btn" onclick="saveHandoutFromDrawer()">저장</button>
     </div>
   </div>
 </div>
