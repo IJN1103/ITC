@@ -700,7 +700,6 @@ to{transform:translateX(0);opacity:1;}
   min-width:1px;
   min-height:1px;
   background:rgba(140,136,130,.08);
-  outline:1px solid transparent;
   background-image:
     repeating-linear-gradient(90deg, rgba(140,136,130,.95) 0 8px, rgba(40,40,40,.95) 8px 16px),
     repeating-linear-gradient(90deg, rgba(140,136,130,.95) 0 8px, rgba(40,40,40,.95) 8px 16px),
