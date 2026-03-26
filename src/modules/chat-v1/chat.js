@@ -781,6 +781,46 @@ function buildChatImageHtml(src, imageWide = false, imageMeta = null) {
 
 const _pendingChatImages = [];
 let _pendingChatImageWide = false;
+let _chatUploadStatusDepth = 0;
+
+function ensureChatUploadStatusEl() {
+  const composer = document.querySelector('.chat-composer-stack');
+  if (!composer) return null;
+  let statusEl = document.getElementById('chat-upload-status');
+  if (!statusEl) {
+    statusEl = document.createElement('div');
+    statusEl.id = 'chat-upload-status';
+    statusEl.className = 'chat-upload-status';
+    statusEl.style.display = 'none';
+    statusEl.setAttribute('aria-live', 'polite');
+    statusEl.innerHTML = '<span class="chat-upload-status-spinner" aria-hidden="true"></span><span class="chat-upload-status-text">사진을 보내는 중입니다.</span>';
+    composer.insertBefore(statusEl, composer.firstChild);
+  } else if (statusEl.parentElement !== composer) {
+    composer.insertBefore(statusEl, composer.firstChild);
+  }
+  return statusEl;
+}
+
+function showChatUploadStatus() {
+  const statusEl = ensureChatUploadStatusEl();
+  if (!statusEl) return;
+  _chatUploadStatusDepth += 1;
+  statusEl.style.display = 'flex';
+  statusEl.classList.add('is-visible');
+}
+
+function hideChatUploadStatus(force = false) {
+  const statusEl = document.getElementById('chat-upload-status');
+  if (force) {
+    _chatUploadStatusDepth = 0;
+  } else if (_chatUploadStatusDepth > 0) {
+    _chatUploadStatusDepth -= 1;
+  }
+  if (!statusEl) return;
+  if (_chatUploadStatusDepth > 0) return;
+  statusEl.classList.remove('is-visible');
+  statusEl.style.display = 'none';
+}
 let _dragChatImageId = null;
 
 function makePendingChatImageId() {
@@ -1209,7 +1249,7 @@ async function sendPendingChatImages() {
   if (!_pendingChatImages.length) return true;
   const items = _pendingChatImages.splice(0, _pendingChatImages.length);
   renderPendingChatImages();
-  showToast('사진을 보내는 중입니다.');
+  showChatUploadStatus();
   try {
     for (const item of items) {
       await sendPreparedChatImage(item, _pendingChatImageWide, { width: item.width, height: item.height });
@@ -1222,10 +1262,13 @@ async function sendPendingChatImages() {
     renderPendingChatImages();
     showToast(err?.message || '이미지 업로드에 실패했어요. 잠시 후 다시 시도해 주세요.');
     throw err;
+  } finally {
+    hideChatUploadStatus();
   }
 }
 
 function initChatImageComposer() {
+  ensureChatUploadStatusEl();
   renderPendingChatImages();
   bindMessageViewport('chat');
   bindMessageViewport('casual');
