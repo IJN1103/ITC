@@ -9,6 +9,92 @@ let _mapPanX = 0, _mapPanY = 0;
 
 let _teTokenImgBlob = null;
 
+let _tokenMemoTooltipEl = null;
+
+function ensureTokenMemoTooltip() {
+  if (_tokenMemoTooltipEl && document.body.contains(_tokenMemoTooltipEl)) return _tokenMemoTooltipEl;
+  const el = document.createElement('div');
+  el.id = 'token-memo-tooltip';
+  el.style.cssText = [
+    'position:fixed',
+    'left:0',
+    'top:0',
+    'display:none',
+    'pointer-events:none',
+    'z-index:99999',
+    'max-width:280px',
+    'padding:8px 10px',
+    'border-radius:8px',
+    'background:rgba(10,10,10,0.96)',
+    'border:1px solid rgba(184,154,96,0.35)',
+    'box-shadow:0 8px 24px rgba(0,0,0,0.35)',
+    'color:var(--text, #e8e3da)',
+    'font-size:12px',
+    'line-height:1.5',
+    'white-space:pre-wrap',
+    'word-break:break-word'
+  ].join(';');
+  document.body.appendChild(el);
+  _tokenMemoTooltipEl = el;
+  return el;
+}
+
+function hideTokenMemoTooltip() {
+  const el = ensureTokenMemoTooltip();
+  el.style.display = 'none';
+  el.textContent = '';
+}
+
+function showTokenMemoTooltip(text, clientX, clientY) {
+  const memo = String(text || '').trim();
+  if (!memo) {
+    hideTokenMemoTooltip();
+    return;
+  }
+  const el = ensureTokenMemoTooltip();
+  el.textContent = memo;
+  el.style.display = 'block';
+  const offset = 14;
+  const rect = el.getBoundingClientRect();
+  let left = clientX + offset;
+  let top = clientY + offset;
+  if (left + rect.width > window.innerWidth - 8) left = window.innerWidth - rect.width - 8;
+  if (top + rect.height > window.innerHeight - 8) top = clientY - rect.height - offset;
+  if (left < 8) left = 8;
+  if (top < 8) top = 8;
+  el.style.left = left + 'px';
+  el.style.top = top + 'px';
+}
+
+function getTokenOwnerDisplayName(token) {
+  if (token?.ownerName) return token.ownerName;
+  if (token?.ownerId && St.players && St.players[token.ownerId]?.name) return St.players[token.ownerId].name;
+  return '없음';
+}
+
+function ensureTokenOwnerUi() {
+  const panel = document.querySelector('#te-overlay .te-panel');
+  const head = document.querySelector('#te-overlay .te-head');
+  if (!panel || !head) return null;
+  let box = document.getElementById('te-owner-row');
+  if (!box) {
+    box = document.createElement('div');
+    box.id = 'te-owner-row';
+    box.style.cssText = 'margin:10px 0 2px;padding:10px 14px;border:1px solid var(--border, #1f1f1f);border-radius:10px;background:var(--s1, #101010);display:flex;align-items:center;justify-content:space-between;gap:12px;';
+    box.innerHTML = '<div style="display:flex;align-items:center;gap:8px;min-width:0"><span style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted, #8c8882);flex-shrink:0">소유자</span><strong id="te-owner-name" style="font-size:13px;color:var(--text, #e8e3da);font-weight:500;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">없음</strong></div><div id="te-owner-note" style="font-size:11px;color:var(--muted, #8c8882);flex-shrink:0">우클릭 메뉴에서 변경 가능</div>';
+    head.insertAdjacentElement('afterend', box);
+  }
+  return box;
+}
+
+function refreshTokenOwnerUi(token) {
+  const row = ensureTokenOwnerUi();
+  if (!row) return;
+  const nameEl = document.getElementById('te-owner-name');
+  if (nameEl) nameEl.textContent = getTokenOwnerDisplayName(token);
+}
+
+
 function getCloudinaryConfigForToken() {
   const cfg = window._ITC_CLOUDINARY || {};
   if (!cfg.cloudName || !cfg.unsignedPreset) return null;
@@ -358,7 +444,15 @@ function addToken() {
   const name = document.getElementById('token-name').value.trim() || '?';
   const type = document.getElementById('token-type').value;
   const id = genId();
-  const token = { id, name, type, x: 48 + Math.random()*12, y: 48 + Math.random()*12 };
+  const token = {
+    id,
+    name,
+    type,
+    x: 48 + Math.random()*12,
+    y: 48 + Math.random()*12,
+    ownerId: St.myId || '',
+    ownerName: St.myName || '',
+  };
   if (window._FB?.CONFIGURED) {
     const { db, ref, set } = window._FB;
     set(ref(db, `rooms/${St.roomCode}/tokens/${id}`), token);
@@ -420,6 +514,13 @@ function createTokenEl(t) {
     }
   }
   if (_multiSelectedTokenIds.includes(String(t.id))) el.classList.add('multi-selected');
+  el.addEventListener('mouseenter', e => {
+    if (t.memo) showTokenMemoTooltip(t.memo, e.clientX, e.clientY);
+  });
+  el.addEventListener('mousemove', e => {
+    if (t.memo) showTokenMemoTooltip(t.memo, e.clientX, e.clientY);
+  });
+  el.addEventListener('mouseleave', () => hideTokenMemoTooltip());
   el.addEventListener('dblclick', e => { e.preventDefault(); e.stopPropagation(); if (typeof openTokenEdit === 'function') openTokenEdit(t.id); });
   el.addEventListener('contextmenu', e => { e.preventDefault(); e.stopPropagation(); showTokenCtx(e, t.id); });
   makeDraggable(el, t.id);
@@ -534,6 +635,7 @@ function tokCtxAction(action) {
         const { db, ref, update } = window._FB;
         update(ref(db, `rooms/${St.roomCode}/tokens/${id}`), { ownerId: St.myId, ownerName: St.myName });
       }
+      if (_teTokenId === id) refreshTokenOwnerUi(t);
       showToast(`${t.name} 토큰의 소유 권한을 가져왔어요.`);
       break;
     }
@@ -588,6 +690,7 @@ function openTokenEdit(tokenId) {
   document.getElementById('te-hide-chat').checked = t.hideChat || false;
   document.getElementById('te-hide-list').checked = t.hideList || false;
   document.getElementById('te-standing-as-token').checked = t.standingAsToken || false;
+  refreshTokenOwnerUi(t);
 
   _teTokenImgData = t.tokenImg || null;
   teRefreshTokenImgPreview();
@@ -610,6 +713,7 @@ function openTokenEdit(tokenId) {
 
 function closeTokenEdit() {
   cleanupTokenEditPendingAssets();
+  hideTokenMemoTooltip();
   document.getElementById('te-overlay').classList.remove('open');
   _teTokenId = null;
   _teTokenImgData = null;
@@ -857,3 +961,7 @@ function setTool(t) {
   if (eraseBtn) eraseBtn.classList.toggle('on', t === 'erase');
 }
 
+
+
+document.addEventListener('scroll', () => hideTokenMemoTooltip(), true);
+window.addEventListener('blur', () => hideTokenMemoTooltip());
