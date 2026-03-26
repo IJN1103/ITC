@@ -789,28 +789,36 @@ window._FB = {
       </div>
     </div>
     <div class="hd-toolbar" id="hd-toolbar">
-      <div class="hd-toolbar-group hd-align-group">
-        <button type="button" class="hd-tool-btn hd-align-trigger" onclick="toggleHandoutAlignMenu(event)" title="글자 정렬" aria-label="글자 정렬" aria-haspopup="menu" aria-expanded="false">
-          <span class="align-icon align-menu"><span></span></span>
+      <div class="hd-toolbar-group">
+        <button type="button" class="hd-tool-btn hd-format-btn" onclick="applyHandoutInlineFormat('bold')" title="굵게" aria-label="굵게">
+          <strong>B</strong>
         </button>
-        <div class="hd-align-menu" id="hd-align-menu" role="menu">
-          <button type="button" class="hd-align-menu-item" onclick="selectHandoutTextAlign('left')" role="menuitem">
-            <span class="align-icon align-left"><span></span></span>
-            <span>좌측 정렬</span>
+        <button type="button" class="hd-tool-btn hd-format-btn hd-format-btn-italic" onclick="applyHandoutInlineFormat('italic')" title="기울임" aria-label="기울임">
+          <span>I</span>
+        </button>
+        <button type="button" class="hd-tool-btn hd-format-btn" onclick="toggleHandoutBulletList()" title="목록" aria-label="목록">
+          <span class="list-icon"></span>
+        </button>
+        <div class="hd-toolbar-menu-wrap">
+          <button type="button" class="hd-tool-btn" onclick="toggleHandoutAlignMenu(event)" title="정렬" aria-label="정렬">
+            <span class="align-icon align-left"></span>
           </button>
-          <button type="button" class="hd-align-menu-item" onclick="selectHandoutTextAlign('center')" role="menuitem">
-            <span class="align-icon align-center"><span></span></span>
-            <span>가운데 정렬</span>
-          </button>
-          <button type="button" class="hd-align-menu-item" onclick="selectHandoutTextAlign('right')" role="menuitem">
-            <span class="align-icon align-right"><span></span></span>
-            <span>우측 정렬</span>
-          </button>
+          <div class="hd-toolbar-menu" id="hd-align-menu">
+            <button type="button" class="hd-menu-item" onclick="applyHandoutTextAlignFromMenu('left')">
+              <span class="align-icon align-left"></span><span>좌측 정렬</span>
+            </button>
+            <button type="button" class="hd-menu-item" onclick="applyHandoutTextAlignFromMenu('center')">
+              <span class="align-icon align-center"></span><span>가운데 정렬</span>
+            </button>
+            <button type="button" class="hd-menu-item" onclick="applyHandoutTextAlignFromMenu('right')">
+              <span class="align-icon align-right"></span><span>우측 정렬</span>
+            </button>
+          </div>
         </div>
       </div>
       <div class="hd-toolbar-group hd-font-group">
         <label for="hd-font-size">글자 크기</label>
-        <select id="hd-font-size" onchange="applyHandoutFontSize(this.value)">
+        <select id="hd-font-size" onchange="applyHandoutFontSizeFromInput()">
           <option value="">선택</option>
           <option value="6">6pt</option>
           <option value="8">8pt</option>
