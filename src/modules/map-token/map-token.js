@@ -101,14 +101,17 @@ function cleanupTokenEditPendingAssets() {
 }
 
 
+
 let _multiSelectedTokenIds = [];
-let _tokenSelectionState = {
-  active: false,
-  startX: 0,
-  startY: 0,
-  currentX: 0,
-  currentY: 0,
-};
+let _tokenSelectionState = { active:false, startX:0, startY:0, currentX:0, currentY:0 };
+
+function syncMapGridBackground() {
+  const map = document.getElementById('map-area');
+  if (!map) return;
+  const cell = 44 * (_mapScale || 1);
+  map.style.backgroundSize = `${cell}px ${cell}px`;
+  map.style.backgroundPosition = `${_mapPanX}px ${_mapPanY}px`;
+}
 
 function getTokenSelectionBoxEl() {
   let el = document.getElementById('map-token-selection-box');
@@ -122,10 +125,8 @@ function getTokenSelectionBoxEl() {
 }
 
 function updateMultiTokenSelectionUI() {
-  document.querySelectorAll('.map-token.multi-selected').forEach((el) => el.classList.remove('multi-selected'));
-  _multiSelectedTokenIds.forEach((id) => {
-    document.getElementById('tok-' + id)?.classList.add('multi-selected');
-  });
+  document.querySelectorAll('.map-token.multi-selected').forEach(el => el.classList.remove('multi-selected'));
+  _multiSelectedTokenIds.forEach(id => document.getElementById('tok-' + id)?.classList.add('multi-selected'));
 }
 
 function clearMultiTokenSelection() {
@@ -162,7 +163,6 @@ function finishTokenSelection() {
   const box = document.getElementById('map-token-selection-box');
   const rect = getNormalizedSelectionRect();
   const selected = [];
-
   if (map && rect.width > 6 && rect.height > 6) {
     const mapRect = map.getBoundingClientRect();
     document.querySelectorAll('.map-token').forEach((el) => {
@@ -178,7 +178,6 @@ function finishTokenSelection() {
       }
     });
   }
-
   _tokenSelectionState.active = false;
   if (box) box.style.display = 'none';
   setMultiTokenSelection(selected);
@@ -187,6 +186,7 @@ function finishTokenSelection() {
 function applyMapTransform() {
   const inner = document.getElementById('map-inner');
   if (inner) inner.style.transform = `translate(${_mapPanX}px,${_mapPanY}px) scale(${_mapScale})`;
+  syncMapGridBackground();
 }
 
 function mapZoom(dir, cx, cy) {
@@ -205,6 +205,8 @@ function mapZoom(dir, cx, cy) {
 document.addEventListener('DOMContentLoaded', () => {
   const mapEl = document.getElementById('map-area');
   if (!mapEl) return;
+
+  syncMapGridBackground();
 
   mapEl.addEventListener('wheel', e => {
     e.preventDefault();
@@ -295,8 +297,11 @@ function createTokenEl(t) {
   const el = document.createElement('div');
   el.className = `map-token ${t.type==='enemy'?'enemy':t.type==='npc'?'npc':''}`;
   el.id = 'tok-' + t.id;
-  el.style.left = t.x + '%'; el.style.top = t.y + '%';
+  el.style.left = t.x + '%';
+  el.style.top = t.y + '%';
+  if (t.rotation) el.style.transform = `translate(-50%,-50%) rotate(${t.rotation}deg)`;
   const sz = (t.tokenSize || 1);
+
   let tokenImgSrc = null;
   if (t.standingAsToken && t.standings && t.standings.length > 0) {
     const jForToken = _allJournals.find(j => j.assignedTokenId === t.id);
@@ -306,35 +311,70 @@ function createTokenEl(t) {
   } else {
     tokenImgSrc = t.tokenImg || null;
   }
+
   if (tokenImgSrc) {
     el.textContent = '';
     const img = document.createElement('img');
     img.src = tokenImgSrc;
+    img.className = 'map-token-image';
     img.style.cssText = 'width:100%;height:100%;object-fit:contain;pointer-events:none;';
     el.appendChild(img);
     el.classList.add('has-img');
-    const px = 36 * sz; el.style.width = px+'px'; el.style.height = 'auto'; el.style.minHeight = px+'px';
+    const px = 36 * sz;
+    el.style.width = px + 'px';
+    el.style.height = 'auto';
+    el.style.minHeight = px + 'px';
+
     const nameLabel = document.createElement('span');
     nameLabel.className = 'token-name-label';
     nameLabel.textContent = t.name || '';
     el.appendChild(nameLabel);
   } else {
     el.textContent = t.name;
-    if (sz > 1) { const px = 36 * sz; el.style.width = px+'px'; el.style.height = px+'px'; el.style.fontSize = Math.max(9, 11*sz)+'px'; }
+    if (sz > 1) {
+      const px = 36 * sz;
+      el.style.width = px + 'px';
+      el.style.height = px + 'px';
+      el.style.fontSize = Math.max(9, 11 * sz) + 'px';
+    }
   }
+
+  if (t.memo) {
+    const memoTip = document.createElement('div');
+    memoTip.className = 'token-memo-tooltip';
+    memoTip.textContent = t.memo;
+    el.appendChild(memoTip);
+  }
+
   if (t.statuses && t.statuses.length > 0) {
     const hp = t.statuses[0];
     if (hp.max > 0) {
       const pct = Math.max(0, Math.min(100, (hp.cur / hp.max) * 100));
-      const bar = document.createElement('div'); bar.className = 'token-hp-bar';
-      const fill = document.createElement('div'); fill.className = 'token-hp-fill'; fill.style.width = pct + '%';
+      const bar = document.createElement('div');
+      bar.className = 'token-hp-bar';
+      const fill = document.createElement('div');
+      fill.className = 'token-hp-fill';
+      fill.style.width = pct + '%';
       if (pct <= 25) fill.style.background = 'var(--red)';
       else if (pct <= 50) fill.style.background = '#f0ad4e';
-      bar.appendChild(fill); el.appendChild(bar);
+      bar.appendChild(fill);
+      el.appendChild(bar);
     }
   }
+
   if (_multiSelectedTokenIds.includes(t.id)) el.classList.add('multi-selected');
-  el.addEventListener('contextmenu', e => { e.preventDefault(); e.stopPropagation(); showTokenCtx(e, t.id); });
+
+  el.addEventListener('dblclick', e => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!hasPerm('editToken')) return;
+    openTokenEdit(t.id);
+  });
+  el.addEventListener('contextmenu', e => {
+    e.preventDefault();
+    e.stopPropagation();
+    showTokenCtx(e, t.id);
+  });
   makeDraggable(el, t.id);
   inner.appendChild(el);
 }
@@ -435,6 +475,7 @@ function removeToken(tokenId) {
     const { db, ref, remove } = window._FB;
     remove(ref(db, `rooms/${St.roomCode}/tokens/${tokenId}`));
   } else delete St.tokens[tokenId];
+  updateMultiTokenSelectionUI();
 }
 
 let _ctxTokenId = null;
