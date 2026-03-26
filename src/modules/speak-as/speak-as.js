@@ -343,11 +343,7 @@ function renderColorPalettePopup(popup, title, currentColor, onSelect) {
     const swatch = document.createElement('div');
     swatch.className = 'sa-color-swatch' + (currentColor === color ? ' active' : '');
     swatch.style.background = color;
-    swatch.onclick = (ev) => {
-      ev.stopPropagation();
-      onSelect(color);
-      popup.classList.remove('open');
-    };
+    swatch.onclick = (ev) => { ev.stopPropagation(); onSelect(color); popup.classList.remove('open'); };
     grid.appendChild(swatch);
   });
 }
@@ -360,12 +356,7 @@ function toggleColorPalette(e) {
   if (popup.classList.contains('open')) { popup.classList.remove('open'); return; }
   const jId = St.speakAsJournalId;
   const j = jId ? loadJournals().find(x => x.id === jId) : null;
-  let currentColor;
-  if (j) {
-    currentColor = j.nameColor || '#b89a60';
-  } else {
-    currentColor = St.myNameColor || '#b89a60';
-  }
+  const currentColor = j ? (j.nameColor || '#b89a60') : (St.myNameColor || '#b89a60');
   renderColorPalettePopup(popup, '채팅 이름 색상', currentColor, setNameColor);
   popup.classList.add('open');
 }

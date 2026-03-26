@@ -1,57 +1,3 @@
-
-function getSharedAvatarRuntime() {
-  if (window._itcAvatarRuntime) return window._itcAvatarRuntime;
-  return {
-    sanitizePersistentAvatarSrc(src) {
-      const value = String(src || '').trim();
-      if (!value) return '';
-      if (/^data:image\//i.test(value) || /^blob:/i.test(value)) return '';
-      return value;
-    },
-    readStoredAvatar(uid) {
-      if (!uid) return '';
-      try {
-        const safe = this.sanitizePersistentAvatarSrc(localStorage.getItem('itc_avatar_' + uid));
-        if (!safe) {
-          localStorage.removeItem('itc_avatar_' + uid);
-          localStorage.removeItem('itc_avatar_path_' + uid);
-        }
-        return safe;
-      } catch (e) {
-        return '';
-      }
-    },
-    writeStoredAvatar(uid, src, storagePath = '') {
-      if (!uid) return '';
-      const safe = this.sanitizePersistentAvatarSrc(src);
-      try {
-        if (safe) {
-          localStorage.setItem('itc_avatar_' + uid, safe);
-          if (storagePath) localStorage.setItem('itc_avatar_path_' + uid, storagePath);
-          else localStorage.removeItem('itc_avatar_path_' + uid);
-        } else {
-          localStorage.removeItem('itc_avatar_' + uid);
-          localStorage.removeItem('itc_avatar_path_' + uid);
-        }
-      } catch (e) {}
-      return safe;
-    },
-    rememberAvatar(uid, name, src) {
-      window._avatarCache = window._avatarCache || {};
-      const safe = this.sanitizePersistentAvatarSrc(src);
-      if (uid) {
-        if (safe) window._avatarCache[uid] = safe;
-        else delete window._avatarCache[uid];
-      }
-      if (name) {
-        if (safe) window._avatarCache[name] = safe;
-        else delete window._avatarCache[name];
-      }
-      return safe;
-    },
-  };
-}
-
 /**
  * ITC TRPG — Game Core 모듈
  * Firebase 리스너, 게임 진입, 플레이어 관리, 캐릭터 시트
@@ -69,11 +15,7 @@ function syncMyAvatarToRoom(avatarOverride = undefined, force = false) {
   const nextAvatar = avatarOverride !== undefined
     ? (avatarOverride || '')
     : (() => {
-        try {
-          return getSharedAvatarRuntime().readStoredAvatar(St.myId);
-        } catch (e) {
-          return '';
-        }
+        try { return localStorage.getItem('itc_avatar_' + St.myId) || ''; } catch (e) { return ''; }
       })();
   let avatarStoragePath = '';
   try { avatarStoragePath = localStorage.getItem('itc_avatar_path_' + St.myId) || ''; } catch (e) {}
@@ -231,13 +173,13 @@ function setupFirebaseListeners() {
 
   const addCasualRecord = (key, m) => {
     if (!m || _processedCasualKeys.has(key)) return;
-    appendCasualMsg(m.name, m.text, m.uid, m.time, key);
+    appendCasualMsg(m.name, m.text, m.uid, m.time, key, m.nameColor || '');
     _processedCasualKeys.add(key);
   };
 
   const changeCasualRecord = (key, m) => {
     if (!m) return;
-    replaceCasualMsg(m.name, m.text, m.uid, m.time, key);
+    replaceCasualMsg(m.name, m.text, m.uid, m.time, key, m.nameColor || '');
     _processedCasualKeys.add(key);
   };
 
@@ -374,9 +316,12 @@ function renderPlayers(players) {
     const online = p.online || id === St.myId;
     addPlayerChip(id, p.name, id === St.myId, p.role, online);
 
-    const av = getSharedAvatarRuntime().sanitizePersistentAvatarSrc(p.avatarUrl || p.avatar || getSharedAvatarRuntime().readStoredAvatar(id));
+    const av = p.avatarUrl || p.avatar || localStorage.getItem('itc_avatar_' + id);
     if (av) {
-      getSharedAvatarRuntime().writeStoredAvatar(id, av, p.avatarStoragePath || '');
+      localStorage.setItem('itc_avatar_' + id, av);
+      if (p.avatarStoragePath) {
+        try { localStorage.setItem('itc_avatar_path_' + id, p.avatarStoragePath); } catch (e) {}
+      }
       window._avatarCache[id] = av;
       window._avatarCache[p.name] = av;
     }

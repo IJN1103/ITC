@@ -86,7 +86,7 @@ function setChatFontSize(value) {
   showToast(`채팅 글자 크기가 ${next.toFixed(1)}px로 변경됐어요`);
 }
 
-syncChatFontSizeUI();
+document.documentElement.style.setProperty('--chat-font-size', `${Math.min(17.5, Math.max(13, Number(St.chatFontSize || 14.5)))}px`);
 
 function showToast(msg) {
   let t = document.getElementById('toast');
@@ -136,7 +136,6 @@ function switchRightTab(tab) {
     if (whisperWrap) whisperWrap.style.display = '';
   }
   if (typeof refreshChatActionButtons === 'function') refreshChatActionButtons();
-  if (typeof syncChatFontSizeUI === 'function') syncChatFontSizeUI();
   if (tab === 'journal') renderJournalList();
 }
 
