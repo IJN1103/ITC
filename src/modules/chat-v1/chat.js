@@ -1209,6 +1209,7 @@ async function sendPendingChatImages() {
   if (!_pendingChatImages.length) return true;
   const items = _pendingChatImages.splice(0, _pendingChatImages.length);
   renderPendingChatImages();
+  showToast('사진을 보내는 중입니다.');
   try {
     for (const item of items) {
       await sendPreparedChatImage(item, _pendingChatImageWide, { width: item.width, height: item.height });
