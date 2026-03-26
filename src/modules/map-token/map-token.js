@@ -409,7 +409,9 @@ function makeDraggable(el, tokenId) {
 
       if (window._FB?.CONFIGURED && St.roomCode) {
         const { db, ref, update } = window._FB;
-        update(ref(db, `rooms/${St.roomCode}/tokens`), updates);
+        Object.entries(updates).forEach(([id, pos]) => {
+          update(ref(db, `rooms/${St.roomCode}/tokens/${id}`), pos);
+        });
       }
     };
 
