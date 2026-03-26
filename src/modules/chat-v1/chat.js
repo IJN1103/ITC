@@ -20,37 +20,7 @@ function toggleDescMode() {
   }
 }
 
-
-function ensureChatActionBarButtons() {
-  const bar = document.getElementById('chat-action-bar');
-  if (!bar) return;
-
-  let popoutBtn = document.getElementById('chat-popout-btn');
-  if (!popoutBtn) {
-    popoutBtn = document.createElement('button');
-    popoutBtn.className = 'chat-popout-btn';
-    popoutBtn.id = 'chat-popout-btn';
-    popoutBtn.title = '채팅을 새 탭으로 분리';
-    popoutBtn.textContent = '⤢';
-    popoutBtn.onclick = () => { if (typeof popoutChat === 'function') popoutChat(); };
-    bar.appendChild(popoutBtn);
-  }
-
-  let clearBtn = document.getElementById('chat-clear-btn');
-  if (!clearBtn) {
-    clearBtn = document.createElement('button');
-    clearBtn.className = 'chat-clear-btn';
-    clearBtn.id = 'chat-clear-btn';
-    clearBtn.title = '채팅/잡담 전체 지우기';
-    clearBtn.textContent = '채팅 지우기';
-    clearBtn.style.display = 'none';
-    clearBtn.onclick = () => { if (typeof clearAllChatHistory === 'function') clearAllChatHistory(); };
-    bar.appendChild(clearBtn);
-  }
-}
-
 function refreshChatActionButtons() {
-  ensureChatActionBarButtons();
   const visible = _activeRightTab !== 'journal';
   const popoutBtn = document.getElementById('chat-popout-btn');
   const clearBtn = document.getElementById('chat-clear-btn');
@@ -415,7 +385,7 @@ function getStoredRecord(channel = 'chat', key) {
 function buildMessageNodeFromRecord(channel = 'chat', record) {
   if (!record) return null;
   if (channel === 'casual') {
-    return buildCasualMsgElement(record.name, record.text, record.uid, record.timestamp, record._key);
+    return buildCasualMsgElement(record.name, record.text, record.uid, record.timestamp, record._key, record.nameColor || '');
   }
   return buildChatMsgElement(
     record.name, record.text, record.type, record.uid, record.timestamp,
@@ -732,22 +702,7 @@ function getChatImageInlineStyle(imageWide = false) {
   return imageWide ? 'width:100%;max-width:none;height:auto;object-fit:contain;' : '';
 }
 
-function isLegacyBase64ImageSrc(src) {
-  return typeof src === 'string' && /^data:image\//i.test(String(src).trim());
-}
-
-function isEphemeralObjectUrl(src) {
-  return typeof src === 'string' && /^blob:/i.test(String(src).trim());
-}
-
-function sanitizePersistentAvatarSrc(src) {
-  const value = String(src || '').trim();
-  if (!value) return '';
-  if (isLegacyBase64ImageSrc(value) || isEphemeralObjectUrl(value)) return '';
-  return value;
-}
-
-const CHAT_IMAGE_PLACEHOLDER = 'about:blank';
+const CHAT_IMAGE_PLACEHOLDER = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==';
 let _deferredChatImageObserver = null;
 
 function normalizeChatImageMeta(imageMeta = null) {
@@ -827,108 +782,42 @@ function buildChatImageHtml(src, imageWide = false, imageMeta = null) {
 const _pendingChatImages = [];
 let _pendingChatImageWide = false;
 let _dragChatImageId = null;
-let _isPreparingPendingChatImages = false;
-let _isSendingPendingChatImages = false;
-let _pendingChatUploadStatusText = '';
-let _pendingChatImagesRenderRaf = 0;
-
-function isPendingChatImageQueueBusy() {
-  return _isPreparingPendingChatImages || _isSendingPendingChatImages;
-}
-
-function setPendingChatUploadStatus(text = '') {
-  _pendingChatUploadStatusText = String(text || '');
-}
-
-function schedulePendingChatImagesRender() {
-  if (_pendingChatImagesRenderRaf) return;
-  _pendingChatImagesRenderRaf = requestAnimationFrame(() => {
-    _pendingChatImagesRenderRaf = 0;
-    renderPendingChatImages();
-  });
-}
-
-function getFriendlyChatUploadErrorMessage(err) {
-  const raw = String(err?.message || err || '').toLowerCase();
-  if (!raw) return '이미지 업로드에 실패했어요. 잠시 후 다시 시도해 주세요.';
-  if (raw.includes('roomcode')) return '방 정보가 없어서 이미지를 보낼 수 없어요. 방에 다시 입장해 주세요.';
-  if (raw.includes('timeout') || raw.includes('timed out') || raw.includes('abort')) return '이미지 업로드 시간이 너무 오래 걸렸어요. 잠시 후 다시 시도해 주세요.';
-  if (raw.includes('network')) return '네트워크 연결이 불안정해요. 잠시 후 다시 시도해 주세요.';
-  if (raw.includes('cloudinary') || raw.includes('preset') || raw.includes('unsigned')) return '이미지 업로드 설정에 문제가 있어요. preset 설정을 확인해 주세요.';
-  if (raw.includes('업로드할 이미지 데이터가 없어요')) return '전송할 이미지 준비가 아직 끝나지 않았어요. 이미지를 다시 선택해 주세요.';
-  return err?.message || '이미지 업로드에 실패했어요. 잠시 후 다시 시도해 주세요.';
-}
 
 function makePendingChatImageId() {
   return `pci_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 }
 
 function getChatImageQueueEls() {
-  const wrap = document.getElementById('chat-image-queue');
   return {
-    wrap,
+    wrap: document.getElementById('chat-image-queue'),
     list: document.getElementById('chat-image-preview-list'),
     wideToggle: document.getElementById('chat-image-wide-toggle'),
-    help: wrap ? wrap.querySelector('.chat-image-queue-help') : null,
-    feedback: document.getElementById('chat-upload-feedback'),
   };
 }
 
-function getPendingChatFeedbackText() {
-  if (!_isSendingPendingChatImages) return '';
-  const m = String(_pendingChatUploadStatusText || '').match(/(\d+)\/(\d+)/);
-  if (m) return `사진을 보내는 중입니다. (${m[1]}/${m[2]})`;
-  return '사진을 보내는 중입니다.';
-}
-
 function renderPendingChatImages() {
-  const { wrap, list, wideToggle, help, feedback } = getChatImageQueueEls();
+  const { wrap, list, wideToggle } = getChatImageQueueEls();
   if (!wrap || !list) return;
-
-  const isBusy = isPendingChatImageQueueBusy();
   list.innerHTML = '';
-
-  if (feedback) {
-    const feedbackText = getPendingChatFeedbackText();
-    feedback.style.display = feedbackText ? '' : 'none';
-    feedback.textContent = feedbackText || '사진을 보내는 중입니다.';
-  }
-
   if (_pendingChatImages.length === 0) {
     wrap.style.display = 'none';
-    if (wideToggle) {
-      wideToggle.checked = !!_pendingChatImageWide;
-      wideToggle.disabled = !!isBusy;
-    }
-    if (help) help.textContent = '최대 4장 · ✕로 삭제 · 드래그로 순서 변경';
+    if (wideToggle) wideToggle.checked = !!_pendingChatImageWide;
     return;
   }
 
   wrap.style.display = '';
-  if (wideToggle) {
-    wideToggle.checked = !!_pendingChatImageWide;
-    wideToggle.disabled = !!isBusy;
-  }
-  if (help) {
-    help.textContent = _pendingChatUploadStatusText
-      || (_isPreparingPendingChatImages
-        ? '이미지 준비 중...'
-        : (_isSendingPendingChatImages
-          ? `업로드 중... ${_pendingChatImages.length}장 대기`
-          : '최대 4장 · ✕로 삭제 · 드래그로 순서 변경'));
-  }
+  if (wideToggle) wideToggle.checked = !!_pendingChatImageWide;
 
-  const frag = document.createDocumentFragment();
   _pendingChatImages.forEach((item, idx) => {
     const btn = document.createElement('div');
     btn.className = 'chat-image-preview-item';
-    btn.draggable = !isBusy;
+    btn.draggable = true;
     btn.dataset.imageId = item.id;
     btn.innerHTML = `
       <img src="${esc(item.previewUrl)}" alt="첨부 이미지 ${idx + 1}">
       <span class="chat-image-preview-grab">↕</span>
       <span class="chat-image-preview-order">${idx + 1}</span>
-      <button type="button" class="chat-image-preview-remove" title="첨부 취소"${isBusy ? ' disabled' : ''}>✕</button>
+      <button type="button" class="chat-image-preview-remove" title="첨부 취소">✕</button>
     `;
     const removeBtn = btn.querySelector('.chat-image-preview-remove');
     if (removeBtn) {
@@ -939,27 +828,23 @@ function renderPendingChatImages() {
       });
     }
     btn.addEventListener('dragstart', () => {
-      if (isPendingChatImageQueueBusy()) return;
       _dragChatImageId = item.id;
       btn.classList.add('dragging');
     });
     btn.addEventListener('dragend', () => {
       _dragChatImageId = null;
       btn.classList.remove('dragging');
-      schedulePendingChatImagesRender();
+      renderPendingChatImages();
     });
     btn.addEventListener('dragover', (e) => {
-      if (isPendingChatImageQueueBusy()) return;
       e.preventDefault();
     });
     btn.addEventListener('drop', (e) => {
-      if (isPendingChatImageQueueBusy()) return;
       e.preventDefault();
       movePendingChatImage(_dragChatImageId, item.id);
     });
-    frag.appendChild(btn);
+    list.appendChild(btn);
   });
-  list.appendChild(frag);
 }
 
 
@@ -971,33 +856,29 @@ function revokePreparedChatImagePreview(item) {
 }
 
 function removePendingChatImage(imageId) {
-  if (isPendingChatImageQueueBusy()) return;
   const idx = _pendingChatImages.findIndex(item => item.id === imageId);
   if (idx < 0) return;
   const [removed] = _pendingChatImages.splice(idx, 1);
   revokePreparedChatImagePreview(removed);
-  schedulePendingChatImagesRender();
+  renderPendingChatImages();
 }
 
 function movePendingChatImage(fromId, toId) {
-  if (isPendingChatImageQueueBusy()) return;
   if (!fromId || !toId || fromId === toId) return;
   const fromIdx = _pendingChatImages.findIndex(item => item.id === fromId);
   const toIdx = _pendingChatImages.findIndex(item => item.id === toId);
   if (fromIdx < 0 || toIdx < 0) return;
   const [moved] = _pendingChatImages.splice(fromIdx, 1);
   _pendingChatImages.splice(toIdx, 0, moved);
-  schedulePendingChatImagesRender();
+  renderPendingChatImages();
 }
 
 function clearPendingChatImages() {
-  if (isPendingChatImageQueueBusy()) return;
   _pendingChatImages.splice(0, _pendingChatImages.length).forEach(revokePreparedChatImagePreview);
-  schedulePendingChatImagesRender();
+  renderPendingChatImages();
 }
 
 function togglePendingChatImageWide(checked) {
-  if (isPendingChatImageQueueBusy()) return;
   _pendingChatImageWide = !!checked;
 }
 
@@ -1009,9 +890,13 @@ function getCloudinaryRuntimeConfig() {
   return { cloudName, unsignedPreset };
 }
 
-async function fileToObjectUrl(file) {
-  if (!(file instanceof Blob)) throw new Error('이미지를 읽지 못했어요.');
-  return URL.createObjectURL(file);
+async function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = ev => resolve(ev.target.result);
+    reader.onerror = () => reject(new Error('이미지를 읽지 못했어요.'));
+    reader.readAsDataURL(file);
+  });
 }
 
 async function canvasToJpegBlob(canvas, quality = 0.84) {
@@ -1030,8 +915,8 @@ function makePreparedChatImageBase(meta = {}) {
   return {
     id: makePendingChatImageId(),
     previewUrl: meta.previewUrl || '',
-    previewKind: meta.previewKind || 'object-url',
-    dataUrl: '',
+    previewKind: meta.previewKind || 'data-url',
+    dataUrl: meta.dataUrl || '',
     uploadBlob: meta.uploadBlob || null,
     uploadMime: meta.uploadMime || '',
     uploadFileName: meta.uploadFileName || '',
@@ -1092,7 +977,7 @@ async function fileToPreparedChatImage(file) {
     });
   }
 
-  const imageUrl = await fileToObjectUrl(file);
+  const dataUrl = await fileToDataUrl(file);
   const compressed = await new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = async () => {
@@ -1122,20 +1007,16 @@ async function fileToPreparedChatImage(file) {
         });
       } catch (err) {
         reject(err);
-      } finally {
-        try { URL.revokeObjectURL(imageUrl); } catch (e) {}
       }
     };
-    img.onerror = () => {
-      try { URL.revokeObjectURL(imageUrl); } catch (e) {}
-      reject(new Error('이미지 처리에 실패했어요.'));
-    };
-    img.src = imageUrl;
+    img.onerror = () => reject(new Error('이미지 처리에 실패했어요.'));
+    img.src = dataUrl;
   });
 
   return makePreparedChatImageBase({
     previewUrl: compressed.previewUrl,
     previewKind: 'object-url',
+    dataUrl,
     uploadBlob: compressed.blob,
     uploadMime: 'image/jpeg',
     uploadFileName: `chat_${Date.now()}.jpg`,
@@ -1146,10 +1027,6 @@ async function fileToPreparedChatImage(file) {
 }
 
 async function queuePendingChatImages(files) {
-  if (isPendingChatImageQueueBusy()) {
-    showToast('이미지 준비 또는 업로드가 끝난 뒤 다시 첨부해 주세요.');
-    return;
-  }
   const incoming = Array.from(files || []).filter(Boolean);
   if (!incoming.length) return;
   const roomLeft = Math.max(0, 4 - _pendingChatImages.length);
@@ -1163,37 +1040,16 @@ async function queuePendingChatImages(files) {
     showToast('이미지는 한 번에 최대 4장까지 첨부할 수 있어요.');
   }
 
-  _isPreparingPendingChatImages = true;
-  let preparedCount = 0;
-  let failedCount = 0;
-  setPendingChatUploadStatus(`이미지 준비 중... 0/${picked.length}`);
-  schedulePendingChatImagesRender();
-
-  try {
-    for (const file of picked) {
-      try {
-        const prepared = await fileToPreparedChatImage(file);
-        _pendingChatImages.push(prepared);
-        preparedCount += 1;
-      } catch (err) {
-        failedCount += 1;
-        console.error('queuePendingChatImages failed', err);
-      } finally {
-        setPendingChatUploadStatus(`이미지 준비 중... ${preparedCount + failedCount}/${picked.length}`);
-        schedulePendingChatImagesRender();
-      }
+  for (const file of picked) {
+    try {
+      const prepared = await fileToPreparedChatImage(file);
+      _pendingChatImages.push(prepared);
+    } catch (err) {
+      console.error('queuePendingChatImages failed', err);
+      showToast(err?.message || '이미지를 첨부하지 못했어요.');
     }
-  } finally {
-    _isPreparingPendingChatImages = false;
-    setPendingChatUploadStatus('');
-    schedulePendingChatImagesRender();
   }
-
-  if (failedCount > 0 && preparedCount > 0) {
-    showToast(`이미지 ${preparedCount}장은 준비됐고, ${failedCount}장은 첨부하지 못했어요.`);
-  } else if (failedCount > 0) {
-    showToast('이미지를 첨부하지 못했어요. 다른 이미지로 다시 시도해 주세요.');
-  }
+  renderPendingChatImages();
 }
 
 function withTimeout(promise, ms = 3500) {
@@ -1229,10 +1085,24 @@ async function getStorageApiQuick() {
   }
 }
 
+function inferStorageContentTypeFromDataUrl(dataUrl) {
+  const m = String(dataUrl || '').match(/^data:([^;,]+)[;,]/i);
+  return m ? m[1].toLowerCase() : 'image/jpeg';
+}
+
+function blobFromDataUrl(dataUrl) {
+  const parts = String(dataUrl || '').split(',');
+  if (parts.length < 2) throw new Error('이미지 데이터 형식이 올바르지 않아요.');
+  const contentType = inferStorageContentTypeFromDataUrl(dataUrl);
+  const binary = atob(parts[1]);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return { blob: new Blob([bytes], { type: contentType }), contentType };
+}
+
 async function uploadChatImageBlobToCloudinary(blob, fileName = 'chat.jpg') {
   const cfg = getCloudinaryRuntimeConfig();
-  if (!cfg) throw new Error('cloudinary-config-missing');
-  if (!blob) throw new Error('empty-chat-blob');
+  if (!cfg || !blob) return null;
   const formData = new FormData();
   formData.append('file', blob, fileName);
   formData.append('upload_preset', cfg.unsignedPreset);
@@ -1253,31 +1123,25 @@ async function uploadChatImageBlobToCloudinary(blob, fileName = 'chat.jpg') {
       path: payload.public_id || '',
       contentType: blob.type || 'image/jpeg',
     };
-  } catch (err) {
-    if (err?.name === 'AbortError') throw new Error('timeout');
-    throw err;
   } finally {
     if (timer) clearTimeout(timer);
   }
 }
 
-async function uploadPreparedChatImage(preparedItem = null) {
+async function uploadChatImageDataUrl(dataUrl, roomCode, preparedItem = null) {
   const uploadBlob = preparedItem?.uploadBlob || null;
   const uploadFileName = preparedItem?.uploadFileName || '';
-  if (!(uploadBlob instanceof Blob)) {
-    throw new Error('업로드할 이미지 데이터가 없어요.');
-  }
+  const blobInfo = uploadBlob
+    ? { blob: uploadBlob, contentType: preparedItem?.uploadMime || uploadBlob.type || 'image/jpeg' }
+    : blobFromDataUrl(dataUrl);
 
-  const uploadedCloudinary = await uploadChatImageBlobToCloudinary(
-    uploadBlob,
-    uploadFileName || `chat_${Date.now()}.jpg`
-  );
+  const uploadedCloudinary = await uploadChatImageBlobToCloudinary(blobInfo.blob, uploadFileName || `chat_${Date.now()}.jpg`);
   if (!uploadedCloudinary?.url) return null;
 
   return {
     url: uploadedCloudinary.url,
     path: uploadedCloudinary.path || '',
-    contentType: uploadedCloudinary.contentType || preparedItem?.uploadMime || uploadBlob.type || 'image/jpeg',
+    contentType: uploadedCloudinary.contentType || blobInfo.contentType || 'image/jpeg',
   };
 }
 
@@ -1288,20 +1152,18 @@ async function sendPreparedChatImage(preparedOrDataUrl, imageWide = false, image
   const saAvatar = saJId ? saGetAvatar(saJId) : null;
   const normalizedMeta = normalizeChatImageMeta(imageMeta);
 
-  const prepared = (preparedOrDataUrl && typeof preparedOrDataUrl === 'object' && ('uploadBlob' in preparedOrDataUrl || 'previewUrl' in preparedOrDataUrl))
+  const prepared = (preparedOrDataUrl && typeof preparedOrDataUrl === 'object' && ('dataUrl' in preparedOrDataUrl || 'uploadBlob' in preparedOrDataUrl))
     ? preparedOrDataUrl
-    : null;
+    : { dataUrl: String(preparedOrDataUrl || '') };
+  const dataUrl = prepared.dataUrl || '';
   let finalSrc = '';
   let storageMeta = null;
 
-  if (!prepared?.uploadBlob) {
-    throw new Error('업로드할 이미지 데이터가 없어요.');
-  }
   if (!St.roomCode) {
     throw new Error('이미지 업로드를 위한 방 정보가 없어요.');
   }
 
-  const uploaded = await uploadPreparedChatImage(prepared);
+  const uploaded = await uploadChatImageDataUrl(dataUrl, St.roomCode, prepared);
   if (!uploaded?.url) {
     throw new Error('이미지 업로드에 실패했어요. 다시 시도해 주세요.');
   }
@@ -1320,7 +1182,7 @@ async function sendPreparedChatImage(preparedOrDataUrl, imageWide = false, image
       imageWide: !!imageWide,
       imageMeta: normalizedMeta,
       imageStoragePath: storageMeta?.path || '',
-      imageContentType: storageMeta?.contentType || prepared.uploadMime || prepared.uploadBlob.type || 'image/jpeg',
+      imageContentType: storageMeta?.contentType || inferStorageContentTypeFromDataUrl(dataUrl),
     };
     if (window._FB?.CONFIGURED) {
       const { db, ref, push } = window._FB;
@@ -1335,7 +1197,7 @@ async function sendPreparedChatImage(preparedOrDataUrl, imageWide = false, image
     imageWide: !!imageWide,
     imageMeta: normalizedMeta,
     imageStoragePath: storageMeta?.path || '',
-    imageContentType: storageMeta?.contentType || prepared.uploadMime || prepared.uploadBlob.type || 'image/jpeg',
+    imageContentType: storageMeta?.contentType || inferStorageContentTypeFromDataUrl(dataUrl),
   });
 }
 
@@ -1344,68 +1206,34 @@ async function sendPendingChatImages() {
     showToast('이미지 첨부는 메인 채팅에서만 보낼 수 있어요.');
     return false;
   }
-  if (_isPreparingPendingChatImages) {
-    showToast('이미지 준비가 끝난 뒤 전송해 주세요.');
-    return false;
-  }
-  if (_isSendingPendingChatImages) {
-    showToast('이미지 업로드가 진행 중이에요. 잠시만 기다려 주세요.');
-    return false;
-  }
   if (!_pendingChatImages.length) return true;
-
   const items = _pendingChatImages.splice(0, _pendingChatImages.length);
-  let sentCount = 0;
-  _isSendingPendingChatImages = true;
-  setPendingChatUploadStatus(`사진을 보내는 중입니다. (0/${items.length})`);
-  schedulePendingChatImagesRender();
-
+  renderPendingChatImages();
   try {
-    for (let i = 0; i < items.length; i += 1) {
-      const item = items[i];
-      setPendingChatUploadStatus(`사진을 보내는 중입니다. (${i + 1}/${items.length})`);
-      schedulePendingChatImagesRender();
+    for (const item of items) {
       await sendPreparedChatImage(item, _pendingChatImageWide, { width: item.width, height: item.height });
       revokePreparedChatImagePreview(item);
-      sentCount += 1;
     }
     return true;
   } catch (err) {
     console.error('sendPendingChatImages failed', err);
-    const remaining = items.slice(sentCount);
-    remaining.reverse().forEach(item => _pendingChatImages.unshift(item));
-    const baseMsg = getFriendlyChatUploadErrorMessage(err);
-    const msg = sentCount > 0
-      ? `${sentCount}장 전송 후 중간에 멈췄어요. 남은 이미지를 다시 전송해 주세요.`
-      : baseMsg;
-    showToast(msg);
-    throw new Error(msg);
-  } finally {
-    _isSendingPendingChatImages = false;
-    setPendingChatUploadStatus('');
-    schedulePendingChatImagesRender();
+    items.reverse().forEach(item => _pendingChatImages.unshift(item));
+    renderPendingChatImages();
+    showToast(err?.message || '이미지 업로드에 실패했어요. 잠시 후 다시 시도해 주세요.');
+    throw err;
   }
 }
 
 function initChatImageComposer() {
-  schedulePendingChatImagesRender();
+  renderPendingChatImages();
   bindMessageViewport('chat');
   bindMessageViewport('casual');
-  refreshChatActionButtons();
 }
 
 
 async function sendChat() {
   const inp = document.getElementById('chat-input');
   if (!inp) return;
-  if (_isPreparingPendingChatImages) {
-    showToast('이미지 준비가 끝난 뒤 전송해 주세요.');
-    return;
-  }
-  if (_isSendingPendingChatImages) {
-    showToast('이미지 업로드가 진행 중이에요. 잠시만 기다려 주세요.');
-    return;
-  }
   const raw = inp.value.trim();
   const hasImages = _pendingChatImages.length > 0;
   if (!raw && !hasImages) return;
@@ -1563,26 +1391,25 @@ function sendCasual() {
 
 function sendCasualMsg(name, text) {
   const msg = { name, text, uid: St.myId, time: Date.now() };
+  if (St.casualNameColor) msg.nameColor = St.casualNameColor;
   if (window._FB?.CONFIGURED) {
     const { db, ref, push } = window._FB;
     if (!St.roomCode) return Promise.reject(new Error('roomCode missing'));
     return push(ref(db, `rooms/${St.roomCode}/casual`), msg);
   }
-  appendCasualMsg(name, text, St.myId, msg.time);
+  appendCasualMsg(name, text, St.myId, msg.time, null, St.casualNameColor || '');
   return Promise.resolve();
 }
 
 function refreshCasualNickDisplay() {
   const el = document.getElementById('casual-nick-name');
-  if (el) el.textContent = _casualNickname || St.myName;
+  if (el) {
+    el.textContent = _casualNickname || St.myName;
+    el.style.color = St.casualNameColor || '';
+  }
   const avEl = document.getElementById('casual-nick-avatar');
   if (avEl) {
-    let avSrc = '';
-    try {
-      avSrc = sanitizePersistentAvatarSrc(localStorage.getItem('itc_avatar_' + St.myId));
-      if (!avSrc) localStorage.removeItem('itc_avatar_' + St.myId);
-    } catch (e) {}
-    if (!avSrc) avSrc = sanitizePersistentAvatarSrc(window._avatarCache?.[St.myId] || window._avatarCache?.[St.myName]);
+    const avSrc = localStorage.getItem('itc_avatar_' + St.myId) || '';
     if (avSrc) {
       avEl.innerHTML = `<img src="${avSrc}" alt="">`;
     } else {
@@ -1630,6 +1457,21 @@ function loadMyNameColor() {
       if (val) {
         St.myNameColor = val;
         try { localStorage.setItem('itc_name_color_' + St.myId, val); } catch(e) {}
+      }
+    }).catch(() => {});
+  }
+}
+
+function loadCasualNameColor() {
+  try { St.casualNameColor = localStorage.getItem('itc_casual_name_color') || ''; } catch(e) {}
+  if (window._FB?.CONFIGURED && St.roomCode) {
+    const { db, ref, get } = window._FB;
+    get(ref(db, `rooms/${St.roomCode}/players/${St.myId}/casualNameColor`)).then(snap => {
+      const val = snap.val();
+      if (val) {
+        St.casualNameColor = val;
+        try { localStorage.setItem('itc_casual_name_color', val); } catch(e) {}
+        refreshCasualNickDisplay();
       }
     }).catch(() => {});
   }
@@ -1695,23 +1537,25 @@ function saSendCasual(journal, text) {
   }
 }
 
-function buildCasualMsgElement(name, text, uid, timestamp, msgKey) {
+function buildCasualMsgElement(name, text, uid, timestamp, msgKey, nameColor = '') {
   const d = timestamp ? new Date(timestamp) : new Date();
   const time = `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
   const avatarHtml = getAvatarHtml(name, uid || (name === St.myName ? St.myId : null));
+  const safeNameColor = String(nameColor || '').trim();
+  const nameStyle = safeNameColor ? ` style="color:${esc(safeNameColor)}"` : '';
   const div = document.createElement('div');
   div.className = 'chat-msg msg-normal';
   div.dataset.avatarUid = uid || '';
   div.dataset.avatarName = name || '';
-  div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name">${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-text">${fmtText(text)}</div></div>`;
+  div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name"${nameStyle}>${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-text">${fmtText(text)}</div></div>`;
   addMsgActions(div, uid, msgKey, 'casual', text, 'normal');
   return div;
 }
 
-function appendCasualMsg(name, text, uid, timestamp, msgKey) {
-  const safeKey = upsertStoredMessage('casual', msgKey, { name, text, uid, timestamp });
+function appendCasualMsg(name, text, uid, timestamp, msgKey, nameColor = '') {
+  const safeKey = upsertStoredMessage('casual', msgKey, { name, text, uid, timestamp, nameColor });
   bindMessageViewport('casual');
-  const div = buildCasualMsgElement(name, text, uid, timestamp, safeKey);
+  const div = buildCasualMsgElement(name, text, uid, timestamp, safeKey, nameColor);
   queueMessageRender('casual', div, safeKey, true);
   if (typeof _popoutWins !== 'undefined') {
     const av = getPopoutAvatarUrl(name, uid);
@@ -1723,7 +1567,7 @@ function appendCasualMsg(name, text, uid, timestamp, msgKey) {
 function replaceCasualMsg(name, text, uid, timestamp, msgKey) {
   const safeKey = upsertStoredMessage('casual', msgKey, { name, text, uid, timestamp });
   bindMessageViewport('casual');
-  const div = buildCasualMsgElement(name, text, uid, timestamp, safeKey);
+  const div = buildCasualMsgElement(name, text, uid, timestamp, safeKey, nameColor);
   replaceRenderedMessage('casual', safeKey, div);
 }
 
@@ -1767,16 +1611,13 @@ function openLightbox(src) {
 function addLocalMessage(type, name, text) { appendChatMsg(name, text, type); }
 
 function getAvatarHtml(name, uid) {
-  let imgSrc = '';
+  let imgSrc = null;
 
   if (uid) {
-    try {
-      imgSrc = sanitizePersistentAvatarSrc(localStorage.getItem('itc_avatar_' + uid));
-      if (!imgSrc) localStorage.removeItem('itc_avatar_' + uid);
-    } catch (e) {}
+    imgSrc = localStorage.getItem('itc_avatar_' + uid);
   }
   if (!imgSrc && name) {
-    imgSrc = sanitizePersistentAvatarSrc(window._avatarCache?.[uid] || window._avatarCache?.[name]);
+    imgSrc = window._avatarCache?.[uid] || window._avatarCache?.[name];
   }
 
   const initial = (name || '?')[0].toUpperCase();
@@ -1956,6 +1797,3 @@ window.removeRenderedMessage = removeRenderedMessage;
 window.resetRenderedMessages = resetRenderedMessages;
 window.getChatImageClassName = getChatImageClassName;
 window.getChatImageInlineStyle = getChatImageInlineStyle;
-
-
-try { ensureChatActionBarButtons(); refreshChatActionButtons(); } catch (e) {}

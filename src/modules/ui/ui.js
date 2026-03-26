@@ -58,7 +58,7 @@ function renderSettingsModal() {
   if (endBtn)    endBtn.style.display    = St.isGM ? '' : 'none';
 
   updateShapeBtns();
-  if (typeof updateChatFontSizeBtns === 'function') updateChatFontSizeBtns();
+  if (typeof syncChatFontSizeUI === 'function') syncChatFontSizeUI();
 
   if (!window._FB?.CONFIGURED) return;
   const { db, ref, get } = window._FB;

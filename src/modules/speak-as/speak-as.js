@@ -1,34 +1,3 @@
-
-function getSharedJournalAvatarRuntime() {
-  return {
-    sanitizePersistentAvatarSrc(src) {
-      const value = String(src || '').trim();
-      if (!value) return '';
-      if (/^data:image\//i.test(value) || /^blob:/i.test(value)) return '';
-      return value;
-    },
-    readStoredAvatar(journalId) {
-      if (!journalId) return '';
-      try {
-        const safe = this.sanitizePersistentAvatarSrc(localStorage.getItem('itc_av_' + journalId));
-        if (!safe) localStorage.removeItem('itc_av_' + journalId);
-        return safe;
-      } catch (e) {
-        return '';
-      }
-    },
-    writeStoredAvatar(journalId, src) {
-      if (!journalId) return '';
-      const safe = this.sanitizePersistentAvatarSrc(src);
-      try {
-        if (safe) localStorage.setItem('itc_av_' + journalId, safe);
-        else localStorage.removeItem('itc_av_' + journalId);
-      } catch (e) {}
-      return safe;
-    },
-  };
-}
-
 /**
  * ITC TRPG — Speak-As 모듈
  * 저널로 말하기, VN 대사창, 스탠딩, 색상, 귓말
@@ -36,25 +5,16 @@ function getSharedJournalAvatarRuntime() {
 
 const _JAV = {};
 
-function saIsLegacyBase64AvatarSrc(src) {
-  return typeof src === 'string' && /^data:image\//i.test(String(src).trim());
-}
-
 function saIsEphemeralAvatarSrc(src) {
-  return typeof src === 'string' && /^blob:/i.test(String(src).trim());
-}
-
-function saSanitizePersistentAvatarSrc(src) {
-  if (saIsEphemeralAvatarSrc(src)) return '';
-  return getSharedJournalAvatarRuntime().sanitizePersistentAvatarSrc(src);
+  return typeof src === 'string' && /^blob:/i.test(src);
 }
 
 function saSetAvatar(journalId, src) {
   if (!journalId || !src) return;
-  const safeSrc = saSanitizePersistentAvatarSrc(src);
-  _JAV[journalId] = safeSrc || src;
+  _JAV[journalId] = src;
   try {
-    getSharedJournalAvatarRuntime().writeStoredAvatar(journalId, safeSrc);
+    if (saIsEphemeralAvatarSrc(src)) localStorage.removeItem('itc_av_' + journalId);
+    else localStorage.setItem('itc_av_' + journalId, src);
   } catch(e) {}
 }
 
@@ -62,12 +22,13 @@ function saGetAvatar(journalId) {
   if (!journalId) return null;
   if (_JAV[journalId]) return _JAV[journalId];
   try {
-    const ls = getSharedJournalAvatarRuntime().readStoredAvatar(journalId);
-    if (ls) { _JAV[journalId] = ls; return ls; }
+    const ls = localStorage.getItem('itc_av_' + journalId);
+    if (ls && !saIsEphemeralAvatarSrc(ls)) { _JAV[journalId] = ls; return ls; }
+    if (ls && saIsEphemeralAvatarSrc(ls)) localStorage.removeItem('itc_av_' + journalId);
   } catch(e) {}
   try {
     const j = _allJournals.find(x => x.id === journalId);
-    const av = saSanitizePersistentAvatarSrc(j?.avatar || j?.sheet?.avatar || null);
+    const av = j?.avatar || j?.sheet?.avatar || null;
     if (av) { _JAV[journalId] = av; return av; }
   } catch(e) {}
   return null;
@@ -365,6 +326,7 @@ document.addEventListener('click', () => {
   document.getElementById('speak-as-dropdown')?.classList.remove('open');
   document.getElementById('whisper-dropdown')?.classList.remove('open');
   document.getElementById('sa-color-popup')?.classList.remove('open');
+  document.getElementById('casual-color-popup')?.classList.remove('open');
 });
 
 const SA_COLORS = [
@@ -373,10 +335,28 @@ const SA_COLORS = [
   '#2ecc71','#27ae60','#f39c12','#e67e22','#95a5a6','#ecf0f1',
 ];
 
+function renderColorPalettePopup(popup, title, currentColor, onSelect) {
+  if (!popup) return;
+  popup.innerHTML = `<div class="sa-color-popup-title">${title}</div><div class="sa-color-grid"></div>`;
+  const grid = popup.querySelector('.sa-color-grid');
+  SA_COLORS.forEach(color => {
+    const swatch = document.createElement('div');
+    swatch.className = 'sa-color-swatch' + (currentColor === color ? ' active' : '');
+    swatch.style.background = color;
+    swatch.onclick = (ev) => {
+      ev.stopPropagation();
+      onSelect(color);
+      popup.classList.remove('open');
+    };
+    grid.appendChild(swatch);
+  });
+}
+
 function toggleColorPalette(e) {
   e.stopPropagation();
   const popup = document.getElementById('sa-color-popup');
   if (!popup) return;
+  document.getElementById('casual-color-popup')?.classList.remove('open');
   if (popup.classList.contains('open')) { popup.classList.remove('open'); return; }
   const jId = St.speakAsJournalId;
   const j = jId ? loadJournals().find(x => x.id === jId) : null;
@@ -386,15 +366,17 @@ function toggleColorPalette(e) {
   } else {
     currentColor = St.myNameColor || '#b89a60';
   }
-  popup.innerHTML = '<div class="sa-color-popup-title">채팅 이름 색상</div><div class="sa-color-grid"></div>';
-  const grid = popup.querySelector('.sa-color-grid');
-  SA_COLORS.forEach(color => {
-    const swatch = document.createElement('div');
-    swatch.className = 'sa-color-swatch' + (currentColor === color ? ' active' : '');
-    swatch.style.background = color;
-    swatch.onclick = (ev) => { ev.stopPropagation(); setNameColor(color); popup.classList.remove('open'); };
-    grid.appendChild(swatch);
-  });
+  renderColorPalettePopup(popup, '채팅 이름 색상', currentColor, setNameColor);
+  popup.classList.add('open');
+}
+
+function toggleCasualColorPalette(e) {
+  e.stopPropagation();
+  const popup = document.getElementById('casual-color-popup');
+  if (!popup) return;
+  document.getElementById('sa-color-popup')?.classList.remove('open');
+  if (popup.classList.contains('open')) { popup.classList.remove('open'); return; }
+  renderColorPalettePopup(popup, '잡담 이름 색상', St.casualNameColor || '#b89a60', setCasualNameColor);
   popup.classList.add('open');
 }
 
@@ -415,6 +397,17 @@ function setNameColor(color) {
     }
   }
   showToast('이름 색상이 변경됐어요.');
+}
+
+function setCasualNameColor(color) {
+  St.casualNameColor = color;
+  try { localStorage.setItem('itc_casual_name_color', color); } catch(e) {}
+  if (window._FB?.CONFIGURED && St.roomCode) {
+    const { db, ref, update } = window._FB;
+    update(ref(db, `rooms/${St.roomCode}/players/${St.myId}`), { casualNameColor: color });
+  }
+  if (typeof refreshCasualNickDisplay === 'function') refreshCasualNickDisplay();
+  showToast('잡담 이름 색상이 변경됐어요.');
 }
 
 function toggleWhisperDropdown(e) {

@@ -11,7 +11,8 @@ const St = {
   myNameColor: '',
   players: {},
   avatarShape: localStorage.getItem('itc_avatar_shape') || 'rounded',
-  chatFontSize: localStorage.getItem('itc_chat_font_size') || 'normal',
+  chatFontSize: parseFloat(localStorage.getItem('itc_chat_font_size') || '14.5') || 14.5,
+  casualNameColor: localStorage.getItem('itc_casual_name_color') || '',
 };
 
 /* 권한 체크 헬퍼 */
@@ -61,36 +62,31 @@ function updateShapeBtns() {
 }
 
 
-function setChatFontSize(size) {
-  const next = ['small', 'normal', 'large'].includes(size) ? size : 'normal';
+function syncChatFontSizeUI() {
+  const value = Math.min(17.5, Math.max(13, Number(St.chatFontSize || 14.5)));
+  document.documentElement.style.setProperty('--chat-font-size', `${value}px`);
+  const slider = document.getElementById('chat-font-size-slider');
+  const label = document.getElementById('chat-font-size-value');
+  if (slider) slider.value = String(value);
+  if (label) label.textContent = `${value.toFixed(1)}px`;
+}
+
+function previewChatFontSize(value) {
+  const next = Math.min(17.5, Math.max(13, Number(value || 14.5)));
+  document.documentElement.style.setProperty('--chat-font-size', `${next}px`);
+  const label = document.getElementById('chat-font-size-value');
+  if (label) label.textContent = `${next.toFixed(1)}px`;
+}
+
+function setChatFontSize(value) {
+  const next = Math.min(17.5, Math.max(13, Number(value || 14.5)));
   St.chatFontSize = next;
-  localStorage.setItem('itc_chat_font_size', next);
-  document.documentElement.setAttribute('data-chat-font-size', next);
-  updateChatFontSizeBtns();
-  const label = next === 'small' ? '작게' : (next === 'large' ? '크게' : '기본');
-  showToast(`채팅 글자 크기가 ${label}로 변경됐어요`);
+  localStorage.setItem('itc_chat_font_size', String(next));
+  syncChatFontSizeUI();
+  showToast(`채팅 글자 크기가 ${next.toFixed(1)}px로 변경됐어요`);
 }
 
-function updateChatFontSizeBtns() {
-  const size = St.chatFontSize || 'normal';
-  const btnS = document.getElementById('chat-font-btn-small');
-  const btnN = document.getElementById('chat-font-btn-normal');
-  const btnL = document.getElementById('chat-font-btn-large');
-  const btns = [
-    [btnS, 'small'],
-    [btnN, 'normal'],
-    [btnL, 'large'],
-  ];
-  btns.forEach(([btn, key]) => {
-    if (!btn) return;
-    const isActive = size === key;
-    btn.style.borderColor = isActive ? 'var(--accent)' : 'var(--border)';
-    btn.style.background = isActive ? 'var(--a-dim)' : 'var(--s2)';
-    btn.style.color = isActive ? 'var(--accent)' : 'var(--dim)';
-  });
-}
-
-document.documentElement.setAttribute('data-chat-font-size', St.chatFontSize || 'normal');
+syncChatFontSizeUI();
 
 function showToast(msg) {
   let t = document.getElementById('toast');
@@ -140,6 +136,7 @@ function switchRightTab(tab) {
     if (whisperWrap) whisperWrap.style.display = '';
   }
   if (typeof refreshChatActionButtons === 'function') refreshChatActionButtons();
+  if (typeof syncChatFontSizeUI === 'function') syncChatFontSizeUI();
   if (tab === 'journal') renderJournalList();
 }
 
@@ -239,10 +236,4 @@ window.addEventListener('DOMContentLoaded', () => {
     if (brand) brand.style.display = 'none';
   }
   initAuthScreen();
-});
-
-window.addEventListener('load', () => {
-  try {
-    if (typeof refreshChatActionButtons === 'function') refreshChatActionButtons();
-  } catch (e) {}
 });
