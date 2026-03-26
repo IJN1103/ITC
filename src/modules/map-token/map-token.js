@@ -8,38 +8,43 @@ let _mapPanX = 0, _mapPanY = 0;
 
 let _mapBaseWidth = 0;
 let _mapBaseHeight = 0;
-const MAP_WORLD_EXPANSION = 2.5;
 
 function getMapBaseSize() {
   const inner = document.getElementById('map-inner');
   const map = document.getElementById('map-area');
   if (!_mapBaseWidth || !_mapBaseHeight) {
-    _mapBaseWidth = map?.clientWidth || inner?.offsetWidth || 1;
-    _mapBaseHeight = map?.clientHeight || inner?.offsetHeight || 1;
+    _mapBaseWidth = inner?.offsetWidth || map?.clientWidth || 1;
+    _mapBaseHeight = inner?.offsetHeight || map?.clientHeight || 1;
   }
   return { width: _mapBaseWidth || 1, height: _mapBaseHeight || 1 };
 }
 
 function getMapExpansion() {
+  const map = document.getElementById('map-area');
   const { width: baseW, height: baseH } = getMapBaseSize();
+  if (!map) return { x: 1, y: 1, baseW, baseH };
+  const scale = _mapScale || 1;
   return {
-    x: MAP_WORLD_EXPANSION,
-    y: MAP_WORLD_EXPANSION,
+    x: Math.max(1, (map.clientWidth || 1) / (baseW * scale)),
+    y: Math.max(1, (map.clientHeight || 1) / (baseH * scale)),
     baseW,
     baseH,
   };
 }
 
 function storedTokenPercentToDisplay(value, axis = 'x') {
-  return Number(value) || 0;
+  const factor = axis === 'y' ? getMapExpansion().y : getMapExpansion().x;
+  return (Number(value) || 0) / factor;
 }
 
 function displayTokenPercentToStored(value, axis = 'x') {
-  return Number(value) || 0;
+  const factor = axis === 'y' ? getMapExpansion().y : getMapExpansion().x;
+  return (Number(value) || 0) * factor;
 }
 
 function getTokenStoredPercentMax(axis = 'x') {
-  return 100;
+  const factor = axis === 'y' ? getMapExpansion().y : getMapExpansion().x;
+  return 100 * factor;
 }
 
 function clampTokenStoredPercent(value, axis = 'x') {
@@ -226,10 +231,8 @@ function getTokenStartPosition(tokenId) {
 
 function buildTokenDragSession(tokenId, startEvent) {
   const targetIds = getDragTargetIds(tokenId);
-  const inner = document.getElementById('map-inner');
-  const innerRect = inner?.getBoundingClientRect();
-  const renderedWidth = Math.max(innerRect?.width || 0, 1);
-  const renderedHeight = Math.max(innerRect?.height || 0, 1);
+  const { width: natW, height: natH } = getMapBaseSize();
+  const scale = _mapScale || 1;
   const startPos = {};
   targetIds.forEach((id) => {
     startPos[id] = getTokenStartPosition(id);
@@ -237,16 +240,17 @@ function buildTokenDragSession(tokenId, startEvent) {
   return {
     startClientX: startEvent.clientX,
     startClientY: startEvent.clientY,
-    renderedWidth,
-    renderedHeight,
+    natW,
+    natH,
+    scale,
     targetIds,
     startPos,
   };
 }
 
 function applyTokenDragSession(session, moveEvent) {
-  const dxPct = ((moveEvent.clientX - session.startClientX) / session.renderedWidth) * 100;
-  const dyPct = ((moveEvent.clientY - session.startClientY) / session.renderedHeight) * 100;
+  const dxPct = ((moveEvent.clientX - session.startClientX) / (session.natW * session.scale)) * 100;
+  const dyPct = ((moveEvent.clientY - session.startClientY) / (session.natH * session.scale)) * 100;
   session.targetIds.forEach((id) => {
     const targetEl = getTokenEl(id);
     const pos = session.startPos[id];
@@ -329,17 +333,8 @@ function applyMapTransform() {
   if (!inner || !map) return;
   const { width: baseW, height: baseH } = getMapBaseSize();
   const expansion = getMapExpansion();
-  const extraOffsetX = (baseW * (expansion.x - 1)) / 2;
-  const extraOffsetY = (baseH * (expansion.y - 1)) / 2;
-  const safeScale = Math.max(_mapScale || 1, 0.0001);
-  const gridScreenSizePx = 44;
-  const gridWorldSizePx = gridScreenSizePx / safeScale;
   inner.style.width = (baseW * expansion.x) + 'px';
   inner.style.height = (baseH * expansion.y) + 'px';
-  inner.style.left = (-extraOffsetX) + 'px';
-  inner.style.top = (-extraOffsetY) + 'px';
-  inner.style.backgroundSize = `${gridWorldSizePx}px ${gridWorldSizePx}px`;
-  inner.style.backgroundPosition = '0 0, 0 0';
   inner.style.transformOrigin = '0 0';
   inner.style.transform = `translate(${_mapPanX}px,${_mapPanY}px) scale(${_mapScale})`;
   syncRenderedTokenPositions();
@@ -486,6 +481,27 @@ function positionTokenMemoBubble(tokenEl) {
   bubble.style.top = `${top}px`;
 }
 
+
+function getTokenOwnerDisplay(token) {
+  if (!token?.ownerId) return '없음';
+  const players = St.players || {};
+  const owner = players[token.ownerId];
+  const ownerName = token.ownerName || owner?.name || '알 수 없음';
+  return token.ownerId === St.myId ? `${ownerName} (나)` : ownerName;
+}
+
+function refreshTokenOwnerBar(token) {
+  const bar = document.getElementById('te-owner-bar');
+  if (!bar) return;
+  if (!token) {
+    bar.style.display = 'none';
+    bar.textContent = '';
+    return;
+  }
+  bar.style.display = '';
+  bar.innerHTML = `<span style="display:block;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:4px">토큰 소유자</span><span>${esc(getTokenOwnerDisplay(token))}</span>`;
+}
+
 function showTokenMemoBubble(tokenEl, memo, tokenId) {
   const content = String(memo || '').trim();
   if (!content) return;
@@ -501,7 +517,17 @@ function addToken() {
   const name = document.getElementById('token-name').value.trim() || '?';
   const type = document.getElementById('token-type').value;
   const id = genId();
-  const token = { id, name, type, x: 48 + Math.random()*12, y: 48 + Math.random()*12 };
+  const token = {
+    id,
+    name,
+    type,
+    x: 48 + Math.random()*12,
+    y: 48 + Math.random()*12,
+    ownerId: St.myId || '',
+    ownerName: St.myName || '',
+    createdBy: St.myId || '',
+    createdByName: St.myName || '',
+  };
   if (window._FB?.CONFIGURED) {
     const { db, ref, set } = window._FB;
     set(ref(db, `rooms/${St.roomCode}/tokens/${id}`), token);
@@ -685,6 +711,7 @@ function tokCtxAction(action) {
     case 'own': {
       t.ownerId = St.myId;
       t.ownerName = St.myName;
+      refreshTokenOwnerBar(t);
       if (window._FB?.CONFIGURED) {
         const { db, ref, update } = window._FB;
         update(ref(db, `rooms/${St.roomCode}/tokens/${id}`), { ownerId: St.myId, ownerName: St.myName });
@@ -731,6 +758,12 @@ function openTokenEdit(tokenId) {
   const t = St.tokens[tokenId];
   if (!t) return;
 
+  if (!t.ownerId && St.myId) {
+    t.ownerId = St.myId;
+    t.ownerName = St.myName || '';
+  }
+  refreshTokenOwnerBar(t);
+
   document.getElementById('te-name').value = t.name || '';
   document.getElementById('te-initiative').value = t.initiative || 0;
   document.getElementById('te-memo').value = t.memo || '';
@@ -766,6 +799,7 @@ function openTokenEdit(tokenId) {
 function closeTokenEdit() {
   cleanupTokenEditPendingAssets();
   document.getElementById('te-overlay').classList.remove('open');
+  refreshTokenOwnerBar(null);
   _teTokenId = null;
   _teTokenImgData = null;
 }
@@ -910,6 +944,10 @@ async function saveTokenEdit() {
 
   t.name = document.getElementById('te-name').value.trim() || '?';
   t.initiative = parseFloat(document.getElementById('te-initiative').value) || 0;
+  if (!t.ownerId && St.myId) {
+    t.ownerId = St.myId;
+    t.ownerName = St.myName || '';
+  }
   t.memo = document.getElementById('te-memo').value;
   t.tokenSize = parseInt(document.getElementById('te-size').value) || 1;
   t.x = parseFloat(document.getElementById('te-x').value) || t.x;

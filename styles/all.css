@@ -1,4 +1,4 @@
-:root{--bg:#080808;--s1:#101010;--s2:#161616;--s3:#1e1e1e;--s4:#262626;--border:#1f1f1f;--border2:#2e2e2e;--text:#e8e3da;--muted:#5a5751;--dim:#8c8882;--accent:#b89a60;--a-dim:rgba(184,154,96,.1);--a-glow:rgba(184,154,96,.22);--red:#c85c5c;--green:#5a9e72;--blue:#5880b8;--r:6px;--rl:12px;--t:.18s ease;--font-head:'Cormorant Garamond',Georgia,serif;--font-body:'DM Sans',sans-serif;--font-mono:'DM Mono',monospace;}
+:root{--bg:#080808;--s1:#101010;--s2:#161616;--s3:#1e1e1e;--s4:#262626;--border:#1f1f1f;--border2:#2e2e2e;--text:#e8e3da;--muted:#5a5751;--dim:#8c8882;--accent:#b89a60;--a-dim:rgba(184,154,96,.1);--a-glow:rgba(184,154,96,.22);--red:#c85c5c;--green:#5a9e72;--blue:#5880b8;--r:6px;--rl:12px;--t:.18s ease;--font-head:'Cormorant Garamond',Georgia,serif;--font-body:'DM Sans',sans-serif;--font-mono:'DM Mono',monospace;--chat-font-size:14.5px;--chat-text-color:#c7c2b9;}
 *{box-sizing:border-box;margin:0;padding:0;}
 html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--font-body);font-size:14px;line-height:1.6;-webkit-font-smoothing:antialiased;}
 *{scrollbar-width:thin;scrollbar-color:var(--s4) transparent;}::-webkit-scrollbar{width:4px;}::-webkit-scrollbar-thumb{background:var(--s4);border-radius:2px;}
@@ -380,7 +380,7 @@ to{opacity:1}
 .msg-meta{display:block;margin-bottom:3px;}
 .msg-name{font-size:13.5px;font-weight:600;color:var(--accent);margin-right:6px;}
 .msg-time{font-size:9px;color:var(--muted);font-family:var(--font-mono);}
-.msg-text{font-size:14.5px;color:var(--dim);line-height:1.65;word-break:break-word;display:block;}
+.msg-text{font-size:var(--chat-font-size);color:var(--chat-text-color);line-height:1.65;word-break:break-word;display:block;}
 .msg-dice .msg-text{display:none;}
 .msg-dice .dice-card{background:var(--a-dim);border:1px solid rgba(184,154,96,.2);border-radius:8px;padding:10px 14px;text-align:center;margin-top:4px;max-width:70%;}
 .dice-card-formula{font-size:10px;color:var(--muted);font-family:var(--font-mono);letter-spacing:.08em;text-transform:uppercase;margin-bottom:4px;}
@@ -691,5 +691,3 @@ to{transform:translateX(0);opacity:1;}
   box-shadow:none;
   filter:drop-shadow(0 0 3px rgba(255,255,255,.5)) drop-shadow(0 0 6px rgba(255,255,255,.2)) brightness(1.08);
 }
-
-#token-memo-bubble{box-shadow:0 8px 22px rgba(0,0,0,.35),0 0 0 4px var(--a-glow);filter:drop-shadow(0 0 3px rgba(255,255,255,.5)) drop-shadow(0 0 6px rgba(255,255,255,.2));}

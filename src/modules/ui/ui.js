@@ -20,6 +20,48 @@ const PERMS = [
 
 let _myPerms = {};
 
+const ALL_PLAYER_PERMS = PERMS.reduce((acc, pm) => {
+  acc[pm.key] = true;
+  return acc;
+}, {});
+
+function getStoredChatFontSize() {
+  const raw = parseFloat(localStorage.getItem('itc_chat_font_size') || '14.5');
+  if (!Number.isFinite(raw)) return 14.5;
+  return Math.max(12, Math.min(20, raw));
+}
+
+function applyChatFontSize(size) {
+  const next = Math.max(12, Math.min(20, parseFloat(size) || 14.5));
+  document.documentElement.style.setProperty('--chat-font-size', next + 'px');
+  localStorage.setItem('itc_chat_font_size', String(next));
+  const slider = document.getElementById('chat-font-size-slider');
+  const value = document.getElementById('chat-font-size-value');
+  const preview = document.getElementById('chat-font-preview');
+  if (slider) slider.value = String(next);
+  if (value) value.textContent = `${next % 1 === 0 ? next.toFixed(0) : next.toFixed(1)}px`;
+  if (preview) preview.style.fontSize = next + 'px';
+}
+
+function syncChatFontSizeUI() {
+  applyChatFontSize(getStoredChatFontSize());
+}
+
+function setChatFontSize(size) {
+  applyChatFontSize(size);
+}
+
+async function setPlayerPermPreset(uid, enabled) {
+  if (!St.isGM || !window._FB?.CONFIGURED) return;
+  const { db, ref, update } = window._FB;
+  const payload = {};
+  Object.keys(ALL_PLAYER_PERMS).forEach((key) => {
+    payload[key] = enabled ? true : null;
+  });
+  await update(ref(db, `rooms/${St.roomCode}/players/${uid}/permissions`), payload);
+  renderSettingsModal();
+}
+
 function hasPerm(key) {
   if (St.isGM) return true;
   return !!_myPerms[key];
@@ -105,6 +147,25 @@ function renderSettingsModal() {
         allPerms.textContent = '모든 권한 보유';
         card.appendChild(allPerms);
       } else {
+        if (St.isGM) {
+          const bulkRow = document.createElement('div');
+          bulkRow.style.cssText = 'display:flex;gap:6px;margin-top:2px;margin-bottom:6px';
+
+          const grantBtn = document.createElement('button');
+          grantBtn.style.cssText = 'flex:1;font:inherit;font-size:10px;padding:5px 8px;border-radius:6px;cursor:pointer;transition:.15s ease;border:1px solid rgba(90,158,114,.35);background:rgba(90,158,114,.10);color:var(--green)';
+          grantBtn.textContent = '권한 모두 부여';
+          grantBtn.onclick = () => setPlayerPermPreset(uid, true);
+          bulkRow.appendChild(grantBtn);
+
+          const revokeBtn = document.createElement('button');
+          revokeBtn.style.cssText = 'flex:1;font:inherit;font-size:10px;padding:5px 8px;border-radius:6px;cursor:pointer;transition:.15s ease;border:1px solid rgba(200,92,92,.28);background:rgba(200,92,92,.08);color:var(--red)';
+          revokeBtn.textContent = '권한 모두 회수';
+          revokeBtn.onclick = () => setPlayerPermPreset(uid, false);
+          bulkRow.appendChild(revokeBtn);
+
+          card.appendChild(bulkRow);
+        }
+
         const permWrap = document.createElement('div');
         permWrap.style.cssText = 'display:flex;flex-wrap:wrap;gap:4px;margin-top:4px';
         PERMS.forEach(pm => {
@@ -158,6 +219,7 @@ async function endRoom() {
 }
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }
 document.querySelectorAll('.overlay').forEach(o => o.addEventListener('click', e => { if (e.target===o) o.classList.remove('open'); }));
+syncChatFontSizeUI();
 
 function togglePanel(side) { document.getElementById(`panel-${side}`).classList.toggle('collapsed'); }
 
