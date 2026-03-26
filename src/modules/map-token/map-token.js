@@ -101,7 +101,6 @@ function cleanupTokenEditPendingAssets() {
 }
 
 
-
 let _multiSelectedTokenIds = [];
 let _tokenSelectionState = {
   active: false,
@@ -163,6 +162,7 @@ function finishTokenSelection() {
   const box = document.getElementById('map-token-selection-box');
   const rect = getNormalizedSelectionRect();
   const selected = [];
+
   if (map && rect.width > 6 && rect.height > 6) {
     const mapRect = map.getBoundingClientRect();
     document.querySelectorAll('.map-token').forEach((el) => {
@@ -178,6 +178,7 @@ function finishTokenSelection() {
       }
     });
   }
+
   _tokenSelectionState.active = false;
   if (box) box.style.display = 'none';
   setMultiTokenSelection(selected);
@@ -427,7 +428,7 @@ function makeDraggable(el, tokenId) {
 
 function removeToken(tokenId) {
   if (!hasPerm('editToken')) { showToast('토큰 편집 권한이 없어요.'); return; }
-  _multiSelectedTokenIds = _multiSelectedTokenIds.filter((id) => id !== tokenId);
+  _multiSelectedTokenIds = _multiSelectedTokenIds.filter(id => id !== tokenId);
   const el = document.getElementById('tok-' + tokenId);
   if (el) el.remove();
   if (window._FB?.CONFIGURED) {
