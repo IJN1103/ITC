@@ -312,6 +312,96 @@ function createTokenEl(t) {
   inner.appendChild(el);
 }
 
+function getSelectedDragTokenIds(tokenId) {
+  const selectedIds = _multiSelectedTokenIds.includes(tokenId)
+    ? _multiSelectedTokenIds.slice()
+    : [tokenId];
+  return Array.from(new Set((selectedIds || []).filter((id) => St.tokens[id] && document.getElementById('tok-' + id))));
+}
+
+function getMapDragMetrics(map) {
+  return {
+    width: Math.max(1, map?.offsetWidth || 1),
+    height: Math.max(1, map?.offsetHeight || 1),
+    scale: Math.max(0.0001, _mapScale || 1),
+  };
+}
+
+function getTokenPercentPosition(tokenId) {
+  const targetEl = document.getElementById('tok-' + tokenId);
+  const token = St.tokens[tokenId] || {};
+  return {
+    x: typeof token.x === 'number' ? token.x : (parseFloat(targetEl?.style.left) || 0),
+    y: typeof token.y === 'number' ? token.y : (parseFloat(targetEl?.style.top) || 0),
+  };
+}
+
+function clampTokenPercent(value) {
+  return Math.max(0, Math.min(100, value));
+}
+
+function createTokenDragSession(tokenId, event, map) {
+  const targetIds = getSelectedDragTokenIds(tokenId);
+  if (!targetIds.length) return null;
+
+  return {
+    map,
+    startClientX: event.clientX,
+    startClientY: event.clientY,
+    metrics: getMapDragMetrics(map),
+    targetIds,
+    startPositions: targetIds.reduce((acc, id) => {
+      acc[id] = getTokenPercentPosition(id);
+      return acc;
+    }, {}),
+    latestPositions: {},
+  };
+}
+
+function applyTokenDragSession(session, event) {
+  if (!session) return;
+
+  const dxPct = ((event.clientX - session.startClientX) / (session.metrics.width * session.metrics.scale)) * 100;
+  const dyPct = ((event.clientY - session.startClientY) / (session.metrics.height * session.metrics.scale)) * 100;
+
+  session.targetIds.forEach((id) => {
+    const targetEl = document.getElementById('tok-' + id);
+    const startPos = session.startPositions[id];
+    if (!targetEl || !startPos) return;
+
+    const nextX = clampTokenPercent(startPos.x + dxPct);
+    const nextY = clampTokenPercent(startPos.y + dyPct);
+
+    targetEl.style.left = nextX + '%';
+    targetEl.style.top = nextY + '%';
+    session.latestPositions[id] = { x: nextX, y: nextY };
+  });
+}
+
+function commitTokenDragSession(session) {
+  if (!session) return;
+
+  const finalPositions = {};
+  session.targetIds.forEach((id) => {
+    const pos = session.latestPositions[id] || session.startPositions[id];
+    if (!pos) return;
+    finalPositions[id] = { x: pos.x, y: pos.y };
+    if (!St.tokens[id]) St.tokens[id] = {};
+    St.tokens[id].x = pos.x;
+    St.tokens[id].y = pos.y;
+  });
+
+  if (window._FB?.CONFIGURED && St.roomCode && Object.keys(finalPositions).length) {
+    const { db, ref, update } = window._FB;
+    const patch = {};
+    Object.entries(finalPositions).forEach(([id, pos]) => {
+      patch[`${id}/x`] = pos.x;
+      patch[`${id}/y`] = pos.y;
+    });
+    update(ref(db, `rooms/${St.roomCode}/tokens`), patch);
+  }
+}
+
 function makeDraggable(el, tokenId) {
   el.addEventListener('mousedown', e => {
     if (e.button === 1) {
@@ -335,71 +425,21 @@ function makeDraggable(el, tokenId) {
     const map = document.getElementById('map-area');
     if (!map) return;
 
-    const targetIds = _multiSelectedTokenIds.includes(tokenId)
-      ? _multiSelectedTokenIds.slice()
-      : [tokenId];
-
     if (!_multiSelectedTokenIds.includes(tokenId)) {
       setMultiTokenSelection([tokenId]);
     }
 
-    const sx = e.clientX;
-    const sy = e.clientY;
-    const natW = map.offsetWidth || 1;
-    const natH = map.offsetHeight || 1;
-
-    const startPos = {};
-    targetIds.forEach((id) => {
-      const targetEl = document.getElementById('tok-' + id);
-      const token = St.tokens[id] || {};
-      startPos[id] = {
-        left: typeof token.x === 'number' ? token.x : (parseFloat(targetEl?.style.left) || 0),
-        top: typeof token.y === 'number' ? token.y : (parseFloat(targetEl?.style.top) || 0),
-      };
-    });
+    const dragSession = createTokenDragSession(tokenId, e, map);
+    if (!dragSession) return;
 
     const onMove = ev => {
-      const dxPct = ((ev.clientX - sx) / (natW * (_mapScale || 1))) * 100;
-      const dyPct = ((ev.clientY - sy) / (natH * (_mapScale || 1))) * 100;
-
-      targetIds.forEach((id) => {
-        const targetEl = document.getElementById('tok-' + id);
-        const pos = startPos[id];
-        if (!targetEl || !pos) return;
-
-        const nextLeft = Math.max(0, Math.min(100, pos.left + dxPct));
-        const nextTop = Math.max(0, Math.min(100, pos.top + dyPct));
-
-        targetEl.style.left = nextLeft + '%';
-        targetEl.style.top = nextTop + '%';
-      });
+      applyTokenDragSession(dragSession, ev);
     };
 
     const onUp = () => {
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup', onUp);
-
-      const finalPositions = {};
-      targetIds.forEach((id) => {
-        const targetEl = document.getElementById('tok-' + id);
-        if (!targetEl) return;
-        const nextX = parseFloat(targetEl.style.left) || 0;
-        const nextY = parseFloat(targetEl.style.top) || 0;
-        finalPositions[id] = { x: nextX, y: nextY };
-        if (!St.tokens[id]) St.tokens[id] = {};
-        St.tokens[id].x = nextX;
-        St.tokens[id].y = nextY;
-      });
-
-      if (window._FB?.CONFIGURED && St.roomCode && Object.keys(finalPositions).length) {
-        const { db, ref, update } = window._FB;
-        const patch = {};
-        Object.entries(finalPositions).forEach(([id, pos]) => {
-          patch[`${id}/x`] = pos.x;
-          patch[`${id}/y`] = pos.y;
-        });
-        update(ref(db, `rooms/${St.roomCode}/tokens`), patch);
-      }
+      commitTokenDragSession(dragSession);
     };
 
     document.addEventListener('mousemove', onMove);
