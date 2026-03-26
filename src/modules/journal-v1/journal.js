@@ -357,12 +357,14 @@ function openHandoutEditor(id) {
   if (hintEl) hintEl.textContent = '';
   const fontInput = document.getElementById('hd-font-size');
   if (fontInput) fontInput.value = '';
+  closeHandoutAlignMenu();
   overlay.classList.add('open');
   setTimeout(() => { if (!titleEl.readOnly) titleEl.focus(); }, 60);
 }
 
 function closeHandoutDrawer() {
   document.getElementById('handout-drawer')?.classList.remove('open');
+  closeHandoutAlignMenu();
   _currentHandoutId = null;
   _handoutSelectionRange = null;
 }
@@ -430,10 +432,41 @@ async function handleHandoutImage(input) {
 function getHandoutSelectionRange() {
   const editor = document.getElementById('hd-body');
   const sel = window.getSelection();
-  if (!editor || !sel || !sel.rangeCount) return null;
-  const range = sel.getRangeAt(0);
-  if (!editor.contains(range.commonAncestorContainer)) return null;
-  return range;
+  if (editor && sel && sel.rangeCount) {
+    const range = sel.getRangeAt(0);
+    if (editor.contains(range.commonAncestorContainer)) return range;
+  }
+  if (_handoutSelectionRange && editor && editor.contains(_handoutSelectionRange.commonAncestorContainer)) {
+    return _handoutSelectionRange.cloneRange();
+  }
+  return null;
+}
+
+function closeHandoutAlignMenu() {
+  const menu = document.getElementById('hd-align-menu');
+  const trigger = document.querySelector('.hd-align-trigger');
+  if (menu) menu.classList.remove('open');
+  if (trigger) trigger.setAttribute('aria-expanded', 'false');
+}
+
+function toggleHandoutAlignMenu(event) {
+  event?.preventDefault?.();
+  event?.stopPropagation?.();
+  captureHandoutSelection();
+  const menu = document.getElementById('hd-align-menu');
+  const trigger = event?.currentTarget || document.querySelector('.hd-align-trigger');
+  if (!menu) return;
+  const willOpen = !menu.classList.contains('open');
+  closeHandoutAlignMenu();
+  if (willOpen) {
+    menu.classList.add('open');
+    if (trigger) trigger.setAttribute('aria-expanded', 'true');
+  }
+}
+
+function selectHandoutTextAlign(align) {
+  applyHandoutTextAlign(align);
+  closeHandoutAlignMenu();
 }
 
 function applyHandoutTextAlign(align) {
@@ -441,6 +474,7 @@ function applyHandoutTextAlign(align) {
   if (!editor || editor.contentEditable !== 'true') return;
   editor.focus();
   const valid = /^(left|center|right)$/.test(align) ? align : 'left';
+  closeHandoutAlignMenu();
   const range = getHandoutSelectionRange();
   if (!range) return;
   const blocks = new Set();
@@ -461,8 +495,10 @@ function applyHandoutTextAlign(align) {
 function applyHandoutFontSize(value) {
   const editor = document.getElementById('hd-body');
   if (!editor || editor.contentEditable !== 'true') return;
-  const size = Math.max(8, Math.min(36, Math.round(Number(value || 0))));
-  if (!Number.isFinite(size)) return;
+  const allowed = [6, 8, 10, 12, 14, 16, 18];
+  const parsed = Math.round(Number(value || 0));
+  if (!allowed.includes(parsed)) return;
+  const size = parsed;
   editor.focus();
   const range = getHandoutSelectionRange();
   if (!range) return;
@@ -481,16 +517,16 @@ function applyHandoutFontSize(value) {
     span.appendChild(range.extractContents());
     range.insertNode(span);
     const sel = window.getSelection();
-    if (sel) { sel.removeAllRanges(); const newRange = document.createRange(); newRange.selectNodeContents(span); sel.addRange(newRange); }
+    if (sel) {
+      sel.removeAllRanges();
+      const newRange = document.createRange();
+      newRange.selectNodeContents(span);
+      sel.addRange(newRange);
+    }
   }
   const input = document.getElementById('hd-font-size');
   if (input) input.value = String(size);
   captureHandoutSelection();
-}
-
-function applyHandoutFontSizeFromInput() {
-  const input = document.getElementById('hd-font-size');
-  applyHandoutFontSize(input?.value);
 }
 
 async function saveHandoutFB(handout) {
@@ -555,6 +591,12 @@ function deleteHandoutFromDrawer() {
   }
   closeHandoutDrawer();
 }
+
+document.addEventListener('click', (event) => {
+  const menu = document.getElementById('hd-align-menu');
+  const group = event.target?.closest?.('.hd-align-group');
+  if (menu && menu.classList.contains('open') && !group) closeHandoutAlignMenu();
+});
 
 document.addEventListener('selectionchange', () => {
   const overlay = document.getElementById('handout-drawer');
