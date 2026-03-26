@@ -130,57 +130,23 @@ document.addEventListener('DOMContentLoaded', () => {
   }, { passive: false });
 
   let isPanning = false, panStartX, panStartY, panOriginX, panOriginY;
-
   mapEl.addEventListener('mousedown', e => {
-    if (e.target.closest('.map-zoom') || e.target.closest('.map-add-token') || e.target.closest('.vn-dialog')) return;
-
-    if (e.button === 1 && !e.target.closest('.map-token')) {
-      const rect = mapEl.getBoundingClientRect();
-      _tokenSelectionState.active = true;
-      _tokenSelectionState.startX = e.clientX - rect.left;
-      _tokenSelectionState.startY = e.clientY - rect.top;
-      _tokenSelectionState.currentX = _tokenSelectionState.startX;
-      _tokenSelectionState.currentY = _tokenSelectionState.startY;
-      e.preventDefault();
-      return;
-    }
-
-    if (e.target.closest('.map-token')) return;
+    if (e.target.closest('.map-token') || e.target.closest('.map-zoom') || e.target.closest('.map-add-token') || e.target.closest('.vn-dialog')) return;
     if (e.button !== 0) return;
-
-    clearMultiTokenSelection();
     isPanning = true;
-    panStartX = e.clientX;
-    panStartY = e.clientY;
-    panOriginX = _mapPanX;
-    panOriginY = _mapPanY;
+    panStartX = e.clientX; panStartY = e.clientY;
+    panOriginX = _mapPanX; panOriginY = _mapPanY;
     mapEl.classList.add('panning');
     e.preventDefault();
   });
-
   document.addEventListener('mousemove', e => {
-    if (_tokenSelectionState.active) {
-      const rect = mapEl.getBoundingClientRect();
-      _tokenSelectionState.currentX = e.clientX - rect.left;
-      _tokenSelectionState.currentY = e.clientY - rect.top;
-      return;
-    }
     if (!isPanning) return;
     _mapPanX = panOriginX + (e.clientX - panStartX);
     _mapPanY = panOriginY + (e.clientY - panStartY);
     applyMapTransform();
   });
-
   document.addEventListener('mouseup', () => {
-    if (_tokenSelectionState.active) finishTokenSelection();
-    if (isPanning) {
-      isPanning = false;
-      mapEl.classList.remove('panning');
-    }
-  });
-
-  mapEl.addEventListener('auxclick', e => {
-    if (e.button === 1) e.preventDefault();
+    if (isPanning) { isPanning = false; mapEl.classList.remove('panning'); }
   });
 });
 
@@ -247,7 +213,6 @@ function createTokenEl(t) {
       bar.appendChild(fill); el.appendChild(bar);
     }
   }
-  el.addEventListener('dblclick', e => { e.preventDefault(); e.stopPropagation(); openTokenEdit(t.id); });
   el.addEventListener('contextmenu', e => { e.preventDefault(); e.stopPropagation(); showTokenCtx(e, t.id); });
   makeDraggable(el, t.id);
   inner.appendChild(el);
@@ -255,89 +220,44 @@ function createTokenEl(t) {
 
 function makeDraggable(el, tokenId) {
   el.addEventListener('mousedown', e => {
-    if (e.button === 1) {
-      e.preventDefault();
-      e.stopPropagation();
-      if (_multiSelectedTokenIds.includes(tokenId)) {
-        setMultiTokenSelection(_multiSelectedTokenIds.filter(id => id !== tokenId));
-      } else {
-        setMultiTokenSelection([..._multiSelectedTokenIds, tokenId]);
-      }
-      return;
-    }
-
     if (e.button !== 0) return;
-    if (_tokenSelectionState.active) return;
     if (!hasPerm('moveToken')) { showToast('토큰 이동 권한이 없어요.'); return; }
     if (St.tool === 'erase') { removeToken(tokenId); return; }
 
     e.preventDefault();
     e.stopPropagation();
 
-    const targetIds = _multiSelectedTokenIds.includes(tokenId)
-      ? _multiSelectedTokenIds.slice()
-      : [tokenId];
-
-    if (!_multiSelectedTokenIds.includes(tokenId)) {
-      setMultiTokenSelection([tokenId]);
-    }
-
     const map = document.getElementById('map-area');
     if (!map) return;
 
     const sx = e.clientX;
     const sy = e.clientY;
+    const startLeft = parseFloat(el.style.left) || 0;
+    const startTop = parseFloat(el.style.top) || 0;
     const natW = map.offsetWidth || 1;
     const natH = map.offsetHeight || 1;
 
-    const startPos = {};
-    targetIds.forEach((id) => {
-      const targetEl = document.getElementById('tok-' + id);
-      const token = St.tokens[id] || {};
-      startPos[id] = {
-        left: typeof token.x === 'number' ? token.x : (parseFloat(targetEl?.style.left) || 0),
-        top: typeof token.y === 'number' ? token.y : (parseFloat(targetEl?.style.top) || 0),
-      };
-    });
-
     const onMove = ev => {
-      const dxPct = ((ev.clientX - sx) / (natW * (_mapScale || 1))) * 100;
-      const dyPct = ((ev.clientY - sy) / (natH * (_mapScale || 1))) * 100;
-
-      targetIds.forEach((id) => {
-        const targetEl = document.getElementById('tok-' + id);
-        const pos = startPos[id];
-        if (!targetEl || !pos) return;
-
-        const nextLeft = Math.max(0, Math.min(100, pos.left + dxPct));
-        const nextTop = Math.max(0, Math.min(100, pos.top + dyPct));
-
-        targetEl.style.left = nextLeft + '%';
-        targetEl.style.top = nextTop + '%';
-      });
+      const nextLeft = Math.max(0, Math.min(100, startLeft + ((ev.clientX - sx) / (natW * (_mapScale || 1))) * 100));
+      const nextTop = Math.max(0, Math.min(100, startTop + ((ev.clientY - sy) / (natH * (_mapScale || 1))) * 100));
+      el.style.left = nextLeft + '%';
+      el.style.top = nextTop + '%';
     };
 
     const onUp = () => {
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup', onUp);
 
-      const updates = {};
-      targetIds.forEach((id) => {
-        const targetEl = document.getElementById('tok-' + id);
-        if (!targetEl) return;
-        const nextX = parseFloat(targetEl.style.left) || 0;
-        const nextY = parseFloat(targetEl.style.top) || 0;
-        if (!St.tokens[id]) St.tokens[id] = {};
-        St.tokens[id].x = nextX;
-        St.tokens[id].y = nextY;
-        updates[id] = { x: nextX, y: nextY };
-      });
+      const nextX = parseFloat(el.style.left) || 0;
+      const nextY = parseFloat(el.style.top) || 0;
+
+      if (!St.tokens[tokenId]) St.tokens[tokenId] = {};
+      St.tokens[tokenId].x = nextX;
+      St.tokens[tokenId].y = nextY;
 
       if (window._FB?.CONFIGURED && St.roomCode) {
         const { db, ref, update } = window._FB;
-        Object.entries(updates).forEach(([id, pos]) => {
-          update(ref(db, `rooms/${St.roomCode}/tokens/${id}`), pos);
-        });
+        update(ref(db, `rooms/${St.roomCode}/tokens/${tokenId}`), { x: nextX, y: nextY });
       }
     };
 
