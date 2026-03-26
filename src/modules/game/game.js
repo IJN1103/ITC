@@ -88,7 +88,7 @@ function trackFirebaseListener(unsub) {
 function digestPlayers(players) {
   return JSON.stringify(Object.keys(players || {}).sort().map(id => {
     const p = players[id] || {};
-    return [id, p.name || '', p.role || '', !!p.online, p.avatar || '', p.casualNick || '', p.nameColor || ''];
+    return [id, p.name || '', p.role || '', !!p.online, p.avatar || '', p.casualNick || '', p.nameColor || '', p.casualNameColor || ''];
   }));
 }
 
@@ -325,8 +325,20 @@ function renderPlayers(players) {
       window._avatarCache[id] = av;
       window._avatarCache[p.name] = av;
     }
+
+    if (id === St.myId) {
+      if (p.casualNick) {
+        _casualNickname = p.casualNick;
+        try { localStorage.setItem('itc_casual_nick_' + St.myId, p.casualNick); } catch (e) {}
+      }
+      if (p.casualNameColor) {
+        St.casualNameColor = p.casualNameColor;
+        try { localStorage.setItem('itc_casual_name_color', p.casualNameColor); } catch (e) {}
+      }
+    }
   });
 
+  if (typeof refreshCasualNickDisplay === 'function') refreshCasualNickDisplay();
   if (typeof rerenderExistingChatAvatars === 'function') {
     rerenderExistingChatAvatars();
   }

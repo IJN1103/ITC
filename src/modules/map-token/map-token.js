@@ -101,6 +101,87 @@ function cleanupTokenEditPendingAssets() {
 }
 
 
+let _multiSelectedTokenIds = [];
+let _tokenSelectionState = {
+  active: false,
+  startX: 0,
+  startY: 0,
+  currentX: 0,
+  currentY: 0,
+};
+
+function getTokenSelectionBoxEl() {
+  let el = document.getElementById('map-token-selection-box');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'map-token-selection-box';
+    el.className = 'map-token-selection-box';
+    const map = document.getElementById('map-area');
+    if (map) map.appendChild(el);
+  }
+  return el;
+}
+
+function updateMultiTokenSelectionUI() {
+  document.querySelectorAll('.map-token.multi-selected').forEach((el) => el.classList.remove('multi-selected'));
+  _multiSelectedTokenIds.forEach((id) => {
+    document.getElementById('tok-' + id)?.classList.add('multi-selected');
+  });
+}
+
+function clearMultiTokenSelection() {
+  _multiSelectedTokenIds = [];
+  updateMultiTokenSelectionUI();
+}
+
+function setMultiTokenSelection(ids) {
+  _multiSelectedTokenIds = Array.from(new Set((ids || []).filter(Boolean)));
+  updateMultiTokenSelectionUI();
+}
+
+function getNormalizedSelectionRect() {
+  const x1 = Math.min(_tokenSelectionState.startX, _tokenSelectionState.currentX);
+  const y1 = Math.min(_tokenSelectionState.startY, _tokenSelectionState.currentY);
+  const x2 = Math.max(_tokenSelectionState.startX, _tokenSelectionState.currentX);
+  const y2 = Math.max(_tokenSelectionState.startY, _tokenSelectionState.currentY);
+  return { x1, y1, x2, y2, width: x2 - x1, height: y2 - y1 };
+}
+
+function renderSelectionBox() {
+  const box = getTokenSelectionBoxEl();
+  const rect = getNormalizedSelectionRect();
+  box.style.display = _tokenSelectionState.active ? '' : 'none';
+  box.style.left = rect.x1 + 'px';
+  box.style.top = rect.y1 + 'px';
+  box.style.width = rect.width + 'px';
+  box.style.height = rect.height + 'px';
+}
+
+function finishTokenSelection() {
+  if (!_tokenSelectionState.active) return;
+  const map = document.getElementById('map-area');
+  const box = document.getElementById('map-token-selection-box');
+  const rect = getNormalizedSelectionRect();
+  const selected = [];
+  if (map && rect.width > 6 && rect.height > 6) {
+    const mapRect = map.getBoundingClientRect();
+    document.querySelectorAll('.map-token').forEach((el) => {
+      const tokenRect = el.getBoundingClientRect();
+      const left = tokenRect.left - mapRect.left;
+      const top = tokenRect.top - mapRect.top;
+      const right = tokenRect.right - mapRect.left;
+      const bottom = tokenRect.bottom - mapRect.top;
+      if (left >= rect.x1 && right <= rect.x2 && top >= rect.y1 && bottom <= rect.y2) {
+        const tokenId = String(el.id || '').replace(/^tok-/, '');
+        if (tokenId) selected.push(tokenId);
+      }
+    });
+  }
+  _tokenSelectionState.active = false;
+  if (box) box.style.display = 'none';
+  setMultiTokenSelection(selected);
+}
+
 function applyMapTransform() {
   const inner = document.getElementById('map-inner');
   if (inner) inner.style.transform = `translate(${_mapPanX}px,${_mapPanY}px) scale(${_mapScale})`;
@@ -131,21 +212,46 @@ document.addEventListener('DOMContentLoaded', () => {
 
   let isPanning = false, panStartX, panStartY, panOriginX, panOriginY;
   mapEl.addEventListener('mousedown', e => {
-    if (e.target.closest('.map-token') || e.target.closest('.map-zoom') || e.target.closest('.map-add-token') || e.target.closest('.vn-dialog')) return;
+    if (e.target.closest('.map-zoom') || e.target.closest('.map-add-token') || e.target.closest('.vn-dialog')) return;
+
+    if (e.button === 1) {
+      const rect = mapEl.getBoundingClientRect();
+      _tokenSelectionState.active = true;
+      _tokenSelectionState.startX = e.clientX - rect.left;
+      _tokenSelectionState.startY = e.clientY - rect.top;
+      _tokenSelectionState.currentX = _tokenSelectionState.startX;
+      _tokenSelectionState.currentY = _tokenSelectionState.startY;
+      renderSelectionBox();
+      e.preventDefault();
+      return;
+    }
+
+    if (e.target.closest('.map-token')) return;
     if (e.button !== 0) return;
+    clearMultiTokenSelection();
     isPanning = true;
     panStartX = e.clientX; panStartY = e.clientY;
     panOriginX = _mapPanX; panOriginY = _mapPanY;
     mapEl.classList.add('panning');
     e.preventDefault();
   });
+
   document.addEventListener('mousemove', e => {
+    if (_tokenSelectionState.active) {
+      const rect = mapEl.getBoundingClientRect();
+      _tokenSelectionState.currentX = e.clientX - rect.left;
+      _tokenSelectionState.currentY = e.clientY - rect.top;
+      renderSelectionBox();
+      return;
+    }
     if (!isPanning) return;
     _mapPanX = panOriginX + (e.clientX - panStartX);
     _mapPanY = panOriginY + (e.clientY - panStartY);
     applyMapTransform();
   });
+
   document.addEventListener('mouseup', () => {
+    if (_tokenSelectionState.active) finishTokenSelection();
     if (isPanning) { isPanning = false; mapEl.classList.remove('panning'); }
   });
 });
@@ -220,28 +326,70 @@ function createTokenEl(t) {
 
 function makeDraggable(el, tokenId) {
   el.addEventListener('mousedown', e => {
+    if (e.button !== 0) return;
     if (!hasPerm('moveToken')) { showToast('토큰 이동 권한이 없어요.'); return; }
     if (St.tool === 'erase') { removeToken(tokenId); return; }
+
     e.preventDefault();
     e.stopPropagation();
+
+    const targetIds = _multiSelectedTokenIds.includes(tokenId)
+      ? _multiSelectedTokenIds.slice()
+      : [tokenId];
+
+    if (!_multiSelectedTokenIds.includes(tokenId)) {
+      setMultiTokenSelection([tokenId]);
+    }
+
     const map = document.getElementById('map-area');
-    const inner = document.getElementById('map-inner');
-    const rect = inner.getBoundingClientRect();
+    const natW = map.offsetWidth;
+    const natH = map.offsetHeight;
     const sx = e.clientX, sy = e.clientY;
-    const sl = parseFloat(el.style.left), st = parseFloat(el.style.top);
-    const natW = map.offsetWidth, natH = map.offsetHeight;
-    const onMove = e => {
-      el.style.left = Math.max(0,Math.min(100, sl + (e.clientX-sx)/(natW*_mapScale)*100)) + '%';
-      el.style.top  = Math.max(0,Math.min(100, st + (e.clientY-sy)/(natH*_mapScale)*100)) + '%';
+    const startPos = {};
+    targetIds.forEach((id) => {
+      const targetEl = document.getElementById('tok-' + id);
+      if (!targetEl) return;
+      startPos[id] = {
+        left: parseFloat(targetEl.style.left) || 0,
+        top: parseFloat(targetEl.style.top) || 0,
+      };
+    });
+
+    const onMove = ev => {
+      const dx = (ev.clientX - sx) / (natW * _mapScale) * 100;
+      const dy = (ev.clientY - sy) / (natH * _mapScale) * 100;
+      targetIds.forEach((id) => {
+        const targetEl = document.getElementById('tok-' + id);
+        const pos = startPos[id];
+        if (!targetEl || !pos) return;
+        targetEl.style.left = Math.max(0, Math.min(100, pos.left + dx)) + '%';
+        targetEl.style.top = Math.max(0, Math.min(100, pos.top + dy)) + '%';
+      });
     };
+
     const onUp = () => {
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup', onUp);
       if (window._FB?.CONFIGURED) {
         const { db, ref, update } = window._FB;
-        update(ref(db, `rooms/${St.roomCode}/tokens/${tokenId}`), { x: parseFloat(el.style.left), y: parseFloat(el.style.top) });
+        targetIds.forEach((id) => {
+          const targetEl = document.getElementById('tok-' + id);
+          if (!targetEl) return;
+          update(ref(db, `rooms/${St.roomCode}/tokens/${id}`), {
+            x: parseFloat(targetEl.style.left),
+            y: parseFloat(targetEl.style.top)
+          });
+        });
+      } else {
+        targetIds.forEach((id) => {
+          const targetEl = document.getElementById('tok-' + id);
+          if (!targetEl || !St.tokens[id]) return;
+          St.tokens[id].x = parseFloat(targetEl.style.left);
+          St.tokens[id].y = parseFloat(targetEl.style.top);
+        });
       }
     };
+
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp);
   });

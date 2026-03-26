@@ -335,15 +335,14 @@ const SA_COLORS = [
   '#2ecc71','#27ae60','#f39c12','#e67e22','#95a5a6','#ecf0f1',
 ];
 
-function renderColorPalettePopup(popup, title, currentColor, onSelect) {
-  if (!popup) return;
-  popup.innerHTML = `<div class="sa-color-popup-title">${title}</div><div class="sa-color-grid"></div>`;
+function renderColorPalettePopup(popup, title, currentColor, onPick) {
+  popup.innerHTML = '<div class="sa-color-popup-title">' + title + '</div><div class="sa-color-grid"></div>';
   const grid = popup.querySelector('.sa-color-grid');
   SA_COLORS.forEach(color => {
     const swatch = document.createElement('div');
     swatch.className = 'sa-color-swatch' + (currentColor === color ? ' active' : '');
     swatch.style.background = color;
-    swatch.onclick = (ev) => { ev.stopPropagation(); onSelect(color); popup.classList.remove('open'); };
+    swatch.onclick = (ev) => { ev.stopPropagation(); onPick(color); popup.classList.remove('open'); };
     grid.appendChild(swatch);
   });
 }

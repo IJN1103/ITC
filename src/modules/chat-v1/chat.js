@@ -782,8 +782,6 @@ function buildChatImageHtml(src, imageWide = false, imageMeta = null) {
 const _pendingChatImages = [];
 let _pendingChatImageWide = false;
 let _dragChatImageId = null;
-let _isSendingPendingChatImages = false;
-let _pendingChatUploadStatusText = '';
 
 function makePendingChatImageId() {
   return `pci_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
@@ -794,27 +792,12 @@ function getChatImageQueueEls() {
     wrap: document.getElementById('chat-image-queue'),
     list: document.getElementById('chat-image-preview-list'),
     wideToggle: document.getElementById('chat-image-wide-toggle'),
-    feedback: document.getElementById('chat-upload-feedback'),
-    feedbackText: document.querySelector('#chat-upload-feedback .chat-upload-feedback-text'),
   };
 }
 
-function getPendingChatFeedbackText() {
-  if (!_isSendingPendingChatImages) return '';
-  const raw = String(_pendingChatUploadStatusText || '').trim();
-  const m = raw.match(/(\d+)\/(\d+)/);
-  if (m) return `사진을 보내는 중입니다. (${m[1]}/${m[2]})`;
-  return '사진을 보내는 중입니다.';
-}
-
 function renderPendingChatImages() {
-  const { wrap, list, wideToggle, feedback, feedbackText } = getChatImageQueueEls();
+  const { wrap, list, wideToggle } = getChatImageQueueEls();
   if (!wrap || !list) return;
-
-  const uploadFeedback = getPendingChatFeedbackText();
-  if (feedback) feedback.style.display = uploadFeedback ? '' : 'none';
-  if (feedbackText) feedbackText.textContent = uploadFeedback || '사진을 보내는 중입니다.';
-
   list.innerHTML = '';
   if (_pendingChatImages.length === 0) {
     wrap.style.display = 'none';
@@ -828,25 +811,23 @@ function renderPendingChatImages() {
   _pendingChatImages.forEach((item, idx) => {
     const btn = document.createElement('div');
     btn.className = 'chat-image-preview-item';
-    btn.draggable = !_isSendingPendingChatImages;
+    btn.draggable = true;
     btn.dataset.imageId = item.id;
     btn.innerHTML = `
       <img src="${esc(item.previewUrl)}" alt="첨부 이미지 ${idx + 1}">
       <span class="chat-image-preview-grab">↕</span>
       <span class="chat-image-preview-order">${idx + 1}</span>
-      <button type="button" class="chat-image-preview-remove" title="첨부 취소"${_isSendingPendingChatImages ? ' disabled' : ''}>✕</button>
+      <button type="button" class="chat-image-preview-remove" title="첨부 취소">✕</button>
     `;
     const removeBtn = btn.querySelector('.chat-image-preview-remove');
     if (removeBtn) {
       removeBtn.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
-        if (_isSendingPendingChatImages) return;
         removePendingChatImage(item.id);
       });
     }
     btn.addEventListener('dragstart', () => {
-      if (_isSendingPendingChatImages) return;
       _dragChatImageId = item.id;
       btn.classList.add('dragging');
     });
@@ -857,14 +838,9 @@ function renderPendingChatImages() {
     });
     btn.addEventListener('dragover', (e) => {
       e.preventDefault();
-      if (!_dragChatImageId || _dragChatImageId === item.id || _isSendingPendingChatImages) return;
-      btn.classList.add('drag-over');
     });
-    btn.addEventListener('dragleave', () => btn.classList.remove('drag-over'));
     btn.addEventListener('drop', (e) => {
       e.preventDefault();
-      btn.classList.remove('drag-over');
-      if (_isSendingPendingChatImages) return;
       movePendingChatImage(_dragChatImageId, item.id);
     });
     list.appendChild(btn);
@@ -880,7 +856,6 @@ function revokePreparedChatImagePreview(item) {
 }
 
 function removePendingChatImage(imageId) {
-  if (_isSendingPendingChatImages) return;
   const idx = _pendingChatImages.findIndex(item => item.id === imageId);
   if (idx < 0) return;
   const [removed] = _pendingChatImages.splice(idx, 1);
@@ -889,7 +864,6 @@ function removePendingChatImage(imageId) {
 }
 
 function movePendingChatImage(fromId, toId) {
-  if (_isSendingPendingChatImages) return;
   if (!fromId || !toId || fromId === toId) return;
   const fromIdx = _pendingChatImages.findIndex(item => item.id === fromId);
   const toIdx = _pendingChatImages.findIndex(item => item.id === toId);
@@ -905,7 +879,6 @@ function clearPendingChatImages() {
 }
 
 function togglePendingChatImageWide(checked) {
-  if (_isSendingPendingChatImages) return;
   _pendingChatImageWide = !!checked;
 }
 
@@ -1233,36 +1206,18 @@ async function sendPendingChatImages() {
     showToast('이미지 첨부는 메인 채팅에서만 보낼 수 있어요.');
     return false;
   }
-  if (_isSendingPendingChatImages) {
-    showToast('이미지 업로드가 진행 중이에요. 잠시만 기다려 주세요.');
-    return false;
-  }
   if (!_pendingChatImages.length) return true;
-
   const items = _pendingChatImages.splice(0, _pendingChatImages.length);
-  _isSendingPendingChatImages = true;
-  _pendingChatUploadStatusText = `1/${items.length}`;
   renderPendingChatImages();
-  let sentCount = 0;
   try {
-    for (let i = 0; i < items.length; i += 1) {
-      const item = items[i];
-      _pendingChatUploadStatusText = `${i + 1}/${items.length}`;
-      renderPendingChatImages();
+    for (const item of items) {
       await sendPreparedChatImage(item, _pendingChatImageWide, { width: item.width, height: item.height });
       revokePreparedChatImagePreview(item);
-      sentCount += 1;
     }
-    _pendingChatUploadStatusText = '';
-    _isSendingPendingChatImages = false;
-    renderPendingChatImages();
     return true;
   } catch (err) {
     console.error('sendPendingChatImages failed', err);
-    const remaining = items.slice(sentCount);
-    remaining.reverse().forEach(item => _pendingChatImages.unshift(item));
-    _pendingChatUploadStatusText = '';
-    _isSendingPendingChatImages = false;
+    items.reverse().forEach(item => _pendingChatImages.unshift(item));
     renderPendingChatImages();
     showToast(err?.message || '이미지 업로드에 실패했어요. 잠시 후 다시 시도해 주세요.');
     throw err;
@@ -1279,10 +1234,6 @@ function initChatImageComposer() {
 async function sendChat() {
   const inp = document.getElementById('chat-input');
   if (!inp) return;
-  if (_isSendingPendingChatImages) {
-    showToast('이미지 업로드가 진행 중이에요. 잠시만 기다려 주세요.');
-    return;
-  }
   const raw = inp.value.trim();
   const hasImages = _pendingChatImages.length > 0;
   if (!raw && !hasImages) return;
@@ -1497,20 +1448,6 @@ function loadCasualNick() {
   }
 }
 
-function loadMyNameColor() {
-  try { St.myNameColor = localStorage.getItem('itc_name_color_' + St.myId) || ''; } catch(e) {}
-  if (window._FB?.CONFIGURED && St.roomCode) {
-    const { db, ref, get } = window._FB;
-    get(ref(db, `rooms/${St.roomCode}/players/${St.myId}/nameColor`)).then(snap => {
-      const val = snap.val();
-      if (val) {
-        St.myNameColor = val;
-        try { localStorage.setItem('itc_name_color_' + St.myId, val); } catch(e) {}
-      }
-    }).catch(() => {});
-  }
-}
-
 function loadCasualNameColor() {
   try { St.casualNameColor = localStorage.getItem('itc_casual_name_color') || ''; } catch(e) {}
   if (window._FB?.CONFIGURED && St.roomCode) {
@@ -1521,6 +1458,20 @@ function loadCasualNameColor() {
         St.casualNameColor = val;
         try { localStorage.setItem('itc_casual_name_color', val); } catch(e) {}
         refreshCasualNickDisplay();
+      }
+    }).catch(() => {});
+  }
+}
+
+function loadMyNameColor() {
+  try { St.myNameColor = localStorage.getItem('itc_name_color_' + St.myId) || ''; } catch(e) {}
+  if (window._FB?.CONFIGURED && St.roomCode) {
+    const { db, ref, get } = window._FB;
+    get(ref(db, `rooms/${St.roomCode}/players/${St.myId}/nameColor`)).then(snap => {
+      const val = snap.val();
+      if (val) {
+        St.myNameColor = val;
+        try { localStorage.setItem('itc_name_color_' + St.myId, val); } catch(e) {}
       }
     }).catch(() => {});
   }
@@ -1586,20 +1537,21 @@ function saSendCasual(journal, text) {
   }
 }
 
-function buildCasualMsgElement(name, text, uid, timestamp, msgKey, nameColor = '') {
+function buildCasualMsgElement(name, text, uid, timestamp, msgKey, nameColor) {
   const d = timestamp ? new Date(timestamp) : new Date();
   const time = `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
   const avatarHtml = getAvatarHtml(name, uid || (name === St.myName ? St.myId : null));
+  const colorStyle = nameColor ? ` style="color:${esc(nameColor)}"` : '';
   const div = document.createElement('div');
   div.className = 'chat-msg msg-normal';
   div.dataset.avatarUid = uid || '';
   div.dataset.avatarName = name || '';
-  div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name"${nameColor ? ` style="color:${esc(nameColor)}"` : ''}>${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-text">${fmtText(text)}</div></div>`;
+  div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name"${colorStyle}>${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-text">${fmtText(text)}</div></div>`;
   addMsgActions(div, uid, msgKey, 'casual', text, 'normal');
   return div;
 }
 
-function appendCasualMsg(name, text, uid, timestamp, msgKey, nameColor = '') {
+function appendCasualMsg(name, text, uid, timestamp, msgKey, nameColor) {
   const safeKey = upsertStoredMessage('casual', msgKey, { name, text, uid, timestamp, nameColor });
   bindMessageViewport('casual');
   const div = buildCasualMsgElement(name, text, uid, timestamp, safeKey, nameColor);
@@ -1611,8 +1563,8 @@ function appendCasualMsg(name, text, uid, timestamp, msgKey, nameColor = '') {
   }
 }
 
-function replaceCasualMsg(name, text, uid, timestamp, msgKey, nameColor = '') {
-  const safeKey = upsertStoredMessage('casual', msgKey, { name, text, uid, timestamp, nameColor });
+function replaceCasualMsg(name, text, uid, timestamp, msgKey) {
+  const safeKey = upsertStoredMessage('casual', msgKey, { name, text, uid, timestamp });
   bindMessageViewport('casual');
   const div = buildCasualMsgElement(name, text, uid, timestamp, safeKey, nameColor);
   replaceRenderedMessage('casual', safeKey, div);
@@ -1725,7 +1677,7 @@ function buildChatMsgElement(name, text, type, uid, timestamp, speakAsAvatar, sp
     div.className = 'chat-msg msg-whisper';
     div.dataset.avatarUid = uid || '';
     div.dataset.avatarName = name || '';
-    div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name"${nameColor ? ` style="color:${esc(nameColor)}"` : ''}>${esc(name)}</span><span class="whisper-tag">${tagText}</span><span class="msg-time">${time}</span></div><div class="msg-text">${fmtText(text)}</div></div>`;
+    div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name">${esc(name)}</span><span class="whisper-tag">${tagText}</span><span class="msg-time">${time}</span></div><div class="msg-text">${fmtText(text)}</div></div>`;
     addMsgActions(div, uid, msgKey, channel || 'chat', text, type);
     return div;
   }

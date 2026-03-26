@@ -9,10 +9,9 @@ const St = {
   whisperToName: null,
   whisperToJournal: null,
   myNameColor: '',
+  casualNameColor: localStorage.getItem('itc_casual_name_color') || '',
   players: {},
   avatarShape: localStorage.getItem('itc_avatar_shape') || 'rounded',
-  chatFontSize: parseFloat(localStorage.getItem('itc_chat_font_size') || '14.5') || 14.5,
-  casualNameColor: localStorage.getItem('itc_casual_name_color') || '',
 };
 
 /* 권한 체크 헬퍼 */
@@ -61,33 +60,6 @@ function updateShapeBtns() {
   });
 }
 
-
-function syncChatFontSizeUI() {
-  const value = Math.min(17.5, Math.max(13, Number(St.chatFontSize || 14.5)));
-  document.documentElement.style.setProperty('--chat-font-size', `${value}px`);
-  const slider = document.getElementById('chat-font-size-slider');
-  const label = document.getElementById('chat-font-size-value');
-  if (slider) slider.value = String(value);
-  if (label) label.textContent = `${value.toFixed(1)}px`;
-}
-
-function previewChatFontSize(value) {
-  const next = Math.min(17.5, Math.max(13, Number(value || 14.5)));
-  document.documentElement.style.setProperty('--chat-font-size', `${next}px`);
-  const label = document.getElementById('chat-font-size-value');
-  if (label) label.textContent = `${next.toFixed(1)}px`;
-}
-
-function setChatFontSize(value) {
-  const next = Math.min(17.5, Math.max(13, Number(value || 14.5)));
-  St.chatFontSize = next;
-  localStorage.setItem('itc_chat_font_size', String(next));
-  syncChatFontSizeUI();
-  showToast(`채팅 글자 크기가 ${next.toFixed(1)}px로 변경됐어요`);
-}
-
-document.documentElement.style.setProperty('--chat-font-size', `${Math.min(17.5, Math.max(13, Number(St.chatFontSize || 14.5)))}px`);
-
 function showToast(msg) {
   let t = document.getElementById('toast');
   if (!t) {
@@ -120,18 +92,21 @@ function switchRightTab(tab) {
   const saWrap = document.getElementById('speak-as-wrap');
   const casualBar = document.getElementById('casual-nick-bar');
   const colorWrap = document.getElementById('sa-color-wrap');
+  const casualColorWrap = document.getElementById('casual-color-wrap');
   const descBtn = document.getElementById('desc-toggle-btn');
   const whisperWrap = document.getElementById('whisper-wrap');
   if (tab === 'casual') {
     if (saWrap) saWrap.style.display = 'none';
     if (casualBar) { casualBar.style.display = 'flex'; refreshCasualNickDisplay(); }
     if (colorWrap) colorWrap.style.display = 'none';
+    if (casualColorWrap) casualColorWrap.style.display = '';
     if (descBtn) descBtn.style.display = 'none';
     if (whisperWrap) whisperWrap.style.display = 'none';
   } else {
     if (saWrap) saWrap.style.display = '';
     if (casualBar) casualBar.style.display = 'none';
     if (colorWrap) colorWrap.style.display = '';
+    if (casualColorWrap) casualColorWrap.style.display = 'none';
     if (descBtn) descBtn.style.display = hasPerm('sendDesc') ? '' : 'none';
     if (whisperWrap) whisperWrap.style.display = '';
   }
