@@ -92,6 +92,7 @@ let _currentHandoutId = null;
 let _handoutSyncOff = null;
 let _handoutSyncRoom = '';
 let _handoutSelectionRange = null;
+let _handoutLastFontSize = 12;
 
 function loadHandouts() {
   if (St.isGM) return _allHandouts.slice();
@@ -355,8 +356,7 @@ function openHandoutEditor(id) {
     setHandoutEditorMode(true);
   }
   if (hintEl) hintEl.textContent = '';
-  const fontInput = document.getElementById('hd-font-size');
-  if (fontInput) fontInput.value = '';
+  updateHandoutFontLabel(handout?.contentHtml || '' );
   overlay.classList.add('open');
   setTimeout(() => { if (!titleEl.readOnly) titleEl.focus(); }, 60);
 }
@@ -365,13 +365,97 @@ function closeHandoutDrawer() {
   document.getElementById('handout-drawer')?.classList.remove('open');
   _currentHandoutId = null;
   _handoutSelectionRange = null;
-  closeHandoutAlignMenu();
 }
 
 function createNewHandout() {
   if (!St.roomCode) { showToast('방에 입장한 상태에서만 핸드아웃을 만들 수 있어요.'); return; }
   if (!requireGM()) return;
   openHandoutEditor(null);
+}
+
+function restoreHandoutSelection() {
+  const editor = document.getElementById('hd-body');
+  if (!editor) return null;
+  editor.focus();
+  const sel = window.getSelection();
+  if (_handoutSelectionRange && sel) {
+    try { sel.removeAllRanges(); sel.addRange(_handoutSelectionRange); } catch (e) {}
+  }
+  return getHandoutSelectionRange();
+}
+
+function closeHandoutMenus() {
+  document.getElementById('hd-align-menu')?.classList.remove('open');
+  document.getElementById('hd-font-menu')?.classList.remove('open');
+}
+
+function toggleHandoutAlignMenu(event) {
+  event?.stopPropagation?.();
+  captureHandoutSelection();
+  const menu = document.getElementById('hd-align-menu');
+  const fontMenu = document.getElementById('hd-font-menu');
+  fontMenu?.classList.remove('open');
+  menu?.classList.toggle('open');
+}
+
+function toggleHandoutFontMenu(event) {
+  event?.stopPropagation?.();
+  captureHandoutSelection();
+  const menu = document.getElementById('hd-font-menu');
+  const alignMenu = document.getElementById('hd-align-menu');
+  alignMenu?.classList.remove('open');
+  menu?.classList.toggle('open');
+}
+
+function applyHandoutTextAlignFromMenu(align) {
+  applyHandoutTextAlign(align);
+  closeHandoutMenus();
+}
+
+function updateHandoutFontLabel(sourceHtml = null) {
+  const label = document.getElementById('hd-font-size-label');
+  if (!label) return;
+  if (sourceHtml != null) {
+    const match = String(sourceHtml || '').match(/font-size\s*:\s*(\d{1,2})pt/i);
+    if (match) _handoutLastFontSize = Number(match[1]) || _handoutLastFontSize;
+  }
+  label.textContent = `${_handoutLastFontSize}pt`;
+}
+
+function applyHandoutInlineFormat(command) {
+  const editor = document.getElementById('hd-body');
+  if (!editor || editor.contentEditable !== 'true') return;
+  restoreHandoutSelection();
+  try { document.execCommand(command, false, null); } catch (e) {}
+  captureHandoutSelection();
+}
+
+function normalizeHandoutLists(root) {
+  if (!root) return;
+  root.querySelectorAll('ul, ol').forEach(list => {
+    list.querySelectorAll('p').forEach(p => {
+      const frag = document.createDocumentFragment();
+      while (p.firstChild) frag.appendChild(p.firstChild);
+      p.replaceWith(frag);
+    });
+    list.querySelectorAll('li').forEach(li => {
+      if (!li.innerHTML.trim()) li.innerHTML = '<br>';
+    });
+  });
+}
+
+function toggleHandoutBulletList() {
+  const editor = document.getElementById('hd-body');
+  if (!editor || editor.contentEditable !== 'true') return;
+  restoreHandoutSelection();
+  try {
+    document.execCommand('styleWithCSS', false, false);
+  } catch (e) {}
+  try {
+    document.execCommand('insertUnorderedList', false, null);
+  } catch (e) {}
+  normalizeHandoutLists(editor);
+  captureHandoutSelection();
 }
 
 function captureHandoutSelection() {
@@ -437,65 +521,11 @@ function getHandoutSelectionRange() {
   return range;
 }
 
-function restoreHandoutSelection() {
-  const editor = document.getElementById('hd-body');
-  if (!editor || editor.contentEditable !== 'true') return false;
-  editor.focus();
-  if (!_handoutSelectionRange) return false;
-  const sel = window.getSelection();
-  if (!sel) return false;
-  try {
-    sel.removeAllRanges();
-    sel.addRange(_handoutSelectionRange);
-    return true;
-  } catch (e) {
-    return false;
-  }
-}
-
-function closeHandoutAlignMenu() {
-  document.getElementById('hd-align-menu')?.classList.remove('open');
-}
-
-function toggleHandoutAlignMenu(event) {
-  event?.stopPropagation?.();
-  const menu = document.getElementById('hd-align-menu');
-  if (!menu) return;
-  captureHandoutSelection();
-  menu.classList.toggle('open');
-}
-
-function applyHandoutTextAlignFromMenu(align) {
-  applyHandoutTextAlign(align);
-  closeHandoutAlignMenu();
-}
-
-function applyHandoutInlineFormat(command) {
-  const editor = document.getElementById('hd-body');
-  if (!editor || editor.contentEditable !== 'true') return;
-  restoreHandoutSelection();
-  try {
-    document.execCommand(command, false, null);
-  } catch (e) {}
-  captureHandoutSelection();
-}
-
-function toggleHandoutBulletList() {
-  const editor = document.getElementById('hd-body');
-  if (!editor || editor.contentEditable !== 'true') return;
-  restoreHandoutSelection();
-  try {
-    document.execCommand('insertUnorderedList', false, null);
-  } catch (e) {}
-  captureHandoutSelection();
-}
-
 function applyHandoutTextAlign(align) {
   const editor = document.getElementById('hd-body');
   if (!editor || editor.contentEditable !== 'true') return;
-  editor.focus();
   const valid = /^(left|center|right)$/.test(align) ? align : 'left';
-  const range = getHandoutSelectionRange();
+  const range = restoreHandoutSelection();
   if (!range) return;
   const blocks = new Set();
   const addBlock = node => {
@@ -517,8 +547,7 @@ function applyHandoutFontSize(value) {
   if (!editor || editor.contentEditable !== 'true') return;
   const size = Math.max(6, Math.min(18, Math.round(Number(value || 0))));
   if (!Number.isFinite(size)) return;
-  editor.focus();
-  const range = getHandoutSelectionRange();
+  const range = restoreHandoutSelection();
   if (!range) return;
   if (range.collapsed) {
     const span = document.createElement('span');
@@ -535,16 +564,21 @@ function applyHandoutFontSize(value) {
     span.appendChild(range.extractContents());
     range.insertNode(span);
     const sel = window.getSelection();
-    if (sel) { sel.removeAllRanges(); const newRange = document.createRange(); newRange.selectNodeContents(span); sel.addRange(newRange); }
+    if (sel) {
+      sel.removeAllRanges();
+      const newRange = document.createRange();
+      newRange.selectNodeContents(span);
+      sel.addRange(newRange);
+    }
   }
-  const input = document.getElementById('hd-font-size');
-  if (input) input.value = String(size);
+  _handoutLastFontSize = size;
+  updateHandoutFontLabel();
+  closeHandoutMenus();
   captureHandoutSelection();
 }
 
-function applyHandoutFontSizeFromInput() {
-  const input = document.getElementById('hd-font-size');
-  applyHandoutFontSize(input?.value);
+function applyHandoutFontSizePreset(size) {
+  applyHandoutFontSize(size);
 }
 
 async function saveHandoutFB(handout) {
@@ -610,18 +644,16 @@ function deleteHandoutFromDrawer() {
   closeHandoutDrawer();
 }
 
-
-document.addEventListener('click', (event) => {
-  const menu = document.getElementById('hd-align-menu');
-  const trigger = event.target?.closest?.('.hd-toolbar-menu-wrap');
-  if (!menu || trigger) return;
-  menu.classList.remove('open');
-});
 document.addEventListener('selectionchange', () => {
   const overlay = document.getElementById('handout-drawer');
   const editor = document.getElementById('hd-body');
   if (!overlay || !editor || !overlay.classList.contains('open') || editor.contentEditable !== 'true') return;
   captureHandoutSelection();
+});
+
+document.addEventListener('click', (event) => {
+  const toolbar = document.getElementById('hd-toolbar');
+  if (!toolbar || !toolbar.contains(event.target)) closeHandoutMenus();
 });
 
 function loadJournals() {

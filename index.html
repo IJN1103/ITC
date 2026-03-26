@@ -790,44 +790,39 @@ window._FB = {
     </div>
     <div class="hd-toolbar" id="hd-toolbar">
       <div class="hd-toolbar-group">
-        <button type="button" class="hd-tool-btn hd-format-btn" onclick="applyHandoutInlineFormat('bold')" title="굵게" aria-label="굵게">
-          <strong>B</strong>
+        <button type="button" class="hd-tool-btn hd-tool-text" onclick="applyHandoutInlineFormat('bold')" title="굵게" aria-label="굵게"><strong>B</strong></button>
+        <button type="button" class="hd-tool-btn hd-tool-text hd-tool-italic" onclick="applyHandoutInlineFormat('italic')" title="기울기" aria-label="기울기"><em>I</em></button>
+        <button type="button" class="hd-tool-btn hd-tool-list" onclick="toggleHandoutBulletList()" title="글머리 기호 목록" aria-label="글머리 기호 목록">
+          <span class="notion-list-icon" aria-hidden="true"><span></span><span></span><span></span></span>
         </button>
-        <button type="button" class="hd-tool-btn hd-format-btn hd-format-btn-italic" onclick="applyHandoutInlineFormat('italic')" title="기울임" aria-label="기울임">
-          <span>I</span>
+      </div>
+      <div class="hd-toolbar-group hd-align-group" style="position:relative">
+        <button type="button" class="hd-tool-btn hd-align-trigger" onclick="toggleHandoutAlignMenu(event)" title="정렬" aria-label="정렬 메뉴">
+          <span class="align-icon align-left"><span></span></span>
         </button>
-        <button type="button" class="hd-tool-btn hd-format-btn" onclick="toggleHandoutBulletList()" title="목록" aria-label="목록">
-          <span class="list-icon"></span>
-        </button>
-        <div class="hd-toolbar-menu-wrap">
-          <button type="button" class="hd-tool-btn" onclick="toggleHandoutAlignMenu(event)" title="정렬" aria-label="정렬">
-            <span class="align-icon align-left"></span>
+        <div class="hd-pop-menu" id="hd-align-menu">
+          <button type="button" class="hd-pop-item" onclick="applyHandoutTextAlignFromMenu('left')">
+            <span class="align-icon align-left"><span></span></span><span>좌측 정렬</span>
           </button>
-          <div class="hd-toolbar-menu" id="hd-align-menu">
-            <button type="button" class="hd-menu-item" onclick="applyHandoutTextAlignFromMenu('left')">
-              <span class="align-icon align-left"></span><span>좌측 정렬</span>
-            </button>
-            <button type="button" class="hd-menu-item" onclick="applyHandoutTextAlignFromMenu('center')">
-              <span class="align-icon align-center"></span><span>가운데 정렬</span>
-            </button>
-            <button type="button" class="hd-menu-item" onclick="applyHandoutTextAlignFromMenu('right')">
-              <span class="align-icon align-right"></span><span>우측 정렬</span>
-            </button>
-          </div>
+          <button type="button" class="hd-pop-item" onclick="applyHandoutTextAlignFromMenu('center')">
+            <span class="align-icon align-center"><span></span></span><span>가운데 정렬</span>
+          </button>
+          <button type="button" class="hd-pop-item" onclick="applyHandoutTextAlignFromMenu('right')">
+            <span class="align-icon align-right"><span></span></span><span>우측 정렬</span>
+          </button>
         </div>
       </div>
-      <div class="hd-toolbar-group hd-font-group">
-        <label for="hd-font-size">글자 크기</label>
-        <select id="hd-font-size" onchange="applyHandoutFontSizeFromInput()">
-          <option value="">선택</option>
-          <option value="6">6pt</option>
-          <option value="8">8pt</option>
-          <option value="10">10pt</option>
-          <option value="12">12pt</option>
-          <option value="14">14pt</option>
-          <option value="16">16pt</option>
-          <option value="18">18pt</option>
-        </select>
+      <div class="hd-toolbar-group hd-font-group" style="position:relative">
+        <button type="button" class="hd-tool-btn hd-font-trigger" onclick="toggleHandoutFontMenu(event)" title="글자 크기" aria-label="글자 크기 메뉴"><span id="hd-font-size-label">글자 크기</span></button>
+        <div class="hd-pop-menu hd-font-menu" id="hd-font-menu">
+          <button type="button" class="hd-pop-item" onclick="applyHandoutFontSizePreset(6)">6pt</button>
+          <button type="button" class="hd-pop-item" onclick="applyHandoutFontSizePreset(8)">8pt</button>
+          <button type="button" class="hd-pop-item" onclick="applyHandoutFontSizePreset(10)">10pt</button>
+          <button type="button" class="hd-pop-item" onclick="applyHandoutFontSizePreset(12)">12pt</button>
+          <button type="button" class="hd-pop-item" onclick="applyHandoutFontSizePreset(14)">14pt</button>
+          <button type="button" class="hd-pop-item" onclick="applyHandoutFontSizePreset(16)">16pt</button>
+          <button type="button" class="hd-pop-item" onclick="applyHandoutFontSizePreset(18)">18pt</button>
+        </div>
       </div>
       <div class="hd-toolbar-group hd-toolbar-group-end">
         <input type="file" id="hd-image-input" accept="image/*" style="display:none" onchange="handleHandoutImage(this)">
