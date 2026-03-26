@@ -20,35 +20,24 @@ function getMapBaseSize() {
 }
 
 function getMapExpansion() {
-  const map = document.getElementById('map-area');
   const { width: baseW, height: baseH } = getMapBaseSize();
-  if (!map) return { x: 1, y: 1, baseW, baseH };
-  const scale = _mapScale || 1;
-  return {
-    x: Math.max(1, (map.clientWidth || 1) / (baseW * scale)),
-    y: Math.max(1, (map.clientHeight || 1) / (baseH * scale)),
-    baseW,
-    baseH,
-  };
+  return { x: 1, y: 1, baseW, baseH };
 }
 
 function storedTokenPercentToDisplay(value, axis = 'x') {
-  const factor = axis === 'y' ? getMapExpansion().y : getMapExpansion().x;
-  return (Number(value) || 0) / factor;
+  return Number(value) || 0;
 }
 
 function displayTokenPercentToStored(value, axis = 'x') {
-  const factor = axis === 'y' ? getMapExpansion().y : getMapExpansion().x;
-  return (Number(value) || 0) * factor;
+  return Number(value) || 0;
 }
 
 function getTokenStoredPercentMax(axis = 'x') {
-  const factor = axis === 'y' ? getMapExpansion().y : getMapExpansion().x;
-  return 100 * factor;
+  return 100;
 }
 
 function clampTokenStoredPercent(value, axis = 'x') {
-  return Math.max(0, Math.min(getTokenStoredPercentMax(axis), Number(value) || 0));
+  return Math.max(0, Math.min(100, Number(value) || 0));
 }
 
 function syncRenderedTokenPositions() {
@@ -332,9 +321,8 @@ function applyMapTransform() {
   const map = document.getElementById('map-area');
   if (!inner || !map) return;
   const { width: baseW, height: baseH } = getMapBaseSize();
-  const expansion = getMapExpansion();
-  inner.style.width = (baseW * expansion.x) + 'px';
-  inner.style.height = (baseH * expansion.y) + 'px';
+  inner.style.width = baseW + 'px';
+  inner.style.height = baseH + 'px';
   inner.style.transformOrigin = '0 0';
   inner.style.transform = `translate(${_mapPanX}px,${_mapPanY}px) scale(${_mapScale})`;
   syncRenderedTokenPositions();
@@ -441,8 +429,9 @@ function ensureTokenMemoBubble() {
     'line-height:1.5',
     'white-space:pre-wrap',
     'word-break:break-word',
-    'box-shadow:0 8px 22px rgba(0,0,0,0.35)',
-    'border:1px solid rgba(255,255,255,0.06)',
+    'box-shadow:0 8px 22px rgba(0,0,0,0.35), 0 0 0 4px rgba(255,255,255,0.08)',
+    'border:1px solid rgba(255,255,255,0.08)',
+    'filter:drop-shadow(0 0 3px rgba(255,255,255,.5)) drop-shadow(0 0 6px rgba(255,255,255,.2))',
     'pointer-events:none',
     'opacity:0',
     'transform:translate(-50%, -100%)',

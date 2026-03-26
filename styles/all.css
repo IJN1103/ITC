@@ -691,3 +691,5 @@ to{transform:translateX(0);opacity:1;}
   box-shadow:none;
   filter:drop-shadow(0 0 3px rgba(255,255,255,.5)) drop-shadow(0 0 6px rgba(255,255,255,.2)) brightness(1.08);
 }
+
+#token-memo-bubble{box-shadow:0 8px 22px rgba(0,0,0,.35),0 0 0 4px var(--a-glow);filter:drop-shadow(0 0 3px rgba(255,255,255,.5)) drop-shadow(0 0 6px rgba(255,255,255,.2));}
