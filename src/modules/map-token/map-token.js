@@ -111,10 +111,24 @@ let _tokenSelectionState = {
   currentY: 0,
 };
 
+function getTokenEl(tokenId) {
+  return document.getElementById('tok-' + tokenId);
+}
+
+function getTokenIdsFromState(tokens = St.tokens) {
+  return new Set(Object.keys(tokens || {}));
+}
+
+function normalizeMultiTokenSelection(ids, tokens = St.tokens) {
+  const availableIds = getTokenIdsFromState(tokens);
+  return Array.from(new Set((ids || []).filter((id) => id && availableIds.has(String(id)))));
+}
+
 function updateMultiTokenSelectionUI() {
   document.querySelectorAll('.map-token.multi-selected').forEach((el) => el.classList.remove('multi-selected'));
+  _multiSelectedTokenIds = normalizeMultiTokenSelection(_multiSelectedTokenIds);
   _multiSelectedTokenIds.forEach((id) => {
-    document.getElementById('tok-' + id)?.classList.add('multi-selected');
+    getTokenEl(id)?.classList.add('multi-selected');
   });
 }
 
@@ -124,8 +138,111 @@ function clearMultiTokenSelection() {
 }
 
 function setMultiTokenSelection(ids) {
-  _multiSelectedTokenIds = Array.from(new Set((ids || []).filter(Boolean)));
+  _multiSelectedTokenIds = normalizeMultiTokenSelection(ids);
   updateMultiTokenSelectionUI();
+}
+
+function syncMultiTokenSelectionWithTokens(tokens = St.tokens) {
+  const normalized = normalizeMultiTokenSelection(_multiSelectedTokenIds, tokens);
+  const changed = normalized.length !== _multiSelectedTokenIds.length
+    || normalized.some((id, index) => id !== _multiSelectedTokenIds[index]);
+  _multiSelectedTokenIds = normalized;
+  if (changed) updateMultiTokenSelectionUI();
+}
+
+function toggleTokenSelection(tokenId) {
+  if (_multiSelectedTokenIds.includes(tokenId)) {
+    setMultiTokenSelection(_multiSelectedTokenIds.filter((id) => id !== tokenId));
+    return;
+  }
+  setMultiTokenSelection([..._multiSelectedTokenIds, tokenId]);
+}
+
+function getDragTargetIds(tokenId) {
+  const normalizedSelection = normalizeMultiTokenSelection(_multiSelectedTokenIds);
+  if (normalizedSelection.includes(tokenId)) return normalizedSelection;
+  setMultiTokenSelection([tokenId]);
+  return [tokenId];
+}
+
+function clampTokenPercent(value) {
+  return Math.max(0, Math.min(100, value));
+}
+
+function getTokenStartPosition(tokenId) {
+  const targetEl = getTokenEl(tokenId);
+  const token = St.tokens[tokenId] || {};
+  return {
+    left: typeof token.x === 'number' ? token.x : (parseFloat(targetEl?.style.left) || 0),
+    top: typeof token.y === 'number' ? token.y : (parseFloat(targetEl?.style.top) || 0),
+  };
+}
+
+function buildTokenDragSession(tokenId, startEvent, mapEl) {
+  const targetIds = getDragTargetIds(tokenId);
+  const natW = mapEl?.offsetWidth || 1;
+  const natH = mapEl?.offsetHeight || 1;
+  const scale = _mapScale || 1;
+  const startPos = {};
+  targetIds.forEach((id) => {
+    startPos[id] = getTokenStartPosition(id);
+  });
+  return {
+    startClientX: startEvent.clientX,
+    startClientY: startEvent.clientY,
+    natW,
+    natH,
+    scale,
+    targetIds,
+    startPos,
+  };
+}
+
+function applyTokenDragSession(session, moveEvent) {
+  const dxPct = ((moveEvent.clientX - session.startClientX) / (session.natW * session.scale)) * 100;
+  const dyPct = ((moveEvent.clientY - session.startClientY) / (session.natH * session.scale)) * 100;
+  session.targetIds.forEach((id) => {
+    const targetEl = getTokenEl(id);
+    const pos = session.startPos[id];
+    if (!targetEl || !pos) return;
+    targetEl.style.left = clampTokenPercent(pos.left + dxPct) + '%';
+    targetEl.style.top = clampTokenPercent(pos.top + dyPct) + '%';
+  });
+}
+
+function collectDraggedTokenPositions(targetIds) {
+  const patch = {};
+  targetIds.forEach((id) => {
+    const targetEl = getTokenEl(id);
+    if (!targetEl) return;
+    patch[id] = {
+      x: parseFloat(targetEl.style.left) || 0,
+      y: parseFloat(targetEl.style.top) || 0,
+    };
+  });
+  return patch;
+}
+
+function applyTokenPositionPatchToState(positionPatch) {
+  Object.entries(positionPatch || {}).forEach(([id, pos]) => {
+    if (!St.tokens[id]) St.tokens[id] = {};
+    St.tokens[id].x = pos.x;
+    St.tokens[id].y = pos.y;
+  });
+}
+
+function saveTokenPositionPatch(positionPatch) {
+  applyTokenPositionPatchToState(positionPatch);
+  if (!(window._FB?.CONFIGURED && St.roomCode)) return;
+  const { db, ref, update } = window._FB;
+  const updates = {};
+  Object.entries(positionPatch || {}).forEach(([id, pos]) => {
+    updates[`rooms/${St.roomCode}/tokens/${id}/x`] = pos.x;
+    updates[`rooms/${St.roomCode}/tokens/${id}/y`] = pos.y;
+  });
+  if (Object.keys(updates).length > 0) {
+    update(ref(db), updates);
+  }
 }
 
 function finishTokenSelection() {
@@ -252,11 +369,8 @@ function addToken() {
 
 function renderAllTokens(tokens) {
   const inner = document.getElementById('map-inner');
-  const validIds = new Set(Object.keys(tokens || {}));
-  if (_multiSelectedTokenIds.length) {
-    _multiSelectedTokenIds = _multiSelectedTokenIds.filter((id) => validIds.has(String(id)));
-  }
   if (inner) inner.querySelectorAll('.map-token').forEach(t => t.remove());
+  syncMultiTokenSelectionWithTokens(tokens);
   Object.values(tokens).forEach(t => createTokenEl(t));
   updateMultiTokenSelectionUI();
 }
@@ -305,101 +419,11 @@ function createTokenEl(t) {
       bar.appendChild(fill); el.appendChild(bar);
     }
   }
-  if (_multiSelectedTokenIds.includes(t.id)) el.classList.add('multi-selected');
+  if (_multiSelectedTokenIds.includes(String(t.id))) el.classList.add('multi-selected');
   el.addEventListener('dblclick', e => { e.preventDefault(); e.stopPropagation(); if (typeof openTokenEdit === 'function') openTokenEdit(t.id); });
   el.addEventListener('contextmenu', e => { e.preventDefault(); e.stopPropagation(); showTokenCtx(e, t.id); });
   makeDraggable(el, t.id);
   inner.appendChild(el);
-}
-
-function getSelectedDragTokenIds(tokenId) {
-  const selectedIds = _multiSelectedTokenIds.includes(tokenId)
-    ? _multiSelectedTokenIds.slice()
-    : [tokenId];
-  return Array.from(new Set((selectedIds || []).filter((id) => St.tokens[id] && document.getElementById('tok-' + id))));
-}
-
-function getMapDragMetrics(map) {
-  return {
-    width: Math.max(1, map?.offsetWidth || 1),
-    height: Math.max(1, map?.offsetHeight || 1),
-    scale: Math.max(0.0001, _mapScale || 1),
-  };
-}
-
-function getTokenPercentPosition(tokenId) {
-  const targetEl = document.getElementById('tok-' + tokenId);
-  const token = St.tokens[tokenId] || {};
-  return {
-    x: typeof token.x === 'number' ? token.x : (parseFloat(targetEl?.style.left) || 0),
-    y: typeof token.y === 'number' ? token.y : (parseFloat(targetEl?.style.top) || 0),
-  };
-}
-
-function clampTokenPercent(value) {
-  return Math.max(0, Math.min(100, value));
-}
-
-function createTokenDragSession(tokenId, event, map) {
-  const targetIds = getSelectedDragTokenIds(tokenId);
-  if (!targetIds.length) return null;
-
-  return {
-    map,
-    startClientX: event.clientX,
-    startClientY: event.clientY,
-    metrics: getMapDragMetrics(map),
-    targetIds,
-    startPositions: targetIds.reduce((acc, id) => {
-      acc[id] = getTokenPercentPosition(id);
-      return acc;
-    }, {}),
-    latestPositions: {},
-  };
-}
-
-function applyTokenDragSession(session, event) {
-  if (!session) return;
-
-  const dxPct = ((event.clientX - session.startClientX) / (session.metrics.width * session.metrics.scale)) * 100;
-  const dyPct = ((event.clientY - session.startClientY) / (session.metrics.height * session.metrics.scale)) * 100;
-
-  session.targetIds.forEach((id) => {
-    const targetEl = document.getElementById('tok-' + id);
-    const startPos = session.startPositions[id];
-    if (!targetEl || !startPos) return;
-
-    const nextX = clampTokenPercent(startPos.x + dxPct);
-    const nextY = clampTokenPercent(startPos.y + dyPct);
-
-    targetEl.style.left = nextX + '%';
-    targetEl.style.top = nextY + '%';
-    session.latestPositions[id] = { x: nextX, y: nextY };
-  });
-}
-
-function commitTokenDragSession(session) {
-  if (!session) return;
-
-  const finalPositions = {};
-  session.targetIds.forEach((id) => {
-    const pos = session.latestPositions[id] || session.startPositions[id];
-    if (!pos) return;
-    finalPositions[id] = { x: pos.x, y: pos.y };
-    if (!St.tokens[id]) St.tokens[id] = {};
-    St.tokens[id].x = pos.x;
-    St.tokens[id].y = pos.y;
-  });
-
-  if (window._FB?.CONFIGURED && St.roomCode && Object.keys(finalPositions).length) {
-    const { db, ref, update } = window._FB;
-    const patch = {};
-    Object.entries(finalPositions).forEach(([id, pos]) => {
-      patch[`${id}/x`] = pos.x;
-      patch[`${id}/y`] = pos.y;
-    });
-    update(ref(db, `rooms/${St.roomCode}/tokens`), patch);
-  }
 }
 
 function makeDraggable(el, tokenId) {
@@ -407,11 +431,7 @@ function makeDraggable(el, tokenId) {
     if (e.button === 1) {
       e.preventDefault();
       e.stopPropagation();
-      if (_multiSelectedTokenIds.includes(tokenId)) {
-        setMultiTokenSelection(_multiSelectedTokenIds.filter(id => id !== tokenId));
-      } else {
-        setMultiTokenSelection([..._multiSelectedTokenIds, tokenId]);
-      }
+      toggleTokenSelection(tokenId);
       return;
     }
 
@@ -425,12 +445,7 @@ function makeDraggable(el, tokenId) {
     const map = document.getElementById('map-area');
     if (!map) return;
 
-    if (!_multiSelectedTokenIds.includes(tokenId)) {
-      setMultiTokenSelection([tokenId]);
-    }
-
-    const dragSession = createTokenDragSession(tokenId, e, map);
-    if (!dragSession) return;
+    const dragSession = buildTokenDragSession(tokenId, e, map);
 
     const onMove = ev => {
       applyTokenDragSession(dragSession, ev);
@@ -439,7 +454,8 @@ function makeDraggable(el, tokenId) {
     const onUp = () => {
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup', onUp);
-      commitTokenDragSession(dragSession);
+      saveTokenPositionPatch(collectDraggedTokenPositions(dragSession.targetIds));
+      syncMultiTokenSelectionWithTokens(St.tokens);
     };
 
     document.addEventListener('mousemove', onMove);
@@ -449,13 +465,16 @@ function makeDraggable(el, tokenId) {
 
 function removeToken(tokenId) {
   if (!hasPerm('editToken')) { showToast('토큰 편집 권한이 없어요.'); return; }
-  _multiSelectedTokenIds = _multiSelectedTokenIds.filter((id) => id !== tokenId);
-  const el = document.getElementById('tok-' + tokenId);
+  setMultiTokenSelection(_multiSelectedTokenIds.filter((id) => id !== tokenId));
+  const el = getTokenEl(tokenId);
   if (el) el.remove();
   if (window._FB?.CONFIGURED) {
     const { db, ref, remove } = window._FB;
     remove(ref(db, `rooms/${St.roomCode}/tokens/${tokenId}`));
-  } else delete St.tokens[tokenId];
+  } else {
+    delete St.tokens[tokenId];
+    syncMultiTokenSelectionWithTokens(St.tokens);
+  }
 }
 
 let _ctxTokenId = null;
@@ -495,7 +514,7 @@ function tokCtxAction(action) {
       break;
     case 'rotate': {
       t.rotation = ((t.rotation || 0) + 45) % 360;
-      const el = document.getElementById('tok-' + id);
+      const el = getTokenEl(id);
       if (el) el.style.transform = `translate(-50%,-50%) rotate(${t.rotation}deg)`;
       if (window._FB?.CONFIGURED) {
         const { db, ref, update } = window._FB;
@@ -504,7 +523,7 @@ function tokCtxAction(action) {
       break;
     }
     case 'toBack': {
-      const el = document.getElementById('tok-' + id);
+      const el = getTokenEl(id);
       if (el) el.style.zIndex = '1';
       break;
     }
@@ -536,7 +555,7 @@ function tokCtxAction(action) {
       break;
     case 'delete':
       if (!confirm(`'${t.name}' 토큰을 삭제할까요?`)) return;
-      const el = document.getElementById('tok-' + id);
+      const el = getTokenEl(id);
       if (el) el.remove();
       if (window._FB?.CONFIGURED) {
         const { db, ref, remove } = window._FB;
@@ -825,6 +844,7 @@ function deleteTokenFromEdit() {
     remove(ref(db, `rooms/${St.roomCode}/tokens/${delId}`));
   } else {
     delete St.tokens[delId];
+    syncMultiTokenSelectionWithTokens(St.tokens);
     renderAllTokens(St.tokens);
   }
 }
