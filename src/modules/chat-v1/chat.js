@@ -1607,8 +1607,8 @@ function appendCasualMsg(name, text, uid, timestamp, msgKey, nameColor) {
   }
 }
 
-function replaceCasualMsg(name, text, uid, timestamp, msgKey) {
-  const safeKey = upsertStoredMessage('casual', msgKey, { name, text, uid, timestamp });
+function replaceCasualMsg(name, text, uid, timestamp, msgKey, nameColor) {
+  const safeKey = upsertStoredMessage('casual', msgKey, { name, text, uid, timestamp, nameColor });
   bindMessageViewport('casual');
   const div = buildCasualMsgElement(name, text, uid, timestamp, safeKey, nameColor);
   replaceRenderedMessage('casual', safeKey, div);
