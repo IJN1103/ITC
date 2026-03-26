@@ -1,6 +1,0 @@
-index.html:420 [chat-clear-btn]
-index.html:420 [chat-clear-btn]
-src/modules/chat-v1/chat.js:39 [chat-clear-btn]
-src/modules/chat-v1/chat.js:42 [chat-clear-btn]
-src/modules/chat-v1/chat.js:43 [chat-clear-btn]
-src/modules/chat-v1/chat.js:56 [chat-clear-btn]
