@@ -101,90 +101,6 @@ function cleanupTokenEditPendingAssets() {
 }
 
 
-
-let _multiSelectedTokenIds = [];
-let _tokenSelectionState = {
-  active: false,
-  startX: 0,
-  startY: 0,
-  currentX: 0,
-  currentY: 0,
-};
-
-function getTokenSelectionBoxEl() {
-  let el = document.getElementById('map-token-selection-box');
-  if (!el) {
-    el = document.createElement('div');
-    el.id = 'map-token-selection-box';
-    el.className = 'map-token-selection-box';
-    document.getElementById('map-area')?.appendChild(el);
-  }
-  return el;
-}
-
-function updateMultiTokenSelectionUI() {
-  document.querySelectorAll('.map-token.multi-selected').forEach((el) => el.classList.remove('multi-selected'));
-  _multiSelectedTokenIds.forEach((id) => {
-    document.getElementById('tok-' + id)?.classList.add('multi-selected');
-  });
-}
-
-function clearMultiTokenSelection() {
-  _multiSelectedTokenIds = [];
-  updateMultiTokenSelectionUI();
-}
-
-function setMultiTokenSelection(ids) {
-  _multiSelectedTokenIds = Array.from(new Set((ids || []).filter(Boolean)));
-  updateMultiTokenSelectionUI();
-}
-
-function getNormalizedSelectionRect() {
-  const x1 = Math.min(_tokenSelectionState.startX, _tokenSelectionState.currentX);
-  const y1 = Math.min(_tokenSelectionState.startY, _tokenSelectionState.currentY);
-  const x2 = Math.max(_tokenSelectionState.startX, _tokenSelectionState.currentX);
-  const y2 = Math.max(_tokenSelectionState.startY, _tokenSelectionState.currentY);
-  return { x1, y1, x2, y2, width: x2 - x1, height: y2 - y1 };
-}
-
-function renderSelectionBox() {
-  const box = getTokenSelectionBoxEl();
-  const rect = getNormalizedSelectionRect();
-  box.style.display = _tokenSelectionState.active ? '' : 'none';
-  box.style.left = rect.x1 + 'px';
-  box.style.top = rect.y1 + 'px';
-  box.style.width = rect.width + 'px';
-  box.style.height = rect.height + 'px';
-}
-
-function finishTokenSelection() {
-  if (!_tokenSelectionState.active) return;
-  const map = document.getElementById('map-area');
-  const box = document.getElementById('map-token-selection-box');
-  const rect = getNormalizedSelectionRect();
-  const selected = [];
-
-  if (map && rect.width > 6 && rect.height > 6) {
-    const mapRect = map.getBoundingClientRect();
-    document.querySelectorAll('.map-token').forEach((el) => {
-      const tokenRect = el.getBoundingClientRect();
-      const left = tokenRect.left - mapRect.left;
-      const top = tokenRect.top - mapRect.top;
-      const right = tokenRect.right - mapRect.left;
-      const bottom = tokenRect.bottom - mapRect.top;
-      const intersects = !(right < rect.x1 || left > rect.x2 || bottom < rect.y1 || top > rect.y2);
-      if (intersects) {
-        const tokenId = String(el.id || '').replace(/^tok-/, '');
-        if (tokenId) selected.push(tokenId);
-      }
-    });
-  }
-
-  _tokenSelectionState.active = false;
-  if (box) box.style.display = 'none';
-  setMultiTokenSelection(selected);
-}
-
 function applyMapTransform() {
   const inner = document.getElementById('map-inner');
   if (inner) inner.style.transform = `translate(${_mapPanX}px,${_mapPanY}px) scale(${_mapScale})`;
@@ -214,59 +130,23 @@ document.addEventListener('DOMContentLoaded', () => {
   }, { passive: false });
 
   let isPanning = false, panStartX, panStartY, panOriginX, panOriginY;
-
   mapEl.addEventListener('mousedown', e => {
-    if (e.target.closest('.map-zoom') || e.target.closest('.map-add-token') || e.target.closest('.vn-dialog')) return;
-
-    if (e.button === 1) {
-      const rect = mapEl.getBoundingClientRect();
-      _tokenSelectionState.active = true;
-      _tokenSelectionState.startX = e.clientX - rect.left;
-      _tokenSelectionState.startY = e.clientY - rect.top;
-      _tokenSelectionState.currentX = _tokenSelectionState.startX;
-      _tokenSelectionState.currentY = _tokenSelectionState.startY;
-      renderSelectionBox();
-      e.preventDefault();
-      return;
-    }
-
-    if (e.target.closest('.map-token')) return;
+    if (e.target.closest('.map-token') || e.target.closest('.map-zoom') || e.target.closest('.map-add-token') || e.target.closest('.vn-dialog')) return;
     if (e.button !== 0) return;
-
-    clearMultiTokenSelection();
     isPanning = true;
-    panStartX = e.clientX;
-    panStartY = e.clientY;
-    panOriginX = _mapPanX;
-    panOriginY = _mapPanY;
+    panStartX = e.clientX; panStartY = e.clientY;
+    panOriginX = _mapPanX; panOriginY = _mapPanY;
     mapEl.classList.add('panning');
     e.preventDefault();
   });
-
   document.addEventListener('mousemove', e => {
-    if (_tokenSelectionState.active) {
-      const rect = mapEl.getBoundingClientRect();
-      _tokenSelectionState.currentX = e.clientX - rect.left;
-      _tokenSelectionState.currentY = e.clientY - rect.top;
-      renderSelectionBox();
-      return;
-    }
     if (!isPanning) return;
     _mapPanX = panOriginX + (e.clientX - panStartX);
     _mapPanY = panOriginY + (e.clientY - panStartY);
     applyMapTransform();
   });
-
   document.addEventListener('mouseup', () => {
-    if (_tokenSelectionState.active) finishTokenSelection();
-    if (isPanning) {
-      isPanning = false;
-      mapEl.classList.remove('panning');
-    }
-  });
-
-  mapEl.addEventListener('auxclick', e => {
-    if (e.button === 1) e.preventDefault();
+    if (isPanning) { isPanning = false; mapEl.classList.remove('panning'); }
   });
 });
 
@@ -276,19 +156,50 @@ function addToken() {
   const type = document.getElementById('token-type').value;
   const id = genId();
   const token = { id, name, type, x: 48 + Math.random()*12, y: 48 + Math.random()*12 };
-  if (window._FB?.CONFIGURED) {
-    const { db, ref, set } = window._FB;
-    set(ref(db, `rooms/${St.roomCode}/tokens/${id}`), token);
-  } else { St.tokens[id] = token; renderAllTokens(St.tokens); }
+  persistTokenReplace(id, token);
   closeModal('modal-token');
   document.getElementById('token-name').value = '';
 }
 
+
+function persistTokenPatch(tokenId, patch) {
+  if (!tokenId || !patch) return;
+  if (window._FB?.CONFIGURED) {
+    const { db, ref, update } = window._FB;
+    update(ref(db, `rooms/${St.roomCode}/tokens/${tokenId}`), patch);
+  } else if (St.tokens[tokenId]) {
+    Object.assign(St.tokens[tokenId], patch);
+    renderAllTokens(St.tokens);
+  }
+}
+
+function persistTokenReplace(tokenId, tokenData) {
+  if (!tokenId || !tokenData) return;
+  if (window._FB?.CONFIGURED) {
+    const { db, ref, set } = window._FB;
+    set(ref(db, `rooms/${St.roomCode}/tokens/${tokenId}`), tokenData);
+  } else {
+    St.tokens[tokenId] = tokenData;
+    renderAllTokens(St.tokens);
+  }
+}
+
+function removeTokenData(tokenId) {
+  if (!tokenId) return;
+  if (window._FB?.CONFIGURED) {
+    const { db, ref, remove } = window._FB;
+    remove(ref(db, `rooms/${St.roomCode}/tokens/${tokenId}`));
+  } else {
+    delete St.tokens[tokenId];
+    renderAllTokens(St.tokens);
+  }
+}
+
 function renderAllTokens(tokens) {
+  St.tokens = tokens || {};
   const inner = document.getElementById('map-inner');
   if (inner) inner.querySelectorAll('.map-token').forEach(t => t.remove());
-  Object.values(tokens).forEach(t => createTokenEl(t));
-  updateMultiTokenSelectionUI();
+  Object.values(St.tokens).forEach(t => createTokenEl(t));
 }
 
 function createTokenEl(t) {
@@ -334,7 +245,6 @@ function createTokenEl(t) {
       bar.appendChild(fill); el.appendChild(bar);
     }
   }
-  if (_multiSelectedTokenIds.includes(t.id)) el.classList.add('multi-selected');
   el.addEventListener('contextmenu', e => { e.preventDefault(); e.stopPropagation(); showTokenCtx(e, t.id); });
   makeDraggable(el, t.id);
   inner.appendChild(el);
@@ -342,79 +252,31 @@ function createTokenEl(t) {
 
 function makeDraggable(el, tokenId) {
   el.addEventListener('mousedown', e => {
-    if (e.button !== 0) return;
-    if (_tokenSelectionState.active) return;
     if (!hasPerm('moveToken')) { showToast('토큰 이동 권한이 없어요.'); return; }
     if (St.tool === 'erase') { removeToken(tokenId); return; }
-
     e.preventDefault();
     e.stopPropagation();
-
-    const targetIds = _multiSelectedTokenIds.includes(tokenId)
-      ? _multiSelectedTokenIds.slice()
-      : [tokenId];
-
-    if (!_multiSelectedTokenIds.includes(tokenId)) {
-      setMultiTokenSelection([tokenId]);
-    }
-
+    const map = document.getElementById('map-area');
     const inner = document.getElementById('map-inner');
-    if (!inner) return;
-
-    const innerW = inner.offsetWidth || 1;
-    const innerH = inner.offsetHeight || 1;
-    const sx = e.clientX;
-    const sy = e.clientY;
-
-    const startPos = {};
-    targetIds.forEach((id) => {
-      const token = St.tokens[id] || {};
-      const targetEl = document.getElementById('tok-' + id);
-      startPos[id] = {
-        left: typeof token.x === 'number' ? token.x : (parseFloat(targetEl?.style.left) || 0),
-        top: typeof token.y === 'number' ? token.y : (parseFloat(targetEl?.style.top) || 0),
-      };
-    });
-
-    const onMove = (ev) => {
-      const dx = ((ev.clientX - sx) / (_mapScale || 1)) / innerW * 100;
-      const dy = ((ev.clientY - sy) / (_mapScale || 1)) / innerH * 100;
-
-      targetIds.forEach((id) => {
-        const targetEl = document.getElementById('tok-' + id);
-        const pos = startPos[id];
-        if (!targetEl || !pos) return;
-        const nextLeft = Math.max(0, Math.min(100, pos.left + dx));
-        const nextTop = Math.max(0, Math.min(100, pos.top + dy));
-        targetEl.style.left = nextLeft + '%';
-        targetEl.style.top = nextTop + '%';
-      });
+    const rect = inner.getBoundingClientRect();
+    const sx = e.clientX, sy = e.clientY;
+    const sl = parseFloat(el.style.left), st = parseFloat(el.style.top);
+    const natW = map.offsetWidth, natH = map.offsetHeight;
+    const onMove = e => {
+      el.style.left = Math.max(0,Math.min(100, sl + (e.clientX-sx)/(natW*_mapScale)*100)) + '%';
+      el.style.top  = Math.max(0,Math.min(100, st + (e.clientY-sy)/(natH*_mapScale)*100)) + '%';
     };
-
     const onUp = () => {
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup', onUp);
-
-      const updates = {};
-      targetIds.forEach((id) => {
-        const targetEl = document.getElementById('tok-' + id);
-        if (!targetEl) return;
-        const nextX = parseFloat(targetEl.style.left) || 0;
-        const nextY = parseFloat(targetEl.style.top) || 0;
-        if (!St.tokens[id]) St.tokens[id] = {};
-        St.tokens[id].x = nextX;
-        St.tokens[id].y = nextY;
-        updates[id] = { x: nextX, y: nextY };
-      });
-
-      if (window._FB?.CONFIGURED && St.roomCode) {
-        const { db, ref, update } = window._FB;
-        Object.entries(updates).forEach(([id, pos]) => {
-          update(ref(db, `rooms/${St.roomCode}/tokens/${id}`), pos);
-        });
+      const nextX = parseFloat(el.style.left);
+      const nextY = parseFloat(el.style.top);
+      if (St.tokens[tokenId]) {
+        St.tokens[tokenId].x = nextX;
+        St.tokens[tokenId].y = nextY;
       }
+      persistTokenPatch(tokenId, { x: nextX, y: nextY });
     };
-
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp);
   });
@@ -422,13 +284,9 @@ function makeDraggable(el, tokenId) {
 
 function removeToken(tokenId) {
   if (!hasPerm('editToken')) { showToast('토큰 편집 권한이 없어요.'); return; }
-  _multiSelectedTokenIds = _multiSelectedTokenIds.filter((id) => id !== tokenId);
   const el = document.getElementById('tok-' + tokenId);
   if (el) el.remove();
-  if (window._FB?.CONFIGURED) {
-    const { db, ref, remove } = window._FB;
-    remove(ref(db, `rooms/${St.roomCode}/tokens/${tokenId}`));
-  } else delete St.tokens[tokenId];
+  removeTokenData(tokenId);
 }
 
 let _ctxTokenId = null;
@@ -470,10 +328,7 @@ function tokCtxAction(action) {
       t.rotation = ((t.rotation || 0) + 45) % 360;
       const el = document.getElementById('tok-' + id);
       if (el) el.style.transform = `translate(-50%,-50%) rotate(${t.rotation}deg)`;
-      if (window._FB?.CONFIGURED) {
-        const { db, ref, update } = window._FB;
-        update(ref(db, `rooms/${St.roomCode}/tokens/${id}`), { rotation: t.rotation });
-      }
+      persistTokenPatch(id, { rotation: t.rotation });
       break;
     }
     case 'toBack': {
@@ -484,10 +339,7 @@ function tokCtxAction(action) {
     case 'own': {
       t.ownerId = St.myId;
       t.ownerName = St.myName;
-      if (window._FB?.CONFIGURED) {
-        const { db, ref, update } = window._FB;
-        update(ref(db, `rooms/${St.roomCode}/tokens/${id}`), { ownerId: St.myId, ownerName: St.myName });
-      }
+      persistTokenPatch(id, { ownerId: St.myId, ownerName: St.myName });
       showToast(`${t.name} 토큰의 소유 권한을 가져왔어요.`);
       break;
     }
@@ -495,12 +347,7 @@ function tokCtxAction(action) {
       const newId = genId();
       const dup = JSON.parse(JSON.stringify(t));
       dup.id = newId; dup.x = (t.x || 50) + 2; dup.y = (t.y || 50) + 2;
-      if (window._FB?.CONFIGURED) {
-        const { db, ref, set } = window._FB;
-        set(ref(db, `rooms/${St.roomCode}/tokens/${newId}`), dup);
-      } else {
-        St.tokens[newId] = dup; renderAllTokens(St.tokens);
-      }
+      persistTokenReplace(newId, dup);
       showToast('토큰이 복제됐어요.');
       break;
     }
@@ -511,10 +358,7 @@ function tokCtxAction(action) {
       if (!confirm(`'${t.name}' 토큰을 삭제할까요?`)) return;
       const el = document.getElementById('tok-' + id);
       if (el) el.remove();
-      if (window._FB?.CONFIGURED) {
-        const { db, ref, remove } = window._FB;
-        remove(ref(db, `rooms/${St.roomCode}/tokens/${id}`));
-      } else { delete St.tokens[id]; }
+      removeTokenData(id);
       break;
     case 'copyId':
       navigator.clipboard?.writeText(id).then(() => showToast('토큰 ID 복사됨: ' + id)).catch(() => showToast('복사 실패'));
@@ -774,12 +618,7 @@ async function saveTokenEdit() {
     if (label) t.params.push({ label, value });
   });
 
-  if (window._FB?.CONFIGURED) {
-    const { db, ref, set } = window._FB;
-    set(ref(db, `rooms/${St.roomCode}/tokens/${_teTokenId}`), t);
-  } else {
-    renderAllTokens(St.tokens);
-  }
+  persistTokenReplace(_teTokenId, t);
 
   if (hint) { hint.textContent = '저장됐어요 ✓'; setTimeout(() => { if(hint) hint.textContent=''; }, 2000); }
   cleanupTokenEditPendingAssets();
@@ -793,13 +632,7 @@ function deleteTokenFromEdit() {
   closeTokenEdit();
   const el = document.getElementById('tok-' + delId);
   if (el) el.remove();
-  if (window._FB?.CONFIGURED) {
-    const { db, ref, remove } = window._FB;
-    remove(ref(db, `rooms/${St.roomCode}/tokens/${delId}`));
-  } else {
-    delete St.tokens[delId];
-    renderAllTokens(St.tokens);
-  }
+  removeTokenData(delId);
 }
 
 function setTool(t) {
