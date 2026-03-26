@@ -783,7 +783,7 @@ window._FB = {
   <div class="jd-panel hd-panel">
     <div class="jd-header hd-header">
       <button class="jd-close" onclick="closeHandoutDrawer()" title="닫기">‹</button>
-      <input class="jd-title-input" id="hd-title" placeholder="핸드아웃 제목">
+      <input class="jd-title-input hd-title-input" id="hd-title" placeholder="핸드아웃 제목">
       <button class="jd-del-btn" id="hd-delete-btn" onclick="deleteHandoutFromDrawer()" title="삭제">🗑 삭제</button>
     </div>
     <div class="jd-meta hd-meta">
@@ -800,18 +800,17 @@ window._FB = {
       <button class="hd-tool-btn" type="button" onclick="formatHandout('insertUnorderedList')">• 목록</button>
       <div class="hd-tool-sep"></div>
       <label class="hd-toolbar-label" for="hd-font-size">글자 크기</label>
-      <select class="hd-tool-select" id="hd-font-size" onchange="applyHandoutFontSize(this.value)">
-        <option value="">기본</option>
-        <option value="12">작게</option>
-        <option value="14">보통</option>
-        <option value="16">조금 크게</option>
-        <option value="18">크게</option>
-        <option value="22">제목</option>
-      </select>
+      <div class="hd-font-size-wrap">
+        <input class="hd-tool-input" id="hd-font-size" type="number" min="8" max="36" step="1" placeholder="14" onkeydown="if(event.key==='Enter'){applyHandoutFontSize(this.value)}">
+        <span class="hd-tool-unit">pt</span>
+        <button class="hd-tool-apply" type="button" onclick="applyHandoutFontSize(document.getElementById('hd-font-size').value)">적용</button>
+      </div>
       <div class="hd-tool-sep"></div>
-      <button class="hd-tool-btn" type="button" onclick="applyHandoutTextAlign('left')">좌측</button>
-      <button class="hd-tool-btn" type="button" onclick="applyHandoutTextAlign('center')">가운데</button>
-      <button class="hd-tool-btn" type="button" onclick="applyHandoutTextAlign('right')">우측</button>
+      <div class="hd-align-group" role="group" aria-label="글자 정렬">
+        <button class="hd-icon-btn" type="button" onclick="applyHandoutTextAlign('left')" title="좌측 정렬" aria-label="좌측 정렬"><span class="hd-align-icon left"><span></span><span></span><span></span></span></button>
+        <button class="hd-icon-btn" type="button" onclick="applyHandoutTextAlign('center')" title="가운데 정렬" aria-label="가운데 정렬"><span class="hd-align-icon center"><span></span><span></span><span></span></span></button>
+        <button class="hd-icon-btn" type="button" onclick="applyHandoutTextAlign('right')" title="우측 정렬" aria-label="우측 정렬"><span class="hd-align-icon right"><span></span><span></span><span></span></span></button>
+      </div>
       <div class="hd-tool-sep"></div>
       <button class="hd-tool-btn" type="button" onclick="document.getElementById('hd-image-input').click()">이미지</button>
       <input type="file" id="hd-image-input" accept="image/*" style="display:none" onchange="handleHandoutImage(this)">
