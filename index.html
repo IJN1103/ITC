@@ -798,6 +798,21 @@ window._FB = {
       <button class="hd-tool-btn" type="button" onclick="formatHandout('bold')"><b>B</b></button>
       <button class="hd-tool-btn" type="button" onclick="formatHandout('italic')"><i>I</i></button>
       <button class="hd-tool-btn" type="button" onclick="formatHandout('insertUnorderedList')">• 목록</button>
+      <div class="hd-tool-sep"></div>
+      <label class="hd-toolbar-label" for="hd-font-size">글자 크기</label>
+      <select class="hd-tool-select" id="hd-font-size" onchange="applyHandoutFontSize(this.value)">
+        <option value="">기본</option>
+        <option value="12">작게</option>
+        <option value="14">보통</option>
+        <option value="16">조금 크게</option>
+        <option value="18">크게</option>
+        <option value="22">제목</option>
+      </select>
+      <div class="hd-tool-sep"></div>
+      <button class="hd-tool-btn" type="button" onclick="applyHandoutTextAlign('left')">좌측</button>
+      <button class="hd-tool-btn" type="button" onclick="applyHandoutTextAlign('center')">가운데</button>
+      <button class="hd-tool-btn" type="button" onclick="applyHandoutTextAlign('right')">우측</button>
+      <div class="hd-tool-sep"></div>
       <button class="hd-tool-btn" type="button" onclick="document.getElementById('hd-image-input').click()">이미지</button>
       <input type="file" id="hd-image-input" accept="image/*" style="display:none" onchange="handleHandoutImage(this)">
     </div>

@@ -111,22 +111,33 @@ function fetchHandoutsFromFB() {
   }).catch(() => {});
 }
 
-function saveHandoutFB(handout) {
-  if (!handout?.id) return;
-  if (!handout.ownerId) handout.ownerId = St.myId;
-  const normalized = { ...handout };
+async function saveHandoutFB(handout) {
+  if (!handout?.id) return false;
+  const normalized = {
+    id: String(handout.id),
+    title: String(handout.title || '무제 핸드아웃'),
+    contentHtml: sanitizeHandoutHtml(handout.contentHtml || ''),
+    allowedTo: Array.isArray(handout.allowedTo) ? handout.allowedTo.filter(Boolean) : [],
+    ownerId: handout.ownerId || St.myId,
+    createdAt: Number(handout.createdAt || Date.now()),
+    updatedAt: Number(handout.updatedAt || Date.now()),
+  };
   const idx = _allHandouts.findIndex(h => h.id === normalized.id);
-  if (idx >= 0) _allHandouts[idx] = normalized;
+  if (idx >= 0) _allHandouts[idx] = { ...(_allHandouts[idx] || {}), ...normalized };
   else _allHandouts.push(normalized);
   try { localStorage.setItem(handoutKey(), JSON.stringify(_allHandouts)); } catch (e) {}
   renderHandoutList();
   if (window._FB?.CONFIGURED) {
     const { db, ref, set } = window._FB;
-    set(ref(db, `rooms/${St.roomCode}/handouts/${normalized.id}`), normalized).catch(err => {
-      console.error('handout save failed', err);
+    try {
+      await set(ref(db, `rooms/${St.roomCode}/handouts/${normalized.id}`), normalized);
+    } catch (err) {
+      console.error('handout save failed', err, normalized);
       showToast('핸드아웃 저장에 실패했어요.');
-    });
+      return false;
+    }
   }
+  return true;
 }
 
 function deleteHandoutFB(id) {
@@ -146,11 +157,36 @@ function sanitizeHandoutHtml(rawHtml) {
   const template = document.createElement('template');
   template.innerHTML = String(rawHtml || '');
   const allowed = new Set(['DIV','P','BR','B','STRONG','I','EM','U','UL','OL','LI','BLOCKQUOTE','H1','H2','H3','H4','FIGURE','IMG','SPAN']);
+  const styleAllowedTags = new Set(['DIV','P','UL','OL','LI','BLOCKQUOTE','H1','H2','H3','H4','SPAN','FIGURE']);
   const safeUrl = (value) => {
     const v = String(value || '').trim();
     if (!v) return '';
     if (/^https?:\/\//i.test(v)) return v;
     return '';
+  };
+  const sanitizeStyle = (tag, styleText) => {
+    if (!styleAllowedTags.has(tag)) return '';
+    const out = [];
+    String(styleText || '').split(';').forEach(rule => {
+      const [rawName, rawValue] = rule.split(':');
+      const name = String(rawName || '').trim().toLowerCase();
+      const value = String(rawValue || '').trim().toLowerCase();
+      if (!name || !value) return;
+      if (name === 'text-align' && /^(left|center|right)$/.test(value)) {
+        out.push(`text-align:${value}`);
+        return;
+      }
+      if (name === 'font-size') {
+        const m = value.match(/^(\d{1,2})(px|rem|em|%)$/);
+        if (!m) return;
+        const size = Number(m[1]);
+        const unit = m[2];
+        if (unit === 'px' && size >= 10 && size <= 36) out.push(`font-size:${size}px`);
+        else if (unit === '%' && size >= 70 && size <= 220) out.push(`font-size:${size}%`);
+        else if ((unit === 'rem' || unit === 'em') && size >= 1 && size <= 3) out.push(`font-size:${size}${unit}`);
+      }
+    });
+    return out.join(';');
   };
   const walk = (node) => {
     [...node.childNodes].forEach(child => {
@@ -176,6 +212,12 @@ function sanitizeHandoutHtml(rawHtml) {
             return;
           }
           if (tag === 'IMG' && name === 'alt') return;
+          if (name === 'style') {
+            const cleanStyle = sanitizeStyle(tag, attr.value);
+            if (cleanStyle) child.setAttribute('style', cleanStyle);
+            else child.removeAttribute('style');
+            return;
+          }
           child.removeAttribute(attr.name);
         });
         if (tag === 'IMG') {
@@ -203,6 +245,98 @@ function formatHandout(command) {
   if (!editor || !_handoutEditMode) return;
   editor.focus();
   try { document.execCommand(command, false, null); } catch (e) {}
+}
+
+function getHandoutSelectionRange() {
+  const editor = document.getElementById('hd-body');
+  const sel = window.getSelection();
+  if (!editor || !sel || sel.rangeCount === 0) return null;
+  const range = sel.getRangeAt(0);
+  if (!editor.contains(range.commonAncestorContainer)) return null;
+  return range;
+}
+
+function normalizeHandoutEditorMarkup(editor) {
+  if (!editor) return;
+  [...editor.querySelectorAll('font[size]')].forEach(node => {
+    const raw = String(node.getAttribute('size') || '').trim();
+    const map = { '1':'12px', '2':'13px', '3':'14px', '4':'16px', '5':'18px', '6':'22px', '7':'28px' };
+    const px = map[raw] || '';
+    const span = document.createElement('span');
+    if (px) span.style.fontSize = px;
+    while (node.firstChild) span.appendChild(node.firstChild);
+    node.replaceWith(span);
+  });
+}
+
+function applyHandoutFontSize(value) {
+  const editor = document.getElementById('hd-body');
+  if (!editor || !_handoutEditMode) return;
+  editor.focus();
+  const range = getHandoutSelectionRange();
+  if (!range) return;
+  const size = String(value || '').trim();
+  if (!size) return;
+  try {
+    if (!range.collapsed) {
+      const span = document.createElement('span');
+      span.style.fontSize = `${size}px`;
+      const frag = range.extractContents();
+      span.appendChild(frag);
+      range.insertNode(span);
+      range.selectNodeContents(span);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+    } else {
+      document.execCommand('fontSize', false, '4');
+      normalizeHandoutEditorMarkup(editor);
+      const sel = window.getSelection();
+      if (sel && sel.anchorNode) {
+        let node = sel.anchorNode.nodeType === 1 ? sel.anchorNode : sel.anchorNode.parentElement;
+        while (node && node !== editor && node.nodeType === 1) {
+          if (node.tagName === 'SPAN') {
+            node.style.fontSize = `${size}px`;
+            break;
+          }
+          node = node.parentElement;
+        }
+      }
+    }
+  } catch (e) {
+    console.error('applyHandoutFontSize failed', e);
+  } finally {
+    const select = document.getElementById('hd-font-size');
+    if (select) select.value = '';
+  }
+}
+
+function applyHandoutTextAlign(align) {
+  const editor = document.getElementById('hd-body');
+  if (!editor || !_handoutEditMode) return;
+  editor.focus();
+  const range = getHandoutSelectionRange();
+  if (!range) return;
+  const valid = /^(left|center|right)$/.test(align) ? align : 'left';
+  const nodes = new Set();
+  const collect = (node) => {
+    if (!node) return;
+    const el = node.nodeType === 1 ? node : node.parentElement;
+    if (!el) return;
+    let cur = el;
+    while (cur && cur !== editor) {
+      if (/^(P|DIV|H1|H2|H3|H4|UL|OL|LI|BLOCKQUOTE|FIGURE)$/.test(cur.tagName)) {
+        nodes.add(cur);
+        return;
+      }
+      cur = cur.parentElement;
+    }
+    nodes.add(editor);
+  };
+  collect(range.startContainer);
+  collect(range.endContainer);
+  if (!nodes.size) nodes.add(editor);
+  nodes.forEach(node => { node.style.textAlign = valid; });
 }
 
 async function uploadHandoutImageToCloudinary(file, handoutId) {
@@ -335,6 +469,8 @@ function openHandoutEditor(id) {
     setHandoutEditorMode(true);
   }
   if (hintEl) hintEl.textContent = '';
+  const fontSelect = document.getElementById('hd-font-size');
+  if (fontSelect) fontSelect.value = '';
   document.getElementById('handout-drawer').classList.add('open');
   setTimeout(() => { if (_handoutEditMode) titleEl.focus(); }, 80);
 }
@@ -388,30 +524,30 @@ async function handleHandoutImage(input) {
   }
 }
 
-function saveHandoutFromDrawer() {
+async function saveHandoutFromDrawer() {
   if (!_currentHandoutId || !requireGM()) return;
   const title = (document.getElementById('hd-title')?.value || '').trim() || '무제 핸드아웃';
   const rawHtml = document.getElementById('hd-body')?.innerHTML || '';
   const contentHtml = sanitizeHandoutHtml(rawHtml);
   const allowedTo = getSelectedHandoutReaders();
   const existing = _allHandouts.find(h => h.id === _currentHandoutId);
-  if (existing) {
-    existing.title = title;
-    existing.contentHtml = contentHtml;
-    existing.allowedTo = allowedTo;
-    existing.updatedAt = Date.now();
-    saveHandoutFB(existing);
-  } else {
-    saveHandoutFB({
-      id: _currentHandoutId,
-      title,
-      contentHtml,
-      allowedTo,
-      ownerId: St.myId,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    });
-  }
+  const payload = existing ? {
+    ...existing,
+    title,
+    contentHtml,
+    allowedTo,
+    updatedAt: Date.now(),
+  } : {
+    id: _currentHandoutId,
+    title,
+    contentHtml,
+    allowedTo,
+    ownerId: St.myId,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  };
+  const ok = await saveHandoutFB(payload);
+  if (!ok) return;
   const hint = document.getElementById('hd-footer-hint');
   if (hint) {
     hint.textContent = '저장됐어요 ✓';
@@ -420,7 +556,7 @@ function saveHandoutFromDrawer() {
       if (liveHint && liveHint.textContent === '저장됐어요 ✓') liveHint.textContent = '';
     }, 1500);
   }
-  const d = new Date();
+  const d = new Date(payload.updatedAt || Date.now());
   const metaEl = document.getElementById('hd-meta-date');
   if (metaEl) metaEl.textContent = `마지막 수정: ${d.getFullYear()}.${d.getMonth()+1}.${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
   closeHandoutDrawer();
