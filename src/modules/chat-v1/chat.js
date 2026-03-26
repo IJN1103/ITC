@@ -870,15 +870,29 @@ function getChatImageQueueEls() {
     list: document.getElementById('chat-image-preview-list'),
     wideToggle: document.getElementById('chat-image-wide-toggle'),
     help: wrap ? wrap.querySelector('.chat-image-queue-help') : null,
+    feedback: document.getElementById('chat-upload-feedback'),
   };
 }
 
+function getPendingChatFeedbackText() {
+  if (!_isSendingPendingChatImages) return '';
+  const m = String(_pendingChatUploadStatusText || '').match(/(\d+)\/(\d+)/);
+  if (m) return `사진을 보내는 중입니다. (${m[1]}/${m[2]})`;
+  return '사진을 보내는 중입니다.';
+}
+
 function renderPendingChatImages() {
-  const { wrap, list, wideToggle, help } = getChatImageQueueEls();
+  const { wrap, list, wideToggle, help, feedback } = getChatImageQueueEls();
   if (!wrap || !list) return;
 
   const isBusy = isPendingChatImageQueueBusy();
   list.innerHTML = '';
+
+  if (feedback) {
+    const feedbackText = getPendingChatFeedbackText();
+    feedback.style.display = feedbackText ? '' : 'none';
+    feedback.textContent = feedbackText || '사진을 보내는 중입니다.';
+  }
 
   if (_pendingChatImages.length === 0) {
     wrap.style.display = 'none';
@@ -1343,13 +1357,13 @@ async function sendPendingChatImages() {
   const items = _pendingChatImages.splice(0, _pendingChatImages.length);
   let sentCount = 0;
   _isSendingPendingChatImages = true;
-  setPendingChatUploadStatus(`업로드 준비 중... 0/${items.length}`);
+  setPendingChatUploadStatus(`사진을 보내는 중입니다. (0/${items.length})`);
   schedulePendingChatImagesRender();
 
   try {
     for (let i = 0; i < items.length; i += 1) {
       const item = items[i];
-      setPendingChatUploadStatus(`업로드 중... ${i + 1}/${items.length}`);
+      setPendingChatUploadStatus(`사진을 보내는 중입니다. (${i + 1}/${items.length})`);
       schedulePendingChatImagesRender();
       await sendPreparedChatImage(item, _pendingChatImageWide, { width: item.width, height: item.height });
       revokePreparedChatImagePreview(item);

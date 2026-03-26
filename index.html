@@ -482,6 +482,7 @@ window._FB = {
               </div>
               <div class="chat-image-preview-list" id="chat-image-preview-list"></div>
             </div>
+            <div class="chat-upload-feedback" id="chat-upload-feedback" style="display:none">사진을 보내는 중입니다.</div>
             <textarea class="chat-input" id="chat-input" placeholder="메시지 입력 (Enter 전송)" rows="1" onkeydown="chatKeydown(event)" oninput="broadcastTyping()"></textarea>
           </div>
           <button class="send-btn" onclick="sendChat()">➤</button>
@@ -1003,6 +1004,24 @@ window._FB = {
           style="flex:1;padding:10px 8px;border-radius:var(--r);border:1px solid var(--border);background:var(--s2);color:var(--dim);cursor:pointer;font:inherit;font-size:12px;transition:var(--t);display:flex;flex-direction:column;align-items:center;gap:8px">
           <div style="width:28px;height:28px;border-radius:50%;background:var(--accent);opacity:.7"></div>
           <span>원형</span>
+        </button>
+      </div>
+    </div>
+
+    <div style="border-top:1px solid var(--border);padding-top:12px">
+      <div style="font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);margin-bottom:10px">채팅 글자 크기</div>
+      <div style="display:flex;gap:10px">
+        <button id="chat-font-btn-small" onclick="setChatFontSize('small')"
+          style="flex:1;padding:10px 8px;border-radius:var(--r);border:1px solid var(--border);background:var(--s2);color:var(--dim);cursor:pointer;font:inherit;font-size:12px;transition:var(--t);display:flex;align-items:center;justify-content:center;gap:8px">
+          <span>작게</span>
+        </button>
+        <button id="chat-font-btn-normal" onclick="setChatFontSize('normal')"
+          style="flex:1;padding:10px 8px;border-radius:var(--r);border:1px solid var(--border);background:var(--s2);color:var(--dim);cursor:pointer;font:inherit;font-size:12px;transition:var(--t);display:flex;align-items:center;justify-content:center;gap:8px">
+          <span>기본</span>
+        </button>
+        <button id="chat-font-btn-large" onclick="setChatFontSize('large')"
+          style="flex:1;padding:10px 8px;border-radius:var(--r);border:1px solid var(--border);background:var(--s2);color:var(--dim);cursor:pointer;font:inherit;font-size:12px;transition:var(--t);display:flex;align-items:center;justify-content:center;gap:8px">
+          <span>크게</span>
         </button>
       </div>
     </div>
