@@ -207,10 +207,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     clearMultiTokenSelection();
     isPanning = true;
-    panStartX = e.clientX;
-    panStartY = e.clientY;
-    panOriginX = _mapPanX;
-    panOriginY = _mapPanY;
+    panStartX = e.clientX; panStartY = e.clientY;
+    panOriginX = _mapPanX; panOriginY = _mapPanY;
     mapEl.classList.add('panning');
     e.preventDefault();
   });
@@ -230,10 +228,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   document.addEventListener('mouseup', () => {
     if (_tokenSelectionState.active) finishTokenSelection();
-    if (isPanning) {
-      isPanning = false;
-      mapEl.classList.remove('panning');
-    }
+    if (isPanning) { isPanning = false; mapEl.classList.remove('panning'); }
   });
 
   mapEl.addEventListener('auxclick', e => {
@@ -307,6 +302,7 @@ function createTokenEl(t) {
     }
   }
   if (_multiSelectedTokenIds.includes(t.id)) el.classList.add('multi-selected');
+  el.addEventListener('dblclick', e => { e.preventDefault(); e.stopPropagation(); if (typeof openTokenEdit === 'function') openTokenEdit(t.id); });
   el.addEventListener('contextmenu', e => { e.preventDefault(); e.stopPropagation(); showTokenCtx(e, t.id); });
   makeDraggable(el, t.id);
   inner.appendChild(el);
@@ -332,6 +328,9 @@ function makeDraggable(el, tokenId) {
     e.preventDefault();
     e.stopPropagation();
 
+    const map = document.getElementById('map-area');
+    if (!map) return;
+
     const targetIds = _multiSelectedTokenIds.includes(tokenId)
       ? _multiSelectedTokenIds.slice()
       : [tokenId];
@@ -339,9 +338,6 @@ function makeDraggable(el, tokenId) {
     if (!_multiSelectedTokenIds.includes(tokenId)) {
       setMultiTokenSelection([tokenId]);
     }
-
-    const map = document.getElementById('map-area');
-    if (!map) return;
 
     const sx = e.clientX;
     const sy = e.clientY;
