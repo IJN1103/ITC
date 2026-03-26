@@ -827,42 +827,94 @@ function buildChatImageHtml(src, imageWide = false, imageMeta = null) {
 const _pendingChatImages = [];
 let _pendingChatImageWide = false;
 let _dragChatImageId = null;
+let _isPreparingPendingChatImages = false;
+let _isSendingPendingChatImages = false;
+let _pendingChatUploadStatusText = '';
+let _pendingChatImagesRenderRaf = 0;
+
+function isPendingChatImageQueueBusy() {
+  return _isPreparingPendingChatImages || _isSendingPendingChatImages;
+}
+
+function setPendingChatUploadStatus(text = '') {
+  _pendingChatUploadStatusText = String(text || '');
+}
+
+function schedulePendingChatImagesRender() {
+  if (_pendingChatImagesRenderRaf) return;
+  _pendingChatImagesRenderRaf = requestAnimationFrame(() => {
+    _pendingChatImagesRenderRaf = 0;
+    renderPendingChatImages();
+  });
+}
+
+function getFriendlyChatUploadErrorMessage(err) {
+  const raw = String(err?.message || err || '').toLowerCase();
+  if (!raw) return '이미지 업로드에 실패했어요. 잠시 후 다시 시도해 주세요.';
+  if (raw.includes('roomcode')) return '방 정보가 없어서 이미지를 보낼 수 없어요. 방에 다시 입장해 주세요.';
+  if (raw.includes('timeout') || raw.includes('timed out') || raw.includes('abort')) return '이미지 업로드 시간이 너무 오래 걸렸어요. 잠시 후 다시 시도해 주세요.';
+  if (raw.includes('network')) return '네트워크 연결이 불안정해요. 잠시 후 다시 시도해 주세요.';
+  if (raw.includes('cloudinary') || raw.includes('preset') || raw.includes('unsigned')) return '이미지 업로드 설정에 문제가 있어요. preset 설정을 확인해 주세요.';
+  if (raw.includes('업로드할 이미지 데이터가 없어요')) return '전송할 이미지 준비가 아직 끝나지 않았어요. 이미지를 다시 선택해 주세요.';
+  return err?.message || '이미지 업로드에 실패했어요. 잠시 후 다시 시도해 주세요.';
+}
 
 function makePendingChatImageId() {
   return `pci_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 }
 
 function getChatImageQueueEls() {
+  const wrap = document.getElementById('chat-image-queue');
   return {
-    wrap: document.getElementById('chat-image-queue'),
+    wrap,
     list: document.getElementById('chat-image-preview-list'),
     wideToggle: document.getElementById('chat-image-wide-toggle'),
+    help: wrap ? wrap.querySelector('.chat-image-queue-help') : null,
   };
 }
 
 function renderPendingChatImages() {
-  const { wrap, list, wideToggle } = getChatImageQueueEls();
+  const { wrap, list, wideToggle, help } = getChatImageQueueEls();
   if (!wrap || !list) return;
+
+  const isBusy = isPendingChatImageQueueBusy();
   list.innerHTML = '';
+
   if (_pendingChatImages.length === 0) {
     wrap.style.display = 'none';
-    if (wideToggle) wideToggle.checked = !!_pendingChatImageWide;
+    if (wideToggle) {
+      wideToggle.checked = !!_pendingChatImageWide;
+      wideToggle.disabled = !!isBusy;
+    }
+    if (help) help.textContent = '최대 4장 · ✕로 삭제 · 드래그로 순서 변경';
     return;
   }
 
   wrap.style.display = '';
-  if (wideToggle) wideToggle.checked = !!_pendingChatImageWide;
+  if (wideToggle) {
+    wideToggle.checked = !!_pendingChatImageWide;
+    wideToggle.disabled = !!isBusy;
+  }
+  if (help) {
+    help.textContent = _pendingChatUploadStatusText
+      || (_isPreparingPendingChatImages
+        ? '이미지 준비 중...'
+        : (_isSendingPendingChatImages
+          ? `업로드 중... ${_pendingChatImages.length}장 대기`
+          : '최대 4장 · ✕로 삭제 · 드래그로 순서 변경'));
+  }
 
+  const frag = document.createDocumentFragment();
   _pendingChatImages.forEach((item, idx) => {
     const btn = document.createElement('div');
     btn.className = 'chat-image-preview-item';
-    btn.draggable = true;
+    btn.draggable = !isBusy;
     btn.dataset.imageId = item.id;
     btn.innerHTML = `
       <img src="${esc(item.previewUrl)}" alt="첨부 이미지 ${idx + 1}">
       <span class="chat-image-preview-grab">↕</span>
       <span class="chat-image-preview-order">${idx + 1}</span>
-      <button type="button" class="chat-image-preview-remove" title="첨부 취소">✕</button>
+      <button type="button" class="chat-image-preview-remove" title="첨부 취소"${isBusy ? ' disabled' : ''}>✕</button>
     `;
     const removeBtn = btn.querySelector('.chat-image-preview-remove');
     if (removeBtn) {
@@ -873,6 +925,7 @@ function renderPendingChatImages() {
       });
     }
     btn.addEventListener('dragstart', () => {
+      if (isPendingChatImageQueueBusy()) return;
       _dragChatImageId = item.id;
       btn.classList.add('dragging');
     });
@@ -882,14 +935,17 @@ function renderPendingChatImages() {
       schedulePendingChatImagesRender();
     });
     btn.addEventListener('dragover', (e) => {
+      if (isPendingChatImageQueueBusy()) return;
       e.preventDefault();
     });
     btn.addEventListener('drop', (e) => {
+      if (isPendingChatImageQueueBusy()) return;
       e.preventDefault();
       movePendingChatImage(_dragChatImageId, item.id);
     });
-    list.appendChild(btn);
+    frag.appendChild(btn);
   });
+  list.appendChild(frag);
 }
 
 
@@ -901,6 +957,7 @@ function revokePreparedChatImagePreview(item) {
 }
 
 function removePendingChatImage(imageId) {
+  if (isPendingChatImageQueueBusy()) return;
   const idx = _pendingChatImages.findIndex(item => item.id === imageId);
   if (idx < 0) return;
   const [removed] = _pendingChatImages.splice(idx, 1);
@@ -909,6 +966,7 @@ function removePendingChatImage(imageId) {
 }
 
 function movePendingChatImage(fromId, toId) {
+  if (isPendingChatImageQueueBusy()) return;
   if (!fromId || !toId || fromId === toId) return;
   const fromIdx = _pendingChatImages.findIndex(item => item.id === fromId);
   const toIdx = _pendingChatImages.findIndex(item => item.id === toId);
@@ -919,11 +977,13 @@ function movePendingChatImage(fromId, toId) {
 }
 
 function clearPendingChatImages() {
+  if (isPendingChatImageQueueBusy()) return;
   _pendingChatImages.splice(0, _pendingChatImages.length).forEach(revokePreparedChatImagePreview);
   schedulePendingChatImagesRender();
 }
 
 function togglePendingChatImageWide(checked) {
+  if (isPendingChatImageQueueBusy()) return;
   _pendingChatImageWide = !!checked;
 }
 
@@ -1072,6 +1132,10 @@ async function fileToPreparedChatImage(file) {
 }
 
 async function queuePendingChatImages(files) {
+  if (isPendingChatImageQueueBusy()) {
+    showToast('이미지 준비 또는 업로드가 끝난 뒤 다시 첨부해 주세요.');
+    return;
+  }
   const incoming = Array.from(files || []).filter(Boolean);
   if (!incoming.length) return;
   const roomLeft = Math.max(0, 4 - _pendingChatImages.length);
@@ -1085,16 +1149,37 @@ async function queuePendingChatImages(files) {
     showToast('이미지는 한 번에 최대 4장까지 첨부할 수 있어요.');
   }
 
-  for (const file of picked) {
-    try {
-      const prepared = await fileToPreparedChatImage(file);
-      _pendingChatImages.push(prepared);
-    } catch (err) {
-      console.error('queuePendingChatImages failed', err);
-      showToast(err?.message || '이미지를 첨부하지 못했어요.');
-    }
-  }
+  _isPreparingPendingChatImages = true;
+  let preparedCount = 0;
+  let failedCount = 0;
+  setPendingChatUploadStatus(`이미지 준비 중... 0/${picked.length}`);
   schedulePendingChatImagesRender();
+
+  try {
+    for (const file of picked) {
+      try {
+        const prepared = await fileToPreparedChatImage(file);
+        _pendingChatImages.push(prepared);
+        preparedCount += 1;
+      } catch (err) {
+        failedCount += 1;
+        console.error('queuePendingChatImages failed', err);
+      } finally {
+        setPendingChatUploadStatus(`이미지 준비 중... ${preparedCount + failedCount}/${picked.length}`);
+        schedulePendingChatImagesRender();
+      }
+    }
+  } finally {
+    _isPreparingPendingChatImages = false;
+    setPendingChatUploadStatus('');
+    schedulePendingChatImagesRender();
+  }
+
+  if (failedCount > 0 && preparedCount > 0) {
+    showToast(`이미지 ${preparedCount}장은 준비됐고, ${failedCount}장은 첨부하지 못했어요.`);
+  } else if (failedCount > 0) {
+    showToast('이미지를 첨부하지 못했어요. 다른 이미지로 다시 시도해 주세요.');
+  }
 }
 
 function withTimeout(promise, ms = 3500) {
@@ -1132,7 +1217,8 @@ async function getStorageApiQuick() {
 
 async function uploadChatImageBlobToCloudinary(blob, fileName = 'chat.jpg') {
   const cfg = getCloudinaryRuntimeConfig();
-  if (!cfg || !blob) return null;
+  if (!cfg) throw new Error('cloudinary-config-missing');
+  if (!blob) throw new Error('empty-chat-blob');
   const formData = new FormData();
   formData.append('file', blob, fileName);
   formData.append('upload_preset', cfg.unsignedPreset);
@@ -1153,6 +1239,9 @@ async function uploadChatImageBlobToCloudinary(blob, fileName = 'chat.jpg') {
       path: payload.public_id || '',
       contentType: blob.type || 'image/jpeg',
     };
+  } catch (err) {
+    if (err?.name === 'AbortError') throw new Error('timeout');
+    throw err;
   } finally {
     if (timer) clearTimeout(timer);
   }
@@ -1241,21 +1330,46 @@ async function sendPendingChatImages() {
     showToast('이미지 첨부는 메인 채팅에서만 보낼 수 있어요.');
     return false;
   }
+  if (_isPreparingPendingChatImages) {
+    showToast('이미지 준비가 끝난 뒤 전송해 주세요.');
+    return false;
+  }
+  if (_isSendingPendingChatImages) {
+    showToast('이미지 업로드가 진행 중이에요. 잠시만 기다려 주세요.');
+    return false;
+  }
   if (!_pendingChatImages.length) return true;
+
   const items = _pendingChatImages.splice(0, _pendingChatImages.length);
+  let sentCount = 0;
+  _isSendingPendingChatImages = true;
+  setPendingChatUploadStatus(`업로드 준비 중... 0/${items.length}`);
   schedulePendingChatImagesRender();
+
   try {
-    for (const item of items) {
+    for (let i = 0; i < items.length; i += 1) {
+      const item = items[i];
+      setPendingChatUploadStatus(`업로드 중... ${i + 1}/${items.length}`);
+      schedulePendingChatImagesRender();
       await sendPreparedChatImage(item, _pendingChatImageWide, { width: item.width, height: item.height });
       revokePreparedChatImagePreview(item);
+      sentCount += 1;
     }
     return true;
   } catch (err) {
     console.error('sendPendingChatImages failed', err);
-    items.reverse().forEach(item => _pendingChatImages.unshift(item));
+    const remaining = items.slice(sentCount);
+    remaining.reverse().forEach(item => _pendingChatImages.unshift(item));
+    const baseMsg = getFriendlyChatUploadErrorMessage(err);
+    const msg = sentCount > 0
+      ? `${sentCount}장 전송 후 중간에 멈췄어요. 남은 이미지를 다시 전송해 주세요.`
+      : baseMsg;
+    showToast(msg);
+    throw new Error(msg);
+  } finally {
+    _isSendingPendingChatImages = false;
+    setPendingChatUploadStatus('');
     schedulePendingChatImagesRender();
-    showToast(err?.message || '이미지 업로드에 실패했어요. 잠시 후 다시 시도해 주세요.');
-    throw err;
   }
 }
 
@@ -1263,12 +1377,21 @@ function initChatImageComposer() {
   schedulePendingChatImagesRender();
   bindMessageViewport('chat');
   bindMessageViewport('casual');
+  refreshChatActionButtons();
 }
 
 
 async function sendChat() {
   const inp = document.getElementById('chat-input');
   if (!inp) return;
+  if (_isPreparingPendingChatImages) {
+    showToast('이미지 준비가 끝난 뒤 전송해 주세요.');
+    return;
+  }
+  if (_isSendingPendingChatImages) {
+    showToast('이미지 업로드가 진행 중이에요. 잠시만 기다려 주세요.');
+    return;
+  }
   const raw = inp.value.trim();
   const hasImages = _pendingChatImages.length > 0;
   if (!raw && !hasImages) return;
