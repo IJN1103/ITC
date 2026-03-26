@@ -686,6 +686,63 @@ to{transform:translateX(0);opacity:1;}
 .modal-info b{color:var(--text);}
 #yt-player{display:none;}
 
-.map-token.multi-selected{box-shadow:0 0 0 4px rgba(184,154,96,.32),0 0 0 1px rgba(255,255,255,.22) inset;}
-.map-token.has-img.multi-selected{filter:drop-shadow(0 0 0 rgba(0,0,0,0)) drop-shadow(0 0 6px rgba(184,154,96,.55)) drop-shadow(0 0 14px rgba(184,154,96,.28));}
-.map-token-selection-box{position:absolute;display:none;z-index:40;border:1px dashed rgba(184,154,96,.9);background:rgba(184,154,96,.12);pointer-events:none;border-radius:8px;}
+.map-token.multi-selected{
+  box-shadow:
+    0 0 0 2px rgba(255,255,255,.92),
+    0 0 10px rgba(255,255,255,.45),
+    0 0 18px rgba(255,255,255,.18);
+  border-radius:999px;
+}
+.map-token.has-img.multi-selected{
+  filter:
+    drop-shadow(0 0 0 rgba(0,0,0,0))
+    drop-shadow(0 0 6px rgba(255,255,255,.7))
+    drop-shadow(0 0 14px rgba(255,255,255,.3));
+}
+.map-token-selection-box{
+  position:absolute;
+  display:none;
+  z-index:40;
+  pointer-events:none;
+  border:1px dashed rgba(255,255,255,.95);
+  background:rgba(255,255,255,.06);
+  box-shadow:0 0 0 1px rgba(0,0,0,.45) inset;
+}
+.map-token-selection-box::before{
+  content:"";
+  position:absolute;
+  inset:0;
+  background:
+    repeating-linear-gradient(
+      90deg,
+      rgba(255,255,255,.95) 0 8px,
+      rgba(0,0,0,.95) 8px 16px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      rgba(255,255,255,.95) 0 8px,
+      rgba(0,0,0,.95) 8px 16px
+    ),
+    repeating-linear-gradient(
+      0deg,
+      rgba(255,255,255,.95) 0 8px,
+      rgba(0,0,0,.95) 8px 16px
+    ),
+    repeating-linear-gradient(
+      0deg,
+      rgba(255,255,255,.95) 0 8px,
+      rgba(0,0,0,.95) 8px 16px
+    );
+  background-size:100% 1px,100% 1px,1px 100%,1px 100%;
+  background-repeat:no-repeat;
+  background-position:0 0,0 100%,0 0,100% 0;
+  animation:mapSelectionMarch 0.55s linear infinite;
+}
+@keyframes mapSelectionMarch{
+  from{
+    background-position:0 0,0 100%,0 0,100% 0;
+  }
+  to{
+    background-position:16px 0,-16px 100%,0 16px,100% -16px;
+  }
+}
