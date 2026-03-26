@@ -226,8 +226,10 @@ function getTokenStartPosition(tokenId) {
 
 function buildTokenDragSession(tokenId, startEvent) {
   const targetIds = getDragTargetIds(tokenId);
-  const { width: natW, height: natH } = getMapBaseSize();
-  const scale = _mapScale || 1;
+  const inner = document.getElementById('map-inner');
+  const innerRect = inner?.getBoundingClientRect();
+  const renderedWidth = Math.max(innerRect?.width || 0, 1);
+  const renderedHeight = Math.max(innerRect?.height || 0, 1);
   const startPos = {};
   targetIds.forEach((id) => {
     startPos[id] = getTokenStartPosition(id);
@@ -235,17 +237,16 @@ function buildTokenDragSession(tokenId, startEvent) {
   return {
     startClientX: startEvent.clientX,
     startClientY: startEvent.clientY,
-    natW,
-    natH,
-    scale,
+    renderedWidth,
+    renderedHeight,
     targetIds,
     startPos,
   };
 }
 
 function applyTokenDragSession(session, moveEvent) {
-  const dxPct = ((moveEvent.clientX - session.startClientX) / (session.natW * session.scale)) * 100;
-  const dyPct = ((moveEvent.clientY - session.startClientY) / (session.natH * session.scale)) * 100;
+  const dxPct = ((moveEvent.clientX - session.startClientX) / session.renderedWidth) * 100;
+  const dyPct = ((moveEvent.clientY - session.startClientY) / session.renderedHeight) * 100;
   session.targetIds.forEach((id) => {
     const targetEl = getTokenEl(id);
     const pos = session.startPos[id];
@@ -330,10 +331,15 @@ function applyMapTransform() {
   const expansion = getMapExpansion();
   const extraOffsetX = (baseW * (expansion.x - 1)) / 2;
   const extraOffsetY = (baseH * (expansion.y - 1)) / 2;
+  const safeScale = Math.max(_mapScale || 1, 0.0001);
+  const gridScreenSizePx = 44;
+  const gridWorldSizePx = gridScreenSizePx / safeScale;
   inner.style.width = (baseW * expansion.x) + 'px';
   inner.style.height = (baseH * expansion.y) + 'px';
   inner.style.left = (-extraOffsetX) + 'px';
   inner.style.top = (-extraOffsetY) + 'px';
+  inner.style.backgroundSize = `${gridWorldSizePx}px ${gridWorldSizePx}px`;
+  inner.style.backgroundPosition = '0 0, 0 0';
   inner.style.transformOrigin = '0 0';
   inner.style.transform = `translate(${_mapPanX}px,${_mapPanY}px) scale(${_mapScale})`;
   syncRenderedTokenPositions();
