@@ -252,6 +252,10 @@ function addToken() {
 
 function renderAllTokens(tokens) {
   const inner = document.getElementById('map-inner');
+  const validIds = new Set(Object.keys(tokens || {}));
+  if (_multiSelectedTokenIds.length) {
+    _multiSelectedTokenIds = _multiSelectedTokenIds.filter((id) => validIds.has(String(id)));
+  }
   if (inner) inner.querySelectorAll('.map-token').forEach(t => t.remove());
   Object.values(tokens).forEach(t => createTokenEl(t));
   updateMultiTokenSelectionUI();
@@ -375,28 +379,26 @@ function makeDraggable(el, tokenId) {
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup', onUp);
 
-      if (window._FB?.CONFIGURED && St.roomCode) {
+      const finalPositions = {};
+      targetIds.forEach((id) => {
+        const targetEl = document.getElementById('tok-' + id);
+        if (!targetEl) return;
+        const nextX = parseFloat(targetEl.style.left) || 0;
+        const nextY = parseFloat(targetEl.style.top) || 0;
+        finalPositions[id] = { x: nextX, y: nextY };
+        if (!St.tokens[id]) St.tokens[id] = {};
+        St.tokens[id].x = nextX;
+        St.tokens[id].y = nextY;
+      });
+
+      if (window._FB?.CONFIGURED && St.roomCode && Object.keys(finalPositions).length) {
         const { db, ref, update } = window._FB;
-        targetIds.forEach((id) => {
-          const targetEl = document.getElementById('tok-' + id);
-          if (!targetEl) return;
-          const nextX = parseFloat(targetEl.style.left) || 0;
-          const nextY = parseFloat(targetEl.style.top) || 0;
-          if (!St.tokens[id]) St.tokens[id] = {};
-          St.tokens[id].x = nextX;
-          St.tokens[id].y = nextY;
-          update(ref(db, `rooms/${St.roomCode}/tokens/${id}`), { x: nextX, y: nextY });
+        const patch = {};
+        Object.entries(finalPositions).forEach(([id, pos]) => {
+          patch[`${id}/x`] = pos.x;
+          patch[`${id}/y`] = pos.y;
         });
-      } else {
-        targetIds.forEach((id) => {
-          const targetEl = document.getElementById('tok-' + id);
-          if (!targetEl) return;
-          const nextX = parseFloat(targetEl.style.left) || 0;
-          const nextY = parseFloat(targetEl.style.top) || 0;
-          if (!St.tokens[id]) St.tokens[id] = {};
-          St.tokens[id].x = nextX;
-          St.tokens[id].y = nextY;
-        });
+        update(ref(db, `rooms/${St.roomCode}/tokens`), patch);
       }
     };
 
