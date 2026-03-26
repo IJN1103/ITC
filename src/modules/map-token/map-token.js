@@ -9,92 +9,6 @@ let _mapPanX = 0, _mapPanY = 0;
 
 let _teTokenImgBlob = null;
 
-let _tokenMemoTooltipEl = null;
-
-function ensureTokenMemoTooltip() {
-  if (_tokenMemoTooltipEl && document.body.contains(_tokenMemoTooltipEl)) return _tokenMemoTooltipEl;
-  const el = document.createElement('div');
-  el.id = 'token-memo-tooltip';
-  el.style.cssText = [
-    'position:fixed',
-    'left:0',
-    'top:0',
-    'display:none',
-    'pointer-events:none',
-    'z-index:99999',
-    'max-width:280px',
-    'padding:8px 10px',
-    'border-radius:8px',
-    'background:rgba(10,10,10,0.96)',
-    'border:1px solid rgba(184,154,96,0.35)',
-    'box-shadow:0 8px 24px rgba(0,0,0,0.35)',
-    'color:var(--text, #e8e3da)',
-    'font-size:12px',
-    'line-height:1.5',
-    'white-space:pre-wrap',
-    'word-break:break-word'
-  ].join(';');
-  document.body.appendChild(el);
-  _tokenMemoTooltipEl = el;
-  return el;
-}
-
-function hideTokenMemoTooltip() {
-  const el = ensureTokenMemoTooltip();
-  el.style.display = 'none';
-  el.textContent = '';
-}
-
-function showTokenMemoTooltip(text, clientX, clientY) {
-  const memo = String(text || '').trim();
-  if (!memo) {
-    hideTokenMemoTooltip();
-    return;
-  }
-  const el = ensureTokenMemoTooltip();
-  el.textContent = memo;
-  el.style.display = 'block';
-  const offset = 14;
-  const rect = el.getBoundingClientRect();
-  let left = clientX + offset;
-  let top = clientY + offset;
-  if (left + rect.width > window.innerWidth - 8) left = window.innerWidth - rect.width - 8;
-  if (top + rect.height > window.innerHeight - 8) top = clientY - rect.height - offset;
-  if (left < 8) left = 8;
-  if (top < 8) top = 8;
-  el.style.left = left + 'px';
-  el.style.top = top + 'px';
-}
-
-function getTokenOwnerDisplayName(token) {
-  if (token?.ownerName) return token.ownerName;
-  if (token?.ownerId && St.players && St.players[token.ownerId]?.name) return St.players[token.ownerId].name;
-  return '없음';
-}
-
-function ensureTokenOwnerUi() {
-  const panel = document.querySelector('#te-overlay .te-panel');
-  const head = document.querySelector('#te-overlay .te-head');
-  if (!panel || !head) return null;
-  let box = document.getElementById('te-owner-row');
-  if (!box) {
-    box = document.createElement('div');
-    box.id = 'te-owner-row';
-    box.style.cssText = 'margin:10px 0 2px;padding:10px 14px;border:1px solid var(--border, #1f1f1f);border-radius:10px;background:var(--s1, #101010);display:flex;align-items:center;justify-content:space-between;gap:12px;';
-    box.innerHTML = '<div style="display:flex;align-items:center;gap:8px;min-width:0"><span style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted, #8c8882);flex-shrink:0">소유자</span><strong id="te-owner-name" style="font-size:13px;color:var(--text, #e8e3da);font-weight:500;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">없음</strong></div><div id="te-owner-note" style="font-size:11px;color:var(--muted, #8c8882);flex-shrink:0">우클릭 메뉴에서 변경 가능</div>';
-    head.insertAdjacentElement('afterend', box);
-  }
-  return box;
-}
-
-function refreshTokenOwnerUi(token) {
-  const row = ensureTokenOwnerUi();
-  if (!row) return;
-  const nameEl = document.getElementById('te-owner-name');
-  if (nameEl) nameEl.textContent = getTokenOwnerDisplayName(token);
-}
-
-
 function getCloudinaryConfigForToken() {
   const cfg = window._ITC_CLOUDINARY || {};
   if (!cfg.cloudName || !cfg.unsignedPreset) return null;
@@ -361,18 +275,147 @@ function finishTokenSelection() {
   setMultiTokenSelection(selected);
 }
 
+let _tokenMemoBubbleEl = null;
+let _tokenMemoBubbleTokenId = null;
+
+function ensureTokenMemoBubble() {
+  if (_tokenMemoBubbleEl) return _tokenMemoBubbleEl;
+  const bubble = document.createElement('div');
+  bubble.id = 'token-memo-bubble';
+  bubble.style.cssText = [
+    'position:fixed',
+    'left:-9999px',
+    'top:-9999px',
+    'z-index:99999',
+    'max-width:min(320px, calc(100vw - 32px))',
+    'padding:10px 12px',
+    'border-radius:14px',
+    'background:rgba(255,255,255,0.96)',
+    'color:#1f2328',
+    'font-size:12px',
+    'line-height:1.5',
+    'white-space:pre-wrap',
+    'word-break:break-word',
+    'box-shadow:0 10px 28px rgba(0,0,0,0.28)',
+    'border:1px solid rgba(0,0,0,0.08)',
+    'pointer-events:none',
+    'opacity:0',
+    'transform:translate(-50%, -100%)',
+    'transition:opacity .08s ease'
+  ].join(';');
+  const arrow = document.createElement('div');
+  arrow.style.cssText = [
+    'position:absolute',
+    'left:50%',
+    'bottom:-8px',
+    'width:14px',
+    'height:14px',
+    'background:rgba(255,255,255,0.96)',
+    'border-right:1px solid rgba(0,0,0,0.08)',
+    'border-bottom:1px solid rgba(0,0,0,0.08)',
+    'transform:translateX(-50%) rotate(45deg)'
+  ].join(';');
+  bubble.appendChild(arrow);
+  document.body.appendChild(bubble);
+  _tokenMemoBubbleEl = bubble;
+  return bubble;
+}
+
+function hideTokenMemoBubble() {
+  if (!_tokenMemoBubbleEl) return;
+  _tokenMemoBubbleEl.style.opacity = '0';
+  _tokenMemoBubbleEl.style.left = '-9999px';
+  _tokenMemoBubbleEl.style.top = '-9999px';
+  _tokenMemoBubbleEl.textContent = _tokenMemoBubbleEl.textContent;
+  const arrow = document.createElement('div');
+  arrow.style.cssText = [
+    'position:absolute','left:50%','bottom:-8px','width:14px','height:14px',
+    'background:rgba(255,255,255,0.96)','border-right:1px solid rgba(0,0,0,0.08)',
+    'border-bottom:1px solid rgba(0,0,0,0.08)','transform:translateX(-50%) rotate(45deg)'
+  ].join(';');
+  _tokenMemoBubbleEl.appendChild(arrow);
+  _tokenMemoBubbleTokenId = null;
+}
+
+function positionTokenMemoBubble(tokenEl) {
+  const bubble = ensureTokenMemoBubble();
+  const rect = tokenEl.getBoundingClientRect();
+  const bubbleRect = bubble.getBoundingClientRect();
+  const gap = 14;
+  let left = rect.left + (rect.width / 2);
+  let top = rect.top - gap;
+  const minX = 16 + bubbleRect.width / 2;
+  const maxX = window.innerWidth - 16 - bubbleRect.width / 2;
+  left = Math.max(minX, Math.min(maxX, left));
+  if (top - bubbleRect.height < 12) {
+    top = rect.bottom + bubbleRect.height + gap;
+    bubble.style.transform = 'translate(-50%, 0)';
+  } else {
+    bubble.style.transform = 'translate(-50%, -100%)';
+  }
+  bubble.style.left = `${left}px`;
+  bubble.style.top = `${top}px`;
+}
+
+function showTokenMemoBubble(tokenEl, memo, tokenId) {
+  const content = String(memo || '').trim();
+  if (!content) return;
+  const bubble = ensureTokenMemoBubble();
+  bubble.textContent = content;
+  const arrow = document.createElement('div');
+  arrow.style.cssText = [
+    'position:absolute','left:50%','bottom:-8px','width:14px','height:14px',
+    'background:rgba(255,255,255,0.96)','border-right:1px solid rgba(0,0,0,0.08)',
+    'border-bottom:1px solid rgba(0,0,0,0.08)','transform:translateX(-50%) rotate(45deg)'
+  ].join(';');
+  bubble.appendChild(arrow);
+  positionTokenMemoBubble(tokenEl);
+  bubble.style.opacity = '1';
+  _tokenMemoBubbleTokenId = tokenId || null;
+}
+
+function getMapMinScale() {
+  const map = document.getElementById('map-area');
+  const inner = document.getElementById('map-inner');
+  if (!map || !inner) return 0.2;
+  const baseW = inner.offsetWidth || map.clientWidth || 1;
+  const baseH = inner.offsetHeight || map.clientHeight || 1;
+  const coverX = (map.clientWidth || 1) / baseW;
+  const coverY = (map.clientHeight || 1) / baseH;
+  return Math.max(0.2, coverX, coverY);
+}
+
+function clampMapPan() {
+  const map = document.getElementById('map-area');
+  const inner = document.getElementById('map-inner');
+  if (!map || !inner) return;
+  const scaledW = (inner.offsetWidth || map.clientWidth || 1) * _mapScale;
+  const scaledH = (inner.offsetHeight || map.clientHeight || 1) * _mapScale;
+  const minPanX = Math.min(0, (map.clientWidth || 0) - scaledW);
+  const minPanY = Math.min(0, (map.clientHeight || 0) - scaledH);
+  _mapPanX = Math.max(minPanX, Math.min(0, _mapPanX));
+  _mapPanY = Math.max(minPanY, Math.min(0, _mapPanY));
+}
+
 function applyMapTransform() {
   const inner = document.getElementById('map-inner');
-  if (inner) inner.style.transform = `translate(${_mapPanX}px,${_mapPanY}px) scale(${_mapScale})`;
+  if (!inner) return;
+  inner.style.transformOrigin = '0 0';
+  const minScale = getMapMinScale();
+  if (_mapScale < minScale) _mapScale = minScale;
+  clampMapPan();
+  inner.style.transform = `translate(${_mapPanX}px,${_mapPanY}px) scale(${_mapScale})`;
 }
 
 function mapZoom(dir, cx, cy) {
   const map = document.getElementById('map-area');
   if (!map) return;
+  hideTokenMemoBubble();
   const rect = map.getBoundingClientRect();
   if (cx === undefined) { cx = rect.width / 2; cy = rect.height / 2; }
   const prevScale = _mapScale;
-  _mapScale = Math.max(0.2, Math.min(4, _mapScale + dir * 0.15));
+  const minScale = getMapMinScale();
+  _mapScale = Math.max(minScale, Math.min(4, _mapScale + dir * 0.15));
   const ratio = _mapScale / prevScale;
   _mapPanX = cx - ratio * (cx - _mapPanX);
   _mapPanY = cy - ratio * (cy - _mapPanY);
@@ -395,6 +438,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (e.target.closest('.map-zoom') || e.target.closest('.map-add-token') || e.target.closest('.vn-dialog')) return;
 
     if (e.button === 1 && !e.target.closest('.map-token')) {
+      hideTokenMemoBubble();
       const rect = mapEl.getBoundingClientRect();
       _tokenSelectionState.active = true;
       _tokenSelectionState.startX = e.clientX - rect.left;
@@ -408,6 +452,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (e.target.closest('.map-token')) return;
     if (e.button !== 0) return;
 
+    hideTokenMemoBubble();
     clearMultiTokenSelection();
     isPanning = true;
     panStartX = e.clientX; panStartY = e.clientY;
@@ -429,6 +474,9 @@ document.addEventListener('DOMContentLoaded', () => {
     applyMapTransform();
   });
 
+  window.addEventListener('resize', () => applyMapTransform());
+  requestAnimationFrame(() => applyMapTransform());
+
   document.addEventListener('mouseup', () => {
     if (_tokenSelectionState.active) finishTokenSelection();
     if (isPanning) { isPanning = false; mapEl.classList.remove('panning'); }
@@ -448,8 +496,8 @@ function addToken() {
     id,
     name,
     type,
-    x: 48 + Math.random()*12,
-    y: 48 + Math.random()*12,
+    x: 48 + Math.random() * 12,
+    y: 48 + Math.random() * 12,
     ownerId: St.myId || '',
     ownerName: St.myName || '',
   };
@@ -514,15 +562,18 @@ function createTokenEl(t) {
     }
   }
   if (_multiSelectedTokenIds.includes(String(t.id))) el.classList.add('multi-selected');
-  el.addEventListener('mouseenter', e => {
-    if (t.memo) showTokenMemoTooltip(t.memo, e.clientX, e.clientY);
-  });
-  el.addEventListener('mousemove', e => {
-    if (t.memo) showTokenMemoTooltip(t.memo, e.clientX, e.clientY);
-  });
-  el.addEventListener('mouseleave', () => hideTokenMemoTooltip());
-  el.addEventListener('dblclick', e => { e.preventDefault(); e.stopPropagation(); if (typeof openTokenEdit === 'function') openTokenEdit(t.id); });
-  el.addEventListener('contextmenu', e => { e.preventDefault(); e.stopPropagation(); showTokenCtx(e, t.id); });
+  const memoText = String(t.memo || '').trim();
+  if (memoText) {
+    el.addEventListener('mouseenter', () => showTokenMemoBubble(el, memoText, t.id));
+    el.addEventListener('mousemove', () => {
+      if (_tokenMemoBubbleTokenId === t.id) positionTokenMemoBubble(el);
+    });
+    el.addEventListener('mouseleave', () => {
+      if (_tokenMemoBubbleTokenId === t.id) hideTokenMemoBubble();
+    });
+  }
+  el.addEventListener('dblclick', e => { e.preventDefault(); e.stopPropagation(); hideTokenMemoBubble(); if (typeof openTokenEdit === 'function') openTokenEdit(t.id); });
+  el.addEventListener('contextmenu', e => { e.preventDefault(); e.stopPropagation(); hideTokenMemoBubble(); showTokenCtx(e, t.id); });
   makeDraggable(el, t.id);
   inner.appendChild(el);
 }
@@ -542,6 +593,7 @@ function makeDraggable(el, tokenId) {
 
     e.preventDefault();
     e.stopPropagation();
+    hideTokenMemoBubble();
 
     const map = document.getElementById('map-area');
     if (!map) return;
@@ -635,7 +687,6 @@ function tokCtxAction(action) {
         const { db, ref, update } = window._FB;
         update(ref(db, `rooms/${St.roomCode}/tokens/${id}`), { ownerId: St.myId, ownerName: St.myName });
       }
-      if (_teTokenId === id) refreshTokenOwnerUi(t);
       showToast(`${t.name} 토큰의 소유 권한을 가져왔어요.`);
       break;
     }
@@ -673,10 +724,30 @@ function tokCtxAction(action) {
 let _teTokenId = null;
 let _teTokenImgData = null;
 
+function ensureTokenOwnerField() {
+  const teBody = document.getElementById('te-body');
+  if (!teBody) return null;
+  let box = document.getElementById('te-owner-box');
+  if (box) return box;
+  box = document.createElement('div');
+  box.id = 'te-owner-box';
+  box.className = 'te-section';
+  box.style.paddingBottom = '8px';
+  box.innerHTML = `
+    <div style="font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);margin-bottom:8px">소유자</div>
+    <div id="te-owner-value" style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:var(--s2);font-size:13px;color:var(--text)">미지정</div>`;
+  teBody.insertBefore(box, teBody.firstChild);
+  return box;
+}
+
 function openTokenEdit(tokenId) {
   _teTokenId = tokenId;
   const t = St.tokens[tokenId];
   if (!t) return;
+
+  ensureTokenOwnerField();
+  const ownerValue = document.getElementById('te-owner-value');
+  if (ownerValue) ownerValue.textContent = (t.ownerName || t.ownerId || '미지정');
 
   document.getElementById('te-name').value = t.name || '';
   document.getElementById('te-initiative').value = t.initiative || 0;
@@ -690,7 +761,6 @@ function openTokenEdit(tokenId) {
   document.getElementById('te-hide-chat').checked = t.hideChat || false;
   document.getElementById('te-hide-list').checked = t.hideList || false;
   document.getElementById('te-standing-as-token').checked = t.standingAsToken || false;
-  refreshTokenOwnerUi(t);
 
   _teTokenImgData = t.tokenImg || null;
   teRefreshTokenImgPreview();
@@ -713,7 +783,6 @@ function openTokenEdit(tokenId) {
 
 function closeTokenEdit() {
   cleanupTokenEditPendingAssets();
-  hideTokenMemoTooltip();
   document.getElementById('te-overlay').classList.remove('open');
   _teTokenId = null;
   _teTokenImgData = null;
@@ -962,6 +1031,4 @@ function setTool(t) {
 }
 
 
-
-document.addEventListener('scroll', () => hideTokenMemoTooltip(), true);
-window.addEventListener('blur', () => hideTokenMemoTooltip());
+window.addEventListener('scroll', () => hideTokenMemoBubble(), true);
