@@ -20,7 +20,37 @@ function toggleDescMode() {
   }
 }
 
+
+function ensureChatActionBarButtons() {
+  const bar = document.getElementById('chat-action-bar');
+  if (!bar) return;
+
+  let popoutBtn = document.getElementById('chat-popout-btn');
+  if (!popoutBtn) {
+    popoutBtn = document.createElement('button');
+    popoutBtn.className = 'chat-popout-btn';
+    popoutBtn.id = 'chat-popout-btn';
+    popoutBtn.title = '채팅을 새 탭으로 분리';
+    popoutBtn.textContent = '⤢';
+    popoutBtn.onclick = () => { if (typeof popoutChat === 'function') popoutChat(); };
+    bar.appendChild(popoutBtn);
+  }
+
+  let clearBtn = document.getElementById('chat-clear-btn');
+  if (!clearBtn) {
+    clearBtn = document.createElement('button');
+    clearBtn.className = 'chat-clear-btn';
+    clearBtn.id = 'chat-clear-btn';
+    clearBtn.title = '채팅/잡담 전체 지우기';
+    clearBtn.textContent = '채팅 지우기';
+    clearBtn.style.display = 'none';
+    clearBtn.onclick = () => { if (typeof clearAllChatHistory === 'function') clearAllChatHistory(); };
+    bar.appendChild(clearBtn);
+  }
+}
+
 function refreshChatActionButtons() {
+  ensureChatActionBarButtons();
   const visible = _activeRightTab !== 'journal';
   const popoutBtn = document.getElementById('chat-popout-btn');
   const clearBtn = document.getElementById('chat-clear-btn');
@@ -797,69 +827,42 @@ function buildChatImageHtml(src, imageWide = false, imageMeta = null) {
 const _pendingChatImages = [];
 let _pendingChatImageWide = false;
 let _dragChatImageId = null;
-let _isSendingPendingChatImages = false;
-let _pendingChatUploadStatusText = '';
 
 function makePendingChatImageId() {
   return `pci_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 }
 
 function getChatImageQueueEls() {
-  const wrap = document.getElementById('chat-image-queue');
   return {
-    wrap,
+    wrap: document.getElementById('chat-image-queue'),
     list: document.getElementById('chat-image-preview-list'),
     wideToggle: document.getElementById('chat-image-wide-toggle'),
-    help: wrap ? wrap.querySelector('.chat-image-queue-help') : null,
   };
 }
 
-function getFriendlyChatUploadErrorMessage(err) {
-  const raw = String(err?.message || err || '').toLowerCase();
-  if (!raw) return '이미지 업로드에 실패했어요. 잠시 후 다시 시도해 주세요.';
-  if (raw.includes('roomcode')) return '방 정보가 없어서 이미지를 보낼 수 없어요. 방에 다시 입장해 주세요.';
-  if (raw.includes('timeout') || raw.includes('timed out') || raw.includes('abort')) return '이미지 업로드 시간이 너무 오래 걸렸어요. 잠시 후 다시 시도해 주세요.';
-  if (raw.includes('network')) return '네트워크 연결이 불안정해요. 잠시 후 다시 시도해 주세요.';
-  if (raw.includes('cloudinary') || raw.includes('preset') || raw.includes('unsigned')) return '이미지 업로드 설정에 문제가 있어요. preset 설정을 확인해 주세요.';
-  if (raw.includes('업로드할 이미지 데이터가 없어요')) return '전송할 이미지 준비가 완료되지 않았어요. 이미지를 다시 선택해 주세요.';
-  return err?.message || '이미지 업로드에 실패했어요. 잠시 후 다시 시도해 주세요.';
-}
-
 function renderPendingChatImages() {
-  const { wrap, list, wideToggle, help } = getChatImageQueueEls();
+  const { wrap, list, wideToggle } = getChatImageQueueEls();
   if (!wrap || !list) return;
   list.innerHTML = '';
   if (_pendingChatImages.length === 0) {
     wrap.style.display = 'none';
-    if (wideToggle) {
-      wideToggle.checked = !!_pendingChatImageWide;
-      wideToggle.disabled = !!_isSendingPendingChatImages;
-    }
-    if (help) help.textContent = '최대 4장 · ✕로 삭제 · 드래그로 순서 변경';
+    if (wideToggle) wideToggle.checked = !!_pendingChatImageWide;
     return;
   }
 
   wrap.style.display = '';
-  if (wideToggle) {
-    wideToggle.checked = !!_pendingChatImageWide;
-    wideToggle.disabled = !!_isSendingPendingChatImages;
-  }
-  if (help) {
-    help.textContent = _isSendingPendingChatImages
-      ? (_pendingChatUploadStatusText || `업로드 중... ${_pendingChatImages.length}장 대기`)
-      : '최대 4장 · ✕로 삭제 · 드래그로 순서 변경';
-  }
+  if (wideToggle) wideToggle.checked = !!_pendingChatImageWide;
 
   _pendingChatImages.forEach((item, idx) => {
     const btn = document.createElement('div');
     btn.className = 'chat-image-preview-item';
-    btn.draggable = !_isSendingPendingChatImages;
+    btn.draggable = true;
     btn.dataset.imageId = item.id;
     btn.innerHTML = `
       <img src="${esc(item.previewUrl)}" alt="첨부 이미지 ${idx + 1}">
       <span class="chat-image-preview-grab">↕</span>
       <span class="chat-image-preview-order">${idx + 1}</span>
-      <button type="button" class="chat-image-preview-remove" title="첨부 취소"${_isSendingPendingChatImages ? ' disabled' : ''}>✕</button>
+      <button type="button" class="chat-image-preview-remove" title="첨부 취소">✕</button>
     `;
     const removeBtn = btn.querySelector('.chat-image-preview-remove');
     if (removeBtn) {
@@ -870,14 +873,13 @@ function renderPendingChatImages() {
       });
     }
     btn.addEventListener('dragstart', () => {
-      if (_isSendingPendingChatImages) return;
       _dragChatImageId = item.id;
       btn.classList.add('dragging');
     });
     btn.addEventListener('dragend', () => {
       _dragChatImageId = null;
       btn.classList.remove('dragging');
-      renderPendingChatImages();
+      schedulePendingChatImagesRender();
     });
     btn.addEventListener('dragover', (e) => {
       e.preventDefault();
@@ -899,33 +901,29 @@ function revokePreparedChatImagePreview(item) {
 }
 
 function removePendingChatImage(imageId) {
-  if (_isSendingPendingChatImages) return;
   const idx = _pendingChatImages.findIndex(item => item.id === imageId);
   if (idx < 0) return;
   const [removed] = _pendingChatImages.splice(idx, 1);
   revokePreparedChatImagePreview(removed);
-  renderPendingChatImages();
+  schedulePendingChatImagesRender();
 }
 
 function movePendingChatImage(fromId, toId) {
-  if (_isSendingPendingChatImages) return;
   if (!fromId || !toId || fromId === toId) return;
   const fromIdx = _pendingChatImages.findIndex(item => item.id === fromId);
   const toIdx = _pendingChatImages.findIndex(item => item.id === toId);
   if (fromIdx < 0 || toIdx < 0) return;
   const [moved] = _pendingChatImages.splice(fromIdx, 1);
   _pendingChatImages.splice(toIdx, 0, moved);
-  renderPendingChatImages();
+  schedulePendingChatImagesRender();
 }
 
 function clearPendingChatImages() {
-  if (_isSendingPendingChatImages) return;
   _pendingChatImages.splice(0, _pendingChatImages.length).forEach(revokePreparedChatImagePreview);
-  renderPendingChatImages();
+  schedulePendingChatImagesRender();
 }
 
 function togglePendingChatImageWide(checked) {
-  if (_isSendingPendingChatImages) return;
   _pendingChatImageWide = !!checked;
 }
 
@@ -1074,10 +1072,6 @@ async function fileToPreparedChatImage(file) {
 }
 
 async function queuePendingChatImages(files) {
-  if (_isSendingPendingChatImages) {
-    showToast('이미지 업로드가 끝난 뒤 다시 첨부해 주세요.');
-    return;
-  }
   const incoming = Array.from(files || []).filter(Boolean);
   if (!incoming.length) return;
   const roomLeft = Math.max(0, 4 - _pendingChatImages.length);
@@ -1100,7 +1094,7 @@ async function queuePendingChatImages(files) {
       showToast(err?.message || '이미지를 첨부하지 못했어요.');
     }
   }
-  renderPendingChatImages();
+  schedulePendingChatImagesRender();
 }
 
 function withTimeout(promise, ms = 3500) {
@@ -1138,8 +1132,7 @@ async function getStorageApiQuick() {
 
 async function uploadChatImageBlobToCloudinary(blob, fileName = 'chat.jpg') {
   const cfg = getCloudinaryRuntimeConfig();
-  if (!cfg) throw new Error('cloudinary-config-missing');
-  if (!blob) throw new Error('empty-chat-blob');
+  if (!cfg || !blob) return null;
   const formData = new FormData();
   formData.append('file', blob, fileName);
   formData.append('upload_preset', cfg.unsignedPreset);
@@ -1160,9 +1153,6 @@ async function uploadChatImageBlobToCloudinary(blob, fileName = 'chat.jpg') {
       path: payload.public_id || '',
       contentType: blob.type || 'image/jpeg',
     };
-  } catch (err) {
-    if (err?.name === 'AbortError') throw new Error('timeout');
-    throw err;
   } finally {
     if (timer) clearTimeout(timer);
   }
@@ -1251,43 +1241,26 @@ async function sendPendingChatImages() {
     showToast('이미지 첨부는 메인 채팅에서만 보낼 수 있어요.');
     return false;
   }
-  if (_isSendingPendingChatImages) {
-    showToast('이미지 업로드가 진행 중이에요. 잠시만 기다려 주세요.');
-    return false;
-  }
   if (!_pendingChatImages.length) return true;
-
   const items = _pendingChatImages.splice(0, _pendingChatImages.length);
-  _isSendingPendingChatImages = true;
-  _pendingChatUploadStatusText = `업로드 준비 중... 0/${items.length}`;
-  renderPendingChatImages();
-
+  schedulePendingChatImagesRender();
   try {
-    for (let i = 0; i < items.length; i += 1) {
-      const item = items[i];
-      _pendingChatUploadStatusText = `업로드 중... ${i + 1}/${items.length}`;
-      renderPendingChatImages();
+    for (const item of items) {
       await sendPreparedChatImage(item, _pendingChatImageWide, { width: item.width, height: item.height });
       revokePreparedChatImagePreview(item);
     }
-    _pendingChatUploadStatusText = '';
-    _isSendingPendingChatImages = false;
-    renderPendingChatImages();
     return true;
   } catch (err) {
     console.error('sendPendingChatImages failed', err);
     items.reverse().forEach(item => _pendingChatImages.unshift(item));
-    _pendingChatUploadStatusText = '';
-    _isSendingPendingChatImages = false;
-    renderPendingChatImages();
-    const msg = getFriendlyChatUploadErrorMessage(err);
-    showToast(msg);
-    throw new Error(msg);
+    schedulePendingChatImagesRender();
+    showToast(err?.message || '이미지 업로드에 실패했어요. 잠시 후 다시 시도해 주세요.');
+    throw err;
   }
 }
 
 function initChatImageComposer() {
-  renderPendingChatImages();
+  schedulePendingChatImagesRender();
   bindMessageViewport('chat');
   bindMessageViewport('casual');
 }
@@ -1296,10 +1269,6 @@ function initChatImageComposer() {
 async function sendChat() {
   const inp = document.getElementById('chat-input');
   if (!inp) return;
-  if (_isSendingPendingChatImages) {
-    showToast('이미지 업로드가 진행 중이에요. 잠시만 기다려 주세요.');
-    return;
-  }
   const raw = inp.value.trim();
   const hasImages = _pendingChatImages.length > 0;
   if (!raw && !hasImages) return;
@@ -1850,3 +1819,6 @@ window.removeRenderedMessage = removeRenderedMessage;
 window.resetRenderedMessages = resetRenderedMessages;
 window.getChatImageClassName = getChatImageClassName;
 window.getChatImageInlineStyle = getChatImageInlineStyle;
+
+
+try { ensureChatActionBarButtons(); refreshChatActionButtons(); } catch (e) {}

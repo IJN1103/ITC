@@ -1,3 +1,34 @@
+
+function getSharedJournalAvatarRuntime() {
+  return {
+    sanitizePersistentAvatarSrc(src) {
+      const value = String(src || '').trim();
+      if (!value) return '';
+      if (/^data:image\//i.test(value) || /^blob:/i.test(value)) return '';
+      return value;
+    },
+    readStoredAvatar(journalId) {
+      if (!journalId) return '';
+      try {
+        const safe = this.sanitizePersistentAvatarSrc(localStorage.getItem('itc_av_' + journalId));
+        if (!safe) localStorage.removeItem('itc_av_' + journalId);
+        return safe;
+      } catch (e) {
+        return '';
+      }
+    },
+    writeStoredAvatar(journalId, src) {
+      if (!journalId) return '';
+      const safe = this.sanitizePersistentAvatarSrc(src);
+      try {
+        if (safe) localStorage.setItem('itc_av_' + journalId, safe);
+        else localStorage.removeItem('itc_av_' + journalId);
+      } catch (e) {}
+      return safe;
+    },
+  };
+}
+
 /**
  * ITC TRPG — Speak-As 모듈
  * 저널로 말하기, VN 대사창, 스탠딩, 색상, 귓말
@@ -14,10 +45,8 @@ function saIsEphemeralAvatarSrc(src) {
 }
 
 function saSanitizePersistentAvatarSrc(src) {
-  const value = String(src || '').trim();
-  if (!value) return '';
-  if (saIsLegacyBase64AvatarSrc(value) || saIsEphemeralAvatarSrc(value)) return '';
-  return value;
+  if (saIsEphemeralAvatarSrc(src)) return '';
+  return getSharedJournalAvatarRuntime().sanitizePersistentAvatarSrc(src);
 }
 
 function saSetAvatar(journalId, src) {
@@ -25,8 +54,7 @@ function saSetAvatar(journalId, src) {
   const safeSrc = saSanitizePersistentAvatarSrc(src);
   _JAV[journalId] = safeSrc || src;
   try {
-    if (!safeSrc) localStorage.removeItem('itc_av_' + journalId);
-    else localStorage.setItem('itc_av_' + journalId, safeSrc);
+    getSharedJournalAvatarRuntime().writeStoredAvatar(journalId, safeSrc);
   } catch(e) {}
 }
 
@@ -34,9 +62,8 @@ function saGetAvatar(journalId) {
   if (!journalId) return null;
   if (_JAV[journalId]) return _JAV[journalId];
   try {
-    const ls = saSanitizePersistentAvatarSrc(localStorage.getItem('itc_av_' + journalId));
+    const ls = getSharedJournalAvatarRuntime().readStoredAvatar(journalId);
     if (ls) { _JAV[journalId] = ls; return ls; }
-    localStorage.removeItem('itc_av_' + journalId);
   } catch(e) {}
   try {
     const j = _allJournals.find(x => x.id === journalId);

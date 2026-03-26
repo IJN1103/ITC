@@ -207,3 +207,9 @@ window.addEventListener('DOMContentLoaded', () => {
   }
   initAuthScreen();
 });
+
+window.addEventListener('load', () => {
+  try {
+    if (typeof refreshChatActionButtons === 'function') refreshChatActionButtons();
+  } catch (e) {}
+});

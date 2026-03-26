@@ -1,3 +1,57 @@
+
+function getSharedAvatarRuntime() {
+  if (window._itcAvatarRuntime) return window._itcAvatarRuntime;
+  return {
+    sanitizePersistentAvatarSrc(src) {
+      const value = String(src || '').trim();
+      if (!value) return '';
+      if (/^data:image\//i.test(value) || /^blob:/i.test(value)) return '';
+      return value;
+    },
+    readStoredAvatar(uid) {
+      if (!uid) return '';
+      try {
+        const safe = this.sanitizePersistentAvatarSrc(localStorage.getItem('itc_avatar_' + uid));
+        if (!safe) {
+          localStorage.removeItem('itc_avatar_' + uid);
+          localStorage.removeItem('itc_avatar_path_' + uid);
+        }
+        return safe;
+      } catch (e) {
+        return '';
+      }
+    },
+    writeStoredAvatar(uid, src, storagePath = '') {
+      if (!uid) return '';
+      const safe = this.sanitizePersistentAvatarSrc(src);
+      try {
+        if (safe) {
+          localStorage.setItem('itc_avatar_' + uid, safe);
+          if (storagePath) localStorage.setItem('itc_avatar_path_' + uid, storagePath);
+          else localStorage.removeItem('itc_avatar_path_' + uid);
+        } else {
+          localStorage.removeItem('itc_avatar_' + uid);
+          localStorage.removeItem('itc_avatar_path_' + uid);
+        }
+      } catch (e) {}
+      return safe;
+    },
+    rememberAvatar(uid, name, src) {
+      window._avatarCache = window._avatarCache || {};
+      const safe = this.sanitizePersistentAvatarSrc(src);
+      if (uid) {
+        if (safe) window._avatarCache[uid] = safe;
+        else delete window._avatarCache[uid];
+      }
+      if (name) {
+        if (safe) window._avatarCache[name] = safe;
+        else delete window._avatarCache[name];
+      }
+      return safe;
+    },
+  };
+}
+
 /**
  * ITC TRPG — Lobby 모듈
  * 방 생성/입장, 캠페인, 캐릭터 선택
@@ -108,9 +162,7 @@ function genId() { return Math.random().toString(36).slice(2, 10); }
 function getPlayerPayload(role) {
   const avatar = (() => {
     try {
-      const value = sanitizePersistentAvatarSrc(localStorage.getItem('itc_avatar_' + St.myId));
-      if (!value) localStorage.removeItem('itc_avatar_' + St.myId);
-      return value;
+      return getSharedAvatarRuntime().readStoredAvatar(St.myId);
     } catch (e) {
       return '';
     }

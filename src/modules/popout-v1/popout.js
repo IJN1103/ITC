@@ -1,3 +1,57 @@
+
+function getSharedAvatarRuntime() {
+  if (window._itcAvatarRuntime) return window._itcAvatarRuntime;
+  return {
+    sanitizePersistentAvatarSrc(src) {
+      const value = String(src || '').trim();
+      if (!value) return '';
+      if (/^data:image\//i.test(value) || /^blob:/i.test(value)) return '';
+      return value;
+    },
+    readStoredAvatar(uid) {
+      if (!uid) return '';
+      try {
+        const safe = this.sanitizePersistentAvatarSrc(localStorage.getItem('itc_avatar_' + uid));
+        if (!safe) {
+          localStorage.removeItem('itc_avatar_' + uid);
+          localStorage.removeItem('itc_avatar_path_' + uid);
+        }
+        return safe;
+      } catch (e) {
+        return '';
+      }
+    },
+    writeStoredAvatar(uid, src, storagePath = '') {
+      if (!uid) return '';
+      const safe = this.sanitizePersistentAvatarSrc(src);
+      try {
+        if (safe) {
+          localStorage.setItem('itc_avatar_' + uid, safe);
+          if (storagePath) localStorage.setItem('itc_avatar_path_' + uid, storagePath);
+          else localStorage.removeItem('itc_avatar_path_' + uid);
+        } else {
+          localStorage.removeItem('itc_avatar_' + uid);
+          localStorage.removeItem('itc_avatar_path_' + uid);
+        }
+      } catch (e) {}
+      return safe;
+    },
+    rememberAvatar(uid, name, src) {
+      window._avatarCache = window._avatarCache || {};
+      const safe = this.sanitizePersistentAvatarSrc(src);
+      if (uid) {
+        if (safe) window._avatarCache[uid] = safe;
+        else delete window._avatarCache[uid];
+      }
+      if (name) {
+        if (safe) window._avatarCache[name] = safe;
+        else delete window._avatarCache[name];
+      }
+      return safe;
+    },
+  };
+}
+
 /**
  * ITC TRPG — Popout 모듈
  * 채팅 분리 창 관리
@@ -5,12 +59,6 @@
 
 let _popoutWins = [];
 
-function sanitizePersistentAvatarSrc(src) {
-  const value = String(src || '').trim();
-  if (!value) return '';
-  if (/^data:image\//i.test(value) || /^blob:/i.test(value)) return '';
-  return value;
-}
 
 function buildPopoutHtml() {
   const S = '<' + 'script>';
@@ -259,11 +307,10 @@ function popoutChat() {
 }
 
 function getPopoutAvatarUrl(name, uid) {
-  const cached = sanitizePersistentAvatarSrc(window._avatarCache?.[name] || window._avatarCache?.[uid]);
+  const cached = getSharedAvatarRuntime().sanitizePersistentAvatarSrc(window._avatarCache?.[name] || window._avatarCache?.[uid]);
   if (cached) return cached;
   try {
-    const av = sanitizePersistentAvatarSrc(localStorage.getItem('itc_avatar_' + (uid || '')));
-    if (!av) localStorage.removeItem('itc_avatar_' + (uid || ''));
+    const av = getSharedAvatarRuntime().readStoredAvatar(uid || '');
     if (av) return av;
   } catch (e) {}
   return '';

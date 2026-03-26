@@ -3,11 +3,62 @@
  * 로그인, 회원가입, Google 로그인, 로그아웃
  */
 
-function sanitizePersistentAvatarSrc(src) {
-  const value = String(src || '').trim();
-  if (!value) return '';
-  if (/^data:image\//i.test(value) || /^blob:/i.test(value)) return '';
-  return value;
+function getAvatarRuntime() {
+  if (window._itcAvatarRuntime) return window._itcAvatarRuntime;
+
+  const runtime = {
+    sanitizePersistentAvatarSrc(src) {
+      const value = String(src || '').trim();
+      if (!value) return '';
+      if (/^data:image\//i.test(value) || /^blob:/i.test(value)) return '';
+      return value;
+    },
+    readStoredAvatar(uid) {
+      if (!uid) return '';
+      try {
+        const safe = runtime.sanitizePersistentAvatarSrc(localStorage.getItem('itc_avatar_' + uid));
+        if (!safe) {
+          localStorage.removeItem('itc_avatar_' + uid);
+          localStorage.removeItem('itc_avatar_path_' + uid);
+        }
+        return safe;
+      } catch (e) {
+        return '';
+      }
+    },
+    writeStoredAvatar(uid, src, storagePath = '') {
+      if (!uid) return '';
+      const safe = runtime.sanitizePersistentAvatarSrc(src);
+      try {
+        if (safe) {
+          localStorage.setItem('itc_avatar_' + uid, safe);
+          if (storagePath) localStorage.setItem('itc_avatar_path_' + uid, storagePath);
+          else localStorage.removeItem('itc_avatar_path_' + uid);
+        } else {
+          localStorage.removeItem('itc_avatar_' + uid);
+          localStorage.removeItem('itc_avatar_path_' + uid);
+        }
+      } catch (e) {}
+      return safe;
+    },
+    rememberAvatar(uid, name, src) {
+      window._avatarCache = window._avatarCache || {};
+      if (!uid && !name) return '';
+      const safe = runtime.sanitizePersistentAvatarSrc(src);
+      if (uid) {
+        if (safe) window._avatarCache[uid] = safe;
+        else delete window._avatarCache[uid];
+      }
+      if (name) {
+        if (safe) window._avatarCache[name] = safe;
+        else delete window._avatarCache[name];
+      }
+      return safe;
+    },
+  };
+
+  window._itcAvatarRuntime = runtime;
+  return runtime;
 }
 
 function initAuthScreen() {
@@ -83,24 +134,10 @@ async function loadUserProfile(user) {
   const profile = snap.val() || {};
   St.myName = profile.name || baseProfile.name;
 
+  const avatarRuntime = getAvatarRuntime();
   const rawAvatarSrc = profile.avatarUrl || profile.avatar || '';
-  const avatarSrc = sanitizePersistentAvatarSrc(rawAvatarSrc);
-
-  if (avatarSrc) {
-    try { localStorage.setItem('itc_avatar_' + user.uid, avatarSrc); } catch (e) {}
-    try {
-      if (profile.avatarStoragePath) localStorage.setItem('itc_avatar_path_' + user.uid, profile.avatarStoragePath);
-      else localStorage.removeItem('itc_avatar_path_' + user.uid);
-    } catch (e) {}
-    window._avatarCache = window._avatarCache || {};
-    window._avatarCache[user.uid] = avatarSrc;
-    window._avatarCache[St.myName] = avatarSrc;
-  } else {
-    try { localStorage.removeItem('itc_avatar_' + user.uid); } catch (e) {}
-    try { localStorage.removeItem('itc_avatar_path_' + user.uid); } catch (e) {}
-    window._avatarCache = window._avatarCache || {};
-    delete window._avatarCache[user.uid];
-  }
+  const avatarSrc = avatarRuntime.writeStoredAvatar(user.uid, rawAvatarSrc, profile.avatarStoragePath || '');
+  avatarRuntime.rememberAvatar(user.uid, St.myName, avatarSrc);
 
   const patch = {};
   if (rawAvatarSrc && !avatarSrc) {

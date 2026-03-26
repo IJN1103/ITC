@@ -1,3 +1,25 @@
+
+function getSharedJournalAvatarRuntime() {
+  return {
+    sanitizePersistentAvatarSrc(src) {
+      const value = String(src || '').trim();
+      if (!value) return '';
+      if (/^data:image\//i.test(value) || /^blob:/i.test(value)) return '';
+      return value;
+    },
+    readStoredAvatar(journalId) {
+      if (!journalId) return '';
+      try {
+        const safe = this.sanitizePersistentAvatarSrc(localStorage.getItem('itc_av_' + journalId));
+        if (!safe) localStorage.removeItem('itc_av_' + journalId);
+        return safe;
+      } catch (e) {
+        return '';
+      }
+    },
+  };
+}
+
 /**
  * ITC TRPG — Journal + Sheet 모듈
  * 저널 CRUD, 캐릭터 시트, 소유권/공유, 토큰 연결
@@ -805,10 +827,10 @@ async function saveSheet() {
   const list = _allJournals;
   const existing = list.find(j => j.id === _sheetJournalId);
   if (existing) {
-    const _keepAv = sanitizePersistentAvatarSrc(
+    const _keepAv = getSharedJournalAvatarRuntime().sanitizePersistentAvatarSrc(
       _sheetAvatarStoredUrl
       || _sheetAvatarData
-      || localStorage.getItem('itc_av_' + _sheetJournalId)
+      || getSharedJournalAvatarRuntime().readStoredAvatar(_sheetJournalId)
       || existing.avatar
       || null
     );
@@ -835,7 +857,7 @@ async function saveSheet() {
       assignedTokenId: _jdAssignedTokenId || null,
       assignedTo: _sheetAssignedTo || [],
     };
-    const newAvatar = sanitizePersistentAvatarSrc(_sheetAvatarStoredUrl || _sheetAvatarData || null);
+    const newAvatar = getSharedJournalAvatarRuntime().sanitizePersistentAvatarSrc(_sheetAvatarStoredUrl || _sheetAvatarData || null);
     if (newAvatar) {
       newJ.avatar = newAvatar;
       data.avatar = newAvatar;
