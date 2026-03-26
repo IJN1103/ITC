@@ -6,6 +6,61 @@
 let _mapScale = 1;
 let _mapPanX = 0, _mapPanY = 0;
 
+let _mapBaseWidth = 0;
+let _mapBaseHeight = 0;
+
+function getMapBaseSize() {
+  const inner = document.getElementById('map-inner');
+  const map = document.getElementById('map-area');
+  if (!_mapBaseWidth || !_mapBaseHeight) {
+    _mapBaseWidth = inner?.offsetWidth || map?.clientWidth || 1;
+    _mapBaseHeight = inner?.offsetHeight || map?.clientHeight || 1;
+  }
+  return { width: _mapBaseWidth || 1, height: _mapBaseHeight || 1 };
+}
+
+function getMapExpansion() {
+  const map = document.getElementById('map-area');
+  const { width: baseW, height: baseH } = getMapBaseSize();
+  if (!map) return { x: 1, y: 1, baseW, baseH };
+  const scale = _mapScale || 1;
+  return {
+    x: Math.max(1, (map.clientWidth || 1) / (baseW * scale)),
+    y: Math.max(1, (map.clientHeight || 1) / (baseH * scale)),
+    baseW,
+    baseH,
+  };
+}
+
+function storedTokenPercentToDisplay(value, axis = 'x') {
+  const factor = axis === 'y' ? getMapExpansion().y : getMapExpansion().x;
+  return (Number(value) || 0) / factor;
+}
+
+function displayTokenPercentToStored(value, axis = 'x') {
+  const factor = axis === 'y' ? getMapExpansion().y : getMapExpansion().x;
+  return (Number(value) || 0) * factor;
+}
+
+function getTokenStoredPercentMax(axis = 'x') {
+  const factor = axis === 'y' ? getMapExpansion().y : getMapExpansion().x;
+  return 100 * factor;
+}
+
+function clampTokenStoredPercent(value, axis = 'x') {
+  return Math.max(0, Math.min(getTokenStoredPercentMax(axis), Number(value) || 0));
+}
+
+function syncRenderedTokenPositions() {
+  if (!window.St?.tokens) return;
+  Object.entries(St.tokens).forEach(([id, token]) => {
+    const el = getTokenEl(id);
+    if (!el || !token) return;
+    if (typeof token.x === 'number') el.style.left = storedTokenPercentToDisplay(token.x, 'x') + '%';
+    if (typeof token.y === 'number') el.style.top = storedTokenPercentToDisplay(token.y, 'y') + '%';
+  });
+}
+
 
 let _teTokenImgBlob = null;
 
@@ -165,23 +220,18 @@ function getDragTargetIds(tokenId) {
   return [tokenId];
 }
 
-function clampTokenPercent(value) {
-  return Math.max(0, Math.min(100, value));
-}
-
 function getTokenStartPosition(tokenId) {
   const targetEl = getTokenEl(tokenId);
   const token = St.tokens[tokenId] || {};
   return {
-    left: typeof token.x === 'number' ? token.x : (parseFloat(targetEl?.style.left) || 0),
-    top: typeof token.y === 'number' ? token.y : (parseFloat(targetEl?.style.top) || 0),
+    left: typeof token.x === 'number' ? token.x : displayTokenPercentToStored(parseFloat(targetEl?.style.left) || 0, 'x'),
+    top: typeof token.y === 'number' ? token.y : displayTokenPercentToStored(parseFloat(targetEl?.style.top) || 0, 'y'),
   };
 }
 
-function buildTokenDragSession(tokenId, startEvent, mapEl) {
+function buildTokenDragSession(tokenId, startEvent) {
   const targetIds = getDragTargetIds(tokenId);
-  const natW = mapEl?.offsetWidth || 1;
-  const natH = mapEl?.offsetHeight || 1;
+  const { width: natW, height: natH } = getMapBaseSize();
   const scale = _mapScale || 1;
   const startPos = {};
   targetIds.forEach((id) => {
@@ -205,8 +255,10 @@ function applyTokenDragSession(session, moveEvent) {
     const targetEl = getTokenEl(id);
     const pos = session.startPos[id];
     if (!targetEl || !pos) return;
-    targetEl.style.left = clampTokenPercent(pos.left + dxPct) + '%';
-    targetEl.style.top = clampTokenPercent(pos.top + dyPct) + '%';
+    const nextLeft = clampTokenStoredPercent(pos.left + dxPct, 'x');
+    const nextTop = clampTokenStoredPercent(pos.top + dyPct, 'y');
+    targetEl.style.left = storedTokenPercentToDisplay(nextLeft, 'x') + '%';
+    targetEl.style.top = storedTokenPercentToDisplay(nextTop, 'y') + '%';
   });
 }
 
@@ -216,8 +268,8 @@ function collectDraggedTokenPositions(targetIds) {
     const targetEl = getTokenEl(id);
     if (!targetEl) return;
     patch[id] = {
-      x: parseFloat(targetEl.style.left) || 0,
-      y: parseFloat(targetEl.style.top) || 0,
+      x: clampTokenStoredPercent(displayTokenPercentToStored(parseFloat(targetEl.style.left) || 0, 'x'), 'x'),
+      y: clampTokenStoredPercent(displayTokenPercentToStored(parseFloat(targetEl.style.top) || 0, 'y'), 'y'),
     };
   });
   return patch;
@@ -275,136 +327,22 @@ function finishTokenSelection() {
   setMultiTokenSelection(selected);
 }
 
-let _tokenMemoBubbleEl = null;
-let _tokenMemoBubbleTokenId = null;
-
-function ensureTokenMemoBubble() {
-  if (_tokenMemoBubbleEl) return _tokenMemoBubbleEl;
-  const bubble = document.createElement('div');
-  bubble.id = 'token-memo-bubble';
-  bubble.style.cssText = [
-    'position:fixed',
-    'left:-9999px',
-    'top:-9999px',
-    'z-index:99999',
-    'max-width:min(320px, calc(100vw - 32px))',
-    'padding:10px 12px',
-    'border-radius:14px',
-    'background:rgba(255,255,255,0.96)',
-    'color:#1f2328',
-    'font-size:12px',
-    'line-height:1.5',
-    'white-space:pre-wrap',
-    'word-break:break-word',
-    'box-shadow:0 10px 28px rgba(0,0,0,0.28)',
-    'border:1px solid rgba(0,0,0,0.08)',
-    'pointer-events:none',
-    'opacity:0',
-    'transform:translate(-50%, -100%)',
-    'transition:opacity .08s ease'
-  ].join(';');
-  const arrow = document.createElement('div');
-  arrow.style.cssText = [
-    'position:absolute',
-    'left:50%',
-    'bottom:-8px',
-    'width:14px',
-    'height:14px',
-    'background:rgba(255,255,255,0.96)',
-    'border-right:1px solid rgba(0,0,0,0.08)',
-    'border-bottom:1px solid rgba(0,0,0,0.08)',
-    'transform:translateX(-50%) rotate(45deg)'
-  ].join(';');
-  bubble.appendChild(arrow);
-  document.body.appendChild(bubble);
-  _tokenMemoBubbleEl = bubble;
-  return bubble;
-}
-
-function hideTokenMemoBubble() {
-  if (!_tokenMemoBubbleEl) return;
-  _tokenMemoBubbleEl.style.opacity = '0';
-  _tokenMemoBubbleEl.style.left = '-9999px';
-  _tokenMemoBubbleEl.style.top = '-9999px';
-  _tokenMemoBubbleEl.textContent = _tokenMemoBubbleEl.textContent;
-  const arrow = document.createElement('div');
-  arrow.style.cssText = [
-    'position:absolute','left:50%','bottom:-8px','width:14px','height:14px',
-    'background:rgba(255,255,255,0.96)','border-right:1px solid rgba(0,0,0,0.08)',
-    'border-bottom:1px solid rgba(0,0,0,0.08)','transform:translateX(-50%) rotate(45deg)'
-  ].join(';');
-  _tokenMemoBubbleEl.appendChild(arrow);
-  _tokenMemoBubbleTokenId = null;
-}
-
-function positionTokenMemoBubble(tokenEl) {
-  const bubble = ensureTokenMemoBubble();
-  const rect = tokenEl.getBoundingClientRect();
-  const bubbleRect = bubble.getBoundingClientRect();
-  const gap = 14;
-  let left = rect.left + (rect.width / 2);
-  let top = rect.top - gap;
-  const minX = 16 + bubbleRect.width / 2;
-  const maxX = window.innerWidth - 16 - bubbleRect.width / 2;
-  left = Math.max(minX, Math.min(maxX, left));
-  if (top - bubbleRect.height < 12) {
-    top = rect.bottom + bubbleRect.height + gap;
-    bubble.style.transform = 'translate(-50%, 0)';
-  } else {
-    bubble.style.transform = 'translate(-50%, -100%)';
-  }
-  bubble.style.left = `${left}px`;
-  bubble.style.top = `${top}px`;
-}
-
-function showTokenMemoBubble(tokenEl, memo, tokenId) {
-  const content = String(memo || '').trim();
-  if (!content) return;
-  const bubble = ensureTokenMemoBubble();
-  bubble.textContent = content;
-  const arrow = document.createElement('div');
-  arrow.style.cssText = [
-    'position:absolute','left:50%','bottom:-8px','width:14px','height:14px',
-    'background:rgba(255,255,255,0.96)','border-right:1px solid rgba(0,0,0,0.08)',
-    'border-bottom:1px solid rgba(0,0,0,0.08)','transform:translateX(-50%) rotate(45deg)'
-  ].join(';');
-  bubble.appendChild(arrow);
-  positionTokenMemoBubble(tokenEl);
-  bubble.style.opacity = '1';
-  _tokenMemoBubbleTokenId = tokenId || null;
-}
-
-function getMapMinScale() {
-  const map = document.getElementById('map-area');
-  const inner = document.getElementById('map-inner');
-  if (!map || !inner) return 0.2;
-  const baseW = inner.offsetWidth || map.clientWidth || 1;
-  const baseH = inner.offsetHeight || map.clientHeight || 1;
-  const coverX = (map.clientWidth || 1) / baseW;
-  const coverY = (map.clientHeight || 1) / baseH;
-  return Math.max(0.2, coverX, coverY);
-}
-
-function clampMapPan() {
-  const map = document.getElementById('map-area');
-  const inner = document.getElementById('map-inner');
-  if (!map || !inner) return;
-  const scaledW = (inner.offsetWidth || map.clientWidth || 1) * _mapScale;
-  const scaledH = (inner.offsetHeight || map.clientHeight || 1) * _mapScale;
-  const minPanX = Math.min(0, (map.clientWidth || 0) - scaledW);
-  const minPanY = Math.min(0, (map.clientHeight || 0) - scaledH);
-  _mapPanX = Math.max(minPanX, Math.min(0, _mapPanX));
-  _mapPanY = Math.max(minPanY, Math.min(0, _mapPanY));
-}
-
 function applyMapTransform() {
   const inner = document.getElementById('map-inner');
-  if (!inner) return;
+  const map = document.getElementById('map-area');
+  if (!inner || !map) return;
+  const { width: baseW, height: baseH } = getMapBaseSize();
+  const expansion = getMapExpansion();
+  inner.style.width = (baseW * expansion.x) + 'px';
+  inner.style.height = (baseH * expansion.y) + 'px';
   inner.style.transformOrigin = '0 0';
-  const minScale = getMapMinScale();
-  if (_mapScale < minScale) _mapScale = minScale;
-  clampMapPan();
   inner.style.transform = `translate(${_mapPanX}px,${_mapPanY}px) scale(${_mapScale})`;
+  syncRenderedTokenPositions();
+  if (_tokenMemoBubbleTokenId) {
+    const tokenEl = getTokenEl(_tokenMemoBubbleTokenId);
+    if (tokenEl) positionTokenMemoBubble(tokenEl);
+    else hideTokenMemoBubble();
+  }
 }
 
 function mapZoom(dir, cx, cy) {
@@ -414,8 +352,7 @@ function mapZoom(dir, cx, cy) {
   const rect = map.getBoundingClientRect();
   if (cx === undefined) { cx = rect.width / 2; cy = rect.height / 2; }
   const prevScale = _mapScale;
-  const minScale = getMapMinScale();
-  _mapScale = Math.max(minScale, Math.min(4, _mapScale + dir * 0.15));
+  _mapScale = Math.max(0.2, Math.min(4, _mapScale + dir * 0.15));
   const ratio = _mapScale / prevScale;
   _mapPanX = cx - ratio * (cx - _mapPanX);
   _mapPanY = cy - ratio * (cy - _mapPanY);
@@ -438,7 +375,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (e.target.closest('.map-zoom') || e.target.closest('.map-add-token') || e.target.closest('.vn-dialog')) return;
 
     if (e.button === 1 && !e.target.closest('.map-token')) {
-      hideTokenMemoBubble();
       const rect = mapEl.getBoundingClientRect();
       _tokenSelectionState.active = true;
       _tokenSelectionState.startX = e.clientX - rect.left;
@@ -474,9 +410,6 @@ document.addEventListener('DOMContentLoaded', () => {
     applyMapTransform();
   });
 
-  window.addEventListener('resize', () => applyMapTransform());
-  requestAnimationFrame(() => applyMapTransform());
-
   document.addEventListener('mouseup', () => {
     if (_tokenSelectionState.active) finishTokenSelection();
     if (isPanning) { isPanning = false; mapEl.classList.remove('panning'); }
@@ -487,20 +420,83 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 });
 
+let _tokenMemoBubbleEl = null;
+let _tokenMemoBubbleTokenId = null;
+
+function ensureTokenMemoBubble() {
+  if (_tokenMemoBubbleEl) return _tokenMemoBubbleEl;
+  const bubble = document.createElement('div');
+  bubble.id = 'token-memo-bubble';
+  bubble.style.cssText = [
+    'position:fixed',
+    'left:-9999px',
+    'top:-9999px',
+    'z-index:99999',
+    'max-width:min(320px, calc(100vw - 32px))',
+    'padding:8px 10px',
+    'border-radius:10px',
+    'background:var(--s1, #101010)',
+    'color:#f3efe6',
+    'font-size:12px',
+    'line-height:1.5',
+    'white-space:pre-wrap',
+    'word-break:break-word',
+    'box-shadow:0 8px 22px rgba(0,0,0,0.35)',
+    'border:1px solid rgba(255,255,255,0.06)',
+    'pointer-events:none',
+    'opacity:0',
+    'transform:translate(-50%, -100%)',
+    'transition:opacity .08s ease'
+  ].join(';');
+  document.body.appendChild(bubble);
+  _tokenMemoBubbleEl = bubble;
+  return bubble;
+}
+
+function hideTokenMemoBubble() {
+  if (!_tokenMemoBubbleEl) return;
+  _tokenMemoBubbleEl.style.opacity = '0';
+  _tokenMemoBubbleEl.style.left = '-9999px';
+  _tokenMemoBubbleEl.style.top = '-9999px';
+  _tokenMemoBubbleTokenId = null;
+}
+
+function positionTokenMemoBubble(tokenEl) {
+  const bubble = ensureTokenMemoBubble();
+  const rect = tokenEl.getBoundingClientRect();
+  const bubbleRect = bubble.getBoundingClientRect();
+  const gap = 12;
+  let left = rect.left + (rect.width / 2);
+  let top = rect.top - gap;
+  const minX = 16 + bubbleRect.width / 2;
+  const maxX = window.innerWidth - 16 - bubbleRect.width / 2;
+  left = Math.max(minX, Math.min(maxX, left));
+  if (top - bubbleRect.height < 12) {
+    top = rect.bottom + bubbleRect.height + gap;
+    bubble.style.transform = 'translate(-50%, 0)';
+  } else {
+    bubble.style.transform = 'translate(-50%, -100%)';
+  }
+  bubble.style.left = `${left}px`;
+  bubble.style.top = `${top}px`;
+}
+
+function showTokenMemoBubble(tokenEl, memo, tokenId) {
+  const content = String(memo || '').trim();
+  if (!content) return;
+  const bubble = ensureTokenMemoBubble();
+  bubble.textContent = content;
+  positionTokenMemoBubble(tokenEl);
+  bubble.style.opacity = '1';
+  _tokenMemoBubbleTokenId = tokenId || null;
+}
+
 function addToken() {
   if (!hasPerm('createToken')) { showToast('토큰 생성 권한이 없어요.'); return; }
   const name = document.getElementById('token-name').value.trim() || '?';
   const type = document.getElementById('token-type').value;
   const id = genId();
-  const token = {
-    id,
-    name,
-    type,
-    x: 48 + Math.random() * 12,
-    y: 48 + Math.random() * 12,
-    ownerId: St.myId || '',
-    ownerName: St.myName || '',
-  };
+  const token = { id, name, type, x: 48 + Math.random()*12, y: 48 + Math.random()*12 };
   if (window._FB?.CONFIGURED) {
     const { db, ref, set } = window._FB;
     set(ref(db, `rooms/${St.roomCode}/tokens/${id}`), token);
@@ -510,6 +506,7 @@ function addToken() {
 }
 
 function renderAllTokens(tokens) {
+  hideTokenMemoBubble();
   const inner = document.getElementById('map-inner');
   if (inner) inner.querySelectorAll('.map-token').forEach(t => t.remove());
   syncMultiTokenSelectionWithTokens(tokens);
@@ -522,7 +519,7 @@ function createTokenEl(t) {
   const el = document.createElement('div');
   el.className = `map-token ${t.type==='enemy'?'enemy':t.type==='npc'?'npc':''}`;
   el.id = 'tok-' + t.id;
-  el.style.left = t.x + '%'; el.style.top = t.y + '%';
+  el.style.left = storedTokenPercentToDisplay(t.x, 'x') + '%'; el.style.top = storedTokenPercentToDisplay(t.y, 'y') + '%';
   if (t.rotation) el.style.transform = `translate(-50%,-50%) rotate(${t.rotation}deg)`;
   const sz = (t.tokenSize || 1);
   let tokenImgSrc = null;
@@ -598,7 +595,7 @@ function makeDraggable(el, tokenId) {
     const map = document.getElementById('map-area');
     if (!map) return;
 
-    const dragSession = buildTokenDragSession(tokenId, e, map);
+    const dragSession = buildTokenDragSession(tokenId, e);
 
     const onMove = ev => {
       applyTokenDragSession(dragSession, ev);
@@ -724,30 +721,10 @@ function tokCtxAction(action) {
 let _teTokenId = null;
 let _teTokenImgData = null;
 
-function ensureTokenOwnerField() {
-  const teBody = document.getElementById('te-body');
-  if (!teBody) return null;
-  let box = document.getElementById('te-owner-box');
-  if (box) return box;
-  box = document.createElement('div');
-  box.id = 'te-owner-box';
-  box.className = 'te-section';
-  box.style.paddingBottom = '8px';
-  box.innerHTML = `
-    <div style="font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);margin-bottom:8px">소유자</div>
-    <div id="te-owner-value" style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:var(--s2);font-size:13px;color:var(--text)">미지정</div>`;
-  teBody.insertBefore(box, teBody.firstChild);
-  return box;
-}
-
 function openTokenEdit(tokenId) {
   _teTokenId = tokenId;
   const t = St.tokens[tokenId];
   if (!t) return;
-
-  ensureTokenOwnerField();
-  const ownerValue = document.getElementById('te-owner-value');
-  if (ownerValue) ownerValue.textContent = (t.ownerName || t.ownerId || '미지정');
 
   document.getElementById('te-name').value = t.name || '';
   document.getElementById('te-initiative').value = t.initiative || 0;
@@ -1029,6 +1006,7 @@ function setTool(t) {
   const eraseBtn = document.getElementById('tool-erase');
   if (eraseBtn) eraseBtn.classList.toggle('on', t === 'erase');
 }
+
 
 
 window.addEventListener('scroll', () => hideTokenMemoBubble(), true);
