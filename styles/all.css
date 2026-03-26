@@ -208,7 +208,7 @@ to{opacity:1;transform:translateY(0);}
 .panel-center{flex:1;display:flex;flex-direction:column;overflow:hidden;}
 .map-area{flex:1;position:relative;overflow:hidden;background:var(--s1);cursor:grab;}
 .map-area.panning{cursor:grabbing;}
-.map-inner{position:absolute;width:200%;height:200%;left:-50%;top:-50%;background-image:linear-gradient(var(--border) 1px,transparent 1px),linear-gradient(90deg,var(--border) 1px,transparent 1px);background-size:44px 44px;transform-origin:50% 50%;}
+.map-inner{position:absolute;width:300%;height:300%;left:-100%;top:-100%;background-image:linear-gradient(var(--border) 1px,transparent 1px),linear-gradient(90deg,var(--border) 1px,transparent 1px);background-size:44px 44px;transform-origin:50% 50%;}
 .map-token{position:absolute;width:36px;height:36px;border-radius:50%;background-color:var(--s3);border:2px solid var(--accent);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:500;cursor:grab;user-select:none;z-index:10;transition:box-shadow .15s;transform:translate(-50%,-50%);}
 .map-token:hover{box-shadow:0 0 0 4px var(--a-glow);}
 .map-token.has-img{background-color:transparent;border:none;border-radius:0;font-size:0;overflow:visible;display:flex;align-items:flex-end;justify-content:center;}
@@ -687,15 +687,20 @@ to{transform:translateX(0);opacity:1;}
 #yt-player{display:none;}
 
 .map-token.multi-selected{box-shadow:0 0 0 4px var(--a-glow);}
-.map-token.has-img.multi-selected{box-shadow:none;filter:drop-shadow(0 0 3px rgba(255,255,255,.5)) drop-shadow(0 0 6px rgba(255,255,255,.2)) brightness(1.08);}
+.map-token.has-img.multi-selected{
+  box-shadow:none;
+  filter:drop-shadow(0 0 3px rgba(255,255,255,.5)) drop-shadow(0 0 6px rgba(255,255,255,.2)) brightness(1.08);
+}
 .map-token-selection-box{
   position:absolute;
   display:none;
-  z-index:60;
+  z-index:200;
   pointer-events:none;
+  box-sizing:border-box;
   min-width:1px;
   min-height:1px;
-  background:rgba(140,136,130,.06);
+  background:rgba(140,136,130,.08);
+  outline:1px solid transparent;
   background-image:
     repeating-linear-gradient(90deg, rgba(140,136,130,.95) 0 8px, rgba(40,40,40,.95) 8px 16px),
     repeating-linear-gradient(90deg, rgba(140,136,130,.95) 0 8px, rgba(40,40,40,.95) 8px 16px),

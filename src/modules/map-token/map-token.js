@@ -101,6 +101,7 @@ function cleanupTokenEditPendingAssets() {
 }
 
 
+
 let _multiSelectedTokenIds = [];
 let _tokenSelectionState = {
   active: false,
@@ -357,10 +358,11 @@ function makeDraggable(el, tokenId) {
       setMultiTokenSelection([tokenId]);
     }
 
-    const map = document.getElementById('map-area');
-    if (!map) return;
-    const natW = map.offsetWidth || 1;
-    const natH = map.offsetHeight || 1;
+    const inner = document.getElementById('map-inner');
+    if (!inner) return;
+
+    const innerW = inner.offsetWidth || 1;
+    const innerH = inner.offsetHeight || 1;
     const sx = e.clientX;
     const sy = e.clientY;
 
@@ -375,17 +377,15 @@ function makeDraggable(el, tokenId) {
     });
 
     const onMove = (ev) => {
-      const dx = ((ev.clientX - sx) / (_mapScale || 1)) / natW * 100;
-      const dy = ((ev.clientY - sy) / (_mapScale || 1)) / natH * 100;
+      const dx = ((ev.clientX - sx) / (_mapScale || 1)) / innerW * 100;
+      const dy = ((ev.clientY - sy) / (_mapScale || 1)) / innerH * 100;
 
       targetIds.forEach((id) => {
         const targetEl = document.getElementById('tok-' + id);
         const pos = startPos[id];
         if (!targetEl || !pos) return;
-
         const nextLeft = Math.max(0, Math.min(100, pos.left + dx));
         const nextTop = Math.max(0, Math.min(100, pos.top + dy));
-
         targetEl.style.left = nextLeft + '%';
         targetEl.style.top = nextTop + '%';
       });
@@ -395,28 +395,21 @@ function makeDraggable(el, tokenId) {
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup', onUp);
 
-      if (window._FB?.CONFIGURED) {
+      const updates = {};
+      targetIds.forEach((id) => {
+        const targetEl = document.getElementById('tok-' + id);
+        if (!targetEl) return;
+        const nextX = parseFloat(targetEl.style.left) || 0;
+        const nextY = parseFloat(targetEl.style.top) || 0;
+        if (!St.tokens[id]) St.tokens[id] = {};
+        St.tokens[id].x = nextX;
+        St.tokens[id].y = nextY;
+        updates[id] = { x: nextX, y: nextY };
+      });
+
+      if (window._FB?.CONFIGURED && St.roomCode) {
         const { db, ref, update } = window._FB;
-        targetIds.forEach((id) => {
-          const targetEl = document.getElementById('tok-' + id);
-          if (!targetEl) return;
-          const nextX = parseFloat(targetEl.style.left) || 0;
-          const nextY = parseFloat(targetEl.style.top) || 0;
-          if (!St.tokens[id]) St.tokens[id] = {};
-          St.tokens[id].x = nextX;
-          St.tokens[id].y = nextY;
-          update(ref(db, `rooms/${St.roomCode}/tokens/${id}`), { x: nextX, y: nextY });
-        });
-      } else {
-        targetIds.forEach((id) => {
-          const targetEl = document.getElementById('tok-' + id);
-          if (!targetEl) return;
-          const nextX = parseFloat(targetEl.style.left) || 0;
-          const nextY = parseFloat(targetEl.style.top) || 0;
-          if (!St.tokens[id]) St.tokens[id] = {};
-          St.tokens[id].x = nextX;
-          St.tokens[id].y = nextY;
-        });
+        update(ref(db, `rooms/${St.roomCode}/tokens`), updates);
       }
     };
 

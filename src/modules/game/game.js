@@ -88,7 +88,7 @@ function trackFirebaseListener(unsub) {
 function digestPlayers(players) {
   return JSON.stringify(Object.keys(players || {}).sort().map(id => {
     const p = players[id] || {};
-    return [id, p.name || '', p.role || '', !!p.online, p.avatar || '', p.casualNick || '', p.nameColor || '', p.casualNameColor || ''];
+    return [id, p.name || '', p.role || '', !!p.online, p.avatar || '', p.casualNick || '', p.nameColor || ''];
   }));
 }
 
@@ -173,13 +173,13 @@ function setupFirebaseListeners() {
 
   const addCasualRecord = (key, m) => {
     if (!m || _processedCasualKeys.has(key)) return;
-    appendCasualMsg(m.name, m.text, m.uid, m.time, key, m.nameColor || '');
+    appendCasualMsg(m.name, m.text, m.uid, m.time, key);
     _processedCasualKeys.add(key);
   };
 
   const changeCasualRecord = (key, m) => {
     if (!m) return;
-    replaceCasualMsg(m.name, m.text, m.uid, m.time, key, m.nameColor || '');
+    replaceCasualMsg(m.name, m.text, m.uid, m.time, key);
     _processedCasualKeys.add(key);
   };
 
@@ -205,6 +205,7 @@ function setupFirebaseListeners() {
     const tokens = snap.val() || {};
     St.tokens = tokens;
     renderAllTokens(tokens);
+    if (typeof updateMultiTokenSelectionUI === 'function') updateMultiTokenSelectionUI();
   }));
 
   trackFirebaseListener(onValue(ref(db, `rooms/${code}/journals`), snap => {
@@ -325,20 +326,8 @@ function renderPlayers(players) {
       window._avatarCache[id] = av;
       window._avatarCache[p.name] = av;
     }
-
-    if (id === St.myId) {
-      if (p.casualNick) {
-        _casualNickname = p.casualNick;
-        try { localStorage.setItem('itc_casual_nick_' + St.myId, p.casualNick); } catch (e) {}
-      }
-      if (p.casualNameColor) {
-        St.casualNameColor = p.casualNameColor;
-        try { localStorage.setItem('itc_casual_name_color', p.casualNameColor); } catch (e) {}
-      }
-    }
   });
 
-  if (typeof refreshCasualNickDisplay === 'function') refreshCasualNickDisplay();
   if (typeof rerenderExistingChatAvatars === 'function') {
     rerenderExistingChatAvatars();
   }
