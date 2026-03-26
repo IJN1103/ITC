@@ -8,20 +8,26 @@ let _mapPanX = 0, _mapPanY = 0;
 
 let _mapBaseWidth = 0;
 let _mapBaseHeight = 0;
+const MAP_WORLD_EXPANSION = 2.5;
 
 function getMapBaseSize() {
   const inner = document.getElementById('map-inner');
   const map = document.getElementById('map-area');
   if (!_mapBaseWidth || !_mapBaseHeight) {
-    _mapBaseWidth = inner?.offsetWidth || map?.clientWidth || 1;
-    _mapBaseHeight = inner?.offsetHeight || map?.clientHeight || 1;
+    _mapBaseWidth = map?.clientWidth || inner?.offsetWidth || 1;
+    _mapBaseHeight = map?.clientHeight || inner?.offsetHeight || 1;
   }
   return { width: _mapBaseWidth || 1, height: _mapBaseHeight || 1 };
 }
 
 function getMapExpansion() {
   const { width: baseW, height: baseH } = getMapBaseSize();
-  return { x: 1, y: 1, baseW, baseH };
+  return {
+    x: MAP_WORLD_EXPANSION,
+    y: MAP_WORLD_EXPANSION,
+    baseW,
+    baseH,
+  };
 }
 
 function storedTokenPercentToDisplay(value, axis = 'x') {
@@ -37,7 +43,7 @@ function getTokenStoredPercentMax(axis = 'x') {
 }
 
 function clampTokenStoredPercent(value, axis = 'x') {
-  return Math.max(0, Math.min(100, Number(value) || 0));
+  return Math.max(0, Math.min(getTokenStoredPercentMax(axis), Number(value) || 0));
 }
 
 function syncRenderedTokenPositions() {
@@ -321,8 +327,13 @@ function applyMapTransform() {
   const map = document.getElementById('map-area');
   if (!inner || !map) return;
   const { width: baseW, height: baseH } = getMapBaseSize();
-  inner.style.width = baseW + 'px';
-  inner.style.height = baseH + 'px';
+  const expansion = getMapExpansion();
+  const extraOffsetX = (baseW * (expansion.x - 1)) / 2;
+  const extraOffsetY = (baseH * (expansion.y - 1)) / 2;
+  inner.style.width = (baseW * expansion.x) + 'px';
+  inner.style.height = (baseH * expansion.y) + 'px';
+  inner.style.left = (-extraOffsetX) + 'px';
+  inner.style.top = (-extraOffsetY) + 'px';
   inner.style.transformOrigin = '0 0';
   inner.style.transform = `translate(${_mapPanX}px,${_mapPanY}px) scale(${_mapScale})`;
   syncRenderedTokenPositions();
@@ -429,9 +440,8 @@ function ensureTokenMemoBubble() {
     'line-height:1.5',
     'white-space:pre-wrap',
     'word-break:break-word',
-    'box-shadow:0 8px 22px rgba(0,0,0,0.35), 0 0 0 4px rgba(255,255,255,0.08)',
-    'border:1px solid rgba(255,255,255,0.08)',
-    'filter:drop-shadow(0 0 3px rgba(255,255,255,.5)) drop-shadow(0 0 6px rgba(255,255,255,.2))',
+    'box-shadow:0 8px 22px rgba(0,0,0,0.35)',
+    'border:1px solid rgba(255,255,255,0.06)',
     'pointer-events:none',
     'opacity:0',
     'transform:translate(-50%, -100%)',
