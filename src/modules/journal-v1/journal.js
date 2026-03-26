@@ -86,6 +86,355 @@ async function uploadJournalAvatarToCloudinary(file, journalId) {
 
 
 function journalKey() { return 'itc_journals_' + St.myId + '_' + St.roomCode; }
+function handoutKey() { return 'itc_handouts_' + St.myId + '_' + St.roomCode; }
+
+let _currentHandoutId = null;
+let _handoutEditMode = false;
+let _pendingHandoutImageRestoreRange = null;
+
+function loadHandouts() {
+  if (St.isGM) return _allHandouts.slice();
+  return _allHandouts.filter(h =>
+    h.ownerId === St.myId ||
+    (Array.isArray(h.allowedTo) && h.allowedTo.includes(St.myId))
+  );
+}
+
+function fetchHandoutsFromFB() {
+  if (!window._FB?.CONFIGURED || !St.roomCode) return;
+  const { db, ref, get } = window._FB;
+  get(ref(db, `rooms/${St.roomCode}/handouts`)).then(snap => {
+    const data = snap.val() || {};
+    _allHandouts = [];
+    Object.entries(data).forEach(([id, h]) => { h.id = id; _allHandouts.push(h); });
+    renderHandoutList();
+  }).catch(() => {});
+}
+
+function saveHandoutFB(handout) {
+  if (!handout?.id) return;
+  if (!handout.ownerId) handout.ownerId = St.myId;
+  if (window._FB?.CONFIGURED) {
+    const { db, ref, set } = window._FB;
+    set(ref(db, `rooms/${St.roomCode}/handouts/${handout.id}`), handout);
+  } else {
+    const idx = _allHandouts.findIndex(h => h.id === handout.id);
+    if (idx >= 0) _allHandouts[idx] = handout; else _allHandouts.push(handout);
+    localStorage.setItem(handoutKey(), JSON.stringify(_allHandouts));
+  }
+}
+
+function deleteHandoutFB(id) {
+  if (window._FB?.CONFIGURED) {
+    const { db, ref, remove } = window._FB;
+    remove(ref(db, `rooms/${St.roomCode}/handouts/${id}`));
+  } else {
+    _allHandouts = _allHandouts.filter(h => h.id !== id);
+    localStorage.setItem(handoutKey(), JSON.stringify(_allHandouts));
+  }
+}
+
+function sanitizeHandoutHtml(rawHtml) {
+  const template = document.createElement('template');
+  template.innerHTML = String(rawHtml || '');
+  const allowed = new Set(['DIV','P','BR','B','STRONG','I','EM','U','UL','OL','LI','BLOCKQUOTE','H1','H2','H3','H4','FIGURE','IMG','SPAN']);
+  const safeUrl = (value) => {
+    const v = String(value || '').trim();
+    if (!v) return '';
+    if (/^https?:\/\//i.test(v)) return v;
+    return '';
+  };
+  const walk = (node) => {
+    [...node.childNodes].forEach(child => {
+      if (child.nodeType === 1) {
+        const tag = child.tagName.toUpperCase();
+        if (!allowed.has(tag)) {
+          if (tag === 'SCRIPT' || tag === 'STYLE') {
+            child.remove();
+            return;
+          }
+          const frag = document.createDocumentFragment();
+          while (child.firstChild) frag.appendChild(child.firstChild);
+          child.replaceWith(frag);
+          walk(node);
+          return;
+        }
+        [...child.attributes].forEach(attr => {
+          const name = attr.name.toLowerCase();
+          if (tag === 'IMG' && name === 'src') {
+            const clean = safeUrl(attr.value);
+            if (clean) child.setAttribute('src', clean);
+            else child.remove();
+            return;
+          }
+          if (tag === 'IMG' && name === 'alt') return;
+          child.removeAttribute(attr.name);
+        });
+        if (tag === 'IMG') {
+          child.setAttribute('loading', 'lazy');
+          if (!child.getAttribute('alt')) child.setAttribute('alt', 'handout image');
+        }
+        walk(child);
+      } else if (child.nodeType === 8) {
+        child.remove();
+      }
+    });
+  };
+  walk(template.content);
+  return template.innerHTML.trim();
+}
+
+function stripHandoutText(rawHtml) {
+  const div = document.createElement('div');
+  div.innerHTML = rawHtml || '';
+  return (div.textContent || '').replace(/\s+/g, ' ').trim();
+}
+
+function formatHandout(command) {
+  const editor = document.getElementById('hd-body');
+  if (!editor || !_handoutEditMode) return;
+  editor.focus();
+  try { document.execCommand(command, false, null); } catch (e) {}
+}
+
+async function uploadHandoutImageToCloudinary(file, handoutId) {
+  const cfg = getCloudinaryJournalConfig();
+  if (!cfg) throw new Error('Cloudinary 설정이 비어 있어요.');
+  const form = new FormData();
+  form.append('file', file, `handout-${handoutId || Date.now()}-${Date.now()}.png`);
+  form.append('upload_preset', cfg.unsignedPreset);
+  form.append('folder', `itc/handouts/${St.roomCode || 'common'}`);
+  const res = await fetch(`https://api.cloudinary.com/v1_1/${cfg.cloudName}/image/upload`, { method:'POST', body: form });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.secure_url) throw new Error(data?.error?.message || '핸드아웃 이미지 업로드 실패');
+  return data.secure_url;
+}
+
+function renderHandoutAccessList(selectedIds) {
+  const wrap = document.getElementById('hd-access-list');
+  if (!wrap) return;
+  wrap.innerHTML = '';
+  const players = Object.entries(St.players || {}).filter(([uid]) => uid !== St.myId);
+  if (!players.length) {
+    wrap.innerHTML = '<div style="font-size:11px;color:var(--muted)">플레이어가 입장하면 여기에서 열람 권한을 줄 수 있어요.</div>';
+    return;
+  }
+  players.forEach(([uid, player]) => {
+    const chip = document.createElement('label');
+    const on = selectedIds.includes(uid);
+    chip.className = 'hd-access-chip' + (on ? ' on' : '');
+    chip.innerHTML = `<input type="checkbox" value="${esc(uid)}" ${on ? 'checked' : ''}><span>${esc(player?.name || '플레이어')}</span>`;
+    const input = chip.querySelector('input');
+    input.onchange = () => chip.classList.toggle('on', input.checked);
+    wrap.appendChild(chip);
+  });
+}
+
+function getSelectedHandoutReaders() {
+  return [...document.querySelectorAll('#hd-access-list input[type="checkbox"]:checked')].map(el => el.value);
+}
+
+function renderHandoutList() {
+  const container = document.getElementById('handout-list-container');
+  const empty = document.getElementById('handout-empty');
+  if (!container) return;
+  container.querySelectorAll('.handout-item').forEach(el => el.remove());
+  if (!St.roomCode) {
+    if (empty) {
+      empty.style.display = 'block';
+      empty.textContent = '방에 입장하면 핸드아웃을 볼 수 있어요.';
+    }
+    return;
+  }
+  const list = loadHandouts();
+  if (!list.length) {
+    if (empty) {
+      empty.style.display = 'block';
+      empty.innerHTML = St.isGM
+        ? '핸드아웃이 없어요.<br>위 + 버튼으로 새 핸드아웃을 만들어보세요.'
+        : '아직 열람 가능한 핸드아웃이 없어요.';
+    }
+    return;
+  }
+  if (empty) empty.style.display = 'none';
+  list.slice().sort((a,b) => (b.updatedAt || 0) - (a.updatedAt || 0)).forEach(h => {
+    const div = document.createElement('div');
+    div.className = 'handout-item';
+    div.onclick = () => openHandoutEditor(h.id);
+    const d = new Date(h.updatedAt || h.createdAt || Date.now());
+    const ds = `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+    const plain = stripHandoutText(h.contentHtml || '');
+    const preview = plain.slice(0, 64) || '내용 없음';
+    const canManage = St.isGM || h.ownerId === St.myId;
+    const allowedNames = (h.allowedTo || []).map(uid => St.players?.[uid]?.name).filter(Boolean);
+    div.innerHTML = `
+      <div class="handout-icon">📄</div>
+      <div class="handout-item-body">
+        <div class="handout-item-title">${esc(h.title || '무제 핸드아웃')}${canManage ? '<span class="handout-item-badge">편집 가능</span>' : ''}</div>
+        <div class="handout-item-preview">${esc(preview)}${plain.length > 64 ? '…' : ''}</div>
+        <div class="handout-item-meta"><span>${allowedNames.length ? '열람: ' + esc(allowedNames.join(', ')) : 'GM 전용'}</span><span>${ds}</span></div>
+      </div>`;
+    container.appendChild(div);
+  });
+}
+
+function setHandoutEditorMode(canEdit) {
+  _handoutEditMode = !!canEdit;
+  const drawer = document.getElementById('handout-drawer');
+  const titleEl = document.getElementById('hd-title');
+  const toolbar = document.getElementById('hd-toolbar');
+  const access = document.getElementById('hd-access-bar');
+  const editor = document.getElementById('hd-body');
+  const viewer = document.getElementById('hd-body-view');
+  if (!drawer || !titleEl || !editor || !viewer) return;
+  drawer.classList.toggle('hd-readonly', !canEdit);
+  titleEl.readOnly = !canEdit;
+  editor.contentEditable = canEdit ? 'true' : 'false';
+  toolbar.style.display = canEdit ? '' : 'none';
+  access.style.display = canEdit ? '' : 'none';
+  viewer.style.display = canEdit ? 'none' : 'block';
+}
+
+function openHandoutEditor(id) {
+  const titleEl = document.getElementById('hd-title');
+  const editorEl = document.getElementById('hd-body');
+  const viewEl = document.getElementById('hd-body-view');
+  const metaEl = document.getElementById('hd-meta-date');
+  const hintEl = document.getElementById('hd-footer-hint');
+  if (!titleEl || !editorEl || !viewEl) return;
+  if (id) {
+    const handout = _allHandouts.find(h => h.id === id);
+    if (!handout) return;
+    const canRead = St.isGM || handout.ownerId === St.myId || (Array.isArray(handout.allowedTo) && handout.allowedTo.includes(St.myId));
+    if (!canRead) { showToast('이 핸드아웃을 열람할 권한이 없어요.'); return; }
+    _currentHandoutId = id;
+    titleEl.value = handout.title || '';
+    const safeHtml = sanitizeHandoutHtml(handout.contentHtml || '');
+    editorEl.innerHTML = safeHtml || '';
+    viewEl.innerHTML = safeHtml || '<p style="color:var(--muted)">내용이 없어요.</p>';
+    const d = new Date(handout.updatedAt || handout.createdAt || Date.now());
+    metaEl.textContent = `마지막 수정: ${d.getFullYear()}.${d.getMonth()+1}.${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+    renderHandoutAccessList(handout.allowedTo || []);
+    setHandoutEditorMode(St.isGM || handout.ownerId === St.myId);
+  } else {
+    if (!requireGM()) return;
+    _currentHandoutId = 'h_' + Date.now();
+    titleEl.value = '';
+    editorEl.innerHTML = '';
+    viewEl.innerHTML = '';
+    metaEl.textContent = '새 핸드아웃';
+    renderHandoutAccessList([]);
+    setHandoutEditorMode(true);
+  }
+  if (hintEl) hintEl.textContent = '';
+  document.getElementById('handout-drawer').classList.add('open');
+  setTimeout(() => { if (_handoutEditMode) titleEl.focus(); }, 80);
+}
+
+function createNewHandout() {
+  if (!St.roomCode) { showToast('방에 입장한 상태에서만 핸드아웃을 만들 수 있어요.'); return; }
+  if (!requireGM()) return;
+  openHandoutEditor(null);
+}
+
+function closeHandoutDrawer() {
+  const drawer = document.getElementById('handout-drawer');
+  if (drawer) drawer.classList.remove('open');
+  _currentHandoutId = null;
+  _pendingHandoutImageRestoreRange = null;
+  renderHandoutList();
+}
+
+async function handleHandoutImage(input) {
+  const file = input?.files?.[0];
+  if (!file) return;
+  if (!_handoutEditMode) { input.value = ''; return; }
+  const hint = document.getElementById('hd-footer-hint');
+  try {
+    if (hint) hint.textContent = '이미지 업로드 중...';
+    const url = await uploadHandoutImageToCloudinary(file, _currentHandoutId);
+    const editor = document.getElementById('hd-body');
+    if (!editor) return;
+    editor.focus();
+    try {
+      const sel = window.getSelection();
+      if (_pendingHandoutImageRestoreRange && sel) {
+        sel.removeAllRanges();
+        sel.addRange(_pendingHandoutImageRestoreRange);
+      }
+    } catch (e) {}
+    const html = `<figure><img src="${esc(url)}" alt="handout image"></figure><p><br></p>`;
+    try { document.execCommand('insertHTML', false, html); }
+    catch (e) { editor.insertAdjacentHTML('beforeend', html); }
+    if (hint) hint.textContent = '이미지 추가 완료 ✓';
+    setTimeout(() => {
+      const liveHint = document.getElementById('hd-footer-hint');
+      if (liveHint && liveHint.textContent === '이미지 추가 완료 ✓') liveHint.textContent = '';
+    }, 1500);
+  } catch (err) {
+    console.error('handout image upload failed', err);
+    if (hint) hint.textContent = '';
+    showToast('핸드아웃 이미지 업로드에 실패했어요.');
+  } finally {
+    input.value = '';
+  }
+}
+
+function saveHandoutFromDrawer() {
+  if (!_currentHandoutId || !requireGM()) return;
+  const title = (document.getElementById('hd-title')?.value || '').trim() || '무제 핸드아웃';
+  const rawHtml = document.getElementById('hd-body')?.innerHTML || '';
+  const contentHtml = sanitizeHandoutHtml(rawHtml);
+  const allowedTo = getSelectedHandoutReaders();
+  const existing = _allHandouts.find(h => h.id === _currentHandoutId);
+  if (existing) {
+    existing.title = title;
+    existing.contentHtml = contentHtml;
+    existing.allowedTo = allowedTo;
+    existing.updatedAt = Date.now();
+    saveHandoutFB(existing);
+  } else {
+    saveHandoutFB({
+      id: _currentHandoutId,
+      title,
+      contentHtml,
+      allowedTo,
+      ownerId: St.myId,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+  }
+  const hint = document.getElementById('hd-footer-hint');
+  if (hint) {
+    hint.textContent = '저장됐어요 ✓';
+    setTimeout(() => {
+      const liveHint = document.getElementById('hd-footer-hint');
+      if (liveHint && liveHint.textContent === '저장됐어요 ✓') liveHint.textContent = '';
+    }, 1500);
+  }
+  const d = new Date();
+  const metaEl = document.getElementById('hd-meta-date');
+  if (metaEl) metaEl.textContent = `마지막 수정: ${d.getFullYear()}.${d.getMonth()+1}.${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+  closeHandoutDrawer();
+}
+
+function deleteHandoutFromDrawer() {
+  if (!_currentHandoutId || !requireGM()) return;
+  if (!confirm('이 핸드아웃을 삭제할까요?')) return;
+  deleteHandoutFB(_currentHandoutId);
+  closeHandoutDrawer();
+}
+
+document.addEventListener('selectionchange', () => {
+  const editor = document.getElementById('hd-body');
+  const drawer = document.getElementById('handout-drawer');
+  if (!editor || !drawer || !drawer.classList.contains('open') || !_handoutEditMode) return;
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0) return;
+  const range = sel.getRangeAt(0);
+  if (!editor.contains(range.commonAncestorContainer)) return;
+  _pendingHandoutImageRestoreRange = range.cloneRange();
+});
 
 function loadJournals() {
   if (St.isGM) return _allJournals.slice();

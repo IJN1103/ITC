@@ -413,7 +413,7 @@ window._FB = {
       <div class="right-tabs">
         <button class="rtab on" id="rtab-chat" onclick="switchRightTab('chat')">채팅</button>
         <button class="rtab" id="rtab-casual" onclick="switchRightTab('casual')">잡담</button>
-        <button class="rtab" id="rtab-journal" onclick="switchRightTab('journal')">저널</button>
+        <button class="rtab" id="rtab-journal" onclick="switchRightTab('journal')">문서</button>
       </div>
       <div class="chat-action-bar" id="chat-action-bar">
         <button class="chat-popout-btn" id="chat-popout-btn" onclick="popoutChat()" title="채팅을 새 탭으로 분리">⤢</button>
@@ -492,14 +492,27 @@ window._FB = {
         </div>
       </div>
 
-      <!-- 저널 패널 -->
+      <!-- 문서 패널 -->
       <div class="right-pane" id="rpane-journal">
-        <div class="journal-pane" id="journal-list-view">
-          <div class="journal-add-bar" style="border-bottom:1px solid var(--border);border-top:none;padding:6px 8px">
-            <button class="journal-add-btn" onclick="createNewJournal()" style="padding:5px;font-size:16px;letter-spacing:0" title="새 저널 만들기">+</button>
+        <div class="docs-pane" id="journal-list-view">
+          <div class="docs-section">
+            <div class="docs-section-head">
+              <div class="docs-section-title">저널</div>
+              <button class="journal-add-btn" onclick="createNewJournal()" title="새 저널 만들기">+</button>
+            </div>
+            <div class="journal-list" id="journal-list-container">
+              <div class="journal-empty" id="journal-empty">저널이 없어요.<br>위 + 버튼으로 새 저널을 만들어보세요.</div>
+            </div>
           </div>
-          <div class="journal-list" id="journal-list-container">
-            <div class="journal-empty" id="journal-empty">저널이 없어요.<br>위 + 버튼으로 새 저널을 만들어보세요.</div>
+
+          <div class="docs-section handout-section">
+            <div class="docs-section-head">
+              <div class="docs-section-title">핸드아웃</div>
+              <button class="journal-add-btn gm-only" onclick="createNewHandout()" title="새 핸드아웃 만들기">+</button>
+            </div>
+            <div class="handout-list" id="handout-list-container">
+              <div class="journal-empty" id="handout-empty">핸드아웃이 없어요.<br>GM이 + 버튼으로 새 핸드아웃을 만들 수 있어요.</div>
+            </div>
           </div>
         </div>
       </div>
@@ -761,6 +774,42 @@ window._FB = {
       <button class="jd-save-btn" onclick="saveJournalFromDrawer()">저장</button>
     </div>
   </div>
+
+</div>
+
+<!-- 핸드아웃 드로어 -->
+<div id="handout-drawer">
+  <div class="jd-backdrop" onclick="closeHandoutDrawer()"></div>
+  <div class="jd-panel hd-panel">
+    <div class="jd-header hd-header">
+      <button class="jd-close" onclick="closeHandoutDrawer()" title="닫기">‹</button>
+      <input class="jd-title-input" id="hd-title" placeholder="핸드아웃 제목">
+      <button class="jd-del-btn" id="hd-delete-btn" onclick="deleteHandoutFromDrawer()" title="삭제">🗑 삭제</button>
+    </div>
+    <div class="jd-meta hd-meta">
+      <span id="hd-meta-date">—</span>
+      <span id="hd-save-hint" style="color:var(--muted)"></span>
+    </div>
+    <div class="hd-access-bar" id="hd-access-bar" style="display:none">
+      <div class="hd-access-label">열람 가능 플레이어</div>
+      <div class="hd-access-list" id="hd-access-list"></div>
+    </div>
+    <div class="hd-toolbar" id="hd-toolbar">
+      <button class="hd-tool-btn" type="button" onclick="formatHandout('bold')"><b>B</b></button>
+      <button class="hd-tool-btn" type="button" onclick="formatHandout('italic')"><i>I</i></button>
+      <button class="hd-tool-btn" type="button" onclick="formatHandout('insertUnorderedList')">• 목록</button>
+      <button class="hd-tool-btn" type="button" onclick="document.getElementById('hd-image-input').click()">이미지</button>
+      <input type="file" id="hd-image-input" accept="image/*" style="display:none" onchange="handleHandoutImage(this)">
+    </div>
+    <div class="hd-body-wrap">
+      <div class="hd-body-editor" id="hd-body" contenteditable="true" data-placeholder="핸드아웃 내용을 입력하세요. 텍스트와 이미지를 함께 넣을 수 있어요."></div>
+      <div class="hd-body-view" id="hd-body-view" style="display:none"></div>
+    </div>
+    <div class="jd-footer hd-footer">
+      <span class="jd-save-hint" id="hd-footer-hint"></span>
+      <button class="jd-save-btn" id="hd-save-btn" onclick="saveHandoutFromDrawer()">저장</button>
+    </div>
+  </div>
 </div>
 
 <div class="overlay" id="modal-bgm">
@@ -815,8 +864,7 @@ window._FB = {
       <button class="te-close" onclick="closeTokenEdit()">✕</button>
     </div>
     <div class="te-body" id="te-body">
-      <div class="te-section" style="gap:8px">
-        <div id="te-owner-bar" style="display:none;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--s2);font-size:11px;color:var(--text)"></div>
+      <div class="te-section">
         <div class="te-row" style="gap:10px;align-items:flex-end">
           <div class="te-token-img-wrap" onclick="document.getElementById('te-img-input').click()" title="토큰 이미지 변경">
             <div class="te-token-img" id="te-token-img"><span id="te-token-img-text">📷</span></div>
@@ -1010,16 +1058,6 @@ window._FB = {
           <span>원형</span>
         </button>
       </div>
-    </div>
-
-    <div style="border-top:1px solid var(--border);padding-top:12px">
-      <div style="font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);margin-bottom:8px">채팅 글자 크기</div>
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
-        <span style="font-size:11px;color:var(--muted)">작게</span>
-        <input id="chat-font-size-slider" type="range" min="12" max="20" step="0.5" value="14.5" style="flex:1;accent-color:var(--accent)" oninput="setChatFontSize(this.value)">
-        <span id="chat-font-size-value" style="font-size:11px;color:var(--dim);width:42px;text-align:right">14.5px</span>
-      </div>
-      
     </div>
 
     <div id="gm-player-mgmt" class="gm-only" style="display:none;border-top:1px solid var(--border);padding-top:12px">

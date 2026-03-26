@@ -16,6 +16,7 @@ const St = {
 
 /* 권한 체크 헬퍼 */
 var _allJournals = [];
+var _allHandouts = [];
 function requireGM(action) {
   if (!St.isGM) {
     showToast('GM만 사용할 수 있는 기능이에요.');
@@ -111,7 +112,10 @@ function switchRightTab(tab) {
     if (whisperWrap) whisperWrap.style.display = '';
   }
   if (typeof refreshChatActionButtons === 'function') refreshChatActionButtons();
-  if (tab === 'journal') renderJournalList();
+  if (tab === 'journal') {
+    renderJournalList();
+    if (typeof renderHandoutList === 'function') renderHandoutList();
+  }
 }
 
 function esc(str) {

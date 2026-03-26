@@ -173,13 +173,13 @@ function setupFirebaseListeners() {
 
   const addCasualRecord = (key, m) => {
     if (!m || _processedCasualKeys.has(key)) return;
-    appendCasualMsg(m.name, m.text, m.uid, m.time, key, m.nameColor || null);
+    appendCasualMsg(m.name, m.text, m.uid, m.time, key);
     _processedCasualKeys.add(key);
   };
 
   const changeCasualRecord = (key, m) => {
     if (!m) return;
-    replaceCasualMsg(m.name, m.text, m.uid, m.time, key, m.nameColor || null);
+    replaceCasualMsg(m.name, m.text, m.uid, m.time, key);
     _processedCasualKeys.add(key);
   };
 
@@ -214,6 +214,13 @@ function setupFirebaseListeners() {
     Object.entries(data).forEach(([id, j]) => { j.id = id; _allJournals.push(j); });
     renderJournalList();
     saRefreshToolbar();
+  }));
+
+  trackFirebaseListener(onValue(ref(db, `rooms/${code}/handouts`), snap => {
+    _allHandouts = [];
+    const data = snap.val() || {};
+    Object.entries(data).forEach(([id, h]) => { h.id = id; _allHandouts.push(h); });
+    if (typeof renderHandoutList === 'function') renderHandoutList();
   }));
 
   trackFirebaseListener(onValue(ref(db, `rooms/${code}/bgm`), snap => {
@@ -292,6 +299,7 @@ async function enterGame() {
   loadCasualNick();
   loadMyNameColor();
   fetchJournalsFromFB();
+  if (typeof fetchHandoutsFromFB === 'function') fetchHandoutsFromFB();
 }
 
 function addPlayerChip(id, name, isMe, role, online) {
