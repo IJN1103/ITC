@@ -482,12 +482,52 @@ function positionTokenMemoBubble(tokenEl) {
 }
 
 
-function getTokenOwnerDisplay(token) {
-  if (!token?.ownerId) return '없음';
+function ensureTokenOwner(token, { persist = false } = {}) {
+  if (!token) return token;
+
   const players = St.players || {};
-  const owner = players[token.ownerId];
-  const ownerName = token.ownerName || owner?.name || '알 수 없음';
-  return token.ownerId === St.myId ? `${ownerName} (나)` : ownerName;
+  const fallbackOwnerId = String(token.ownerId || token.createdBy || St.myId || '').trim();
+  if (!fallbackOwnerId) return token;
+
+  const fallbackOwnerName = String(
+    token.ownerName ||
+    token.createdByName ||
+    players[fallbackOwnerId]?.name ||
+    (fallbackOwnerId === St.myId ? (St.myName || '') : '')
+  ).trim();
+
+  const ownerChanged = token.ownerId !== fallbackOwnerId;
+  const ownerNameChanged = !String(token.ownerName || '').trim() && !!fallbackOwnerName;
+
+  token.ownerId = fallbackOwnerId;
+  if (fallbackOwnerName) token.ownerName = fallbackOwnerName;
+
+  if (
+    persist &&
+    window._FB?.CONFIGURED &&
+    token.id &&
+    St.roomCode &&
+    (ownerChanged || ownerNameChanged)
+  ) {
+    const { db, ref, update } = window._FB;
+    update(ref(db, `rooms/${St.roomCode}/tokens/${token.id}`), {
+      ownerId: token.ownerId,
+      ownerName: token.ownerName || '',
+    }).catch((err) => {
+      console.error('token owner backfill failed', err);
+    });
+  }
+
+  return token;
+}
+
+function getTokenOwnerDisplay(token) {
+  const normalized = ensureTokenOwner(token);
+  if (!normalized?.ownerId) return '없음';
+  const players = St.players || {};
+  const owner = players[normalized.ownerId];
+  const ownerName = normalized.ownerName || owner?.name || '알 수 없음';
+  return normalized.ownerId === St.myId ? `${ownerName} (나)` : ownerName;
 }
 
 function refreshTokenOwnerBar(token) {
@@ -540,6 +580,7 @@ function renderAllTokens(tokens) {
   hideTokenMemoBubble();
   const inner = document.getElementById('map-inner');
   if (inner) inner.querySelectorAll('.map-token').forEach(t => t.remove());
+  Object.values(tokens || {}).forEach(t => ensureTokenOwner(t, { persist: true }));
   syncMultiTokenSelectionWithTokens(tokens);
   Object.values(tokens).forEach(t => createTokenEl(t));
   updateMultiTokenSelectionUI();
@@ -758,10 +799,7 @@ function openTokenEdit(tokenId) {
   const t = St.tokens[tokenId];
   if (!t) return;
 
-  if (!t.ownerId && St.myId) {
-    t.ownerId = St.myId;
-    t.ownerName = St.myName || '';
-  }
+  ensureTokenOwner(t, { persist: true });
   refreshTokenOwnerBar(t);
 
   document.getElementById('te-name').value = t.name || '';
@@ -944,10 +982,7 @@ async function saveTokenEdit() {
 
   t.name = document.getElementById('te-name').value.trim() || '?';
   t.initiative = parseFloat(document.getElementById('te-initiative').value) || 0;
-  if (!t.ownerId && St.myId) {
-    t.ownerId = St.myId;
-    t.ownerName = St.myName || '';
-  }
+  ensureTokenOwner(t, { persist: false });
   t.memo = document.getElementById('te-memo').value;
   t.tokenSize = parseInt(document.getElementById('te-size').value) || 1;
   t.x = parseFloat(document.getElementById('te-x').value) || t.x;
