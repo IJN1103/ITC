@@ -490,7 +490,7 @@ function refreshTokenOwnerBar(token) {
     return;
   }
   bar.style.display = '';
-  bar.innerHTML = `<span class="te-owner-bar-label">토큰 소유자</span><span class="te-owner-bar-name">${esc(getTokenOwnerDisplay(token))}</span>`;
+  bar.innerHTML = `<span style="display:block;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:4px">토큰 소유자</span><span>${esc(getTokenOwnerDisplay(token))}</span>`;
 }
 
 function showTokenMemoBubble(tokenEl, memo, tokenId) {
@@ -527,87 +527,6 @@ function addToken() {
   document.getElementById('token-name').value = '';
 }
 
-function getTokenStatusPanelMount() {
-  return document.getElementById('map-status-panel');
-}
-
-function getTokenStatusPreviewImage(token) {
-  if (Array.isArray(token?.standings)) {
-    const firstImg = token.standings.find((s) => s && s.img)?.img;
-    if (firstImg) return firstImg;
-  }
-  return token?.tokenImg || '';
-}
-
-function hasVisibleTokenInitiative(token) {
-  if (token?.initiative === '' || token?.initiative == null) return false;
-  const initiative = Number(token.initiative);
-  return Number.isFinite(initiative) && initiative >= 0;
-}
-
-function getVisibleTokenStatuses(token) {
-  return (Array.isArray(token?.statuses) ? token.statuses : []).filter((s) => String(s?.label || '').trim());
-}
-
-function shouldRenderTokenStatusCard(token) {
-  if (!token || token.hideList) return false;
-  if (!hasVisibleTokenInitiative(token)) return false;
-  return getVisibleTokenStatuses(token).length > 0;
-}
-
-function renderTokenStatusPanel(tokens) {
-  const mount = getTokenStatusPanelMount();
-  if (!mount) return;
-  const list = Object.values(tokens || {})
-    .filter(shouldRenderTokenStatusCard)
-    .sort((a, b) => (Number(b?.initiative) || 0) - (Number(a?.initiative) || 0));
-
-  if (!list.length) {
-    mount.innerHTML = '';
-    mount.style.display = 'none';
-    return;
-  }
-
-  mount.style.display = '';
-  mount.innerHTML = '';
-
-  list.forEach((token) => {
-    const card = document.createElement('div');
-    card.className = 'map-status-card';
-
-    const head = document.createElement('div');
-    head.className = 'map-status-head';
-
-    const avatar = document.createElement('div');
-    avatar.className = 'map-status-avatar';
-    const avatarImg = getTokenStatusPreviewImage(token);
-    if (avatarImg) avatar.innerHTML = `<img src="${esc(avatarImg)}" alt="">`;
-    else avatar.textContent = String(token?.name || '?').trim().slice(0, 1) || '?';
-
-    const init = document.createElement('div');
-    init.className = 'map-status-init';
-    init.textContent = token.hideStatus ? '??' : String(Number(token.initiative) || 0);
-
-    head.appendChild(avatar);
-    head.appendChild(init);
-
-    const body = document.createElement('div');
-    body.className = 'map-status-grid';
-    getVisibleTokenStatuses(token).forEach((status) => {
-      const item = document.createElement('div');
-      item.className = 'map-status-item';
-      const label = token.hideStatus ? '??' : String(status.label || '').trim();
-      const value = token.hideStatus ? '??' : `${Number(status.cur) || 0}/${Number(status.max) || 0}`;
-      item.innerHTML = `<span class="map-status-item-label">${esc(label)}</span><span class="map-status-item-value">${esc(value)}</span>`;
-      body.appendChild(item);
-    });
-
-    card.appendChild(head);
-    card.appendChild(body);
-    mount.appendChild(card);
-  });
-}
-
 function renderAllTokens(tokens) {
   hideTokenMemoBubble();
   const inner = document.getElementById('map-inner');
@@ -615,7 +534,6 @@ function renderAllTokens(tokens) {
   syncMultiTokenSelectionWithTokens(tokens);
   Object.values(tokens).forEach(t => createTokenEl(t));
   updateMultiTokenSelectionUI();
-  renderTokenStatusPanel(tokens);
 }
 
 function createTokenEl(t) {
@@ -650,6 +568,17 @@ function createTokenEl(t) {
   } else {
     el.textContent = t.name;
     if (sz > 1) { const px = 36 * sz; el.style.width = px+'px'; el.style.height = px+'px'; el.style.fontSize = Math.max(9, 11*sz)+'px'; }
+  }
+  if (t.statuses && t.statuses.length > 0) {
+    const hp = t.statuses[0];
+    if (hp.max > 0) {
+      const pct = Math.max(0, Math.min(100, (hp.cur / hp.max) * 100));
+      const bar = document.createElement('div'); bar.className = 'token-hp-bar';
+      const fill = document.createElement('div'); fill.className = 'token-hp-fill'; fill.style.width = pct + '%';
+      if (pct <= 25) fill.style.background = 'var(--red)';
+      else if (pct <= 50) fill.style.background = '#f0ad4e';
+      bar.appendChild(fill); el.appendChild(bar);
+    }
   }
   if (_multiSelectedTokenIds.includes(String(t.id))) el.classList.add('multi-selected');
   const memoText = String(t.memo || '').trim();
@@ -827,11 +756,11 @@ function openTokenEdit(tokenId) {
   refreshTokenOwnerBar(t);
 
   document.getElementById('te-name').value = t.name || '';
-  document.getElementById('te-initiative').value = (t.initiative === '' || t.initiative == null) ? '' : t.initiative;
+  document.getElementById('te-initiative').value = t.initiative || 0;
   document.getElementById('te-memo').value = t.memo || '';
   document.getElementById('te-size').value = t.tokenSize || 1;
-  document.getElementById('te-x').value = Math.round(((typeof t.x === 'number' ? t.x : 0)) * 10) / 10;
-  document.getElementById('te-y').value = Math.round(((typeof t.y === 'number' ? t.y : 0)) * 10) / 10;
+  document.getElementById('te-x').value = Math.round((t.x || 0) * 10) / 10;
+  document.getElementById('te-y').value = Math.round((t.y || 0) * 10) / 10;
   document.getElementById('te-url').value = t.refUrl || '';
   document.getElementById('te-chatpal').value = t.chatPalette || '';
   document.getElementById('te-hide-status').checked = t.hideStatus || false;
@@ -975,18 +904,9 @@ function teAddStatus(label, cur, max) {
   const row = document.createElement('div');
   row.className = 'te-status-row';
   row.innerHTML = `
-    <div class="te-status-cell">
-      <label>라벨</label>
-      <input placeholder="예: HP" value="${esc(label||'')}">
-    </div>
-    <div class="te-status-cell">
-      <label>현재값</label>
-      <input type="number" placeholder="0" value="${cur!=null?cur:''}">
-    </div>
-    <div class="te-status-cell">
-      <label>최대값</label>
-      <input type="number" placeholder="0" value="${max!=null?max:''}">
-    </div>`;
+    <input style="flex:1" placeholder="라벨" value="${esc(label||'')}">
+    <input style="width:55px" type="number" placeholder="현재값" value="${cur!=null?cur:''}">
+    <input style="width:55px" type="number" placeholder="최대값" value="${max!=null?max:''}">`;
   list.appendChild(row);
 }
 function teRemoveStatus() {
@@ -1008,33 +928,21 @@ function teRemoveParam() {
   if (list.lastChild) list.removeChild(list.lastChild);
 }
 
-function readNumericTokenEditValue(el, fallback, axis = null) {
-  if (!el) return fallback;
-  const raw = String(el.value ?? '').trim();
-  if (raw === '') return fallback;
-  const parsed = Number(raw);
-  if (!Number.isFinite(parsed)) return fallback;
-  if (axis === 'x' || axis === 'y') return clampTokenStoredPercent(parsed, axis);
-  return parsed;
-}
-
 async function saveTokenEdit() {
   if (!_teTokenId) return;
   const t = St.tokens[_teTokenId];
   if (!t) return;
 
   t.name = document.getElementById('te-name').value.trim() || '?';
-  const initiativeInput = document.getElementById('te-initiative');
-  const initiativeRaw = String(initiativeInput?.value ?? '').trim();
-  t.initiative = initiativeRaw === '' ? null : readNumericTokenEditValue(initiativeInput, typeof t.initiative === 'number' ? t.initiative : 0);
+  t.initiative = parseFloat(document.getElementById('te-initiative').value) || 0;
   if (!t.ownerId && St.myId) {
     t.ownerId = St.myId;
     t.ownerName = St.myName || '';
   }
   t.memo = document.getElementById('te-memo').value;
   t.tokenSize = parseInt(document.getElementById('te-size').value) || 1;
-  t.x = readNumericTokenEditValue(document.getElementById('te-x'), typeof t.x === 'number' ? t.x : 0, 'x');
-  t.y = readNumericTokenEditValue(document.getElementById('te-y'), typeof t.y === 'number' ? t.y : 0, 'y');
+  t.x = parseFloat(document.getElementById('te-x').value) || t.x;
+  t.y = parseFloat(document.getElementById('te-y').value) || t.y;
   t.refUrl = document.getElementById('te-url').value.trim();
   t.chatPalette = document.getElementById('te-chatpal').value;
   t.hideStatus = document.getElementById('te-hide-status').checked;
@@ -1096,11 +1004,11 @@ async function saveTokenEdit() {
     if (label) t.params.push({ label, value });
   });
 
-  renderAllTokens(St.tokens);
-
   if (window._FB?.CONFIGURED) {
     const { db, ref, set } = window._FB;
     set(ref(db, `rooms/${St.roomCode}/tokens/${_teTokenId}`), t);
+  } else {
+    renderAllTokens(St.tokens);
   }
 
   if (hint) { hint.textContent = '저장됐어요 ✓'; setTimeout(() => { if(hint) hint.textContent=''; }, 2000); }
