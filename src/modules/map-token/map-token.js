@@ -59,6 +59,135 @@ function syncRenderedTokenPositions() {
 }
 
 
+function getStatusPanelTokens(tokens = St.tokens) {
+  return Object.values(tokens || {}).filter(shouldRenderTokenStatusCard).sort((a, b) => {
+    const aInit = getTokenStatusInitiativeNumber(a);
+    const bInit = getTokenStatusInitiativeNumber(b);
+    if (bInit !== aInit) return bInit - aInit;
+    return String(a.name || '').localeCompare(String(b.name || ''), 'ko');
+  });
+}
+
+function getTokenStatusInitiativeNumber(token) {
+  const value = Number(token?.initiative);
+  return Number.isFinite(value) ? value : Number.NEGATIVE_INFINITY;
+}
+
+function hasTokenInitiativeForStatus(token) {
+  if (!token) return false;
+  if (token.initiativeEnabled === false) return false;
+  const raw = Number(token.initiative);
+  if (!Number.isFinite(raw)) return false;
+  if (token.initiativeEnabled === true) return true;
+  return raw !== 0;
+}
+
+function hasRenderableStatuses(token) {
+  return Array.isArray(token?.statuses) && token.statuses.some((status) => String(status?.label || '').trim());
+}
+
+function shouldRenderTokenStatusCard(token) {
+  if (!token || token.hideList) return false;
+  if (!hasTokenInitiativeForStatus(token)) return false;
+  if (!hasRenderableStatuses(token)) return false;
+  return true;
+}
+
+function getTokenStatusImage(token) {
+  const standingImg = Array.isArray(token?.standings) ? token.standings.find((standing) => standing?.img)?.img : '';
+  return standingImg || token?.tokenImg || '';
+}
+
+function buildStatusUnknownRow() {
+  const row = document.createElement('div');
+  row.className = 'map-status-row';
+  const label = document.createElement('span');
+  label.className = 'map-status-label';
+  label.textContent = '??';
+  const value = document.createElement('span');
+  value.className = 'map-status-value';
+  value.textContent = '??';
+  row.append(label, value);
+  return row;
+}
+
+function formatTokenStatusValue(status) {
+  const cur = Number(status?.cur);
+  const max = Number(status?.max);
+  const curText = Number.isFinite(cur) ? String(cur) : '0';
+  if (Number.isFinite(max) && max > 0) return `${curText}/${max}`;
+  return curText;
+}
+
+function createTokenStatusCard(token) {
+  const card = document.createElement('article');
+  card.className = 'map-status-card';
+
+  const avatar = document.createElement('div');
+  avatar.className = 'map-status-avatar';
+
+  const avatarFrame = document.createElement('div');
+  avatarFrame.className = 'map-status-avatar-frame';
+  const avatarImg = getTokenStatusImage(token);
+  if (avatarImg) {
+    const img = document.createElement('img');
+    img.src = avatarImg;
+    img.alt = token.name || '토큰';
+    avatarFrame.appendChild(img);
+  } else {
+    avatarFrame.textContent = String(token.name || '?').trim().slice(0, 2) || '?';
+  }
+
+  const initiative = document.createElement('div');
+  initiative.className = 'map-status-init';
+  initiative.textContent = token.hideStatus ? '??' : String(Number(token.initiative));
+
+  avatar.append(avatarFrame, initiative);
+
+  const body = document.createElement('div');
+  body.className = 'map-status-body';
+
+  if (token.hideStatus) {
+    (token.statuses || []).forEach((status) => {
+      if (!String(status?.label || '').trim()) return;
+      body.appendChild(buildStatusUnknownRow());
+    });
+  } else {
+    (token.statuses || []).forEach((status) => {
+      const labelText = String(status?.label || '').trim();
+      if (!labelText) return;
+      const row = document.createElement('div');
+      row.className = 'map-status-row';
+      const label = document.createElement('span');
+      label.className = 'map-status-label';
+      label.textContent = labelText;
+      const value = document.createElement('span');
+      value.className = 'map-status-value';
+      value.textContent = formatTokenStatusValue(status);
+      row.append(label, value);
+      body.appendChild(row);
+    });
+  }
+
+  card.append(avatar, body);
+  return card;
+}
+
+function renderMapStatusPanel(tokens = St.tokens) {
+  const panel = document.getElementById('map-status-panel');
+  if (!panel) return;
+  const visibleTokens = getStatusPanelTokens(tokens);
+  panel.innerHTML = '';
+  panel.style.display = visibleTokens.length ? '' : 'none';
+  if (!visibleTokens.length) return;
+  const grid = document.createElement('div');
+  grid.className = 'map-status-grid';
+  visibleTokens.forEach((token) => {
+    grid.appendChild(createTokenStatusCard(token));
+  });
+  panel.appendChild(grid);
+}
+
 let _teTokenImgBlob = null;
 
 function getCloudinaryConfigForToken() {
@@ -564,7 +693,6 @@ function addToken() {
     ownerName: St.myName || '',
     createdBy: St.myId || '',
     createdByName: St.myName || '',
-    initiativeEnabled: false,
   };
   if (window._FB?.CONFIGURED) {
     const { db, ref, set } = window._FB;
@@ -572,82 +700,6 @@ function addToken() {
   } else { St.tokens[id] = token; renderAllTokens(St.tokens); }
   closeModal('modal-token');
   document.getElementById('token-name').value = '';
-}
-
-function getTokenStandingThumb(token) {
-  if (!token) return '';
-  const firstStanding = Array.isArray(token.standings) ? token.standings.find((item) => item?.img) : null;
-  return firstStanding?.img || token.tokenImg || '';
-}
-
-function getTokenVisibleStatuses(token) {
-  return (Array.isArray(token?.statuses) ? token.statuses : []).filter((item) => {
-    const label = String(item?.label || '').trim();
-    return !!label;
-  });
-}
-
-function hasTokenInitiativeForStatus(token) {
-  if (!token) return false;
-  if (token.initiativeEnabled === true) return true;
-  if (token.initiativeEnabled === false) return false;
-  return Number.isFinite(Number(token.initiative)) && Number(token.initiative) > 0;
-}
-
-function shouldShowTokenStatusCard(token) {
-  if (!token || token.hideList) return false;
-  if (!hasTokenInitiativeForStatus(token)) return false;
-  if (getTokenVisibleStatuses(token).length === 0) return false;
-  return true;
-}
-
-function formatTokenStatusValue(status, masked) {
-  if (masked) return '??';
-  const cur = Number.isFinite(Number(status?.cur)) ? Number(status.cur) : 0;
-  const max = Number.isFinite(Number(status?.max)) ? Number(status.max) : 0;
-  return `${cur}/${max}`;
-}
-
-function renderTokenStatusPanel(tokens = St.tokens) {
-  const panel = document.getElementById('map-status-panel');
-  if (!panel) return;
-  const tokenList = Object.values(tokens || {}).filter(shouldShowTokenStatusCard);
-  tokenList.sort((a, b) => {
-    const ai = Number.isFinite(Number(a?.initiative)) ? Number(a.initiative) : -Infinity;
-    const bi = Number.isFinite(Number(b?.initiative)) ? Number(b.initiative) : -Infinity;
-    if (bi !== ai) return bi - ai;
-    return String(a?.name || '').localeCompare(String(b?.name || ''), 'ko');
-  });
-  if (tokenList.length === 0) {
-    panel.innerHTML = '';
-    panel.style.display = 'none';
-    return;
-  }
-  panel.style.display = 'flex';
-  panel.innerHTML = tokenList.map((token) => {
-    const masked = !!token.hideStatus;
-    const initiativeText = masked ? '??' : esc(String(Number(token.initiative)));
-    const avatar = getTokenStandingThumb(token);
-    const avatarHtml = avatar
-      ? `<img src="${esc(avatar)}" alt="">`
-      : `<span class="map-status-avatar-empty">${esc((token.name || '?').slice(0, 1).toUpperCase())}</span>`;
-    const rows = getTokenVisibleStatuses(token).map((status) => {
-      const labelText = masked ? '??' : status.label;
-      return `
-      <div class="map-status-row">
-        <div class="map-status-label">${esc(labelText)}</div>
-        <div class="map-status-value">${esc(formatTokenStatusValue(status, masked))}</div>
-      </div>`;
-    }).join('');
-    return `
-      <div class="map-status-card${masked ? ' map-status-mask' : ''}" data-token-id="${esc(String(token.id || ''))}">
-        <div class="map-status-avatar-wrap">
-          <div class="map-status-avatar">${avatarHtml}</div>
-          <div class="map-status-initiative${masked ? ' is-masked' : ''}">${initiativeText}</div>
-        </div>
-        <div class="map-status-body">${rows}</div>
-      </div>`;
-  }).join('');
 }
 
 function renderAllTokens(tokens) {
@@ -658,7 +710,7 @@ function renderAllTokens(tokens) {
   syncMultiTokenSelectionWithTokens(tokens);
   Object.values(tokens).forEach(t => createTokenEl(t));
   updateMultiTokenSelectionUI();
-  renderTokenStatusPanel(tokens);
+  renderMapStatusPanel(tokens);
 }
 
 function createTokenEl(t) {
@@ -693,17 +745,6 @@ function createTokenEl(t) {
   } else {
     el.textContent = t.name;
     if (sz > 1) { const px = 36 * sz; el.style.width = px+'px'; el.style.height = px+'px'; el.style.fontSize = Math.max(9, 11*sz)+'px'; }
-  }
-  if (t.statuses && t.statuses.length > 0) {
-    const hp = t.statuses[0];
-    if (hp.max > 0) {
-      const pct = Math.max(0, Math.min(100, (hp.cur / hp.max) * 100));
-      const bar = document.createElement('div'); bar.className = 'token-hp-bar';
-      const fill = document.createElement('div'); fill.className = 'token-hp-fill'; fill.style.width = pct + '%';
-      if (pct <= 25) fill.style.background = 'var(--red)';
-      else if (pct <= 50) fill.style.background = '#f0ad4e';
-      bar.appendChild(fill); el.appendChild(bar);
-    }
   }
   if (_multiSelectedTokenIds.includes(String(t.id))) el.classList.add('multi-selected');
   const memoText = String(t.memo || '').trim();
@@ -771,7 +812,6 @@ function removeToken(tokenId) {
   } else {
     delete St.tokens[tokenId];
     syncMultiTokenSelectionWithTokens(St.tokens);
-    renderTokenStatusPanel(St.tokens);
   }
 }
 
@@ -859,10 +899,7 @@ function tokCtxAction(action) {
       if (window._FB?.CONFIGURED) {
         const { db, ref, remove } = window._FB;
         remove(ref(db, `rooms/${St.roomCode}/tokens/${id}`));
-      } else {
-        delete St.tokens[id];
-        renderTokenStatusPanel(St.tokens);
-      }
+      } else { delete St.tokens[id]; }
       break;
     case 'copyId':
       navigator.clipboard?.writeText(id).then(() => showToast('토큰 ID 복사됨: ' + id)).catch(() => showToast('복사 실패'));
@@ -882,7 +919,8 @@ function openTokenEdit(tokenId) {
   refreshTokenOwnerBar(t);
 
   document.getElementById('te-name').value = t.name || '';
-  document.getElementById('te-initiative').value = hasTokenInitiativeForStatus(t) ? (t.initiative ?? '') : '';
+  const teInitiative = document.getElementById('te-initiative');
+  teInitiative.value = t.initiativeEnabled === false ? '' : (Number.isFinite(Number(t.initiative)) ? String(Number(t.initiative)) : '');
   document.getElementById('te-memo').value = t.memo || '';
   document.getElementById('te-size').value = t.tokenSize || 1;
   document.getElementById('te-x').value = Math.round((t.x || 0) * 10) / 10;
