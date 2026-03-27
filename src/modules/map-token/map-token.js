@@ -386,9 +386,9 @@ function getRenderableStatuses(token) {
 
 function shouldShowTokenInStatusPanel(token) {
   if (!token || token.hideList) return false;
-  if (!hasVisibleTokenInitiative(token)) return false;
-  if (getRenderableStatuses(token).length === 0) return false;
-  return true;
+  const hasInitiative = hasVisibleTokenInitiative(token);
+  const hasStatuses = getRenderableStatuses(token).length > 0;
+  return hasInitiative || hasStatuses;
 }
 
 function renderMapStatusPanel(tokens = St.tokens) {
@@ -409,7 +409,8 @@ function renderMapStatusPanel(tokens = St.tokens) {
     const privateMode = !!token.hideStatus;
     const image = getTokenStatusPanelImage(token);
     const statuses = getRenderableStatuses(token);
-    const initiativeText = privateMode ? '??' : String(token.initiative);
+    const hasInitiative = hasVisibleTokenInitiative(token);
+    const initiativeText = hasInitiative ? String(token.initiative) : '';
     const imageHtml = image
       ? `<img src="${esc(image)}" alt="">`
       : `<div class="map-status-avatar-fallback">${esc((token.name || '?').slice(0, 1))}</div>`;
@@ -420,16 +421,21 @@ function renderMapStatusPanel(tokens = St.tokens) {
       const valueText = max !== '' ? `${cur}/${max}` : `${cur}`;
       return `<div class="map-status-stat-box"><div class="map-status-stat-label">${label}</div><div class="map-status-stat-value">${valueText}</div></div>`;
     }).join('');
+    const initiativeHtml = hasInitiative
+      ? `<div class="map-status-initiative-badge">${initiativeText}</div>`
+      : '';
+    const cardClass = statuses.length ? 'map-status-card' : 'map-status-card no-stats';
+    const statsHtml = statuses.length ? `<div class="map-status-stats-grid">${statusHtml}</div>` : '';
     return `
-      <div class="map-status-card" data-token-id="${esc(String(token.id || ''))}">
+      <div class="${cardClass}" data-token-id="${esc(String(token.id || ''))}">
         <div class="map-status-headbox">
           <div class="map-status-avatar">${imageHtml}</div>
           <div class="map-status-head-meta">
             <div class="map-status-name">${esc(token.name || '?')}</div>
-            <div class="map-status-initiative-badge">${initiativeText}</div>
+            ${initiativeHtml}
           </div>
         </div>
-        <div class="map-status-stats-grid">${statusHtml}</div>
+        ${statsHtml}
       </div>`;
   }).join('');
 }
@@ -695,17 +701,7 @@ function createTokenEl(t) {
     el.textContent = t.name;
     if (sz > 1) { const px = 36 * sz; el.style.width = px+'px'; el.style.height = px+'px'; el.style.fontSize = Math.max(9, 11*sz)+'px'; }
   }
-  if (t.statuses && t.statuses.length > 0) {
-    const hp = t.statuses[0];
-    if (hp.max > 0) {
-      const pct = Math.max(0, Math.min(100, (hp.cur / hp.max) * 100));
-      const bar = document.createElement('div'); bar.className = 'token-hp-bar';
-      const fill = document.createElement('div'); fill.className = 'token-hp-fill'; fill.style.width = pct + '%';
-      if (pct <= 25) fill.style.background = 'var(--red)';
-      else if (pct <= 50) fill.style.background = '#f0ad4e';
-      bar.appendChild(fill); el.appendChild(bar);
-    }
-  }
+  // 토큰 하단 그래프(HP 바)는 안정화 요구사항에 따라 완전 제거.
   if (_multiSelectedTokenIds.includes(String(t.id))) el.classList.add('multi-selected');
   const memoText = String(t.memo || '').trim();
   if (memoText) {
