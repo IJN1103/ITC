@@ -20,16 +20,8 @@ function getMapBaseSize() {
 }
 
 function getMapExpansion() {
-  const map = document.getElementById('map-area');
   const { width: baseW, height: baseH } = getMapBaseSize();
-  if (!map) return { x: 1, y: 1, baseW, baseH };
-  const scale = _mapScale || 1;
-  return {
-    x: Math.max(1, (map.clientWidth || 1) / (baseW * scale)),
-    y: Math.max(1, (map.clientHeight || 1) / (baseH * scale)),
-    baseW,
-    baseH,
-  };
+  return { x: 1, y: 1, baseW, baseH };
 }
 
 function storedTokenPercentToDisplay(value, axis = 'x') {
@@ -332,9 +324,8 @@ function applyMapTransform() {
   const map = document.getElementById('map-area');
   if (!inner || !map) return;
   const { width: baseW, height: baseH } = getMapBaseSize();
-  const expansion = getMapExpansion();
-  inner.style.width = (baseW * expansion.x) + 'px';
-  inner.style.height = (baseH * expansion.y) + 'px';
+  inner.style.width = baseW + 'px';
+  inner.style.height = baseH + 'px';
   inner.style.transformOrigin = '0 0';
   inner.style.transform = `translate(${_mapPanX}px,${_mapPanY}px) scale(${_mapScale})`;
   syncRenderedTokenPositions();
@@ -660,17 +651,6 @@ function createTokenEl(t) {
   } else {
     el.textContent = t.name;
     if (sz > 1) { const px = 36 * sz; el.style.width = px+'px'; el.style.height = px+'px'; el.style.fontSize = Math.max(9, 11*sz)+'px'; }
-  }
-  if (t.statuses && t.statuses.length > 0) {
-    const hp = t.statuses[0];
-    if (hp.max > 0) {
-      const pct = Math.max(0, Math.min(100, (hp.cur / hp.max) * 100));
-      const bar = document.createElement('div'); bar.className = 'token-hp-bar';
-      const fill = document.createElement('div'); fill.className = 'token-hp-fill'; fill.style.width = pct + '%';
-      if (pct <= 25) fill.style.background = 'var(--red)';
-      else if (pct <= 50) fill.style.background = '#f0ad4e';
-      bar.appendChild(fill); el.appendChild(bar);
-    }
   }
   if (_multiSelectedTokenIds.includes(String(t.id))) el.classList.add('multi-selected');
   const memoText = String(t.memo || '').trim();
