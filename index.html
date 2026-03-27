@@ -354,7 +354,6 @@ window._FB = {
     <div class="panel-center">
       <div class="map-area" id="map-area">
         <div class="map-inner" id="map-inner"></div>
-        <div class="map-status-panel" id="map-status-panel" aria-live="polite"></div>
         <button class="map-add-token gm-only" id="map-add-token" onclick="openModal('modal-token')" style="display:none">+ 토큰</button>
         <!-- 줌 컨트롤 -->
         <div class="map-zoom" id="map-zoom">
@@ -911,8 +910,10 @@ window._FB = {
   <div class="te-backdrop" onclick="closeTokenEdit()"></div>
   <div class="te-panel">
     <div class="te-head">
-      <span class="te-head-title">토큰 편집</span>
-      <div id="te-owner-bar" style="display:none;font-size:11px;color:var(--muted);margin-left:auto;margin-right:12px;padding:6px 10px;border:1px solid var(--border);border-radius:10px;background:var(--s2)"></div>
+      <div class="te-head-main">
+        <span class="te-head-title">토큰 편집</span>
+        <div id="te-owner-bar" class="te-owner-bar" style="display:none"></div>
+      </div>
       <button class="te-close" onclick="closeTokenEdit()">✕</button>
     </div>
     <div class="te-body" id="te-body">

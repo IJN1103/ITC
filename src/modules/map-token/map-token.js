@@ -20,8 +20,16 @@ function getMapBaseSize() {
 }
 
 function getMapExpansion() {
+  const map = document.getElementById('map-area');
   const { width: baseW, height: baseH } = getMapBaseSize();
-  return { x: 1, y: 1, baseW, baseH };
+  if (!map) return { x: 1, y: 1, baseW, baseH };
+  const scale = _mapScale || 1;
+  return {
+    x: Math.max(1, (map.clientWidth || 1) / (baseW * scale)),
+    y: Math.max(1, (map.clientHeight || 1) / (baseH * scale)),
+    baseW,
+    baseH,
+  };
 }
 
 function storedTokenPercentToDisplay(value, axis = 'x') {
@@ -324,8 +332,9 @@ function applyMapTransform() {
   const map = document.getElementById('map-area');
   if (!inner || !map) return;
   const { width: baseW, height: baseH } = getMapBaseSize();
-  inner.style.width = baseW + 'px';
-  inner.style.height = baseH + 'px';
+  const expansion = getMapExpansion();
+  inner.style.width = (baseW * expansion.x) + 'px';
+  inner.style.height = (baseH * expansion.y) + 'px';
   inner.style.transformOrigin = '0 0';
   inner.style.transform = `translate(${_mapPanX}px,${_mapPanY}px) scale(${_mapScale})`;
   syncRenderedTokenPositions();
@@ -490,7 +499,7 @@ function refreshTokenOwnerBar(token) {
     return;
   }
   bar.style.display = '';
-  bar.innerHTML = `<span style="display:block;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:4px">토큰 소유자</span><span>${esc(getTokenOwnerDisplay(token))}</span>`;
+  bar.innerHTML = `<span class="te-owner-bar-label">토큰 소유자</span><span class="te-owner-bar-name">${esc(getTokenOwnerDisplay(token))}</span>`;
 }
 
 function showTokenMemoBubble(tokenEl, memo, tokenId) {
@@ -533,90 +542,7 @@ function renderAllTokens(tokens) {
   if (inner) inner.querySelectorAll('.map-token').forEach(t => t.remove());
   syncMultiTokenSelectionWithTokens(tokens);
   Object.values(tokens).forEach(t => createTokenEl(t));
-  renderMapStatusPanel(tokens);
   updateMultiTokenSelectionUI();
-}
-
-
-function getTokenStatusPreviewImage(t) {
-  if (Array.isArray(t.standings)) {
-    const firstStanding = t.standings.find(s => s && s.img);
-    if (firstStanding?.img) return firstStanding.img;
-  }
-  return t.tokenImg || '';
-}
-
-function formatTokenStatusValue(status, isHidden) {
-  if (isHidden) return '??';
-  const cur = Number.isFinite(Number(status?.cur)) ? Number(status.cur) : 0;
-  const max = Number.isFinite(Number(status?.max)) ? Number(status.max) : 0;
-  if (max > 0) return `${cur}/${max}`;
-  return String(cur);
-}
-
-function buildMapStatusCard(t) {
-  const hidden = !!t.hideStatus;
-  const imageSrc = getTokenStatusPreviewImage(t);
-  const card = document.createElement('div');
-  card.className = 'map-status-card';
-
-  const head = document.createElement('div');
-  head.className = 'map-status-headbox';
-  if (imageSrc) {
-    const img = document.createElement('img');
-    img.className = 'map-status-avatar';
-    img.src = imageSrc;
-    img.alt = '';
-    head.appendChild(img);
-  } else {
-    const ph = document.createElement('div');
-    ph.className = 'map-status-avatar placeholder';
-    ph.textContent = (t.name || '?').slice(0,1);
-    head.appendChild(ph);
-  }
-  const init = document.createElement('div');
-  init.className = 'map-status-init';
-  init.textContent = hidden ? '??' : String(Number(t.initiative));
-  head.appendChild(init);
-
-  const grid = document.createElement('div');
-  grid.className = 'map-status-grid';
-  (t.statuses || []).forEach((status) => {
-    const item = document.createElement('div');
-    item.className = 'map-status-item';
-    const label = document.createElement('div');
-    label.className = 'map-status-label';
-    label.textContent = hidden ? '??' : (status?.label || '');
-    const value = document.createElement('div');
-    value.className = 'map-status-value';
-    value.textContent = formatTokenStatusValue(status, hidden);
-    item.appendChild(label);
-    item.appendChild(value);
-    grid.appendChild(item);
-  });
-
-  card.appendChild(head);
-  card.appendChild(grid);
-  return card;
-}
-
-function shouldShowOnMapStatusPanel(t) {
-  if (!t || t.hideList) return false;
-  const initiative = Number(t.initiative);
-  if (!Number.isFinite(initiative) || initiative <= 0) return false;
-  const statuses = Array.isArray(t.statuses) ? t.statuses.filter(s => String(s?.label || '').trim()) : [];
-  if (!statuses.length) return false;
-  return true;
-}
-
-function renderMapStatusPanel(tokens) {
-  const panel = document.getElementById('map-status-panel');
-  if (!panel) return;
-  panel.innerHTML = '';
-  const list = Object.values(tokens || {})
-    .filter(shouldShowOnMapStatusPanel)
-    .sort((a, b) => (Number(b.initiative) || 0) - (Number(a.initiative) || 0));
-  list.forEach((token) => panel.appendChild(buildMapStatusCard(token)));
 }
 
 function createTokenEl(t) {
@@ -651,6 +577,17 @@ function createTokenEl(t) {
   } else {
     el.textContent = t.name;
     if (sz > 1) { const px = 36 * sz; el.style.width = px+'px'; el.style.height = px+'px'; el.style.fontSize = Math.max(9, 11*sz)+'px'; }
+  }
+  if (t.statuses && t.statuses.length > 0) {
+    const hp = t.statuses[0];
+    if (hp.max > 0) {
+      const pct = Math.max(0, Math.min(100, (hp.cur / hp.max) * 100));
+      const bar = document.createElement('div'); bar.className = 'token-hp-bar';
+      const fill = document.createElement('div'); fill.className = 'token-hp-fill'; fill.style.width = pct + '%';
+      if (pct <= 25) fill.style.background = 'var(--red)';
+      else if (pct <= 50) fill.style.background = '#f0ad4e';
+      bar.appendChild(fill); el.appendChild(bar);
+    }
   }
   if (_multiSelectedTokenIds.includes(String(t.id))) el.classList.add('multi-selected');
   const memoText = String(t.memo || '').trim();
@@ -976,9 +913,18 @@ function teAddStatus(label, cur, max) {
   const row = document.createElement('div');
   row.className = 'te-status-row';
   row.innerHTML = `
-    <input style="flex:1" placeholder="라벨" value="${esc(label||'')}">
-    <input style="width:55px" type="number" placeholder="현재값" value="${cur!=null?cur:''}">
-    <input style="width:55px" type="number" placeholder="최대값" value="${max!=null?max:''}">`;
+    <div class="te-status-cell">
+      <label>라벨</label>
+      <input placeholder="예: HP" value="${esc(label||'')}">
+    </div>
+    <div class="te-status-cell">
+      <label>현재값</label>
+      <input type="number" placeholder="0" value="${cur!=null?cur:''}">
+    </div>
+    <div class="te-status-cell">
+      <label>최대값</label>
+      <input type="number" placeholder="0" value="${max!=null?max:''}">
+    </div>`;
   list.appendChild(row);
 }
 function teRemoveStatus() {
