@@ -365,10 +365,6 @@ window._FB = {
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
           </button>
         </div>
-        <button class="map-quick-sheet-btn" id="map-quick-sheet-btn" onclick="toggleQuickSheet(event)" title="캐릭터 시트 열기">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="3.25"></circle><path d="M5.5 19c0-3.2 2.95-5.5 6.5-5.5s6.5 2.3 6.5 5.5"></path></svg>
-        </button>
-        <div class="quick-sheet-picker" id="quick-sheet-picker"></div>
         <!-- VN 대사창 -->
         <div class="vn-dialog" id="vn-dialog" onclick="hideDialogueBox()">
           <div class="vn-dialog-inner">
@@ -483,10 +479,16 @@ window._FB = {
                   <div class="chat-image-queue-title">첨부된 이미지</div>
                   <div class="chat-image-queue-help">최대 4장 · ✕로 삭제 · 드래그로 순서 변경</div>
                 </div>
-                <label class="chat-wide-toggle" for="chat-image-wide-toggle">
-                  <input type="checkbox" id="chat-image-wide-toggle" onchange="togglePendingChatImageWide(this.checked)">
-                  <span>가로폭 채우기</span>
-                </label>
+                <div class="chat-image-option-group">
+                  <label class="chat-wide-toggle" for="chat-image-wide-toggle">
+                    <input type="checkbox" id="chat-image-wide-toggle" onchange="togglePendingChatImageWide(this.checked)">
+                    <span>가로폭 채우기</span>
+                  </label>
+                  <label class="chat-wide-toggle" for="chat-image-hide-identity-toggle">
+                    <input type="checkbox" id="chat-image-hide-identity-toggle" onchange="togglePendingChatImageHideIdentity(this.checked)">
+                    <span>닉네임 안보이게</span>
+                  </label>
+                </div>
               </div>
               <div class="chat-image-preview-list" id="chat-image-preview-list"></div>
             </div>
@@ -530,9 +532,6 @@ window._FB = {
       <button class="sheet-del-btn" onclick="deleteSheetJournal()" title="이 저널 삭제">🗑 삭제</button>
       <div style="flex:1"></div>
       <div id="sh-owner-bar" style="display:none;font-size:10px;color:var(--muted);margin-right:12px"></div>
-      <button class="sheet-edit-toggle" id="sheet-edit-toggle" onclick="enableQuickSheetEdit()" title="편집" style="display:none">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"></path><path d="M16.5 3.5a2.12 2.12 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z"></path></svg>
-      </button>
       <button class="sheet-close" onclick="closeSheet()">✕</button>
     </div>
     <div id="sh-assign-bar" class="gm-only" style="display:none;padding:8px 16px;border-bottom:1px solid var(--border);background:var(--s2)">

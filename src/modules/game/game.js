@@ -137,7 +137,7 @@ function setupFirebaseListeners() {
 
   const addChatRecord = (key, m) => {
     if (!shouldShowChatMessage(m) || _processedChatKeys.has(key)) return;
-    appendChatMsg(m.name, m.text, m.type || 'normal', m.uid, m.time, m.speakAsAvatar || null, m.speakAsJournalId || null, m.whisperTo || null, m.whisperToName || null, m.nameColor || null, key, 'chat', m.standingImg || null, m.tokenId || null, m.standingLabel || null, !!m.imageWide, m.imageMeta || null);
+    appendChatMsg(m.name, m.text, m.type || 'normal', m.uid, m.time, m.speakAsAvatar || null, m.speakAsJournalId || null, m.whisperTo || null, m.whisperToName || null, m.nameColor || null, key, 'chat', m.standingImg || null, m.tokenId || null, m.standingLabel || null, !!m.imageWide, m.imageMeta || null, !!m.imageHideIdentity);
     _processedChatKeys.add(key);
   };
 
@@ -149,7 +149,7 @@ function setupFirebaseListeners() {
       }
       return;
     }
-    replaceChatMsg(m.name, m.text, m.type || 'normal', m.uid, m.time, m.speakAsAvatar || null, m.speakAsJournalId || null, m.whisperTo || null, m.whisperToName || null, m.nameColor || null, key, 'chat', m.standingImg || null, m.tokenId || null, m.standingLabel || null, !!m.imageWide, m.imageMeta || null);
+    replaceChatMsg(m.name, m.text, m.type || 'normal', m.uid, m.time, m.speakAsAvatar || null, m.speakAsJournalId || null, m.whisperTo || null, m.whisperToName || null, m.nameColor || null, key, 'chat', m.standingImg || null, m.tokenId || null, m.standingLabel || null, !!m.imageWide, m.imageMeta || null, !!m.imageHideIdentity);
     _processedChatKeys.add(key);
   };
 
