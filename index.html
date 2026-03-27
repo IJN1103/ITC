@@ -353,8 +353,8 @@ window._FB = {
     <!-- 센터 -->
     <div class="panel-center">
       <div class="map-area" id="map-area">
-        <div id="map-status-panel" class="map-status-panel" style="display:none"></div>
         <div class="map-inner" id="map-inner"></div>
+        <div class="map-status-panel" id="map-status-panel" style="display:none"></div>
         <button class="map-add-token gm-only" id="map-add-token" onclick="openModal('modal-token')" style="display:none">+ 토큰</button>
         <!-- 줌 컨트롤 -->
         <div class="map-zoom" id="map-zoom">
@@ -911,10 +911,7 @@ window._FB = {
   <div class="te-backdrop" onclick="closeTokenEdit()"></div>
   <div class="te-panel">
     <div class="te-head">
-      <div class="te-head-main">
-        <span class="te-head-title">토큰 편집</span>
-        <div id="te-owner-bar" class="te-owner-bar" style="display:none"></div>
-      </div>
+      <span class="te-head-title">토큰 편집</span>
       <button class="te-close" onclick="closeTokenEdit()">✕</button>
     </div>
     <div class="te-body" id="te-body">

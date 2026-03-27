@@ -20,8 +20,16 @@ function getMapBaseSize() {
 }
 
 function getMapExpansion() {
+  const map = document.getElementById('map-area');
   const { width: baseW, height: baseH } = getMapBaseSize();
-  return { x: 1, y: 1, baseW, baseH };
+  if (!map) return { x: 1, y: 1, baseW, baseH };
+  const scale = _mapScale || 1;
+  return {
+    x: Math.max(1, (map.clientWidth || 1) / (baseW * scale)),
+    y: Math.max(1, (map.clientHeight || 1) / (baseH * scale)),
+    baseW,
+    baseH,
+  };
 }
 
 function storedTokenPercentToDisplay(value, axis = 'x') {
@@ -157,6 +165,43 @@ let _tokenSelectionState = {
   currentX: 0,
   currentY: 0,
 };
+
+
+function ensureTokenSelectionBox() {
+  const map = document.getElementById('map-area');
+  if (!map) return null;
+  let box = document.getElementById('map-token-selection-box');
+  if (!box) {
+    box = document.createElement('div');
+    box.id = 'map-token-selection-box';
+    box.className = 'map-token-selection-box';
+    map.appendChild(box);
+  }
+  return box;
+}
+
+function updateTokenSelectionBox() {
+  const box = ensureTokenSelectionBox();
+  if (!box) return;
+  if (!_tokenSelectionState.active) {
+    box.style.display = 'none';
+    return;
+  }
+  const x1 = Math.min(_tokenSelectionState.startX, _tokenSelectionState.currentX);
+  const y1 = Math.min(_tokenSelectionState.startY, _tokenSelectionState.currentY);
+  const x2 = Math.max(_tokenSelectionState.startX, _tokenSelectionState.currentX);
+  const y2 = Math.max(_tokenSelectionState.startY, _tokenSelectionState.currentY);
+  box.style.display = 'block';
+  box.style.left = x1 + 'px';
+  box.style.top = y1 + 'px';
+  box.style.width = Math.max(0, x2 - x1) + 'px';
+  box.style.height = Math.max(0, y2 - y1) + 'px';
+}
+
+function hideTokenSelectionBox() {
+  const box = document.getElementById('map-token-selection-box');
+  if (box) box.style.display = 'none';
+}
 
 function getTokenEl(tokenId) {
   return document.getElementById('tok-' + tokenId);
@@ -316,7 +361,77 @@ function finishTokenSelection() {
   }
 
   _tokenSelectionState.active = false;
+  hideTokenSelectionBox();
   setMultiTokenSelection(selected);
+}
+
+
+function getTokenStatusPanelImage(token) {
+  const standingImg = Array.isArray(token?.standings) ? token.standings.find((item) => item?.img)?.img : null;
+  return standingImg || token?.tokenImg || '';
+}
+
+function hasVisibleTokenInitiative(token) {
+  const raw = token?.initiative;
+  if (raw === '' || raw == null) return false;
+  const num = Number(raw);
+  return Number.isFinite(num) && num >= 0;
+}
+
+function getRenderableStatuses(token) {
+  return Array.isArray(token?.statuses)
+    ? token.statuses.filter((item) => String(item?.label || '').trim())
+    : [];
+}
+
+function shouldShowTokenInStatusPanel(token) {
+  if (!token || token.hideList) return false;
+  if (!hasVisibleTokenInitiative(token)) return false;
+  if (getRenderableStatuses(token).length === 0) return false;
+  return true;
+}
+
+function renderMapStatusPanel(tokens = St.tokens) {
+  const panel = document.getElementById('map-status-panel');
+  if (!panel) return;
+  const items = Object.values(tokens || {})
+    .filter((token) => shouldShowTokenInStatusPanel(token))
+    .sort((a, b) => Number(b?.initiative || 0) - Number(a?.initiative || 0));
+
+  if (!items.length) {
+    panel.innerHTML = '';
+    panel.style.display = 'none';
+    return;
+  }
+
+  panel.style.display = 'grid';
+  panel.innerHTML = items.map((token) => {
+    const privateMode = !!token.hideStatus;
+    const image = getTokenStatusPanelImage(token);
+    const statuses = getRenderableStatuses(token);
+    const initiativeText = privateMode ? '??' : String(token.initiative);
+    const imageHtml = image
+      ? `<img src="${esc(image)}" alt="">`
+      : `<div class="map-status-avatar-fallback">${esc((token.name || '?').slice(0, 1))}</div>`;
+    const statusHtml = statuses.map((item) => {
+      const label = privateMode ? '??' : esc(String(item.label || '').trim());
+      const cur = privateMode ? '??' : esc(item.cur != null ? String(item.cur) : '');
+      const max = privateMode ? '??' : esc(item.max != null ? String(item.max) : '');
+      const valueText = max !== '' ? `${cur}/${max}` : `${cur}`;
+      return `<div class="map-status-stat-box"><div class="map-status-stat-label">${label}</div><div class="map-status-stat-value">${valueText}</div></div>`;
+    }).join('');
+    return `
+      <div class="map-status-card" data-token-id="${esc(String(token.id || ''))}">
+        <div class="map-status-headbox">
+          <div class="map-status-avatar">${imageHtml}</div>
+          <div class="map-status-head-meta">
+            <div class="map-status-name">${esc(token.name || '?')}</div>
+            <div class="map-status-initiative-badge">${initiativeText}</div>
+          </div>
+        </div>
+        <div class="map-status-stats-grid">${statusHtml}</div>
+      </div>`;
+  }).join('');
 }
 
 function applyMapTransform() {
@@ -324,8 +439,9 @@ function applyMapTransform() {
   const map = document.getElementById('map-area');
   if (!inner || !map) return;
   const { width: baseW, height: baseH } = getMapBaseSize();
-  inner.style.width = baseW + 'px';
-  inner.style.height = baseH + 'px';
+  const expansion = getMapExpansion();
+  inner.style.width = (baseW * expansion.x) + 'px';
+  inner.style.height = (baseH * expansion.y) + 'px';
   inner.style.transformOrigin = '0 0';
   inner.style.transform = `translate(${_mapPanX}px,${_mapPanY}px) scale(${_mapScale})`;
   syncRenderedTokenPositions();
@@ -372,6 +488,7 @@ document.addEventListener('DOMContentLoaded', () => {
       _tokenSelectionState.startY = e.clientY - rect.top;
       _tokenSelectionState.currentX = _tokenSelectionState.startX;
       _tokenSelectionState.currentY = _tokenSelectionState.startY;
+      updateTokenSelectionBox();
       e.preventDefault();
       return;
     }
@@ -393,6 +510,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const rect = mapEl.getBoundingClientRect();
       _tokenSelectionState.currentX = e.clientX - rect.left;
       _tokenSelectionState.currentY = e.clientY - rect.top;
+      updateTokenSelectionBox();
       return;
     }
     if (!isPanning) return;
@@ -404,6 +522,13 @@ document.addEventListener('DOMContentLoaded', () => {
   document.addEventListener('mouseup', () => {
     if (_tokenSelectionState.active) finishTokenSelection();
     if (isPanning) { isPanning = false; mapEl.classList.remove('panning'); }
+  });
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && _tokenSelectionState.active) {
+      _tokenSelectionState.active = false;
+      hideTokenSelectionBox();
+    }
   });
 
   mapEl.addEventListener('auxclick', e => {
@@ -534,6 +659,7 @@ function renderAllTokens(tokens) {
   syncMultiTokenSelectionWithTokens(tokens);
   Object.values(tokens).forEach(t => createTokenEl(t));
   updateMultiTokenSelectionUI();
+  renderMapStatusPanel(tokens);
 }
 
 function createTokenEl(t) {
