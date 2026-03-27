@@ -20,16 +20,8 @@ function getMapBaseSize() {
 }
 
 function getMapExpansion() {
-  const map = document.getElementById('map-area');
   const { width: baseW, height: baseH } = getMapBaseSize();
-  if (!map) return { x: 1, y: 1, baseW, baseH };
-  const scale = _mapScale || 1;
-  return {
-    x: Math.max(1, (map.clientWidth || 1) / (baseW * scale)),
-    y: Math.max(1, (map.clientHeight || 1) / (baseH * scale)),
-    baseW,
-    baseH,
-  };
+  return { x: 1, y: 1, baseW, baseH };
 }
 
 function storedTokenPercentToDisplay(value, axis = 'x') {
@@ -332,9 +324,8 @@ function applyMapTransform() {
   const map = document.getElementById('map-area');
   if (!inner || !map) return;
   const { width: baseW, height: baseH } = getMapBaseSize();
-  const expansion = getMapExpansion();
-  inner.style.width = (baseW * expansion.x) + 'px';
-  inner.style.height = (baseH * expansion.y) + 'px';
+  inner.style.width = baseW + 'px';
+  inner.style.height = baseH + 'px';
   inner.style.transformOrigin = '0 0';
   inner.style.transform = `translate(${_mapPanX}px,${_mapPanY}px) scale(${_mapScale})`;
   syncRenderedTokenPositions();
@@ -536,6 +527,85 @@ function addToken() {
   document.getElementById('token-name').value = '';
 }
 
+function getTokenStatusPanelMount() {
+  return document.getElementById('map-status-panel');
+}
+
+function getTokenStatusPreviewImage(token) {
+  if (Array.isArray(token?.standings)) {
+    const firstImg = token.standings.find((s) => s && s.img)?.img;
+    if (firstImg) return firstImg;
+  }
+  return token?.tokenImg || '';
+}
+
+function hasVisibleTokenInitiative(token) {
+  return Number.isFinite(Number(token?.initiative)) && Number(token.initiative) > 0;
+}
+
+function getVisibleTokenStatuses(token) {
+  return (Array.isArray(token?.statuses) ? token.statuses : []).filter((s) => String(s?.label || '').trim());
+}
+
+function shouldRenderTokenStatusCard(token) {
+  if (!token || token.hideList) return false;
+  if (!hasVisibleTokenInitiative(token)) return false;
+  return getVisibleTokenStatuses(token).length > 0;
+}
+
+function renderTokenStatusPanel(tokens) {
+  const mount = getTokenStatusPanelMount();
+  if (!mount) return;
+  const list = Object.values(tokens || {})
+    .filter(shouldRenderTokenStatusCard)
+    .sort((a, b) => (Number(b?.initiative) || 0) - (Number(a?.initiative) || 0));
+
+  if (!list.length) {
+    mount.innerHTML = '';
+    mount.style.display = 'none';
+    return;
+  }
+
+  mount.style.display = '';
+  mount.innerHTML = '';
+
+  list.forEach((token) => {
+    const card = document.createElement('div');
+    card.className = 'map-status-card';
+
+    const head = document.createElement('div');
+    head.className = 'map-status-head';
+
+    const avatar = document.createElement('div');
+    avatar.className = 'map-status-avatar';
+    const avatarImg = getTokenStatusPreviewImage(token);
+    if (avatarImg) avatar.innerHTML = `<img src="${esc(avatarImg)}" alt="">`;
+    else avatar.textContent = String(token?.name || '?').trim().slice(0, 1) || '?';
+
+    const init = document.createElement('div');
+    init.className = 'map-status-init';
+    init.textContent = token.hideStatus ? '??' : String(Number(token.initiative) || 0);
+
+    head.appendChild(avatar);
+    head.appendChild(init);
+
+    const body = document.createElement('div');
+    body.className = 'map-status-grid';
+    getVisibleTokenStatuses(token).forEach((status) => {
+      const item = document.createElement('div');
+      item.className = 'map-status-item';
+      const label = token.hideStatus ? '??' : String(status.label || '').trim();
+      const value = token.hideStatus ? '??' : `${Number(status.cur) || 0}/${Number(status.max) || 0}`;
+      item.innerHTML = `<span class="map-status-item-label">${esc(label)}</span><span class="map-status-item-value">${esc(value)}</span>`;
+      body.appendChild(item);
+    });
+
+    card.appendChild(head);
+    card.appendChild(body);
+    mount.appendChild(card);
+  });
+}
+
 function renderAllTokens(tokens) {
   hideTokenMemoBubble();
   const inner = document.getElementById('map-inner');
@@ -543,6 +613,7 @@ function renderAllTokens(tokens) {
   syncMultiTokenSelectionWithTokens(tokens);
   Object.values(tokens).forEach(t => createTokenEl(t));
   updateMultiTokenSelectionUI();
+  renderTokenStatusPanel(tokens);
 }
 
 function createTokenEl(t) {
@@ -577,17 +648,6 @@ function createTokenEl(t) {
   } else {
     el.textContent = t.name;
     if (sz > 1) { const px = 36 * sz; el.style.width = px+'px'; el.style.height = px+'px'; el.style.fontSize = Math.max(9, 11*sz)+'px'; }
-  }
-  if (t.statuses && t.statuses.length > 0) {
-    const hp = t.statuses[0];
-    if (hp.max > 0) {
-      const pct = Math.max(0, Math.min(100, (hp.cur / hp.max) * 100));
-      const bar = document.createElement('div'); bar.className = 'token-hp-bar';
-      const fill = document.createElement('div'); fill.className = 'token-hp-fill'; fill.style.width = pct + '%';
-      if (pct <= 25) fill.style.background = 'var(--red)';
-      else if (pct <= 50) fill.style.background = '#f0ad4e';
-      bar.appendChild(fill); el.appendChild(bar);
-    }
   }
   if (_multiSelectedTokenIds.includes(String(t.id))) el.classList.add('multi-selected');
   const memoText = String(t.memo || '').trim();
