@@ -781,7 +781,7 @@ function buildChatImageHtml(src, imageWide = false, imageMeta = null) {
 
 const _pendingChatImages = [];
 let _pendingChatImageWide = false;
-let _pendingChatImageHideIdentity = false;
+let _pendingChatImageHideMeta = false;
 let _chatUploadStatusDepth = 0;
 
 function ensureChatUploadStatusEl() {
@@ -802,11 +802,9 @@ function ensureChatUploadStatusEl() {
   return statusEl;
 }
 
-function showChatUploadStatus(message = '사진을 보내는 중입니다.') {
+function showChatUploadStatus() {
   const statusEl = ensureChatUploadStatusEl();
   if (!statusEl) return;
-  const textEl = statusEl.querySelector('.chat-upload-status-text');
-  if (textEl) textEl.textContent = message;
   _chatUploadStatusDepth += 1;
   statusEl.style.display = 'flex';
   statusEl.classList.add('is-visible');
@@ -835,24 +833,26 @@ function getChatImageQueueEls() {
     wrap: document.getElementById('chat-image-queue'),
     list: document.getElementById('chat-image-preview-list'),
     wideToggle: document.getElementById('chat-image-wide-toggle'),
-    hideIdentityToggle: document.getElementById('chat-image-hide-identity-toggle'),
+    hideMetaToggle: document.getElementById('chat-image-hide-meta-toggle'),
   };
 }
 
 function renderPendingChatImages() {
-  const { wrap, list, wideToggle, hideIdentityToggle } = getChatImageQueueEls();
+  const { wrap, list, wideToggle, hideMetaToggle } = getChatImageQueueEls();
   if (!wrap || !list) return;
   list.innerHTML = '';
   if (_pendingChatImages.length === 0) {
     wrap.style.display = 'none';
-    if (wideToggle) wideToggle.checked = !!_pendingChatImageWide;
-    if (hideIdentityToggle) hideIdentityToggle.checked = !!_pendingChatImageHideIdentity;
+    _pendingChatImageWide = false;
+    _pendingChatImageHideMeta = false;
+    if (wideToggle) wideToggle.checked = false;
+    if (hideMetaToggle) hideMetaToggle.checked = false;
     return;
   }
 
   wrap.style.display = '';
   if (wideToggle) wideToggle.checked = !!_pendingChatImageWide;
-  if (hideIdentityToggle) hideIdentityToggle.checked = !!_pendingChatImageHideIdentity;
+  if (hideMetaToggle) hideMetaToggle.checked = !!_pendingChatImageHideMeta;
 
   _pendingChatImages.forEach((item, idx) => {
     const btn = document.createElement('div');
@@ -921,7 +921,6 @@ function movePendingChatImage(fromId, toId) {
 
 function clearPendingChatImages() {
   _pendingChatImages.splice(0, _pendingChatImages.length).forEach(revokePreparedChatImagePreview);
-  _pendingChatImageHideIdentity = false;
   renderPendingChatImages();
 }
 
@@ -929,8 +928,8 @@ function togglePendingChatImageWide(checked) {
   _pendingChatImageWide = !!checked;
 }
 
-function togglePendingChatImageHideIdentity(checked) {
-  _pendingChatImageHideIdentity = !!checked;
+function togglePendingChatImageHideMeta(checked) {
+  _pendingChatImageHideMeta = !!checked;
 }
 
 function getCloudinaryRuntimeConfig() {
@@ -1196,7 +1195,7 @@ async function uploadChatImageDataUrl(dataUrl, roomCode, preparedItem = null) {
   };
 }
 
-async function sendPreparedChatImage(preparedOrDataUrl, imageWide = false, imageMeta = null, hideIdentity = false) {
+async function sendPreparedChatImage(preparedOrDataUrl, imageWide = false, imageMeta = null, hideImageMeta = false) {
   const saJId = St.speakAsJournalId;
   const saJournal = saJId ? loadJournals().find(x => x.id === saJId) : null;
   const saName = saJournal ? (saJournal.title || '무제') : null;
@@ -1232,7 +1231,7 @@ async function sendPreparedChatImage(preparedOrDataUrl, imageWide = false, image
       speakAsJournalId: saJId,
       imageWide: !!imageWide,
       imageMeta: normalizedMeta,
-      imageHideIdentity: !!hideIdentity,
+      hideImageMeta: !!hideImageMeta,
       imageStoragePath: storageMeta?.path || '',
       imageContentType: storageMeta?.contentType || inferStorageContentTypeFromDataUrl(dataUrl),
     };
@@ -1241,14 +1240,14 @@ async function sendPreparedChatImage(preparedOrDataUrl, imageWide = false, image
       if (!St.roomCode) throw new Error('roomCode missing');
       return push(ref(db, `rooms/${St.roomCode}/chat`), msg);
     }
-    appendChatMsg(msg.name, finalSrc, 'speak-as-image', St.myId, msg.time, saAvatar, saJId, null, null, null, null, 'chat', null, null, null, !!imageWide, normalizedMeta, !!hideIdentity);
+    appendChatMsg(msg.name, finalSrc, 'speak-as-image', St.myId, msg.time, saAvatar, saJId, null, null, null, null, 'chat', null, null, null, !!imageWide, normalizedMeta, !!hideImageMeta);
     return Promise.resolve();
   }
 
   return sendMessage(St.myName, finalSrc, 'image', {
     imageWide: !!imageWide,
     imageMeta: normalizedMeta,
-    imageHideIdentity: !!hideIdentity,
+    hideImageMeta: !!hideImageMeta,
     imageStoragePath: storageMeta?.path || '',
     imageContentType: storageMeta?.contentType || inferStorageContentTypeFromDataUrl(dataUrl),
   });
@@ -1262,10 +1261,10 @@ async function sendPendingChatImages() {
   if (!_pendingChatImages.length) return true;
   const items = _pendingChatImages.splice(0, _pendingChatImages.length);
   renderPendingChatImages();
-  showChatUploadStatus('사진을 보내고 있습니다.');
+  showChatUploadStatus();
   try {
     for (const item of items) {
-      await sendPreparedChatImage(item, _pendingChatImageWide, { width: item.width, height: item.height }, _pendingChatImageHideIdentity);
+      await sendPreparedChatImage(item, _pendingChatImageWide, { width: item.width, height: item.height }, _pendingChatImageHideMeta);
       revokePreparedChatImagePreview(item);
     }
     return true;
@@ -1434,7 +1433,7 @@ function sendMessage(name, text, type = 'normal', extra = null) {
     if (!St.roomCode) return Promise.reject(new Error('roomCode missing'));
     return push(ref(db, `rooms/${St.roomCode}/chat`), msg);
   }
-  appendChatMsg(name, text, type, St.myId, msg.time, null, null, null, null, msg.nameColor || null, null, 'chat', null, null, null, !!msg.imageWide, msg.imageMeta || null, !!msg.imageHideIdentity);
+  appendChatMsg(name, text, type, St.myId, msg.time, null, null, null, null, msg.nameColor || null, null, 'chat', null, null, null, !!msg.imageWide, msg.imageMeta || null, !!msg.hideImageMeta);
   return Promise.resolve();
 }
 
@@ -1698,11 +1697,11 @@ function rerenderExistingChatAvatars() {
 }
 
 
-function buildStandardChatImageSection(name, time, src, avatarHtml, imageWide = false, imageMeta = null, extraNameClass = '', extraNameStyle = '', hideIdentity = false) {
+function buildStandardChatImageSection(name, time, src, avatarHtml, imageWide = false, imageMeta = null, extraNameClass = '', extraNameStyle = '', hideImageMeta = false) {
   const imageHtml = buildChatImageHtml(src, imageWide, imageMeta);
   const safeNameClass = extraNameClass ? ` ${extraNameClass}` : '';
-  if (hideIdentity) {
-    return `<div class="msg-image-body is-anonymous${imageWide ? ' is-wide' : ''}">${imageHtml}</div>`;
+  if (hideImageMeta) {
+    return `<div class="msg-body msg-image-only-body${imageWide ? ' is-wide' : ''}">${imageHtml}</div>`;
   }
   if (imageWide) {
     return `${avatarHtml}<div class="msg-wide-head"><div class="msg-meta"><span class="msg-name${safeNameClass}"${extraNameStyle}>${esc(name)}</span><span class="msg-time">${time}</span></div></div><div class="msg-wide-image-wrap">${imageHtml}</div>`;
@@ -1710,7 +1709,7 @@ function buildStandardChatImageSection(name, time, src, avatarHtml, imageWide = 
   return `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name${safeNameClass}"${extraNameStyle}>${esc(name)}</span><span class="msg-time">${time}</span></div>${imageHtml}</div>`;
 }
 
-function buildChatMsgElement(name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId, whisperTo, whisperToName, nameColor, msgKey, channel, standingImg, tokenId, standingLabel, imageWide = false, imageMeta = null, imageHideIdentity = false) {
+function buildChatMsgElement(name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId, whisperTo, whisperToName, nameColor, msgKey, channel, standingImg, tokenId, standingLabel, imageWide = false, imageMeta = null, hideImageMeta = false) {
   const d = timestamp ? new Date(timestamp) : new Date();
   const time = `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
 
@@ -1766,8 +1765,8 @@ function buildChatMsgElement(name, text, type, uid, timestamp, speakAsAvatar, sp
       ? `<div class="msg-avatar ${sc} sa-avatar"><img src="${esc(finalAvatar)}" alt="" style="width:38px;height:38px;object-fit:cover;border-radius:${r};display:block"></div>`
       : `<div class="msg-avatar ${sc} sa-avatar"><div class="msg-avatar-inner" style="border-radius:${r}">${esc((name || '?')[0].toUpperCase())}</div></div>`;
     const div = document.createElement('div');
-    div.className = `chat-msg msg-speak-as msg-image-msg${imageWide ? ' msg-image-wide-row' : ''}`;
-    div.innerHTML = buildStandardChatImageSection(name, time, text, avatarHtml, !!imageWide, imageMeta, 'sa-msg-name', '', !!imageHideIdentity);
+    div.className = `chat-msg msg-speak-as msg-image-msg${imageWide ? ' msg-image-wide-row' : ''}${hideImageMeta ? ' msg-image-hide-meta' : ''}`;
+    div.innerHTML = buildStandardChatImageSection(name, time, text, avatarHtml, !!imageWide, imageMeta, 'sa-msg-name', '', !!hideImageMeta);
     addMsgActions(div, uid, msgKey, channel || 'chat', text, type);
     return div;
   }
@@ -1776,10 +1775,10 @@ function buildChatMsgElement(name, text, type, uid, timestamp, speakAsAvatar, sp
 
   if (type === 'image') {
     const div = document.createElement('div');
-    div.className = `chat-msg msg-image-msg${imageWide ? ' msg-image-wide-row' : ''}`;
+    div.className = `chat-msg msg-image-msg${imageWide ? ' msg-image-wide-row' : ''}${hideImageMeta ? ' msg-image-hide-meta' : ''}`;
     div.dataset.avatarUid = uid || '';
     div.dataset.avatarName = name || '';
-    div.innerHTML = buildStandardChatImageSection(name, time, text, avatarHtml, !!imageWide, imageMeta, '', '', !!imageHideIdentity);
+    div.innerHTML = buildStandardChatImageSection(name, time, text, avatarHtml, !!imageWide, imageMeta, '', '', !!hideImageMeta);
     addMsgActions(div, uid, msgKey, channel || 'chat', text, type);
     return div;
   }
@@ -1806,28 +1805,28 @@ function buildChatMsgElement(name, text, type, uid, timestamp, speakAsAvatar, sp
   return div;
 }
 
-function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId, whisperTo, whisperToName, nameColor, msgKey, channel, standingImg, tokenId, standingLabel, imageWide = false, imageMeta = null, imageHideIdentity = false) {
+function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId, whisperTo, whisperToName, nameColor, msgKey, channel, standingImg, tokenId, standingLabel, imageWide = false, imageMeta = null, hideImageMeta = false) {
   const actualChannel = channel || 'chat';
   const safeKey = upsertStoredMessage(actualChannel, msgKey, {
     name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId,
-    whisperTo, whisperToName, nameColor, standingImg, tokenId, standingLabel, imageWide, imageMeta: normalizeChatImageMeta(imageMeta), imageHideIdentity: !!imageHideIdentity
+    whisperTo, whisperToName, nameColor, standingImg, tokenId, standingLabel, imageWide, imageMeta: normalizeChatImageMeta(imageMeta), hideImageMeta: !!hideImageMeta
   });
   bindMessageViewport(actualChannel);
-  const div = buildChatMsgElement(name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId, whisperTo, whisperToName, nameColor, safeKey, actualChannel, standingImg, tokenId, standingLabel, imageWide, imageMeta, imageHideIdentity);
+  const div = buildChatMsgElement(name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId, whisperTo, whisperToName, nameColor, safeKey, actualChannel, standingImg, tokenId, standingLabel, imageWide, imageMeta, hideImageMeta);
   queueMessageRender(actualChannel, div, safeKey, true);
   if (type === 'speak-as' && (!timestamp || Date.now() - timestamp < 5000)) {
     showDialogueBoxFromMsg(name, text, speakAsJournalId, standingImg, tokenId, standingLabel);
   }
 }
 
-function replaceChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId, whisperTo, whisperToName, nameColor, msgKey, channel, standingImg, tokenId, standingLabel, imageWide = false, imageMeta = null, imageHideIdentity = false) {
+function replaceChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId, whisperTo, whisperToName, nameColor, msgKey, channel, standingImg, tokenId, standingLabel, imageWide = false, imageMeta = null, hideImageMeta = false) {
   const actualChannel = channel || 'chat';
   const safeKey = upsertStoredMessage(actualChannel, msgKey, {
     name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId,
-    whisperTo, whisperToName, nameColor, standingImg, tokenId, standingLabel, imageWide, imageMeta: normalizeChatImageMeta(imageMeta), imageHideIdentity: !!imageHideIdentity
+    whisperTo, whisperToName, nameColor, standingImg, tokenId, standingLabel, imageWide, imageMeta: normalizeChatImageMeta(imageMeta), hideImageMeta: !!hideImageMeta
   });
   bindMessageViewport(actualChannel);
-  const div = buildChatMsgElement(name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId, whisperTo, whisperToName, nameColor, safeKey, actualChannel, standingImg, tokenId, standingLabel, imageWide, imageMeta, imageHideIdentity);
+  const div = buildChatMsgElement(name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId, whisperTo, whisperToName, nameColor, safeKey, actualChannel, standingImg, tokenId, standingLabel, imageWide, imageMeta, hideImageMeta);
   replaceRenderedMessage(actualChannel, safeKey, div);
 }
 
@@ -1845,7 +1844,6 @@ window.chatKeydown = chatKeydown;
 window.sendChat = sendChat;
 window.handleChatImageUpload = handleChatImageUpload;
 window.togglePendingChatImageWide = togglePendingChatImageWide;
-window.togglePendingChatImageHideIdentity = togglePendingChatImageHideIdentity;
 window.clearPendingChatImages = clearPendingChatImages;
 window.refreshChatActionButtons = refreshChatActionButtons;
 window.clearAllChatHistory = clearAllChatHistory;

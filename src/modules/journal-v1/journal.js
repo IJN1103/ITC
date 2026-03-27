@@ -33,288 +33,6 @@ let _sheetAssignedTo = [];
 let _sheetAvatarData = null;
 let _sheetAvatarStoredUrl = null;
 let _sheetAvatarUploadPromise = null;
-let _sheetMode = 'normal';
-let _sheetReadOnly = false;
-let _sheetDisabledNodes = [];
-let _quickSheetBounds = null;
-let _quickSheetInteraction = null;
-const QUICK_SHEET_MIN_WIDTH = 420;
-const QUICK_SHEET_MIN_HEIGHT = 380;
-const QUICK_SHEET_MARGIN = 12;
-
-function getSheetModal() { return document.querySelector('#sheet-overlay .sheet-modal'); }
-
-function clampQuickSheetBounds(bounds) {
-  const width = Math.max(QUICK_SHEET_MIN_WIDTH, Math.min(bounds.width || QUICK_SHEET_MIN_WIDTH, window.innerWidth - QUICK_SHEET_MARGIN * 2));
-  const height = Math.max(QUICK_SHEET_MIN_HEIGHT, Math.min(bounds.height || QUICK_SHEET_MIN_HEIGHT, window.innerHeight - QUICK_SHEET_MARGIN * 2));
-  const maxLeft = Math.max(QUICK_SHEET_MARGIN, window.innerWidth - QUICK_SHEET_MARGIN - width);
-  const maxTop = Math.max(QUICK_SHEET_MARGIN, window.innerHeight - QUICK_SHEET_MARGIN - height);
-  return {
-    width,
-    height,
-    left: Math.min(Math.max(bounds.left ?? QUICK_SHEET_MARGIN, QUICK_SHEET_MARGIN), maxLeft),
-    top: Math.min(Math.max(bounds.top ?? QUICK_SHEET_MARGIN, QUICK_SHEET_MARGIN), maxTop),
-  };
-}
-
-function applyQuickSheetBounds(bounds) {
-  const modal = getSheetModal();
-  if (!modal) return;
-  const next = clampQuickSheetBounds(bounds || {});
-  _quickSheetBounds = next;
-  modal.style.top = next.top + 'px';
-  modal.style.left = next.left + 'px';
-  modal.style.right = 'auto';
-  modal.style.bottom = 'auto';
-  modal.style.width = next.width + 'px';
-  modal.style.height = next.height + 'px';
-  modal.style.maxWidth = `calc(100vw - ${QUICK_SHEET_MARGIN * 2}px)`;
-  modal.style.maxHeight = `calc(100vh - ${QUICK_SHEET_MARGIN * 2}px)`;
-}
-
-function positionQuickSheet(forceReset = false) {
-  if (_sheetMode !== 'quick') return;
-  const modal = getSheetModal();
-  if (!modal) return;
-  if (!forceReset && _quickSheetBounds) {
-    applyQuickSheetBounds(_quickSheetBounds);
-    return;
-  }
-  const panelRight = document.getElementById('panel-right');
-  const chatWidth = panelRight && !panelRight.classList.contains('collapsed') ? Math.round(panelRight.getBoundingClientRect().width) : 0;
-  const width = Math.min(560, Math.max(QUICK_SHEET_MIN_WIDTH, window.innerWidth - chatWidth - 166));
-  const height = Math.min(820, Math.max(560, Math.round(window.innerHeight * 0.74)));
-  const top = Math.max(72, Math.round(window.innerHeight * 0.12));
-  const right = Math.max(chatWidth + 110, 320);
-  const left = Math.max(QUICK_SHEET_MARGIN, window.innerWidth - right - width);
-  applyQuickSheetBounds({ left, top, width, height });
-}
-
-function ensureQuickSheetHandles() {
-  const modal = getSheetModal();
-  if (!modal || modal.querySelector('.sheet-resize-handle')) return;
-  ['n','e','s','w','ne','nw','se','sw'].forEach(dir => {
-    const handle = document.createElement('div');
-    handle.className = 'sheet-resize-handle sheet-resize-' + dir;
-    handle.dataset.dir = dir;
-    modal.appendChild(handle);
-  });
-}
-
-function beginQuickSheetPointer(event, mode, dir = '') {
-  if (_sheetMode !== 'quick') return;
-  const modal = getSheetModal();
-  if (!modal) return;
-  const rect = modal.getBoundingClientRect();
-  _quickSheetInteraction = {
-    mode,
-    dir,
-    pointerId: event.pointerId,
-    startX: event.clientX,
-    startY: event.clientY,
-    startLeft: rect.left,
-    startTop: rect.top,
-    startWidth: rect.width,
-    startHeight: rect.height,
-  };
-  modal.setPointerCapture?.(event.pointerId);
-  event.preventDefault();
-}
-
-function onQuickSheetPointerMove(event) {
-  if (!_quickSheetInteraction || _sheetMode !== 'quick') return;
-  const state = _quickSheetInteraction;
-  const dx = event.clientX - state.startX;
-  const dy = event.clientY - state.startY;
-  if (state.mode === 'drag') {
-    applyQuickSheetBounds({
-      left: state.startLeft + dx,
-      top: state.startTop + dy,
-      width: state.startWidth,
-      height: state.startHeight,
-    });
-    return;
-  }
-  let left = state.startLeft;
-  let top = state.startTop;
-  let width = state.startWidth;
-  let height = state.startHeight;
-  const dir = state.dir;
-  if (dir.includes('e')) width = state.startWidth + dx;
-  if (dir.includes('s')) height = state.startHeight + dy;
-  if (dir.includes('w')) {
-    width = state.startWidth - dx;
-    left = state.startLeft + dx;
-  }
-  if (dir.includes('n')) {
-    height = state.startHeight - dy;
-    top = state.startTop + dy;
-  }
-  if (width < QUICK_SHEET_MIN_WIDTH) {
-    if (dir.includes('w')) left -= QUICK_SHEET_MIN_WIDTH - width;
-    width = QUICK_SHEET_MIN_WIDTH;
-  }
-  if (height < QUICK_SHEET_MIN_HEIGHT) {
-    if (dir.includes('n')) top -= QUICK_SHEET_MIN_HEIGHT - height;
-    height = QUICK_SHEET_MIN_HEIGHT;
-  }
-  if (left < QUICK_SHEET_MARGIN) {
-    if (dir.includes('w')) width -= QUICK_SHEET_MARGIN - left;
-    left = QUICK_SHEET_MARGIN;
-  }
-  if (top < QUICK_SHEET_MARGIN) {
-    if (dir.includes('n')) height -= QUICK_SHEET_MARGIN - top;
-    top = QUICK_SHEET_MARGIN;
-  }
-  const maxWidth = window.innerWidth - QUICK_SHEET_MARGIN - left;
-  const maxHeight = window.innerHeight - QUICK_SHEET_MARGIN - top;
-  width = Math.min(width, maxWidth);
-  height = Math.min(height, maxHeight);
-  if (dir.includes('w')) {
-    left = Math.max(QUICK_SHEET_MARGIN, state.startLeft + (state.startWidth - width));
-  }
-  if (dir.includes('n')) {
-    top = Math.max(QUICK_SHEET_MARGIN, state.startTop + (state.startHeight - height));
-  }
-  applyQuickSheetBounds({ left, top, width, height });
-}
-
-function endQuickSheetPointer(event) {
-  if (!_quickSheetInteraction) return;
-  const modal = getSheetModal();
-  if (modal && typeof modal.releasePointerCapture === 'function') {
-    try { modal.releasePointerCapture(_quickSheetInteraction.pointerId); } catch (e) {}
-  }
-  _quickSheetInteraction = null;
-}
-
-function bindQuickSheetInteractions() {
-  const modal = getSheetModal();
-  if (!modal || modal.dataset.quickSheetBound === '1') return;
-  modal.dataset.quickSheetBound = '1';
-  const head = modal.querySelector('.sheet-head');
-  head?.addEventListener('pointerdown', (event) => {
-    if (_sheetMode !== 'quick') return;
-    if (event.button !== 0) return;
-    if (event.target.closest('button')) return;
-    beginQuickSheetPointer(event, 'drag');
-  });
-  modal.addEventListener('pointerdown', (event) => {
-    if (_sheetMode !== 'quick') return;
-    const handle = event.target.closest('.sheet-resize-handle');
-    if (!handle || event.button !== 0) return;
-    beginQuickSheetPointer(event, 'resize', handle.dataset.dir || '');
-  });
-  window.addEventListener('pointermove', onQuickSheetPointerMove);
-  window.addEventListener('pointerup', endQuickSheetPointer);
-  window.addEventListener('pointercancel', endQuickSheetPointer);
-}
-
-function setSheetReadOnly(readOnly) {
-  _sheetReadOnly = !!readOnly;
-  const overlay = document.getElementById('sheet-overlay');
-  const modal = getSheetModal();
-  const editBtn = document.getElementById('sheet-edit-toggle');
-  const saveBtn = document.querySelector('#sheet-overlay .sheet-footer .btn-primary');
-  const assignBar = document.getElementById('sh-assign-bar');
-  if (!overlay || !modal) return;
-  modal.classList.toggle('readonly', _sheetReadOnly);
-  modal.classList.toggle('quick-mode', _sheetMode === 'quick');
-  overlay.classList.toggle('quick-mode', _sheetMode === 'quick');
-  if (editBtn) editBtn.style.display = (_sheetMode === 'quick' && _sheetReadOnly) ? 'inline-flex' : 'none';
-  if (saveBtn) saveBtn.style.display = (_sheetMode === 'quick' && _sheetReadOnly) ? 'none' : '';
-  if (assignBar) {
-    if (_sheetMode === 'quick' && _sheetReadOnly) assignBar.style.display = 'none';
-    else if (_sheetJournalId) {
-      const current = _allJournals.find(j => j.id === _sheetJournalId) || null;
-      refreshSheetAssignBar(current);
-    }
-  }
-
-  _sheetDisabledNodes.forEach(({ node, disabled, readOnly, tabIndex }) => {
-    if (!node) return;
-    if (typeof disabled === 'boolean') node.disabled = disabled;
-    if ('readOnly' in node && typeof readOnly === 'boolean') node.readOnly = readOnly;
-    if (tabIndex === null) node.removeAttribute('tabindex');
-    else if (tabIndex !== undefined) node.tabIndex = tabIndex;
-  });
-  _sheetDisabledNodes = [];
-
-  if (!_sheetReadOnly) return;
-  modal.querySelectorAll('.sheet-body input, .sheet-body textarea, .sheet-body button, #sh-assign-bar button').forEach(node => {
-    _sheetDisabledNodes.push({
-      node,
-      disabled: 'disabled' in node ? !!node.disabled : undefined,
-      readOnly: 'readOnly' in node ? !!node.readOnly : undefined,
-      tabIndex: node.hasAttribute('tabindex') ? node.tabIndex : null,
-    });
-    if ('disabled' in node) node.disabled = true;
-    if ('readOnly' in node) node.readOnly = true;
-    node.tabIndex = -1;
-  });
-}
-
-function closeQuickSheetPicker() {
-  const picker = document.getElementById('quick-sheet-picker');
-  const btn = document.getElementById('map-quick-sheet-btn');
-  if (picker) picker.classList.remove('open');
-  if (btn) btn.classList.remove('open');
-}
-
-function openQuickSheetPicker() {
-  const picker = document.getElementById('quick-sheet-picker');
-  const btn = document.getElementById('map-quick-sheet-btn');
-  if (!picker) return;
-  const list = loadJournals();
-  if (!list.length) { showToast('열 수 있는 저널이 없어요.'); return; }
-  picker.innerHTML = '<div class="quick-sheet-picker-head">열 저널 선택</div>';
-  list.slice().reverse().forEach(j => {
-    const item = document.createElement('button');
-    item.type = 'button';
-    item.className = 'quick-sheet-picker-item';
-    const av = saGetAvatar(j.id) || '';
-    const initials = (j.title || '저').trim()[0]?.toUpperCase() || '?';
-    item.innerHTML = '<span class="quick-sheet-picker-avatar">' + (av ? '<img src="' + av + '" alt="avatar">' : esc(initials)) + '</span><span>' + esc(j.title || '무제 저널') + '</span>';
-    item.onclick = () => { closeQuickSheetPicker(); openSheet(j.id, { mode: 'quick', readOnly: true }); };
-    picker.appendChild(item);
-  });
-  picker.classList.add('open');
-  if (btn) btn.classList.add('open');
-}
-
-function toggleQuickSheet(event) {
-  if (event) { event.preventDefault(); event.stopPropagation(); }
-  const picker = document.getElementById('quick-sheet-picker');
-  if (_sheetMode === 'quick' && document.getElementById('sheet-overlay')?.classList.contains('open')) {
-    closeSheet();
-    return;
-  }
-  if (picker?.classList.contains('open')) {
-    closeQuickSheetPicker();
-    return;
-  }
-  const currentJournalId = St.speakAsJournalId || null;
-  if (currentJournalId) {
-    openSheet(currentJournalId, { mode: 'quick', readOnly: true });
-    return;
-  }
-  openQuickSheetPicker();
-}
-
-function enableQuickSheetEdit() {
-  if (_sheetMode !== 'quick') return;
-  setSheetReadOnly(false);
-  document.getElementById('sh-name')?.focus();
-}
-
-window.addEventListener('resize', () => { if (_sheetMode === 'quick') applyQuickSheetBounds(_quickSheetBounds || {}); });
-document.addEventListener('click', (event) => {
-  const picker = document.getElementById('quick-sheet-picker');
-  const btn = document.getElementById('map-quick-sheet-btn');
-  if (!picker?.classList.contains('open')) return;
-  if (picker.contains(event.target) || btn?.contains(event.target)) return;
-  closeQuickSheetPicker();
-});
 
 function getCloudinaryJournalConfig() {
   const cfg = window._ITC_CLOUDINARY || {};
@@ -1077,7 +795,12 @@ function openJournalEditor(id) {
 function closeJournalDrawer() {
   document.getElementById('journal-drawer').classList.remove('open');
   renderJournalList();
+  _quickSheetMode = false;
+  _quickSheetReadOnly = true;
+  const editBtn = document.getElementById('sheet-quick-edit-btn');
+  if (editBtn) editBtn.style.display = 'none';
 }
+
 
 function closeJournalEditor() { closeJournalDrawer(); }
 
@@ -1139,7 +862,9 @@ function createNewJournal() {
   const delBtn = document.querySelector('.sheet-del-btn');
   if (delBtn) delBtn.style.display = 'none';
 
-  document.getElementById('sheet-overlay').classList.add('open');
+  const overlay = document.getElementById('sheet-overlay');
+  overlay.classList.add('open');
+  if (!_quickSheetMode) overlay.classList.remove('quick-sheet-mode', 'quick-sheet-readonly');
   setTimeout(() => document.getElementById('sh-name')?.focus(), 150);
 }
 
@@ -1412,13 +1137,223 @@ function initSheetUI() {
   });
 }
 
+
+let _quickSheetMode = false;
+let _quickSheetReadOnly = true;
+let _quickSheetDefaultRect = null;
+
+function getQuickJournalDropdownEl() {
+  return document.getElementById('map-quick-journal-dropdown');
+}
+
+function closeQuickJournalDropdown() {
+  getQuickJournalDropdownEl()?.classList.remove('open');
+}
+
+function getSelectableQuickJournals() {
+  return loadJournals().filter(j => !j.assignedTo || !j.assignedTo.length || j.assignedTo.includes(St.myId) || j.ownerId === St.myId || isGM());
+}
+
+function toggleQuickJournal(event) {
+  if (event) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+  const overlay = document.getElementById('sheet-overlay');
+  if (!overlay) return;
+  if (overlay.classList.contains('open') && overlay.classList.contains('quick-sheet-mode')) {
+    closeSheet();
+    return;
+  }
+  closeQuickJournalDropdown();
+  if (St.speakAsJournalId) {
+    openQuickSheet(St.speakAsJournalId);
+    return;
+  }
+  renderQuickJournalDropdown();
+}
+
+function renderQuickJournalDropdown() {
+  const dd = getQuickJournalDropdownEl();
+  if (!dd) return;
+  const journals = getSelectableQuickJournals();
+  if (!journals.length) {
+    showToast('열 수 있는 저널이 없어요.');
+    dd.classList.remove('open');
+    return;
+  }
+  dd.innerHTML = '';
+  journals.forEach(j => {
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = 'map-quick-journal-item';
+    const av = (typeof saGetAvatar === 'function' ? saGetAvatar(j.id) : '') || j.avatar || '';
+    const init = (j.title || '?')[0].toUpperCase();
+    item.innerHTML = av
+      ? `<span class="map-quick-journal-item-avatar"><img src="${esc(av)}" alt=""></span><span class="map-quick-journal-item-title">${esc(j.title || '무제')}</span>`
+      : `<span class="map-quick-journal-item-avatar">${esc(init)}</span><span class="map-quick-journal-item-title">${esc(j.title || '무제')}</span>`;
+    item.onclick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      closeQuickJournalDropdown();
+      openQuickSheet(j.id);
+    };
+    dd.appendChild(item);
+  });
+  dd.classList.add('open');
+}
+
+function setQuickSheetReadOnly(readOnly) {
+  _quickSheetReadOnly = !!readOnly;
+  const overlay = document.getElementById('sheet-overlay');
+  if (!overlay) return;
+  overlay.classList.toggle('quick-sheet-readonly', _quickSheetReadOnly);
+  overlay.querySelectorAll('input, textarea, select').forEach(el => {
+    if (el.id === 'sh-token-assign-btn') return;
+    el.disabled = _quickSheetReadOnly;
+    el.readOnly = _quickSheetReadOnly;
+  });
+  const fileInput = document.getElementById('sh-avatar-input');
+  if (fileInput) fileInput.disabled = _quickSheetReadOnly;
+  const saveBtn = document.querySelector('#sheet-overlay .sheet-footer .btn-primary');
+  if (saveBtn) saveBtn.style.display = _quickSheetReadOnly ? 'none' : '';
+  const delBtn = document.querySelector('#sheet-overlay .sheet-del-btn');
+  if (delBtn) delBtn.style.display = _quickSheetReadOnly ? 'none' : '';
+  const assignBar = document.getElementById('sh-assign-bar');
+  if (assignBar) assignBar.style.display = (_quickSheetReadOnly || !isGM()) ? 'none' : assignBar.style.display;
+  let editBtn = document.getElementById('sheet-quick-edit-btn');
+  if (!editBtn) {
+    editBtn = document.createElement('button');
+    editBtn.id = 'sheet-quick-edit-btn';
+    editBtn.className = 'sheet-quick-edit-btn';
+    editBtn.type = 'button';
+    editBtn.title = '편집';
+    editBtn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 1 1 3 3L7 19l-4 1 1-4Z"/></svg>';
+    editBtn.onclick = (e) => { e.preventDefault(); e.stopPropagation(); setQuickSheetReadOnly(false); };
+    const closeBtn = document.querySelector('#sheet-overlay .sheet-close');
+    if (closeBtn && closeBtn.parentNode) closeBtn.parentNode.insertBefore(editBtn, closeBtn);
+  }
+  editBtn.style.display = (_quickSheetMode && _quickSheetReadOnly) ? '' : 'none';
+}
+
+function clampQuickSheetIntoView() {
+  const overlay = document.getElementById('sheet-overlay');
+  const modal = overlay?.querySelector('.sheet-modal');
+  if (!overlay || !modal || !_quickSheetMode) return;
+  const vw = window.innerWidth, vh = window.innerHeight;
+  const rect = modal.getBoundingClientRect();
+  const maxW = Math.min(Math.floor(vw - 24), 960);
+  const maxH = Math.min(Math.floor(vh - 24), vh - 24);
+  modal.style.maxWidth = maxW + 'px';
+  modal.style.maxHeight = maxH + 'px';
+  let left = rect.left, top = rect.top;
+  if (left + rect.width > vw - 12) left = Math.max(12, vw - rect.width - 12);
+  if (top + rect.height > vh - 12) top = Math.max(12, vh - rect.height - 12);
+  if (left < 12) left = 12;
+  if (top < 12) top = 12;
+  modal.style.left = left + 'px';
+  modal.style.top = top + 'px';
+}
+
+function enableQuickSheetChrome() {
+  const overlay = document.getElementById('sheet-overlay');
+  const modal = overlay?.querySelector('.sheet-modal');
+  const head = overlay?.querySelector('.sheet-head');
+  if (!overlay || !modal || !head) return;
+  if (!modal.dataset.quickSheetInit) {
+    modal.dataset.quickSheetInit = '1';
+    const directions = ['n','e','s','w','nw','ne','sw','se'];
+    directions.forEach(dir => {
+      const h = document.createElement('div');
+      h.className = 'quick-sheet-handle quick-sheet-handle-' + dir;
+      h.dataset.dir = dir;
+      modal.appendChild(h);
+    });
+    let drag = null;
+    const startDrag = (e) => {
+      if (!_quickSheetMode) return;
+      if (e.target.closest('button')) return;
+      const rect = modal.getBoundingClientRect();
+      drag = { sx:e.clientX, sy:e.clientY, left:rect.left, top:rect.top };
+      document.body.style.userSelect = 'none';
+      e.preventDefault();
+    };
+    head.addEventListener('pointerdown', startDrag);
+    modal.addEventListener('pointerdown', (e) => {
+      const handle = e.target.closest('.quick-sheet-handle');
+      if (!handle || !_quickSheetMode) return;
+      const rect = modal.getBoundingClientRect();
+      drag = { resize:true, dir:handle.dataset.dir, sx:e.clientX, sy:e.clientY, left:rect.left, top:rect.top, width:rect.width, height:rect.height };
+      document.body.style.userSelect = 'none';
+      e.preventDefault();
+      e.stopPropagation();
+    });
+    window.addEventListener('pointermove', (e) => {
+      if (!drag || !_quickSheetMode) return;
+      const vw = window.innerWidth, vh = window.innerHeight;
+      if (!drag.resize) {
+        const rect = modal.getBoundingClientRect();
+        let left = drag.left + (e.clientX - drag.sx);
+        let top = drag.top + (e.clientY - drag.sy);
+        left = Math.max(12, Math.min(left, vw - rect.width - 12));
+        top = Math.max(12, Math.min(top, vh - rect.height - 12));
+        modal.style.left = left + 'px';
+        modal.style.top = top + 'px';
+        return;
+      }
+      const minW = 380, minH = 360;
+      let { left, top, width, height } = drag;
+      const dx = e.clientX - drag.sx, dy = e.clientY - drag.sy;
+      if (drag.dir.includes('e')) width = drag.width + dx;
+      if (drag.dir.includes('s')) height = drag.height + dy;
+      if (drag.dir.includes('w')) { width = drag.width - dx; left = drag.left + dx; }
+      if (drag.dir.includes('n')) { height = drag.height - dy; top = drag.top + dy; }
+      width = Math.max(minW, Math.min(width, vw - 24));
+      height = Math.max(minH, Math.min(height, vh - 24));
+      left = Math.max(12, Math.min(left, vw - width - 12));
+      top = Math.max(12, Math.min(top, vh - height - 12));
+      if (drag.dir.includes('w') && width === minW) left = drag.left + (drag.width - width);
+      if (drag.dir.includes('n') && height === minH) top = drag.top + (drag.height - height);
+      modal.style.width = width + 'px';
+      modal.style.height = height + 'px';
+      modal.style.left = left + 'px';
+      modal.style.top = top + 'px';
+    });
+    window.addEventListener('pointerup', () => { drag = null; document.body.style.userSelect = ''; });
+    window.addEventListener('resize', clampQuickSheetIntoView);
+  }
+}
+
+function applyQuickSheetPosition() {
+  const overlay = document.getElementById('sheet-overlay');
+  const modal = overlay?.querySelector('.sheet-modal');
+  if (!overlay || !modal) return;
+  modal.style.width = 'min(920px, 58vw)';
+  modal.style.height = 'min(82vh, 820px)';
+  modal.style.left = 'calc(50% - 560px)';
+  modal.style.top = '8vh';
+  clampQuickSheetIntoView();
+}
+
+function openQuickSheet(journalId) {
+  closeQuickJournalDropdown();
+  _quickSheetMode = true;
+  openSheet(journalId);
+  const overlay = document.getElementById('sheet-overlay');
+  if (!overlay) return;
+  overlay.classList.add('quick-sheet-mode');
+  enableQuickSheetChrome();
+  applyQuickSheetPosition();
+  setQuickSheetReadOnly(true);
+}
+
 function updateStatHalf(key) {
   const val = parseInt(document.getElementById('sh-'+key)?.value) || 0;
   const el  = document.getElementById('sh-'+key+'-half');
   if (el) el.textContent = `½ ${Math.floor(val/2)} / ⅕ ${Math.floor(val/5)}`;
 }
 
-function openSheet(journalId, options = {}) {
+function openSheet(journalId) {
   _sheetIsNew = false;
   const existingWrap = document.getElementById('sh-skills-wrap');
   if (existingWrap) existingWrap.innerHTML = '';
@@ -1486,9 +1421,6 @@ function openSheet(journalId, options = {}) {
   const hint = document.getElementById('sheet-hint');
   if (hint) hint.textContent = '';
 
-  _sheetMode = options.mode === 'quick' ? 'quick' : 'normal';
-  closeQuickSheetPicker();
-
   _sheetAvatarData = saGetAvatar(journalId) || data.avatar || null;
   _sheetAvatarStoredUrl = _sheetAvatarData || null;
   _sheetAvatarUploadPromise = null;
@@ -1501,33 +1433,16 @@ function openSheet(journalId, options = {}) {
   refreshSheetAssignBar(j);
 
   const delBtn = document.querySelector('.sheet-del-btn');
-  if (delBtn) delBtn.style.display = _sheetMode === 'quick' ? 'none' : '';
-  document.getElementById('sheet-overlay').classList.add('open');
-  ensureQuickSheetHandles();
-  bindQuickSheetInteractions();
-  setSheetReadOnly(_sheetMode === 'quick' ? (options.readOnly !== false) : false);
-  if (_sheetMode === 'quick') _quickSheetBounds = null;
-  requestAnimationFrame(() => positionQuickSheet(true));
+  if (delBtn) delBtn.style.display = '';
+  const overlay = document.getElementById('sheet-overlay');
+  overlay.classList.add('open');
+  if (!_quickSheetMode) overlay.classList.remove('quick-sheet-mode', 'quick-sheet-readonly');
 }
 
 function closeSheet() {
+  closeQuickJournalDropdown();
   const overlay = document.getElementById('sheet-overlay');
-  const modal = getSheetModal();
-  if (overlay) overlay.classList.remove('open', 'quick-mode');
-  if (modal) {
-    modal.classList.remove('quick-mode', 'readonly');
-    modal.style.top = '';
-    modal.style.right = '';
-    modal.style.left = '';
-    modal.style.bottom = '';
-    modal.style.width = '';
-    modal.style.height = '';
-  }
-  closeQuickSheetPicker();
-  _sheetMode = 'normal';
-  _sheetReadOnly = false;
-  _quickSheetBounds = null;
-  _quickSheetInteraction = null;
+  overlay.classList.remove('open', 'quick-sheet-mode', 'quick-sheet-readonly');
   _sheetJournalId = null;
   _sheetIsNew = false;
   _jdAssignedTokenId = null;
@@ -1538,7 +1453,6 @@ function closeSheet() {
     try { URL.revokeObjectURL(_sheetAvatarData); } catch (e) {}
   }
   _sheetAvatarData = null;
-  setSheetReadOnly(false);
   const hint = document.getElementById('sheet-hint');
   if (hint) hint.textContent = '';
   renderJournalList();
@@ -1748,15 +1662,21 @@ async function saveSheet() {
   }
 
   const hint = document.getElementById('sheet-hint');
-  if (hint) { hint.textContent = '저장됐어요 ✓'; setTimeout(() => { if (document.getElementById('sheet-hint')) document.getElementById('sheet-hint').textContent = ''; }, 2000); }
+  if (hint) { hint.textContent = '저장됐어요 ✓'; setTimeout(() => { hint.textContent = ''; }, 2000); }
 
-  if (_sheetMode === 'quick') {
-    setSheetReadOnly(true);
-    requestAnimationFrame(positionQuickSheet);
-    renderJournalList();
-    return;
+  if (_quickSheetMode) {
+    setQuickSheetReadOnly(true);
+  } else {
+    closeSheet();
   }
-
-  closeSheet();
 }
 
+
+
+document.addEventListener('click', (e) => {
+  const btn = document.getElementById('map-quick-journal-btn');
+  const dd = document.getElementById('map-quick-journal-dropdown');
+  if (!dd) return;
+  if (dd.contains(e.target) || btn?.contains(e.target)) return;
+  dd.classList.remove('open');
+});
