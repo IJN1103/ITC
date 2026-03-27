@@ -123,26 +123,34 @@ function createTokenStatusCard(token) {
   const card = document.createElement('article');
   card.className = 'map-status-card';
 
+  const headBox = document.createElement('div');
+  headBox.className = 'map-status-headbox';
+
   const avatar = document.createElement('div');
   avatar.className = 'map-status-avatar';
-
-  const avatarFrame = document.createElement('div');
-  avatarFrame.className = 'map-status-avatar-frame';
   const avatarImg = getTokenStatusImage(token);
   if (avatarImg) {
     const img = document.createElement('img');
     img.src = avatarImg;
     img.alt = token.name || '토큰';
-    avatarFrame.appendChild(img);
+    avatar.appendChild(img);
   } else {
-    avatarFrame.textContent = String(token.name || '?').trim().slice(0, 2) || '?';
+    avatar.textContent = String(token.name || '?').trim().slice(0, 2) || '?';
   }
+
+  const headMeta = document.createElement('div');
+  headMeta.className = 'map-status-headmeta';
 
   const initiative = document.createElement('div');
   initiative.className = 'map-status-init';
   initiative.textContent = token.hideStatus ? '??' : String(Number(token.initiative));
 
-  avatar.append(avatarFrame, initiative);
+  const name = document.createElement('div');
+  name.className = 'map-status-name';
+  name.textContent = String(token.name || '').trim() || '이름 없음';
+
+  headMeta.append(initiative, name);
+  headBox.append(avatar, headMeta);
 
   const body = document.createElement('div');
   body.className = 'map-status-body';
@@ -169,7 +177,7 @@ function createTokenStatusCard(token) {
     });
   }
 
-  card.append(avatar, body);
+  card.append(headBox, body);
   return card;
 }
 
