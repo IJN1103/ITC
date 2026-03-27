@@ -342,7 +342,7 @@ function renderCampaigns(rooms) {
         <button class="cc-enter" onclick="event.stopPropagation();enterCampaign('${r.code}')">입장 →</button>
       </div>
       ${isGM ? `<button class="cc-edit" onclick="openSessionEdit(event,'${r.code}','${key}','${esc(r.title||'무제 세션')}')" title="세션 설정">✎</button>` : ''}
-      <button class="cc-del" onclick="removeCampaign(event,'${r.code}','${key}')" title="목록에서 제거">✕</button>
+      <button class="cc-del" onclick="removeCampaign(event,'${r.code}','${key}',${isGM ? 'true' : 'false'})" title="${isGM ? '세션 완전 삭제' : '목록에서 제거'}">✕</button>
     </div>`;
   }).join('');
 }
@@ -536,11 +536,46 @@ async function saveSessionEdit() {
   loadMyCampaigns(); // 카드 목록 갱신
 }
 
-async function removeCampaign(e, code, key) {
+async function removeCampaign(e, code, key, isGM = false) {
   e.stopPropagation();
+  if (!window._FB?.CONFIGURED) return;
+
+  const { db, ref, remove, get, update } = window._FB;
+
+  if (isGM) {
+    if (!confirm('이 세션을 완전히 삭제할까요?\n삭제하면 방 자체와 참가자 목록에서 모두 사라져요.')) return;
+
+    try {
+      const playersSnap = await get(ref(db, `rooms/${code}/players`));
+      const playerIds = playersSnap.exists() ? Object.keys(playersSnap.val() || {}) : [];
+      const updates = {};
+      playerIds.forEach((uid) => {
+        updates[`users/${uid}/rooms/${code}`] = null;
+      });
+      updates[`rooms/${code}`] = null;
+      await update(ref(db), updates);
+
+      try { localStorage.removeItem('itc_cover_' + code); } catch (err) {}
+      try {
+        const recent = JSON.parse(localStorage.getItem('tt_recent') || '[]').filter((room) => room.code !== code);
+        localStorage.setItem('tt_recent', JSON.stringify(recent));
+      } catch (err) {}
+
+      showToast('세션이 완전히 삭제됐어요.');
+    } catch (err) {
+      console.error('campaign delete failed', err);
+      showToast('세션 삭제에 실패했어요. 다시 시도해 주세요.');
+    }
+    return;
+  }
+
   if (!confirm('세션 목록에서 제거할까요?\n(방 자체는 삭제되지 않아요)')) return;
-  const { db, ref, remove } = window._FB;
-  await remove(ref(db, `users/${St.myId}/rooms/${key}`));
+  try {
+    await remove(ref(db, `users/${St.myId}/rooms/${key}`));
+  } catch (err) {
+    console.error('campaign remove failed', err);
+    showToast('세션 목록에서 제거하지 못했어요. 다시 시도해 주세요.');
+  }
 }
 
 async function handleCoverUpload(e, code, key) {

@@ -211,11 +211,39 @@ async function kickPlayer(uid, name) {
 }
 
 async function endRoom() {
-  if (!St.isGM) return;
-  if (!confirm('방을 종료하면 모든 플레이어가 퇴장됩니다. 계속하시겠습니까?')) return;
-  const { db, ref, remove } = window._FB;
-  await remove(ref(db, `rooms/${St.roomCode}`));
-  location.reload();
+  if (!St.isGM || !window._FB?.CONFIGURED || !St.roomCode) return;
+  if (!confirm('방을 종료하면 세션이 완전히 삭제되고 모든 플레이어 목록에서도 사라집니다. 계속하시겠습니까?')) return;
+
+  const { db, ref, get, update } = window._FB;
+
+  try {
+    const roomCode = St.roomCode;
+    const playersSnap = await get(ref(db, `rooms/${roomCode}/players`));
+    const playerIds = playersSnap.exists() ? Object.keys(playersSnap.val() || {}) : [];
+    const updates = {};
+
+    playerIds.forEach((uid) => {
+      updates[`users/${uid}/rooms/${roomCode}`] = null;
+    });
+    updates[`rooms/${roomCode}`] = null;
+
+    await update(ref(db), updates);
+
+    try { localStorage.removeItem('itc_cover_' + roomCode); } catch (err) {}
+    try {
+      const recent = JSON.parse(localStorage.getItem('tt_recent') || '[]').filter((room) => room.code !== roomCode);
+      localStorage.setItem('tt_recent', JSON.stringify(recent));
+    } catch (err) {}
+
+    sessionStorage.removeItem('itc_session_code');
+    sessionStorage.removeItem('itc_session_sys');
+    sessionStorage.removeItem('itc_session_role');
+
+    location.reload();
+  } catch (err) {
+    console.error('end room failed', err);
+    showToast('방 종료에 실패했어요. 다시 시도해 주세요.');
+  }
 }
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }
 document.querySelectorAll('.overlay').forEach(o => o.addEventListener('click', e => { if (e.target===o) o.classList.remove('open'); }));
