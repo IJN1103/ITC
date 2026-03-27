@@ -162,6 +162,55 @@ let _tokenSelectionState = {
   currentX: 0,
   currentY: 0,
 };
+let _tokenSelectionBoxEl = null;
+let _activeTokenDragSession = null;
+
+
+function ensureTokenSelectionBox() {
+  if (_tokenSelectionBoxEl && document.body.contains(_tokenSelectionBoxEl)) return _tokenSelectionBoxEl;
+  const map = document.getElementById('map-area');
+  if (!map) return null;
+  const box = document.createElement('div');
+  box.id = 'map-token-selection-box';
+  box.style.cssText = [
+    'position:absolute',
+    'left:0',
+    'top:0',
+    'width:0',
+    'height:0',
+    'display:none',
+    'pointer-events:none',
+    'z-index:25',
+    'border:1px solid rgba(214, 174, 107, 0.95)',
+    'background:rgba(214, 174, 107, 0.18)',
+    'box-shadow:0 0 0 1px rgba(255,255,255,0.08) inset',
+    'border-radius:8px'
+  ].join(';');
+  map.appendChild(box);
+  _tokenSelectionBoxEl = box;
+  return box;
+}
+
+function updateTokenSelectionBox() {
+  const box = ensureTokenSelectionBox();
+  if (!box || !_tokenSelectionState.active) return;
+  const x = Math.min(_tokenSelectionState.startX, _tokenSelectionState.currentX);
+  const y = Math.min(_tokenSelectionState.startY, _tokenSelectionState.currentY);
+  const w = Math.abs(_tokenSelectionState.currentX - _tokenSelectionState.startX);
+  const h = Math.abs(_tokenSelectionState.currentY - _tokenSelectionState.startY);
+  box.style.display = 'block';
+  box.style.left = x + 'px';
+  box.style.top = y + 'px';
+  box.style.width = w + 'px';
+  box.style.height = h + 'px';
+}
+
+function hideTokenSelectionBox() {
+  if (!_tokenSelectionBoxEl) return;
+  _tokenSelectionBoxEl.style.display = 'none';
+  _tokenSelectionBoxEl.style.width = '0';
+  _tokenSelectionBoxEl.style.height = '0';
+}
 
 function getTokenEl(tokenId) {
   return document.getElementById('tok-' + tokenId);
@@ -238,14 +287,18 @@ function buildTokenDragSession(tokenId, startEvent) {
     startScale: _mapScale || 1,
     targetIds,
     startPos,
+    moved: false,
   };
 }
 
 function applyTokenDragSession(session, moveEvent) {
   const { width: mapW, height: mapH } = getMapBaseSize();
   const scale = session.startScale || _mapScale || 1;
-  const dxPct = ((moveEvent.clientX - session.startClientX) / (mapW * scale)) * 100;
-  const dyPct = ((moveEvent.clientY - session.startClientY) / (mapH * scale)) * 100;
+  const dx = moveEvent.clientX - session.startClientX;
+  const dy = moveEvent.clientY - session.startClientY;
+  if (Math.abs(dx) > 1 || Math.abs(dy) > 1) session.moved = true;
+  const dxPct = (dx / (mapW * scale)) * 100;
+  const dyPct = (dy / (mapH * scale)) * 100;
   session.targetIds.forEach((id) => {
     const targetEl = getTokenEl(id);
     const pos = session.startPos[id];
@@ -319,6 +372,7 @@ function finishTokenSelection() {
   }
 
   _tokenSelectionState.active = false;
+  hideTokenSelectionBox();
   setMultiTokenSelection(selected);
 }
 
@@ -375,6 +429,7 @@ document.addEventListener('DOMContentLoaded', () => {
       _tokenSelectionState.startY = e.clientY - rect.top;
       _tokenSelectionState.currentX = _tokenSelectionState.startX;
       _tokenSelectionState.currentY = _tokenSelectionState.startY;
+      updateTokenSelectionBox();
       e.preventDefault();
       return;
     }
@@ -396,6 +451,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const rect = mapEl.getBoundingClientRect();
       _tokenSelectionState.currentX = e.clientX - rect.left;
       _tokenSelectionState.currentY = e.clientY - rect.top;
+      updateTokenSelectionBox();
       return;
     }
     if (!isPanning) return;
@@ -409,12 +465,24 @@ document.addEventListener('DOMContentLoaded', () => {
     if (isPanning) { isPanning = false; mapEl.classList.remove('panning'); }
   });
 
-  mapEl.addEventListener('auxclick', e => {
-    if (e.button === 1) e.preventDefault();
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    if (_tokenSelectionState.active) {
+      _tokenSelectionState.active = false;
+      hideTokenSelectionBox();
+    }
+    if (_activeTokenDragSession) {
+      _activeTokenDragSession = null;
+    }
   });
 
   window.addEventListener('resize', () => {
+    if (_tokenSelectionState.active) updateTokenSelectionBox();
     applyMapTransform();
+  });
+
+  mapEl.addEventListener('auxclick', e => {
+    if (e.button === 1) e.preventDefault();
   });
 });
 
@@ -694,6 +762,7 @@ function makeDraggable(el, tokenId) {
     if (!map) return;
 
     const dragSession = buildTokenDragSession(tokenId, e);
+    _activeTokenDragSession = dragSession;
 
     const onMove = ev => {
       applyTokenDragSession(dragSession, ev);
@@ -702,7 +771,10 @@ function makeDraggable(el, tokenId) {
     const onUp = () => {
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup', onUp);
-      saveTokenPositionPatch(collectDraggedTokenPositions(dragSession.targetIds));
+      if (_activeTokenDragSession === dragSession) _activeTokenDragSession = null;
+      if (dragSession.moved) {
+        saveTokenPositionPatch(collectDraggedTokenPositions(dragSession.targetIds));
+      }
       syncMultiTokenSelectionWithTokens(St.tokens);
     };
 
