@@ -681,6 +681,9 @@ to{transform:translateX(0);opacity:1;}
 .msg-wide-head .msg-meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
 .msg-wide-image-wrap{width:100%;}
 .msg-image.is-wide{display:block;width:100%;max-width:100%;height:auto;max-height:none;object-fit:contain;}
+.msg-image-msg.msg-image-wide-row.msg-image-hide-meta{width:calc(100% + 16px);margin-left:-8px;margin-right:-8px;}
+.msg-image-msg.msg-image-wide-row.msg-image-hide-meta .msg-image-only-wrap.is-wide{width:100%;}
+.msg-image-msg.msg-image-wide-row.msg-image-hide-meta .msg-image-shell.is-wide{margin-top:0;}
 @keyframes chatImgPulse{0%{transform:translateX(-100%);}100%{transform:translateX(100%);}}
 .img-lightbox{position:fixed;inset:0;z-index:500;background:rgba(0,0,0,.88);display:flex;align-items:center;justify-content:center;cursor:zoom-out;animation:fadeUp .15s ease;}
 .img-lightbox img{max-width:92vw;max-height:88vh;border-radius:var(--rl);object-fit:contain;}
