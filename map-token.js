@@ -6,22 +6,17 @@
 let _mapScale = 1;
 let _mapPanX = 0, _mapPanY = 0;
 
+let _mapBaseWidth = 0;
+let _mapBaseHeight = 0;
+
 function getMapBaseSize() {
-  const map = document.getElementById('map-area');
   const inner = document.getElementById('map-inner');
-  const width = Math.max(
-    1,
-    map?.clientWidth || 0,
-    inner?.clientWidth || 0,
-    inner?.offsetWidth || 0,
-  );
-  const height = Math.max(
-    1,
-    map?.clientHeight || 0,
-    inner?.clientHeight || 0,
-    inner?.offsetHeight || 0,
-  );
-  return { width, height };
+  const map = document.getElementById('map-area');
+  if (!_mapBaseWidth || !_mapBaseHeight) {
+    _mapBaseWidth = inner?.offsetWidth || map?.clientWidth || 1;
+    _mapBaseHeight = inner?.offsetHeight || map?.clientHeight || 1;
+  }
+  return { width: _mapBaseWidth || 1, height: _mapBaseHeight || 1 };
 }
 
 function getMapExpansion() {
@@ -162,55 +157,6 @@ let _tokenSelectionState = {
   currentX: 0,
   currentY: 0,
 };
-let _tokenSelectionBoxEl = null;
-let _activeTokenDragSession = null;
-
-
-function ensureTokenSelectionBox() {
-  if (_tokenSelectionBoxEl && document.body.contains(_tokenSelectionBoxEl)) return _tokenSelectionBoxEl;
-  const map = document.getElementById('map-area');
-  if (!map) return null;
-  const box = document.createElement('div');
-  box.id = 'map-token-selection-box';
-  box.style.cssText = [
-    'position:absolute',
-    'left:0',
-    'top:0',
-    'width:0',
-    'height:0',
-    'display:none',
-    'pointer-events:none',
-    'z-index:25',
-    'border:1px solid rgba(214, 174, 107, 0.95)',
-    'background:rgba(214, 174, 107, 0.18)',
-    'box-shadow:0 0 0 1px rgba(255,255,255,0.08) inset',
-    'border-radius:8px'
-  ].join(';');
-  map.appendChild(box);
-  _tokenSelectionBoxEl = box;
-  return box;
-}
-
-function updateTokenSelectionBox() {
-  const box = ensureTokenSelectionBox();
-  if (!box || !_tokenSelectionState.active) return;
-  const x = Math.min(_tokenSelectionState.startX, _tokenSelectionState.currentX);
-  const y = Math.min(_tokenSelectionState.startY, _tokenSelectionState.currentY);
-  const w = Math.abs(_tokenSelectionState.currentX - _tokenSelectionState.startX);
-  const h = Math.abs(_tokenSelectionState.currentY - _tokenSelectionState.startY);
-  box.style.display = 'block';
-  box.style.left = x + 'px';
-  box.style.top = y + 'px';
-  box.style.width = w + 'px';
-  box.style.height = h + 'px';
-}
-
-function hideTokenSelectionBox() {
-  if (!_tokenSelectionBoxEl) return;
-  _tokenSelectionBoxEl.style.display = 'none';
-  _tokenSelectionBoxEl.style.width = '0';
-  _tokenSelectionBoxEl.style.height = '0';
-}
 
 function getTokenEl(tokenId) {
   return document.getElementById('tok-' + tokenId);
@@ -277,6 +223,8 @@ function getTokenStartPosition(tokenId) {
 
 function buildTokenDragSession(tokenId, startEvent) {
   const targetIds = getDragTargetIds(tokenId);
+  const { width: natW, height: natH } = getMapBaseSize();
+  const scale = _mapScale || 1;
   const startPos = {};
   targetIds.forEach((id) => {
     startPos[id] = getTokenStartPosition(id);
@@ -284,21 +232,17 @@ function buildTokenDragSession(tokenId, startEvent) {
   return {
     startClientX: startEvent.clientX,
     startClientY: startEvent.clientY,
-    startScale: _mapScale || 1,
+    natW,
+    natH,
+    scale,
     targetIds,
     startPos,
-    moved: false,
   };
 }
 
 function applyTokenDragSession(session, moveEvent) {
-  const { width: mapW, height: mapH } = getMapBaseSize();
-  const scale = session.startScale || _mapScale || 1;
-  const dx = moveEvent.clientX - session.startClientX;
-  const dy = moveEvent.clientY - session.startClientY;
-  if (Math.abs(dx) > 1 || Math.abs(dy) > 1) session.moved = true;
-  const dxPct = (dx / (mapW * scale)) * 100;
-  const dyPct = (dy / (mapH * scale)) * 100;
+  const dxPct = ((moveEvent.clientX - session.startClientX) / (session.natW * session.scale)) * 100;
+  const dyPct = ((moveEvent.clientY - session.startClientY) / (session.natH * session.scale)) * 100;
   session.targetIds.forEach((id) => {
     const targetEl = getTokenEl(id);
     const pos = session.startPos[id];
@@ -372,7 +316,6 @@ function finishTokenSelection() {
   }
 
   _tokenSelectionState.active = false;
-  hideTokenSelectionBox();
   setMultiTokenSelection(selected);
 }
 
@@ -429,7 +372,6 @@ document.addEventListener('DOMContentLoaded', () => {
       _tokenSelectionState.startY = e.clientY - rect.top;
       _tokenSelectionState.currentX = _tokenSelectionState.startX;
       _tokenSelectionState.currentY = _tokenSelectionState.startY;
-      updateTokenSelectionBox();
       e.preventDefault();
       return;
     }
@@ -451,7 +393,6 @@ document.addEventListener('DOMContentLoaded', () => {
       const rect = mapEl.getBoundingClientRect();
       _tokenSelectionState.currentX = e.clientX - rect.left;
       _tokenSelectionState.currentY = e.clientY - rect.top;
-      updateTokenSelectionBox();
       return;
     }
     if (!isPanning) return;
@@ -463,22 +404,6 @@ document.addEventListener('DOMContentLoaded', () => {
   document.addEventListener('mouseup', () => {
     if (_tokenSelectionState.active) finishTokenSelection();
     if (isPanning) { isPanning = false; mapEl.classList.remove('panning'); }
-  });
-
-  document.addEventListener('keydown', (e) => {
-    if (e.key !== 'Escape') return;
-    if (_tokenSelectionState.active) {
-      _tokenSelectionState.active = false;
-      hideTokenSelectionBox();
-    }
-    if (_activeTokenDragSession) {
-      _activeTokenDragSession = null;
-    }
-  });
-
-  window.addEventListener('resize', () => {
-    if (_tokenSelectionState.active) updateTokenSelectionBox();
-    applyMapTransform();
   });
 
   mapEl.addEventListener('auxclick', e => {
@@ -762,7 +687,6 @@ function makeDraggable(el, tokenId) {
     if (!map) return;
 
     const dragSession = buildTokenDragSession(tokenId, e);
-    _activeTokenDragSession = dragSession;
 
     const onMove = ev => {
       applyTokenDragSession(dragSession, ev);
@@ -771,10 +695,7 @@ function makeDraggable(el, tokenId) {
     const onUp = () => {
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup', onUp);
-      if (_activeTokenDragSession === dragSession) _activeTokenDragSession = null;
-      if (dragSession.moved) {
-        saveTokenPositionPatch(collectDraggedTokenPositions(dragSession.targetIds));
-      }
+      saveTokenPositionPatch(collectDraggedTokenPositions(dragSession.targetIds));
       syncMultiTokenSelectionWithTokens(St.tokens);
     };
 
@@ -891,19 +812,6 @@ function tokCtxAction(action) {
 
 let _teTokenId = null;
 let _teTokenImgData = null;
-let _teSaveInFlight = false;
-
-function readEditorNumberInput(id, fallback, { allowBlank = false, clampMin = null, clampMax = null } = {}) {
-  const el = document.getElementById(id);
-  const raw = (el?.value ?? '').trim();
-  if (!raw) return allowBlank ? null : fallback;
-  const parsed = Number(raw);
-  if (!Number.isFinite(parsed)) return fallback;
-  let value = parsed;
-  if (clampMin != null) value = Math.max(clampMin, value);
-  if (clampMax != null) value = Math.min(clampMax, value);
-  return value;
-}
 
 function openTokenEdit(tokenId) {
   _teTokenId = tokenId;
@@ -917,12 +825,11 @@ function openTokenEdit(tokenId) {
   refreshTokenOwnerBar(t);
 
   document.getElementById('te-name').value = t.name || '';
-  const initiativeValue = (t.initiativeEnabled === false && !(Number(t.initiative) > 0)) ? '' : ((Number.isFinite(Number(t.initiative)) && String(t.initiative) !== '') ? String(t.initiative) : '');
-  document.getElementById('te-initiative').value = initiativeValue;
+  document.getElementById('te-initiative').value = t.initiative || 0;
   document.getElementById('te-memo').value = t.memo || '';
   document.getElementById('te-size').value = t.tokenSize || 1;
-  document.getElementById('te-x').value = Math.round((t.x || 0) * 10) / 10;
-  document.getElementById('te-y').value = Math.round((t.y || 0) * 10) / 10;
+  document.getElementById('te-x').value = Math.round(((typeof t.x === 'number' ? t.x : 0)) * 10) / 10;
+  document.getElementById('te-y').value = Math.round(((typeof t.y === 'number' ? t.y : 0)) * 10) / 10;
   document.getElementById('te-url').value = t.refUrl || '';
   document.getElementById('te-chatpal').value = t.chatPalette || '';
   document.getElementById('te-hide-status').checked = t.hideStatus || false;
@@ -1099,127 +1006,103 @@ function teRemoveParam() {
   if (list.lastChild) list.removeChild(list.lastChild);
 }
 
+function readNumericTokenEditValue(el, fallback, axis = null) {
+  if (!el) return fallback;
+  const raw = String(el.value ?? '').trim();
+  if (raw === '') return fallback;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) return fallback;
+  if (axis === 'x' || axis === 'y') return clampTokenStoredPercent(parsed, axis);
+  return parsed;
+}
+
 async function saveTokenEdit() {
-  if (!_teTokenId || _teSaveInFlight) return;
+  if (!_teTokenId) return;
   const t = St.tokens[_teTokenId];
   if (!t) return;
 
+  t.name = document.getElementById('te-name').value.trim() || '?';
+  t.initiative = readNumericTokenEditValue(document.getElementById('te-initiative'), 0);
+  if (!t.ownerId && St.myId) {
+    t.ownerId = St.myId;
+    t.ownerName = St.myName || '';
+  }
+  t.memo = document.getElementById('te-memo').value;
+  t.tokenSize = parseInt(document.getElementById('te-size').value) || 1;
+  t.x = readNumericTokenEditValue(document.getElementById('te-x'), typeof t.x === 'number' ? t.x : 0, 'x');
+  t.y = readNumericTokenEditValue(document.getElementById('te-y'), typeof t.y === 'number' ? t.y : 0, 'y');
+  t.refUrl = document.getElementById('te-url').value.trim();
+  t.chatPalette = document.getElementById('te-chatpal').value;
+  t.hideStatus = document.getElementById('te-hide-status').checked;
+  t.hideChat = document.getElementById('te-hide-chat').checked;
+  t.hideList = document.getElementById('te-hide-list').checked;
+  t.standingAsToken = document.getElementById('te-standing-as-token').checked;
+
   const hint = document.getElementById('te-hint');
-  _teSaveInFlight = true;
+  if (hint) hint.textContent = '이미지를 업로드하는 중이에요…';
 
-  try {
-    t.name = document.getElementById('te-name').value.trim() || '?';
-
-    const initiativeRaw = (document.getElementById('te-initiative').value || '').trim();
-    if (!initiativeRaw) {
-      t.initiative = 0;
-      t.initiativeEnabled = false;
-    } else {
-      const parsedInitiative = Number(initiativeRaw);
-      t.initiative = Number.isFinite(parsedInitiative) ? parsedInitiative : 0;
-      t.initiativeEnabled = true;
+  if (_teTokenImgBlob) {
+    try {
+      t.tokenImg = await uploadTokenBlobToCloudinary(_teTokenImgBlob, `itc/tokens/${St.roomCode}`);
+    } catch (err) {
+      console.error('token image upload failed', err);
+      if (hint) hint.textContent = '토큰 이미지 업로드에 실패했어요.';
+      return;
     }
+  } else if (_teTokenImgData && !_teTokenImgData.startsWith('blob:')) {
+    t.tokenImg = _teTokenImgData;
+  } else if (!_teTokenImgData) {
+    t.tokenImg = null;
+  }
 
-    if (!t.ownerId && St.myId) {
-      t.ownerId = St.myId;
-      t.ownerName = St.myName || '';
-    }
-    t.memo = document.getElementById('te-memo').value;
-    t.tokenSize = Math.max(1, Number(document.getElementById('te-size').value) || 1);
-    t.x = clampTokenStoredPercent(readEditorNumberInput('te-x', t.x, { clampMin: 0, clampMax: getTokenStoredPercentMax('x') }), 'x');
-    t.y = clampTokenStoredPercent(readEditorNumberInput('te-y', t.y, { clampMin: 0, clampMax: getTokenStoredPercentMax('y') }), 'y');
-    t.refUrl = document.getElementById('te-url').value.trim();
-    t.chatPalette = document.getElementById('te-chatpal').value;
-    t.hideStatus = document.getElementById('te-hide-status').checked;
-    t.hideChat = document.getElementById('te-hide-chat').checked;
-    t.hideList = document.getElementById('te-hide-list').checked;
-    t.standingAsToken = document.getElementById('te-standing-as-token').checked;
-
-    if (hint) hint.textContent = '이미지를 업로드하는 중이에요…';
-
-    if (_teTokenImgBlob) {
+  t.standings = [];
+  const standingRows = Array.from(document.getElementById('te-standing-list').querySelectorAll('.te-standing-row'));
+  for (const row of standingRows) {
+    const inputs = row.querySelectorAll('input[type="text"],input:not([type])');
+    const label = inputs[0]?.value?.trim() || '';
+    let img = row.dataset.img || '';
+    if (row._pendingBlob) {
       try {
-        t.tokenImg = await uploadTokenBlobToCloudinary(_teTokenImgBlob, `itc/tokens/${St.roomCode}`);
+        img = await uploadTokenBlobToCloudinary(row._pendingBlob, `itc/standings/${St.roomCode}`);
       } catch (err) {
-        console.error('token image upload failed', err);
-        if (hint) hint.textContent = '토큰 이미지 업로드에 실패했어요.';
+        console.error('standing image upload failed', err);
+        if (hint) hint.textContent = '스탠딩 이미지 업로드에 실패했어요.';
         return;
       }
-    } else if (_teTokenImgData && !_teTokenImgData.startsWith('blob:')) {
-      t.tokenImg = _teTokenImgData;
-    } else if (!_teTokenImgData) {
-      t.tokenImg = null;
+    } else if (img.startsWith('blob:')) {
+      img = '';
     }
-
-    const nextStandings = [];
-    const standingRows = Array.from(document.getElementById('te-standing-list').querySelectorAll('.te-standing-row'));
-    for (const row of standingRows) {
-      const inputs = row.querySelectorAll('input[type="text"],input:not([type])');
-      const label = inputs[0]?.value?.trim() || '';
-      let img = row.dataset.img || '';
-      if (row._pendingBlob) {
-        try {
-          img = await uploadTokenBlobToCloudinary(row._pendingBlob, `itc/standings/${St.roomCode}`);
-        } catch (err) {
-          console.error('standing image upload failed', err);
-          if (hint) hint.textContent = '스탠딩 이미지 업로드에 실패했어요.';
-          return;
-        }
-      } else if (img.startsWith('blob:')) {
-        img = '';
-      }
-      if (label || img) nextStandings.push({ label, img });
-    }
-    t.standings = nextStandings;
-
-    const nextStatuses = [];
-    document.getElementById('te-status-list').querySelectorAll('.te-status-row').forEach(row => {
-      const inputs = row.querySelectorAll('input');
-      const label = inputs[0]?.value?.trim() || '';
-      const curRaw = (inputs[1]?.value ?? '').trim();
-      const maxRaw = (inputs[2]?.value ?? '').trim();
-      const cur = curRaw === '' ? 0 : Number(curRaw);
-      const max = maxRaw === '' ? 0 : Number(maxRaw);
-      if (label) {
-        nextStatuses.push({
-          label,
-          cur: Number.isFinite(cur) ? cur : 0,
-          max: Number.isFinite(max) ? max : 0,
-        });
-      }
-    });
-    t.statuses = nextStatuses;
-
-    const nextParams = [];
-    document.getElementById('te-param-list').querySelectorAll('.te-param-row').forEach(row => {
-      const inputs = row.querySelectorAll('input');
-      const label = inputs[0]?.value?.trim() || '';
-      const value = inputs[1]?.value?.trim() || '';
-      if (label) nextParams.push({ label, value });
-    });
-    t.params = nextParams;
-
-    St.tokens[_teTokenId] = { ...t };
-    renderAllTokens(St.tokens);
-    refreshTokenOwnerBar(St.tokens[_teTokenId]);
-
-    if (window._FB?.CONFIGURED) {
-      const { db, ref, set } = window._FB;
-      await set(ref(db, `rooms/${St.roomCode}/tokens/${_teTokenId}`), St.tokens[_teTokenId]);
-    }
-
-    if (hint) {
-      hint.textContent = '저장됐어요 ✓';
-      setTimeout(() => {
-        if (hint && document.getElementById('te-overlay')?.classList.contains('open')) hint.textContent = '';
-      }, 2000);
-    }
-    cleanupTokenEditPendingAssets();
-    _teTokenImgData = t.tokenImg || null;
-    _teTokenImgBlob = null;
-  } finally {
-    _teSaveInFlight = false;
+    if (label || img) t.standings.push({ label, img });
   }
+
+  t.statuses = [];
+  document.getElementById('te-status-list').querySelectorAll('.te-status-row').forEach(row => {
+    const inputs = row.querySelectorAll('input');
+    const label = inputs[0]?.value?.trim() || '';
+    const cur = parseFloat(inputs[1]?.value) || 0;
+    const max = parseFloat(inputs[2]?.value) || 0;
+    if (label) t.statuses.push({ label, cur, max });
+  });
+
+  t.params = [];
+  document.getElementById('te-param-list').querySelectorAll('.te-param-row').forEach(row => {
+    const inputs = row.querySelectorAll('input');
+    const label = inputs[0]?.value?.trim() || '';
+    const value = inputs[1]?.value?.trim() || '';
+    if (label) t.params.push({ label, value });
+  });
+
+  renderAllTokens(St.tokens);
+
+  if (window._FB?.CONFIGURED) {
+    const { db, ref, set } = window._FB;
+    set(ref(db, `rooms/${St.roomCode}/tokens/${_teTokenId}`), t);
+  }
+
+  if (hint) { hint.textContent = '저장됐어요 ✓'; setTimeout(() => { if(hint) hint.textContent=''; }, 2000); }
+  cleanupTokenEditPendingAssets();
+  _teTokenImgData = t.tokenImg || null;
+  _teTokenImgBlob = null;
 }
 
 function deleteTokenFromEdit() {
