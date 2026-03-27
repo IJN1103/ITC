@@ -33,15 +33,18 @@ function getMapExpansion() {
 }
 
 function storedTokenPercentToDisplay(value, axis = 'x') {
-  return Number(value) || 0;
+  const factor = axis === 'y' ? getMapExpansion().y : getMapExpansion().x;
+  return (Number(value) || 0) / factor;
 }
 
 function displayTokenPercentToStored(value, axis = 'x') {
-  return Number(value) || 0;
+  const factor = axis === 'y' ? getMapExpansion().y : getMapExpansion().x;
+  return (Number(value) || 0) * factor;
 }
 
 function getTokenStoredPercentMax(axis = 'x') {
-  return 100;
+  const factor = axis === 'y' ? getMapExpansion().y : getMapExpansion().x;
+  return 100 * factor;
 }
 
 function clampTokenStoredPercent(value, axis = 'x') {
@@ -58,143 +61,6 @@ function syncRenderedTokenPositions() {
   });
 }
 
-
-function getStatusPanelTokens(tokens = St.tokens) {
-  return Object.values(tokens || {}).filter(shouldRenderTokenStatusCard).sort((a, b) => {
-    const aInit = getTokenStatusInitiativeNumber(a);
-    const bInit = getTokenStatusInitiativeNumber(b);
-    if (bInit !== aInit) return bInit - aInit;
-    return String(a.name || '').localeCompare(String(b.name || ''), 'ko');
-  });
-}
-
-function getTokenStatusInitiativeNumber(token) {
-  const value = Number(token?.initiative);
-  return Number.isFinite(value) ? value : Number.NEGATIVE_INFINITY;
-}
-
-function hasTokenInitiativeForStatus(token) {
-  if (!token) return false;
-  if (token.initiativeEnabled === false) return false;
-  const raw = Number(token.initiative);
-  if (!Number.isFinite(raw)) return false;
-  if (token.initiativeEnabled === true) return true;
-  return raw !== 0;
-}
-
-function hasRenderableStatuses(token) {
-  return Array.isArray(token?.statuses) && token.statuses.some((status) => String(status?.label || '').trim());
-}
-
-function shouldRenderTokenStatusCard(token) {
-  if (!token || token.hideList) return false;
-  if (!hasTokenInitiativeForStatus(token)) return false;
-  if (!hasRenderableStatuses(token)) return false;
-  return true;
-}
-
-function getTokenStatusImage(token) {
-  const standingImg = Array.isArray(token?.standings) ? token.standings.find((standing) => standing?.img)?.img : '';
-  return standingImg || token?.tokenImg || '';
-}
-
-function buildStatusUnknownRow() {
-  const row = document.createElement('div');
-  row.className = 'map-status-row';
-  const label = document.createElement('span');
-  label.className = 'map-status-label';
-  label.textContent = '??';
-  const value = document.createElement('span');
-  value.className = 'map-status-value';
-  value.textContent = '??';
-  row.append(label, value);
-  return row;
-}
-
-function formatTokenStatusValue(status) {
-  const cur = Number(status?.cur);
-  const max = Number(status?.max);
-  const curText = Number.isFinite(cur) ? String(cur) : '0';
-  if (Number.isFinite(max) && max > 0) return `${curText}/${max}`;
-  return curText;
-}
-
-function createTokenStatusCard(token) {
-  const card = document.createElement('article');
-  card.className = 'map-status-card';
-
-  const headBox = document.createElement('div');
-  headBox.className = 'map-status-headbox';
-
-  const avatar = document.createElement('div');
-  avatar.className = 'map-status-avatar';
-  const avatarImg = getTokenStatusImage(token);
-  if (avatarImg) {
-    const img = document.createElement('img');
-    img.src = avatarImg;
-    img.alt = token.name || '토큰';
-    avatar.appendChild(img);
-  } else {
-    avatar.textContent = String(token.name || '?').trim().slice(0, 2) || '?';
-  }
-
-  const headMeta = document.createElement('div');
-  headMeta.className = 'map-status-headmeta';
-
-  const initiative = document.createElement('div');
-  initiative.className = 'map-status-init';
-  initiative.textContent = token.hideStatus ? '??' : String(Number(token.initiative));
-
-  const name = document.createElement('div');
-  name.className = 'map-status-name';
-  name.textContent = String(token.name || '').trim() || '이름 없음';
-
-  headMeta.append(initiative, name);
-  headBox.append(avatar, headMeta);
-
-  const body = document.createElement('div');
-  body.className = 'map-status-body';
-
-  if (token.hideStatus) {
-    (token.statuses || []).forEach((status) => {
-      if (!String(status?.label || '').trim()) return;
-      body.appendChild(buildStatusUnknownRow());
-    });
-  } else {
-    (token.statuses || []).forEach((status) => {
-      const labelText = String(status?.label || '').trim();
-      if (!labelText) return;
-      const row = document.createElement('div');
-      row.className = 'map-status-row';
-      const label = document.createElement('span');
-      label.className = 'map-status-label';
-      label.textContent = labelText;
-      const value = document.createElement('span');
-      value.className = 'map-status-value';
-      value.textContent = formatTokenStatusValue(status);
-      row.append(label, value);
-      body.appendChild(row);
-    });
-  }
-
-  card.append(headBox, body);
-  return card;
-}
-
-function renderMapStatusPanel(tokens = St.tokens) {
-  const panel = document.getElementById('map-status-panel');
-  if (!panel) return;
-  const visibleTokens = getStatusPanelTokens(tokens);
-  panel.innerHTML = '';
-  panel.style.display = visibleTokens.length ? '' : 'none';
-  if (!visibleTokens.length) return;
-  const grid = document.createElement('div');
-  grid.className = 'map-status-grid';
-  visibleTokens.forEach((token) => {
-    grid.appendChild(createTokenStatusCard(token));
-  });
-  panel.appendChild(grid);
-}
 
 let _teTokenImgBlob = null;
 
@@ -616,52 +482,12 @@ function positionTokenMemoBubble(tokenEl) {
 }
 
 
-function ensureTokenOwner(token, { persist = false } = {}) {
-  if (!token) return token;
-
-  const players = St.players || {};
-  const fallbackOwnerId = String(token.ownerId || token.createdBy || St.myId || '').trim();
-  if (!fallbackOwnerId) return token;
-
-  const fallbackOwnerName = String(
-    token.ownerName ||
-    token.createdByName ||
-    players[fallbackOwnerId]?.name ||
-    (fallbackOwnerId === St.myId ? (St.myName || '') : '')
-  ).trim();
-
-  const ownerChanged = token.ownerId !== fallbackOwnerId;
-  const ownerNameChanged = !String(token.ownerName || '').trim() && !!fallbackOwnerName;
-
-  token.ownerId = fallbackOwnerId;
-  if (fallbackOwnerName) token.ownerName = fallbackOwnerName;
-
-  if (
-    persist &&
-    window._FB?.CONFIGURED &&
-    token.id &&
-    St.roomCode &&
-    (ownerChanged || ownerNameChanged)
-  ) {
-    const { db, ref, update } = window._FB;
-    update(ref(db, `rooms/${St.roomCode}/tokens/${token.id}`), {
-      ownerId: token.ownerId,
-      ownerName: token.ownerName || '',
-    }).catch((err) => {
-      console.error('token owner backfill failed', err);
-    });
-  }
-
-  return token;
-}
-
 function getTokenOwnerDisplay(token) {
-  const normalized = ensureTokenOwner(token);
-  if (!normalized?.ownerId) return '없음';
+  if (!token?.ownerId) return '없음';
   const players = St.players || {};
-  const owner = players[normalized.ownerId];
-  const ownerName = normalized.ownerName || owner?.name || '알 수 없음';
-  return normalized.ownerId === St.myId ? `${ownerName} (나)` : ownerName;
+  const owner = players[token.ownerId];
+  const ownerName = token.ownerName || owner?.name || '알 수 없음';
+  return token.ownerId === St.myId ? `${ownerName} (나)` : ownerName;
 }
 
 function refreshTokenOwnerBar(token) {
@@ -714,11 +540,92 @@ function renderAllTokens(tokens) {
   hideTokenMemoBubble();
   const inner = document.getElementById('map-inner');
   if (inner) inner.querySelectorAll('.map-token').forEach(t => t.remove());
-  Object.values(tokens || {}).forEach(t => ensureTokenOwner(t, { persist: true }));
   syncMultiTokenSelectionWithTokens(tokens);
   Object.values(tokens).forEach(t => createTokenEl(t));
-  updateMultiTokenSelectionUI();
   renderMapStatusPanel(tokens);
+  updateMultiTokenSelectionUI();
+}
+
+
+function getTokenStatusPreviewImage(t) {
+  if (Array.isArray(t.standings)) {
+    const firstStanding = t.standings.find(s => s && s.img);
+    if (firstStanding?.img) return firstStanding.img;
+  }
+  return t.tokenImg || '';
+}
+
+function formatTokenStatusValue(status, isHidden) {
+  if (isHidden) return '??';
+  const cur = Number.isFinite(Number(status?.cur)) ? Number(status.cur) : 0;
+  const max = Number.isFinite(Number(status?.max)) ? Number(status.max) : 0;
+  if (max > 0) return `${cur}/${max}`;
+  return String(cur);
+}
+
+function buildMapStatusCard(t) {
+  const hidden = !!t.hideStatus;
+  const imageSrc = getTokenStatusPreviewImage(t);
+  const card = document.createElement('div');
+  card.className = 'map-status-card';
+
+  const head = document.createElement('div');
+  head.className = 'map-status-headbox';
+  if (imageSrc) {
+    const img = document.createElement('img');
+    img.className = 'map-status-avatar';
+    img.src = imageSrc;
+    img.alt = '';
+    head.appendChild(img);
+  } else {
+    const ph = document.createElement('div');
+    ph.className = 'map-status-avatar placeholder';
+    ph.textContent = (t.name || '?').slice(0,1);
+    head.appendChild(ph);
+  }
+  const init = document.createElement('div');
+  init.className = 'map-status-init';
+  init.textContent = hidden ? '??' : String(Number(t.initiative));
+  head.appendChild(init);
+
+  const grid = document.createElement('div');
+  grid.className = 'map-status-grid';
+  (t.statuses || []).forEach((status) => {
+    const item = document.createElement('div');
+    item.className = 'map-status-item';
+    const label = document.createElement('div');
+    label.className = 'map-status-label';
+    label.textContent = hidden ? '??' : (status?.label || '');
+    const value = document.createElement('div');
+    value.className = 'map-status-value';
+    value.textContent = formatTokenStatusValue(status, hidden);
+    item.appendChild(label);
+    item.appendChild(value);
+    grid.appendChild(item);
+  });
+
+  card.appendChild(head);
+  card.appendChild(grid);
+  return card;
+}
+
+function shouldShowOnMapStatusPanel(t) {
+  if (!t || t.hideList) return false;
+  const initiative = Number(t.initiative);
+  if (!Number.isFinite(initiative) || initiative <= 0) return false;
+  const statuses = Array.isArray(t.statuses) ? t.statuses.filter(s => String(s?.label || '').trim()) : [];
+  if (!statuses.length) return false;
+  return true;
+}
+
+function renderMapStatusPanel(tokens) {
+  const panel = document.getElementById('map-status-panel');
+  if (!panel) return;
+  panel.innerHTML = '';
+  const list = Object.values(tokens || {})
+    .filter(shouldShowOnMapStatusPanel)
+    .sort((a, b) => (Number(b.initiative) || 0) - (Number(a.initiative) || 0));
+  list.forEach((token) => panel.appendChild(buildMapStatusCard(token)));
 }
 
 function createTokenEl(t) {
@@ -753,6 +660,17 @@ function createTokenEl(t) {
   } else {
     el.textContent = t.name;
     if (sz > 1) { const px = 36 * sz; el.style.width = px+'px'; el.style.height = px+'px'; el.style.fontSize = Math.max(9, 11*sz)+'px'; }
+  }
+  if (t.statuses && t.statuses.length > 0) {
+    const hp = t.statuses[0];
+    if (hp.max > 0) {
+      const pct = Math.max(0, Math.min(100, (hp.cur / hp.max) * 100));
+      const bar = document.createElement('div'); bar.className = 'token-hp-bar';
+      const fill = document.createElement('div'); fill.className = 'token-hp-fill'; fill.style.width = pct + '%';
+      if (pct <= 25) fill.style.background = 'var(--red)';
+      else if (pct <= 50) fill.style.background = '#f0ad4e';
+      bar.appendChild(fill); el.appendChild(bar);
+    }
   }
   if (_multiSelectedTokenIds.includes(String(t.id))) el.classList.add('multi-selected');
   const memoText = String(t.memo || '').trim();
@@ -923,12 +841,14 @@ function openTokenEdit(tokenId) {
   const t = St.tokens[tokenId];
   if (!t) return;
 
-  ensureTokenOwner(t, { persist: true });
+  if (!t.ownerId && St.myId) {
+    t.ownerId = St.myId;
+    t.ownerName = St.myName || '';
+  }
   refreshTokenOwnerBar(t);
 
   document.getElementById('te-name').value = t.name || '';
-  const teInitiative = document.getElementById('te-initiative');
-  teInitiative.value = t.initiativeEnabled === false ? '' : (Number.isFinite(Number(t.initiative)) ? String(Number(t.initiative)) : '');
+  document.getElementById('te-initiative').value = t.initiative || 0;
   document.getElementById('te-memo').value = t.memo || '';
   document.getElementById('te-size').value = t.tokenSize || 1;
   document.getElementById('te-x').value = Math.round((t.x || 0) * 10) / 10;
@@ -1106,10 +1026,11 @@ async function saveTokenEdit() {
   if (!t) return;
 
   t.name = document.getElementById('te-name').value.trim() || '?';
-  const initiativeRaw = String(document.getElementById('te-initiative').value || '').trim();
-  t.initiativeEnabled = initiativeRaw !== '';
-  t.initiative = initiativeRaw === '' ? 0 : (parseFloat(initiativeRaw) || 0);
-  ensureTokenOwner(t, { persist: false });
+  t.initiative = parseFloat(document.getElementById('te-initiative').value) || 0;
+  if (!t.ownerId && St.myId) {
+    t.ownerId = St.myId;
+    t.ownerName = St.myName || '';
+  }
   t.memo = document.getElementById('te-memo').value;
   t.tokenSize = parseInt(document.getElementById('te-size').value) || 1;
   t.x = parseFloat(document.getElementById('te-x').value) || t.x;

@@ -353,8 +353,8 @@ window._FB = {
     <!-- 센터 -->
     <div class="panel-center">
       <div class="map-area" id="map-area">
-        <div class="map-status-panel" id="map-status-panel" aria-hidden="true"></div>
         <div class="map-inner" id="map-inner"></div>
+        <div class="map-status-panel" id="map-status-panel" aria-live="polite"></div>
         <button class="map-add-token gm-only" id="map-add-token" onclick="openModal('modal-token')" style="display:none">+ 토큰</button>
         <!-- 줌 컨트롤 -->
         <div class="map-zoom" id="map-zoom">
@@ -916,7 +916,6 @@ window._FB = {
     </div>
     <div class="te-body" id="te-body">
       <div class="te-section">
-        <div id="te-owner-bar" style="display:none;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:var(--s2);font-size:12px;color:var(--text);line-height:1.45"></div>
         <div class="te-row" style="gap:10px;align-items:flex-end">
           <div class="te-token-img-wrap" onclick="document.getElementById('te-img-input').click()" title="토큰 이미지 변경">
             <div class="te-token-img" id="te-token-img"><span id="te-token-img-text">📷</span></div>
@@ -924,7 +923,7 @@ window._FB = {
             <input type="file" id="te-img-input" accept="image/*" style="display:none" onchange="teHandleTokenImg(this)">
           </div>
           <div class="te-field" style="flex:2"><label>이름</label><input id="te-name" placeholder="이름"></div>
-          <div class="te-field" style="flex:1"><label>이니셔티브</label><input id="te-initiative" type="number" placeholder="숫자 입력"></div>
+          <div class="te-field" style="flex:1"><label>이니셔티브</label><input id="te-initiative" type="number" value="0"></div>
         </div>
         <button class="te-img-clear" id="te-img-clear" onclick="teClearTokenImg()" style="display:none">이미지 제거</button>
       </div>
