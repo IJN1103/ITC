@@ -6,17 +6,22 @@
 let _mapScale = 1;
 let _mapPanX = 0, _mapPanY = 0;
 
-let _mapBaseWidth = 0;
-let _mapBaseHeight = 0;
-
 function getMapBaseSize() {
-  const inner = document.getElementById('map-inner');
   const map = document.getElementById('map-area');
-  if (!_mapBaseWidth || !_mapBaseHeight) {
-    _mapBaseWidth = inner?.offsetWidth || map?.clientWidth || 1;
-    _mapBaseHeight = inner?.offsetHeight || map?.clientHeight || 1;
-  }
-  return { width: _mapBaseWidth || 1, height: _mapBaseHeight || 1 };
+  const inner = document.getElementById('map-inner');
+  const width = Math.max(
+    1,
+    map?.clientWidth || 0,
+    inner?.clientWidth || 0,
+    inner?.offsetWidth || 0,
+  );
+  const height = Math.max(
+    1,
+    map?.clientHeight || 0,
+    inner?.clientHeight || 0,
+    inner?.offsetHeight || 0,
+  );
+  return { width, height };
 }
 
 function getMapExpansion() {
@@ -223,8 +228,6 @@ function getTokenStartPosition(tokenId) {
 
 function buildTokenDragSession(tokenId, startEvent) {
   const targetIds = getDragTargetIds(tokenId);
-  const { width: natW, height: natH } = getMapBaseSize();
-  const scale = _mapScale || 1;
   const startPos = {};
   targetIds.forEach((id) => {
     startPos[id] = getTokenStartPosition(id);
@@ -232,17 +235,17 @@ function buildTokenDragSession(tokenId, startEvent) {
   return {
     startClientX: startEvent.clientX,
     startClientY: startEvent.clientY,
-    natW,
-    natH,
-    scale,
+    startScale: _mapScale || 1,
     targetIds,
     startPos,
   };
 }
 
 function applyTokenDragSession(session, moveEvent) {
-  const dxPct = ((moveEvent.clientX - session.startClientX) / (session.natW * session.scale)) * 100;
-  const dyPct = ((moveEvent.clientY - session.startClientY) / (session.natH * session.scale)) * 100;
+  const { width: mapW, height: mapH } = getMapBaseSize();
+  const scale = session.startScale || _mapScale || 1;
+  const dxPct = ((moveEvent.clientX - session.startClientX) / (mapW * scale)) * 100;
+  const dyPct = ((moveEvent.clientY - session.startClientY) / (mapH * scale)) * 100;
   session.targetIds.forEach((id) => {
     const targetEl = getTokenEl(id);
     const pos = session.startPos[id];
@@ -408,6 +411,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   mapEl.addEventListener('auxclick', e => {
     if (e.button === 1) e.preventDefault();
+  });
+
+  window.addEventListener('resize', () => {
+    applyMapTransform();
   });
 });
 
