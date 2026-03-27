@@ -33,18 +33,15 @@ function getMapExpansion() {
 }
 
 function storedTokenPercentToDisplay(value, axis = 'x') {
-  const factor = axis === 'y' ? getMapExpansion().y : getMapExpansion().x;
-  return (Number(value) || 0) / factor;
+  return Number(value) || 0;
 }
 
 function displayTokenPercentToStored(value, axis = 'x') {
-  const factor = axis === 'y' ? getMapExpansion().y : getMapExpansion().x;
-  return (Number(value) || 0) * factor;
+  return Number(value) || 0;
 }
 
 function getTokenStoredPercentMax(axis = 'x') {
-  const factor = axis === 'y' ? getMapExpansion().y : getMapExpansion().x;
-  return 100 * factor;
+  return 100;
 }
 
 function clampTokenStoredPercent(value, axis = 'x') {
