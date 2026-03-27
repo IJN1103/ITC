@@ -1139,6 +1139,178 @@ function updateStatHalf(key) {
 
 let _sheetQuickViewMode = false;
 
+const _quickSheetState = {
+  x: null,
+  y: null,
+  width: null,
+  height: null,
+};
+let _quickSheetInteractionsBound = false;
+
+function getQuickSheetModalEl() { return document.getElementById('sheet-modal'); }
+
+function clampQuickSheetRect(x, y, width, height) {
+  const pad = 16;
+  const minWidth = 420;
+  const minHeight = 320;
+  const maxWidth = Math.max(minWidth, window.innerWidth - pad * 2);
+  const maxHeight = Math.max(minHeight, window.innerHeight - pad * 2);
+  const safeWidth = Math.max(minWidth, Math.min(width, maxWidth));
+  const safeHeight = Math.max(minHeight, Math.min(height, maxHeight));
+  const maxX = Math.max(pad, window.innerWidth - pad - safeWidth);
+  const maxY = Math.max(pad, window.innerHeight - pad - safeHeight);
+  return {
+    x: Math.min(Math.max(x, pad), maxX),
+    y: Math.min(Math.max(y, pad), maxY),
+    width: safeWidth,
+    height: safeHeight,
+  };
+}
+
+function applyQuickSheetState() {
+  const overlay = document.getElementById('sheet-overlay');
+  const modal = getQuickSheetModalEl();
+  if (!overlay || !modal || !overlay.classList.contains('quick-view')) return;
+
+  const rect = modal.getBoundingClientRect();
+  const fallbackWidth = _quickSheetState.width ?? rect.width;
+  const fallbackHeight = _quickSheetState.height ?? rect.height;
+  const fallbackX = _quickSheetState.x ?? rect.left;
+  const fallbackY = _quickSheetState.y ?? rect.top;
+  const next = clampQuickSheetRect(fallbackX, fallbackY, fallbackWidth, fallbackHeight);
+
+  _quickSheetState.x = next.x;
+  _quickSheetState.y = next.y;
+  _quickSheetState.width = next.width;
+  _quickSheetState.height = next.height;
+
+  modal.style.left = `${next.x}px`;
+  modal.style.top = `${next.y}px`;
+  modal.style.right = 'auto';
+  modal.style.bottom = 'auto';
+  modal.style.width = `${next.width}px`;
+  modal.style.height = `${next.height}px`;
+}
+
+function resetQuickSheetStateFromLayout() {
+  const modal = getQuickSheetModalEl();
+  if (!modal) return;
+  modal.style.left = '';
+  modal.style.top = '';
+  modal.style.right = '';
+  modal.style.bottom = '';
+  modal.style.width = '';
+  modal.style.height = '';
+  const rect = modal.getBoundingClientRect();
+  _quickSheetState.x = rect.left;
+  _quickSheetState.y = rect.top;
+  _quickSheetState.width = rect.width;
+  _quickSheetState.height = rect.height;
+  applyQuickSheetState();
+}
+
+function initQuickSheetInteractions() {
+  if (_quickSheetInteractionsBound) return;
+  const modal = getQuickSheetModalEl();
+  const head = document.querySelector('.sheet-head');
+  if (!modal || !head) return;
+  _quickSheetInteractionsBound = true;
+
+  head.addEventListener('pointerdown', (event) => {
+    const overlay = document.getElementById('sheet-overlay');
+    if (!_sheetQuickViewMode || !overlay?.classList.contains('quick-view')) return;
+    if (event.button !== 0) return;
+    if (event.target.closest('button, input, textarea, select, label, a')) return;
+
+    const rect = modal.getBoundingClientRect();
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const originX = _quickSheetState.x ?? rect.left;
+    const originY = _quickSheetState.y ?? rect.top;
+
+    const onMove = (moveEvent) => {
+      const next = clampQuickSheetRect(
+        originX + (moveEvent.clientX - startX),
+        originY + (moveEvent.clientY - startY),
+        _quickSheetState.width ?? rect.width,
+        _quickSheetState.height ?? rect.height
+      );
+      _quickSheetState.x = next.x;
+      _quickSheetState.y = next.y;
+      applyQuickSheetState();
+    };
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  });
+
+  modal.querySelectorAll('.sheet-resize-handle').forEach((handle) => {
+    handle.addEventListener('pointerdown', (event) => {
+      const overlay = document.getElementById('sheet-overlay');
+      if (!_sheetQuickViewMode || !overlay?.classList.contains('quick-view')) return;
+      if (event.button !== 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const dir = handle.dataset.resizeDir || '';
+      const rect = modal.getBoundingClientRect();
+      const startX = event.clientX;
+      const startY = event.clientY;
+      const startRect = {
+        x: _quickSheetState.x ?? rect.left,
+        y: _quickSheetState.y ?? rect.top,
+        width: _quickSheetState.width ?? rect.width,
+        height: _quickSheetState.height ?? rect.height,
+      };
+
+      const onMove = (moveEvent) => {
+        let nextX = startRect.x;
+        let nextY = startRect.y;
+        let nextWidth = startRect.width;
+        let nextHeight = startRect.height;
+        const dx = moveEvent.clientX - startX;
+        const dy = moveEvent.clientY - startY;
+
+        if (dir.includes('e')) nextWidth = startRect.width + dx;
+        if (dir.includes('s')) nextHeight = startRect.height + dy;
+        if (dir.includes('w')) { nextWidth = startRect.width - dx; nextX = startRect.x + dx; }
+        if (dir.includes('n')) { nextHeight = startRect.height - dy; nextY = startRect.y + dy; }
+
+        const clamped = clampQuickSheetRect(nextX, nextY, nextWidth, nextHeight);
+
+        if (dir.includes('w') && !dir.includes('e')) {
+          clamped.x = startRect.x + (startRect.width - clamped.width);
+          clamped.x = Math.max(16, clamped.x);
+        }
+        if (dir.includes('n') && !dir.includes('s')) {
+          clamped.y = startRect.y + (startRect.height - clamped.height);
+          clamped.y = Math.max(16, clamped.y);
+        }
+
+        const finalRect = clampQuickSheetRect(clamped.x, clamped.y, clamped.width, clamped.height);
+        _quickSheetState.x = finalRect.x;
+        _quickSheetState.y = finalRect.y;
+        _quickSheetState.width = finalRect.width;
+        _quickSheetState.height = finalRect.height;
+        applyQuickSheetState();
+      };
+      const onUp = () => {
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onUp);
+      };
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+    });
+  });
+
+  window.addEventListener('resize', () => {
+    if (!_sheetQuickViewMode) return;
+    applyQuickSheetState();
+  });
+}
+
 function getQuickJournalMenuEl() { return document.getElementById('map-quick-journal-menu'); }
 function getQuickJournalButtonEl() { return document.getElementById('map-quick-journal-btn'); }
 
@@ -1176,6 +1348,8 @@ function openQuickJournalSheet(journalId) {
   openSheet(journalId);
   const overlay = document.getElementById('sheet-overlay');
   if (overlay) overlay.classList.add('quick-view');
+  initQuickSheetInteractions();
+  resetQuickSheetStateFromLayout();
   const btn = getQuickJournalButtonEl();
   if (btn) btn.classList.add('is-open');
 }
@@ -1292,6 +1466,15 @@ function openSheet(journalId) {
 function closeSheet() {
   const overlay = document.getElementById('sheet-overlay');
   if (overlay) overlay.classList.remove('open', 'quick-view');
+  const modal = getQuickSheetModalEl();
+  if (modal) {
+    modal.style.left = '';
+    modal.style.top = '';
+    modal.style.right = '';
+    modal.style.bottom = '';
+    modal.style.width = '';
+    modal.style.height = '';
+  }
   closeQuickJournalMenu();
   const quickBtn = getQuickJournalButtonEl();
   if (quickBtn) quickBtn.classList.remove('is-open');

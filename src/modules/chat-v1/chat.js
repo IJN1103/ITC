@@ -1848,6 +1848,7 @@ window.chatKeydown = chatKeydown;
 window.sendChat = sendChat;
 window.handleChatImageUpload = handleChatImageUpload;
 window.togglePendingChatImageWide = togglePendingChatImageWide;
+window.togglePendingChatImageHideMeta = togglePendingChatImageHideMeta;
 window.clearPendingChatImages = clearPendingChatImages;
 window.refreshChatActionButtons = refreshChatActionButtons;
 window.clearAllChatHistory = clearAllChatHistory;

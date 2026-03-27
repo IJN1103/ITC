@@ -531,7 +531,15 @@ window._FB = {
 
 <!-- CoC 캐릭터 시트 모달 -->
 <div class="sheet-overlay" id="sheet-overlay" onclick="closeSheet()">
-  <div class="sheet-modal" onclick="event.stopPropagation()">
+  <div class="sheet-modal" id="sheet-modal" onclick="event.stopPropagation()">
+    <div class="sheet-resize-handle n" data-resize-dir="n"></div>
+    <div class="sheet-resize-handle e" data-resize-dir="e"></div>
+    <div class="sheet-resize-handle s" data-resize-dir="s"></div>
+    <div class="sheet-resize-handle w" data-resize-dir="w"></div>
+    <div class="sheet-resize-handle ne" data-resize-dir="ne"></div>
+    <div class="sheet-resize-handle nw" data-resize-dir="nw"></div>
+    <div class="sheet-resize-handle se" data-resize-dir="se"></div>
+    <div class="sheet-resize-handle sw" data-resize-dir="sw"></div>
     <div class="sheet-head">
       <button class="sheet-del-btn" onclick="deleteSheetJournal()" title="이 저널 삭제">🗑 삭제</button>
       <div style="flex:1"></div>
