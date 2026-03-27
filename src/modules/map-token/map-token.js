@@ -386,9 +386,9 @@ function getRenderableStatuses(token) {
 
 function shouldShowTokenInStatusPanel(token) {
   if (!token || token.hideList) return false;
-  const hasInitiative = hasVisibleTokenInitiative(token);
-  const hasStatuses = getRenderableStatuses(token).length > 0;
-  return hasInitiative || hasStatuses;
+  if (hasVisibleTokenInitiative(token)) return true;
+  if (getRenderableStatuses(token).length > 0) return true;
+  return false;
 }
 
 function renderMapStatusPanel(tokens = St.tokens) {
@@ -409,8 +409,8 @@ function renderMapStatusPanel(tokens = St.tokens) {
     const privateMode = !!token.hideStatus;
     const image = getTokenStatusPanelImage(token);
     const statuses = getRenderableStatuses(token);
-    const hasInitiative = hasVisibleTokenInitiative(token);
-    const initiativeText = hasInitiative ? String(token.initiative) : '';
+    const showInitiative = hasVisibleTokenInitiative(token);
+    const initiativeText = showInitiative ? String(token.initiative) : '';
     const imageHtml = image
       ? `<img src="${esc(image)}" alt="">`
       : `<div class="map-status-avatar-fallback">${esc((token.name || '?').slice(0, 1))}</div>`;
@@ -421,11 +421,13 @@ function renderMapStatusPanel(tokens = St.tokens) {
       const valueText = max !== '' ? `${cur}/${max}` : `${cur}`;
       return `<div class="map-status-stat-box"><div class="map-status-stat-label">${label}</div><div class="map-status-stat-value">${valueText}</div></div>`;
     }).join('');
-    const initiativeHtml = hasInitiative
-      ? `<div class="map-status-initiative-badge">${initiativeText}</div>`
-      : '';
     const cardClass = statuses.length ? 'map-status-card' : 'map-status-card no-stats';
-    const statsHtml = statuses.length ? `<div class="map-status-stats-grid">${statusHtml}</div>` : '';
+    const initiativeHtml = showInitiative
+      ? `<div class="map-status-initiative-badge">${esc(initiativeText)}</div>`
+      : '';
+    const statsGridHtml = statuses.length
+      ? `<div class="map-status-stats-grid">${statusHtml}</div>`
+      : '';
     return `
       <div class="${cardClass}" data-token-id="${esc(String(token.id || ''))}">
         <div class="map-status-headbox">
@@ -435,7 +437,7 @@ function renderMapStatusPanel(tokens = St.tokens) {
             ${initiativeHtml}
           </div>
         </div>
-        ${statsHtml}
+        ${statsGridHtml}
       </div>`;
   }).join('');
 }
@@ -701,7 +703,6 @@ function createTokenEl(t) {
     el.textContent = t.name;
     if (sz > 1) { const px = 36 * sz; el.style.width = px+'px'; el.style.height = px+'px'; el.style.fontSize = Math.max(9, 11*sz)+'px'; }
   }
-  // 토큰 하단 그래프(HP 바)는 안정화 요구사항에 따라 완전 제거.
   if (_multiSelectedTokenIds.includes(String(t.id))) el.classList.add('multi-selected');
   const memoText = String(t.memo || '').trim();
   if (memoText) {
