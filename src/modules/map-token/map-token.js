@@ -431,8 +431,10 @@ function renderMapStatusPanel(tokens = St.tokens) {
     return `
       <div class="${cardClass}" data-token-id="${esc(String(token.id || ''))}">
         <div class="map-status-headbox">
-          <div class="map-status-avatar">${imageHtml}</div>
-          ${initiativeHtml}
+          <div class="map-status-avatar-wrap">
+            <div class="map-status-avatar">${imageHtml}</div>
+            ${initiativeHtml}
+          </div>
         </div>
         ${statsGridHtml}
       </div>`;
