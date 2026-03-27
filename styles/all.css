@@ -814,7 +814,7 @@ to{transform:translateX(0);opacity:1;}
 
 .map-token-selection-box{position:absolute;display:none;pointer-events:none;z-index:35;border:1px solid rgba(184,154,96,.9);background:rgba(184,154,96,.16);box-shadow:0 0 0 1px rgba(255,244,220,.22) inset;border-radius:10px;backdrop-filter:blur(1px)}
 .map-status-panel{position:absolute;top:16px;left:16px;z-index:28;display:grid;gap:8px;max-width:min(560px,calc(100% - 112px));pointer-events:none}
-.map-status-card{display:grid;grid-template-columns:88px minmax(180px,1fr);gap:8px;align-items:start;padding:8px 10px;border-radius:16px;background:linear-gradient(180deg,rgba(22,35,72,.92),rgba(29,44,86,.9));border:1px solid rgba(255,255,255,.10);box-shadow:0 8px 22px rgba(0,0,0,.22);color:#f7f0e6}
+.map-status-card{display:grid;grid-template-columns:88px minmax(180px,1fr);gap:8px;align-items:start;padding:0;border-radius:0;background:transparent;border:none;box-shadow:none;color:#f7f0e6}
 .map-status-card.no-stats{grid-template-columns:88px}
 .map-status-headbox{position:relative;display:flex;align-items:flex-start;justify-content:flex-start;min-height:64px;padding:0}
 .map-status-avatar-wrap{position:relative;width:88px;min-height:64px;display:flex;align-items:flex-start;justify-content:flex-start}
