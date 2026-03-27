@@ -36,23 +36,178 @@ let _sheetAvatarUploadPromise = null;
 let _sheetMode = 'normal';
 let _sheetReadOnly = false;
 let _sheetDisabledNodes = [];
+let _quickSheetBounds = null;
+let _quickSheetInteraction = null;
+const QUICK_SHEET_MIN_WIDTH = 420;
+const QUICK_SHEET_MIN_HEIGHT = 380;
+const QUICK_SHEET_MARGIN = 12;
 
 function getSheetModal() { return document.querySelector('#sheet-overlay .sheet-modal'); }
 
-function positionQuickSheet() {
+function clampQuickSheetBounds(bounds) {
+  const width = Math.max(QUICK_SHEET_MIN_WIDTH, Math.min(bounds.width || QUICK_SHEET_MIN_WIDTH, window.innerWidth - QUICK_SHEET_MARGIN * 2));
+  const height = Math.max(QUICK_SHEET_MIN_HEIGHT, Math.min(bounds.height || QUICK_SHEET_MIN_HEIGHT, window.innerHeight - QUICK_SHEET_MARGIN * 2));
+  const maxLeft = Math.max(QUICK_SHEET_MARGIN, window.innerWidth - QUICK_SHEET_MARGIN - width);
+  const maxTop = Math.max(QUICK_SHEET_MARGIN, window.innerHeight - QUICK_SHEET_MARGIN - height);
+  return {
+    width,
+    height,
+    left: Math.min(Math.max(bounds.left ?? QUICK_SHEET_MARGIN, QUICK_SHEET_MARGIN), maxLeft),
+    top: Math.min(Math.max(bounds.top ?? QUICK_SHEET_MARGIN, QUICK_SHEET_MARGIN), maxTop),
+  };
+}
+
+function applyQuickSheetBounds(bounds) {
+  const modal = getSheetModal();
+  if (!modal) return;
+  const next = clampQuickSheetBounds(bounds || {});
+  _quickSheetBounds = next;
+  modal.style.top = next.top + 'px';
+  modal.style.left = next.left + 'px';
+  modal.style.right = 'auto';
+  modal.style.bottom = 'auto';
+  modal.style.width = next.width + 'px';
+  modal.style.height = next.height + 'px';
+  modal.style.maxWidth = `calc(100vw - ${QUICK_SHEET_MARGIN * 2}px)`;
+  modal.style.maxHeight = `calc(100vh - ${QUICK_SHEET_MARGIN * 2}px)`;
+}
+
+function positionQuickSheet(forceReset = false) {
   if (_sheetMode !== 'quick') return;
   const modal = getSheetModal();
   if (!modal) return;
+  if (!forceReset && _quickSheetBounds) {
+    applyQuickSheetBounds(_quickSheetBounds);
+    return;
+  }
   const panelRight = document.getElementById('panel-right');
   const chatWidth = panelRight && !panelRight.classList.contains('collapsed') ? Math.round(panelRight.getBoundingClientRect().width) : 0;
+  const width = Math.min(560, Math.max(QUICK_SHEET_MIN_WIDTH, window.innerWidth - chatWidth - 166));
+  const height = Math.min(820, Math.max(560, Math.round(window.innerHeight * 0.74)));
   const top = Math.max(72, Math.round(window.innerHeight * 0.12));
   const right = Math.max(chatWidth + 110, 320);
-  const maxWidth = Math.max(420, window.innerWidth - right - 56);
-  modal.style.top = top + 'px';
-  modal.style.right = right + 'px';
-  modal.style.left = 'auto';
-  modal.style.bottom = 'auto';
-  modal.style.width = Math.min(560, maxWidth) + 'px';
+  const left = Math.max(QUICK_SHEET_MARGIN, window.innerWidth - right - width);
+  applyQuickSheetBounds({ left, top, width, height });
+}
+
+function ensureQuickSheetHandles() {
+  const modal = getSheetModal();
+  if (!modal || modal.querySelector('.sheet-resize-handle')) return;
+  ['n','e','s','w','ne','nw','se','sw'].forEach(dir => {
+    const handle = document.createElement('div');
+    handle.className = 'sheet-resize-handle sheet-resize-' + dir;
+    handle.dataset.dir = dir;
+    modal.appendChild(handle);
+  });
+}
+
+function beginQuickSheetPointer(event, mode, dir = '') {
+  if (_sheetMode !== 'quick') return;
+  const modal = getSheetModal();
+  if (!modal) return;
+  const rect = modal.getBoundingClientRect();
+  _quickSheetInteraction = {
+    mode,
+    dir,
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    startY: event.clientY,
+    startLeft: rect.left,
+    startTop: rect.top,
+    startWidth: rect.width,
+    startHeight: rect.height,
+  };
+  modal.setPointerCapture?.(event.pointerId);
+  event.preventDefault();
+}
+
+function onQuickSheetPointerMove(event) {
+  if (!_quickSheetInteraction || _sheetMode !== 'quick') return;
+  const state = _quickSheetInteraction;
+  const dx = event.clientX - state.startX;
+  const dy = event.clientY - state.startY;
+  if (state.mode === 'drag') {
+    applyQuickSheetBounds({
+      left: state.startLeft + dx,
+      top: state.startTop + dy,
+      width: state.startWidth,
+      height: state.startHeight,
+    });
+    return;
+  }
+  let left = state.startLeft;
+  let top = state.startTop;
+  let width = state.startWidth;
+  let height = state.startHeight;
+  const dir = state.dir;
+  if (dir.includes('e')) width = state.startWidth + dx;
+  if (dir.includes('s')) height = state.startHeight + dy;
+  if (dir.includes('w')) {
+    width = state.startWidth - dx;
+    left = state.startLeft + dx;
+  }
+  if (dir.includes('n')) {
+    height = state.startHeight - dy;
+    top = state.startTop + dy;
+  }
+  if (width < QUICK_SHEET_MIN_WIDTH) {
+    if (dir.includes('w')) left -= QUICK_SHEET_MIN_WIDTH - width;
+    width = QUICK_SHEET_MIN_WIDTH;
+  }
+  if (height < QUICK_SHEET_MIN_HEIGHT) {
+    if (dir.includes('n')) top -= QUICK_SHEET_MIN_HEIGHT - height;
+    height = QUICK_SHEET_MIN_HEIGHT;
+  }
+  if (left < QUICK_SHEET_MARGIN) {
+    if (dir.includes('w')) width -= QUICK_SHEET_MARGIN - left;
+    left = QUICK_SHEET_MARGIN;
+  }
+  if (top < QUICK_SHEET_MARGIN) {
+    if (dir.includes('n')) height -= QUICK_SHEET_MARGIN - top;
+    top = QUICK_SHEET_MARGIN;
+  }
+  const maxWidth = window.innerWidth - QUICK_SHEET_MARGIN - left;
+  const maxHeight = window.innerHeight - QUICK_SHEET_MARGIN - top;
+  width = Math.min(width, maxWidth);
+  height = Math.min(height, maxHeight);
+  if (dir.includes('w')) {
+    left = Math.max(QUICK_SHEET_MARGIN, state.startLeft + (state.startWidth - width));
+  }
+  if (dir.includes('n')) {
+    top = Math.max(QUICK_SHEET_MARGIN, state.startTop + (state.startHeight - height));
+  }
+  applyQuickSheetBounds({ left, top, width, height });
+}
+
+function endQuickSheetPointer(event) {
+  if (!_quickSheetInteraction) return;
+  const modal = getSheetModal();
+  if (modal && typeof modal.releasePointerCapture === 'function') {
+    try { modal.releasePointerCapture(_quickSheetInteraction.pointerId); } catch (e) {}
+  }
+  _quickSheetInteraction = null;
+}
+
+function bindQuickSheetInteractions() {
+  const modal = getSheetModal();
+  if (!modal || modal.dataset.quickSheetBound === '1') return;
+  modal.dataset.quickSheetBound = '1';
+  const head = modal.querySelector('.sheet-head');
+  head?.addEventListener('pointerdown', (event) => {
+    if (_sheetMode !== 'quick') return;
+    if (event.button !== 0) return;
+    if (event.target.closest('button')) return;
+    beginQuickSheetPointer(event, 'drag');
+  });
+  modal.addEventListener('pointerdown', (event) => {
+    if (_sheetMode !== 'quick') return;
+    const handle = event.target.closest('.sheet-resize-handle');
+    if (!handle || event.button !== 0) return;
+    beginQuickSheetPointer(event, 'resize', handle.dataset.dir || '');
+  });
+  window.addEventListener('pointermove', onQuickSheetPointerMove);
+  window.addEventListener('pointerup', endQuickSheetPointer);
+  window.addEventListener('pointercancel', endQuickSheetPointer);
 }
 
 function setSheetReadOnly(readOnly) {
@@ -152,7 +307,7 @@ function enableQuickSheetEdit() {
   document.getElementById('sh-name')?.focus();
 }
 
-window.addEventListener('resize', positionQuickSheet);
+window.addEventListener('resize', () => { if (_sheetMode === 'quick') applyQuickSheetBounds(_quickSheetBounds || {}); });
 document.addEventListener('click', (event) => {
   const picker = document.getElementById('quick-sheet-picker');
   const btn = document.getElementById('map-quick-sheet-btn');
@@ -1348,8 +1503,11 @@ function openSheet(journalId, options = {}) {
   const delBtn = document.querySelector('.sheet-del-btn');
   if (delBtn) delBtn.style.display = _sheetMode === 'quick' ? 'none' : '';
   document.getElementById('sheet-overlay').classList.add('open');
+  ensureQuickSheetHandles();
+  bindQuickSheetInteractions();
   setSheetReadOnly(_sheetMode === 'quick' ? (options.readOnly !== false) : false);
-  requestAnimationFrame(positionQuickSheet);
+  if (_sheetMode === 'quick') _quickSheetBounds = null;
+  requestAnimationFrame(() => positionQuickSheet(true));
 }
 
 function closeSheet() {
@@ -1368,6 +1526,8 @@ function closeSheet() {
   closeQuickSheetPicker();
   _sheetMode = 'normal';
   _sheetReadOnly = false;
+  _quickSheetBounds = null;
+  _quickSheetInteraction = null;
   _sheetJournalId = null;
   _sheetIsNew = false;
   _jdAssignedTokenId = null;
