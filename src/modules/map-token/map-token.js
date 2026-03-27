@@ -424,7 +424,7 @@ function renderMapStatusPanel(tokens = St.tokens) {
     const cardClass = statuses.length ? 'map-status-card' : 'map-status-card no-stats';
     const initiativeHtml = showInitiative
       ? `<div class="map-status-initiative-badge">${esc(initiativeText)}</div>`
-      : '';
+      : `<div class="map-status-initiative-badge is-empty">-</div>`;
     const statsGridHtml = statuses.length
       ? `<div class="map-status-stats-grid">${statusHtml}</div>`
       : '';
@@ -432,10 +432,7 @@ function renderMapStatusPanel(tokens = St.tokens) {
       <div class="${cardClass}" data-token-id="${esc(String(token.id || ''))}">
         <div class="map-status-headbox">
           <div class="map-status-avatar">${imageHtml}</div>
-          <div class="map-status-head-meta">
-            <div class="map-status-name">${esc(token.name || '?')}</div>
-            ${initiativeHtml}
-          </div>
+          ${initiativeHtml}
         </div>
         ${statsGridHtml}
       </div>`;
