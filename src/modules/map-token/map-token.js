@@ -9,32 +9,53 @@ let _mapPanX = 0, _mapPanY = 0;
 let _mapBaseWidth = 0;
 let _mapBaseHeight = 0;
 
-function refreshMapBaseSize() {
+function refreshMapBaseSize(force = false) {
   const map = document.getElementById('map-area');
-  const inner = document.getElementById('map-inner');
-  const nextWidth = map?.clientWidth || inner?.offsetWidth || 1;
-  const nextHeight = map?.clientHeight || inner?.offsetHeight || 1;
-  _mapBaseWidth = nextWidth || 1;
-  _mapBaseHeight = nextHeight || 1;
-  return { width: _mapBaseWidth, height: _mapBaseHeight };
+  const nextWidth = map?.clientWidth || _mapBaseWidth || 1;
+  const nextHeight = map?.clientHeight || _mapBaseHeight || 1;
+  if (force || !_mapBaseWidth || !_mapBaseHeight) {
+    _mapBaseWidth = nextWidth || 1;
+    _mapBaseHeight = nextHeight || 1;
+  }
+  return { width: _mapBaseWidth || 1, height: _mapBaseHeight || 1 };
 }
 
 function getMapBaseSize() {
-  if (!_mapBaseWidth || !_mapBaseHeight) return refreshMapBaseSize();
+  if (!_mapBaseWidth || !_mapBaseHeight) return refreshMapBaseSize(true);
   return { width: _mapBaseWidth || 1, height: _mapBaseHeight || 1 };
+}
+
+function getMapDisplaySize() {
+  const map = document.getElementById('map-area');
+  return {
+    width: map?.clientWidth || _mapBaseWidth || 1,
+    height: map?.clientHeight || _mapBaseHeight || 1,
+  };
 }
 
 function getMapExpansion() {
   const { width: baseW, height: baseH } = getMapBaseSize();
-  return { x: 1, y: 1, baseW, baseH };
+  const { width: displayW, height: displayH } = getMapDisplaySize();
+  return {
+    x: Math.max(0.000001, (displayW || 1) / (baseW || 1)),
+    y: Math.max(0.000001, (displayH || 1) / (baseH || 1)),
+    baseW,
+    baseH,
+    displayW,
+    displayH,
+  };
 }
 
 function storedTokenPercentToDisplay(value, axis = 'x') {
-  return Number(value) || 0;
+  const expansion = getMapExpansion();
+  const ratio = axis === 'y' ? expansion.y : expansion.x;
+  return (Number(value) || 0) / ratio;
 }
 
 function displayTokenPercentToStored(value, axis = 'x') {
-  return Number(value) || 0;
+  const expansion = getMapExpansion();
+  const ratio = axis === 'y' ? expansion.y : expansion.x;
+  return (Number(value) || 0) * ratio;
 }
 
 function getTokenStoredPercentMax(axis = 'x') {
@@ -260,42 +281,28 @@ function getTokenStartPosition(tokenId) {
   };
 }
 
-function getMapWorldPointFromClient(clientX, clientY, rect, scale = _mapScale, panX = _mapPanX, panY = _mapPanY) {
-  const safeScale = scale || 1;
-  return {
-    x: (clientX - rect.left - panX) / safeScale,
-    y: (clientY - rect.top - panY) / safeScale,
-  };
-}
-
 function buildTokenDragSession(tokenId, startEvent) {
-  const map = document.getElementById('map-area');
-  const rect = map?.getBoundingClientRect();
   const targetIds = getDragTargetIds(tokenId);
   const { width: natW, height: natH } = getMapBaseSize();
+  const scale = _mapScale || 1;
   const startPos = {};
   targetIds.forEach((id) => {
     startPos[id] = getTokenStartPosition(id);
   });
-  const startWorldPoint = rect
-    ? getMapWorldPointFromClient(startEvent.clientX, startEvent.clientY, rect, _mapScale, _mapPanX, _mapPanY)
-    : { x: 0, y: 0 };
   return {
-    rect,
+    startClientX: startEvent.clientX,
+    startClientY: startEvent.clientY,
     natW,
     natH,
+    scale,
     targetIds,
     startPos,
-    startWorldX: startWorldPoint.x,
-    startWorldY: startWorldPoint.y,
   };
 }
 
 function applyTokenDragSession(session, moveEvent) {
-  if (!session?.rect) return;
-  const worldPoint = getMapWorldPointFromClient(moveEvent.clientX, moveEvent.clientY, session.rect, _mapScale, _mapPanX, _mapPanY);
-  const dxPct = ((worldPoint.x - session.startWorldX) / session.natW) * 100;
-  const dyPct = ((worldPoint.y - session.startWorldY) / session.natH) * 100;
+  const dxPct = ((moveEvent.clientX - session.startClientX) / (session.natW * session.scale)) * 100;
+  const dyPct = ((moveEvent.clientY - session.startClientY) / (session.natH * session.scale)) * 100;
   session.targetIds.forEach((id) => {
     const targetEl = getTokenEl(id);
     const pos = session.startPos[id];
@@ -453,9 +460,9 @@ function applyMapTransform() {
   const inner = document.getElementById('map-inner');
   const map = document.getElementById('map-area');
   if (!inner || !map) return;
-  const { width: baseW, height: baseH } = refreshMapBaseSize();
-  inner.style.width = baseW + 'px';
-  inner.style.height = baseH + 'px';
+  const { width: displayW, height: displayH } = getMapDisplaySize();
+  inner.style.width = displayW + 'px';
+  inner.style.height = displayH + 'px';
   inner.style.transformOrigin = '0 0';
   inner.style.transform = `translate(${_mapPanX}px,${_mapPanY}px) scale(${_mapScale})`;
   syncRenderedTokenPositions();
@@ -549,11 +556,11 @@ document.addEventListener('DOMContentLoaded', () => {
     if (e.button === 1) e.preventDefault();
   });
 
+  refreshMapBaseSize(true);
   applyMapTransform();
 });
 
 window.addEventListener('resize', () => {
-  refreshMapBaseSize();
   applyMapTransform();
 });
 
