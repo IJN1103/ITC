@@ -791,12 +791,12 @@ function removeToken(tokenId) {
   setMultiTokenSelection(_multiSelectedTokenIds.filter((id) => id !== tokenId));
   const el = getTokenEl(tokenId);
   if (el) el.remove();
+  delete St.tokens[tokenId];
+  syncMultiTokenSelectionWithTokens(St.tokens);
+  renderMapStatusPanel(St.tokens);
   if (window._FB?.CONFIGURED) {
     const { db, ref, remove } = window._FB;
     remove(ref(db, `rooms/${St.roomCode}/tokens/${tokenId}`));
-  } else {
-    delete St.tokens[tokenId];
-    syncMultiTokenSelectionWithTokens(St.tokens);
   }
 }
 
@@ -879,12 +879,15 @@ function tokCtxAction(action) {
       break;
     case 'delete':
       if (!confirm(`'${t.name}' 토큰을 삭제할까요?`)) return;
-      const el = getTokenEl(id);
-      if (el) el.remove();
+      const delEl = getTokenEl(id);
+      if (delEl) delEl.remove();
+      delete St.tokens[id];
+      syncMultiTokenSelectionWithTokens(St.tokens);
+      renderMapStatusPanel(St.tokens);
       if (window._FB?.CONFIGURED) {
         const { db, ref, remove } = window._FB;
         remove(ref(db, `rooms/${St.roomCode}/tokens/${id}`));
-      } else { delete St.tokens[id]; }
+      }
       break;
     case 'copyId':
       navigator.clipboard?.writeText(id).then(() => showToast('토큰 ID 복사됨: ' + id)).catch(() => showToast('복사 실패'));
@@ -1166,13 +1169,12 @@ function deleteTokenFromEdit() {
   closeTokenEdit();
   const el = document.getElementById('tok-' + delId);
   if (el) el.remove();
+  delete St.tokens[delId];
+  syncMultiTokenSelectionWithTokens(St.tokens);
+  renderMapStatusPanel(St.tokens);
   if (window._FB?.CONFIGURED) {
     const { db, ref, remove } = window._FB;
     remove(ref(db, `rooms/${St.roomCode}/tokens/${delId}`));
-  } else {
-    delete St.tokens[delId];
-    syncMultiTokenSelectionWithTokens(St.tokens);
-    renderAllTokens(St.tokens);
   }
 }
 
