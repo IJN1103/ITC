@@ -9,6 +9,10 @@ let _mapPanX = 0, _mapPanY = 0;
 let _mapBaseWidth = 0;
 let _mapBaseHeight = 0;
 
+/* ── 드래그 보호 상태 ── */
+let _activeDragSession = null;   // 드래그 중이면 세션 객체, 아니면 null
+let _pendingTokenRender = false; // 드래그 중 renderAllTokens 호출이 보류되었는지
+
 function refreshMapBaseSize(force = false) {
   const map = document.getElementById('map-area');
   if (!map) return { width: _mapBaseWidth || 1, height: _mapBaseHeight || 1 };
@@ -47,7 +51,9 @@ function clampTokenStoredPercent(value, axis = 'x') {
 
 function syncRenderedTokenPositions() {
   if (!window.St?.tokens) return;
+  const draggingIds = _activeDragSession ? new Set(_activeDragSession.targetIds) : null;
   Object.entries(St.tokens).forEach(([id, token]) => {
+    if (draggingIds && draggingIds.has(id)) return; // 드래그 중인 토큰은 건너뜀
     const el = getTokenEl(id);
     if (!el || !token) return;
     if (typeof token.x === 'number') el.style.left = storedTokenPercentToDisplay(token.x, 'x') + '%';
@@ -659,6 +665,12 @@ function addToken() {
 }
 
 function renderAllTokens(tokens) {
+  /* 드래그 중이면 전체 re-render를 보류 (드래그 끝나면 자동 실행) */
+  if (_activeDragSession) {
+    _pendingTokenRender = true;
+    return;
+  }
+  _pendingTokenRender = false;
   hideTokenMemoBubble();
   const inner = document.getElementById('map-inner');
   if (inner) inner.querySelectorAll('.map-token').forEach(t => t.remove());
@@ -739,6 +751,7 @@ function makeDraggable(el, tokenId) {
     if (!map) return;
 
     const dragSession = buildTokenDragSession(tokenId, e);
+    _activeDragSession = dragSession; // ← 드래그 시작 표시
 
     const onMove = ev => {
       applyTokenDragSession(dragSession, ev);
@@ -747,8 +760,18 @@ function makeDraggable(el, tokenId) {
     const onUp = () => {
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup', onUp);
-      saveTokenPositionPatch(collectDraggedTokenPositions(dragSession.targetIds));
+
+      const patch = collectDraggedTokenPositions(dragSession.targetIds);
+      _activeDragSession = null; // ← 드래그 종료 표시 (saveTokenPositionPatch 전에 해제)
+
+      saveTokenPositionPatch(patch);
       syncMultiTokenSelectionWithTokens(St.tokens);
+
+      /* 드래그 중 보류되었던 renderAllTokens 실행 */
+      if (_pendingTokenRender) {
+        _pendingTokenRender = false;
+        renderAllTokens(St.tokens);
+      }
     };
 
     document.addEventListener('mousemove', onMove);
