@@ -11,8 +11,9 @@ let _mapBaseHeight = 0;
 
 function refreshMapBaseSize() {
   const map = document.getElementById('map-area');
-  const nextWidth = map?.clientWidth || _mapBaseWidth || 1;
-  const nextHeight = map?.clientHeight || _mapBaseHeight || 1;
+  const inner = document.getElementById('map-inner');
+  const nextWidth = map?.clientWidth || inner?.offsetWidth || 1;
+  const nextHeight = map?.clientHeight || inner?.offsetHeight || 1;
   _mapBaseWidth = nextWidth || 1;
   _mapBaseHeight = nextHeight || 1;
   return { width: _mapBaseWidth, height: _mapBaseHeight };
@@ -259,28 +260,42 @@ function getTokenStartPosition(tokenId) {
   };
 }
 
+function getMapWorldPointFromClient(clientX, clientY, rect, scale = _mapScale, panX = _mapPanX, panY = _mapPanY) {
+  const safeScale = scale || 1;
+  return {
+    x: (clientX - rect.left - panX) / safeScale,
+    y: (clientY - rect.top - panY) / safeScale,
+  };
+}
+
 function buildTokenDragSession(tokenId, startEvent) {
+  const map = document.getElementById('map-area');
+  const rect = map?.getBoundingClientRect();
   const targetIds = getDragTargetIds(tokenId);
   const { width: natW, height: natH } = getMapBaseSize();
-  const scale = _mapScale || 1;
   const startPos = {};
   targetIds.forEach((id) => {
     startPos[id] = getTokenStartPosition(id);
   });
+  const startWorldPoint = rect
+    ? getMapWorldPointFromClient(startEvent.clientX, startEvent.clientY, rect, _mapScale, _mapPanX, _mapPanY)
+    : { x: 0, y: 0 };
   return {
-    startClientX: startEvent.clientX,
-    startClientY: startEvent.clientY,
+    rect,
     natW,
     natH,
-    scale,
     targetIds,
     startPos,
+    startWorldX: startWorldPoint.x,
+    startWorldY: startWorldPoint.y,
   };
 }
 
 function applyTokenDragSession(session, moveEvent) {
-  const dxPct = ((moveEvent.clientX - session.startClientX) / (session.natW * session.scale)) * 100;
-  const dyPct = ((moveEvent.clientY - session.startClientY) / (session.natH * session.scale)) * 100;
+  if (!session?.rect) return;
+  const worldPoint = getMapWorldPointFromClient(moveEvent.clientX, moveEvent.clientY, session.rect, _mapScale, _mapPanX, _mapPanY);
+  const dxPct = ((worldPoint.x - session.startWorldX) / session.natW) * 100;
+  const dyPct = ((worldPoint.y - session.startWorldY) / session.natH) * 100;
   session.targetIds.forEach((id) => {
     const targetEl = getTokenEl(id);
     const pos = session.startPos[id];
@@ -438,9 +453,9 @@ function applyMapTransform() {
   const inner = document.getElementById('map-inner');
   const map = document.getElementById('map-area');
   if (!inner || !map) return;
-  refreshMapBaseSize();
-  inner.style.width = '';
-  inner.style.height = '';
+  const { width: baseW, height: baseH } = refreshMapBaseSize();
+  inner.style.width = baseW + 'px';
+  inner.style.height = baseH + 'px';
   inner.style.transformOrigin = '0 0';
   inner.style.transform = `translate(${_mapPanX}px,${_mapPanY}px) scale(${_mapScale})`;
   syncRenderedTokenPositions();
