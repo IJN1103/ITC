@@ -9,42 +9,36 @@ let _mapPanX = 0, _mapPanY = 0;
 let _mapBaseWidth = 0;
 let _mapBaseHeight = 0;
 
-function getMapBaseSize() {
+function refreshMapBaseSize() {
   const inner = document.getElementById('map-inner');
   const map = document.getElementById('map-area');
-  if (!_mapBaseWidth || !_mapBaseHeight) {
-    _mapBaseWidth = inner?.offsetWidth || map?.clientWidth || 1;
-    _mapBaseHeight = inner?.offsetHeight || map?.clientHeight || 1;
-  }
+  const nextWidth = inner?.offsetWidth || map?.clientWidth || 1;
+  const nextHeight = inner?.offsetHeight || map?.clientHeight || 1;
+  _mapBaseWidth = nextWidth || 1;
+  _mapBaseHeight = nextHeight || 1;
+  return { width: _mapBaseWidth, height: _mapBaseHeight };
+}
+
+function getMapBaseSize() {
+  if (!_mapBaseWidth || !_mapBaseHeight) return refreshMapBaseSize();
   return { width: _mapBaseWidth || 1, height: _mapBaseHeight || 1 };
 }
 
 function getMapExpansion() {
-  const map = document.getElementById('map-area');
   const { width: baseW, height: baseH } = getMapBaseSize();
-  if (!map) return { x: 1, y: 1, baseW, baseH };
-  const scale = _mapScale || 1;
-  return {
-    x: Math.max(1, (map.clientWidth || 1) / (baseW * scale)),
-    y: Math.max(1, (map.clientHeight || 1) / (baseH * scale)),
-    baseW,
-    baseH,
-  };
+  return { x: 1, y: 1, baseW, baseH };
 }
 
 function storedTokenPercentToDisplay(value, axis = 'x') {
-  const factor = axis === 'y' ? getMapExpansion().y : getMapExpansion().x;
-  return (Number(value) || 0) / factor;
+  return Number(value) || 0;
 }
 
 function displayTokenPercentToStored(value, axis = 'x') {
-  const factor = axis === 'y' ? getMapExpansion().y : getMapExpansion().x;
-  return (Number(value) || 0) * factor;
+  return Number(value) || 0;
 }
 
 function getTokenStoredPercentMax(axis = 'x') {
-  const factor = axis === 'y' ? getMapExpansion().y : getMapExpansion().x;
-  return 100 * factor;
+  return 100;
 }
 
 function clampTokenStoredPercent(value, axis = 'x') {
@@ -445,10 +439,9 @@ function applyMapTransform() {
   const inner = document.getElementById('map-inner');
   const map = document.getElementById('map-area');
   if (!inner || !map) return;
-  const { width: baseW, height: baseH } = getMapBaseSize();
-  const expansion = getMapExpansion();
-  inner.style.width = (baseW * expansion.x) + 'px';
-  inner.style.height = (baseH * expansion.y) + 'px';
+  const { width: baseW, height: baseH } = refreshMapBaseSize();
+  inner.style.width = baseW + 'px';
+  inner.style.height = baseH + 'px';
   inner.style.transformOrigin = '0 0';
   inner.style.transform = `translate(${_mapPanX}px,${_mapPanY}px) scale(${_mapScale})`;
   syncRenderedTokenPositions();
@@ -541,6 +534,13 @@ document.addEventListener('DOMContentLoaded', () => {
   mapEl.addEventListener('auxclick', e => {
     if (e.button === 1) e.preventDefault();
   });
+
+  applyMapTransform();
+});
+
+window.addEventListener('resize', () => {
+  refreshMapBaseSize();
+  applyMapTransform();
 });
 
 let _tokenMemoBubbleEl = null;
