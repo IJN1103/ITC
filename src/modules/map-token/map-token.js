@@ -16,7 +16,8 @@ let _pendingTokenRender = false; // 드래그 중 renderAllTokens 호출이 보�
 function refreshMapBaseSize(force = false) {
   const map = document.getElementById('map-area');
   if (!map) return { width: _mapBaseWidth || 1, height: _mapBaseHeight || 1 };
-  if (!force && _mapBaseWidth && _mapBaseHeight) {
+  /* 캐시된 값이 유효한 크기(> 1)일 때만 재사용, 1 이하면 다시 읽음 */
+  if (!force && _mapBaseWidth > 1 && _mapBaseHeight > 1) {
     return { width: _mapBaseWidth, height: _mapBaseHeight };
   }
   _mapBaseWidth = map.clientWidth || _mapBaseWidth || 1;
@@ -445,7 +446,7 @@ function applyMapTransform() {
   const inner = document.getElementById('map-inner');
   const map = document.getElementById('map-area');
   if (!inner || !map) return;
-  const { width: baseW, height: baseH } = getMapBaseSize();
+  const { width: baseW, height: baseH } = refreshMapBaseSize(true);
   inner.style.width = baseW + 'px';
   inner.style.height = baseH + 'px';
   inner.style.transformOrigin = '0 0';
@@ -678,6 +679,8 @@ function renderAllTokens(tokens) {
   Object.values(tokens).forEach(t => createTokenEl(t));
   updateMultiTokenSelectionUI();
   renderMapStatusPanel(tokens);
+  /* 게임 화면 진입 후 맵 크기가 정상 반영되도록 보장 */
+  applyMapTransform();
 }
 
 function createTokenEl(t) {
