@@ -10,10 +10,9 @@ let _mapBaseWidth = 0;
 let _mapBaseHeight = 0;
 
 function refreshMapBaseSize() {
-  const inner = document.getElementById('map-inner');
   const map = document.getElementById('map-area');
-  const nextWidth = inner?.offsetWidth || map?.clientWidth || 1;
-  const nextHeight = inner?.offsetHeight || map?.clientHeight || 1;
+  const nextWidth = map?.clientWidth || _mapBaseWidth || 1;
+  const nextHeight = map?.clientHeight || _mapBaseHeight || 1;
   _mapBaseWidth = nextWidth || 1;
   _mapBaseHeight = nextHeight || 1;
   return { width: _mapBaseWidth, height: _mapBaseHeight };
@@ -439,9 +438,9 @@ function applyMapTransform() {
   const inner = document.getElementById('map-inner');
   const map = document.getElementById('map-area');
   if (!inner || !map) return;
-  const { width: baseW, height: baseH } = refreshMapBaseSize();
-  inner.style.width = baseW + 'px';
-  inner.style.height = baseH + 'px';
+  refreshMapBaseSize();
+  inner.style.width = '';
+  inner.style.height = '';
   inner.style.transformOrigin = '0 0';
   inner.style.transform = `translate(${_mapPanX}px,${_mapPanY}px) scale(${_mapScale})`;
   syncRenderedTokenPositions();
