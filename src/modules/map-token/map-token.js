@@ -9,24 +9,19 @@ let _mapPanX = 0, _mapPanY = 0;
 let _mapBaseWidth = 0;
 let _mapBaseHeight = 0;
 
-function refreshMapBaseSize() {
+function refreshMapBaseSize(force = false) {
   const map = document.getElementById('map-area');
-  const nextWidth = Math.max(1, map?.clientWidth || _mapBaseWidth || 1);
-  const nextHeight = Math.max(1, map?.clientHeight || _mapBaseHeight || 1);
-  _mapBaseWidth = nextWidth;
-  _mapBaseHeight = nextHeight;
-  return { width: _mapBaseWidth, height: _mapBaseHeight };
+  const nextWidth = Math.max(1, map?.clientWidth || 1);
+  const nextHeight = Math.max(1, map?.clientHeight || 1);
+  if (force || !_mapBaseWidth || !_mapBaseHeight) {
+    _mapBaseWidth = nextWidth;
+    _mapBaseHeight = nextHeight;
+  }
+  return { width: _mapBaseWidth || 1, height: _mapBaseHeight || 1 };
 }
 
 function getMapBaseSize() {
-  const map = document.getElementById('map-area');
-  const liveWidth = map?.clientWidth || 0;
-  const liveHeight = map?.clientHeight || 0;
-  if (liveWidth > 0 && liveHeight > 0) {
-    _mapBaseWidth = liveWidth;
-    _mapBaseHeight = liveHeight;
-  }
-  if (!_mapBaseWidth || !_mapBaseHeight) return refreshMapBaseSize();
+  if (!_mapBaseWidth || !_mapBaseHeight) return refreshMapBaseSize(true);
   return { width: _mapBaseWidth || 1, height: _mapBaseHeight || 1 };
 }
 
@@ -49,21 +44,6 @@ function getTokenStoredPercentMax(axis = 'x') {
 
 function clampTokenStoredPercent(value, axis = 'x') {
   return Math.max(0, Math.min(getTokenStoredPercentMax(axis), Number(value) || 0));
-}
-
-function getPointerWorldPercent(evt) {
-  const map = document.getElementById('map-area');
-  const { width: baseW, height: baseH } = getMapBaseSize();
-  if (!map) return { x: 0, y: 0 };
-  const rect = map.getBoundingClientRect();
-  const localX = evt.clientX - rect.left;
-  const localY = evt.clientY - rect.top;
-  const worldX = (localX - _mapPanX) / (_mapScale || 1);
-  const worldY = (localY - _mapPanY) / (_mapScale || 1);
-  return {
-    x: (worldX / Math.max(1, baseW)) * 100,
-    y: (worldY / Math.max(1, baseH)) * 100,
-  };
 }
 
 function syncRenderedTokenPositions() {
@@ -283,22 +263,26 @@ function getTokenStartPosition(tokenId) {
 
 function buildTokenDragSession(tokenId, startEvent) {
   const targetIds = getDragTargetIds(tokenId);
-  const startPointer = getPointerWorldPercent(startEvent);
+  const { width: natW, height: natH } = getMapBaseSize();
+  const scale = _mapScale || 1;
   const startPos = {};
   targetIds.forEach((id) => {
     startPos[id] = getTokenStartPosition(id);
   });
   return {
-    startPointer,
+    startClientX: startEvent.clientX,
+    startClientY: startEvent.clientY,
+    natW,
+    natH,
+    scale,
     targetIds,
     startPos,
   };
 }
 
 function applyTokenDragSession(session, moveEvent) {
-  const currentPointer = getPointerWorldPercent(moveEvent);
-  const dxPct = currentPointer.x - session.startPointer.x;
-  const dyPct = currentPointer.y - session.startPointer.y;
+  const dxPct = ((moveEvent.clientX - session.startClientX) / (session.natW * session.scale)) * 100;
+  const dyPct = ((moveEvent.clientY - session.startClientY) / (session.natH * session.scale)) * 100;
   session.targetIds.forEach((id) => {
     const targetEl = getTokenEl(id);
     const pos = session.startPos[id];
@@ -456,7 +440,9 @@ function applyMapTransform() {
   const inner = document.getElementById('map-inner');
   const map = document.getElementById('map-area');
   if (!inner || !map) return;
-  refreshMapBaseSize();
+  const { width: baseW, height: baseH } = getMapBaseSize();
+  inner.style.width = baseW + 'px';
+  inner.style.height = baseH + 'px';
   inner.style.transformOrigin = '0 0';
   inner.style.transform = `translate(${_mapPanX}px,${_mapPanY}px) scale(${_mapScale})`;
   syncRenderedTokenPositions();
@@ -550,6 +536,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (e.button === 1) e.preventDefault();
   });
 
+  refreshMapBaseSize(true);
   applyMapTransform();
 });
 
