@@ -6,12 +6,27 @@
 let _mapScale = 1;
 let _mapPanX = 0, _mapPanY = 0;
 
-function getMapBaseSize() {
+let _mapBaseWidth = 0;
+let _mapBaseHeight = 0;
+
+function refreshMapBaseSize(force = false) {
   const map = document.getElementById('map-area');
-  return {
-    width: Math.max(1, map?.clientWidth || 1),
-    height: Math.max(1, map?.clientHeight || 1),
-  };
+  if (!map) return { width: _mapBaseWidth || 1, height: _mapBaseHeight || 1 };
+  if (!force && _mapBaseWidth && _mapBaseHeight) {
+    return { width: _mapBaseWidth, height: _mapBaseHeight };
+  }
+  _mapBaseWidth = map.clientWidth || _mapBaseWidth || 1;
+  _mapBaseHeight = map.clientHeight || _mapBaseHeight || 1;
+  return { width: _mapBaseWidth, height: _mapBaseHeight };
+}
+
+function getMapBaseSize() {
+  return refreshMapBaseSize(false);
+}
+
+function getMapExpansion() {
+  const { width: baseW, height: baseH } = getMapBaseSize();
+  return { x: 1, y: 1, baseW, baseH };
 }
 
 function storedTokenPercentToDisplay(value, axis = 'x') {
@@ -24,19 +39,6 @@ function displayTokenPercentToStored(value, axis = 'x') {
 
 function getTokenStoredPercentMax(axis = 'x') {
   return 100;
-}
-
-function getPointerWorldPercent(clientX, clientY) {
-  const map = document.getElementById('map-area');
-  const { width, height } = getMapBaseSize();
-  if (!map) return { x: 0, y: 0 };
-  const rect = map.getBoundingClientRect();
-  const localX = (clientX - rect.left - _mapPanX) / (_mapScale || 1);
-  const localY = (clientY - rect.top - _mapPanY) / (_mapScale || 1);
-  return {
-    x: (localX / width) * 100,
-    y: (localY / height) * 100,
-  };
 }
 
 function clampTokenStoredPercent(value, axis = 'x') {
@@ -260,21 +262,26 @@ function getTokenStartPosition(tokenId) {
 
 function buildTokenDragSession(tokenId, startEvent) {
   const targetIds = getDragTargetIds(tokenId);
+  const { width: natW, height: natH } = getMapBaseSize();
+  const scale = _mapScale || 1;
   const startPos = {};
   targetIds.forEach((id) => {
     startPos[id] = getTokenStartPosition(id);
   });
   return {
-    startPointer: getPointerWorldPercent(startEvent.clientX, startEvent.clientY),
+    startClientX: startEvent.clientX,
+    startClientY: startEvent.clientY,
+    natW,
+    natH,
+    scale,
     targetIds,
     startPos,
   };
 }
 
 function applyTokenDragSession(session, moveEvent) {
-  const pointer = getPointerWorldPercent(moveEvent.clientX, moveEvent.clientY);
-  const dxPct = pointer.x - session.startPointer.x;
-  const dyPct = pointer.y - session.startPointer.y;
+  const dxPct = ((moveEvent.clientX - session.startClientX) / (session.natW * session.scale)) * 100;
+  const dyPct = ((moveEvent.clientY - session.startClientY) / (session.natH * session.scale)) * 100;
   session.targetIds.forEach((id) => {
     const targetEl = getTokenEl(id);
     const pos = session.startPos[id];
@@ -432,8 +439,9 @@ function applyMapTransform() {
   const inner = document.getElementById('map-inner');
   const map = document.getElementById('map-area');
   if (!inner || !map) return;
-  inner.style.width = '100%';
-  inner.style.height = '100%';
+  const { width: baseW, height: baseH } = getMapBaseSize();
+  inner.style.width = baseW + 'px';
+  inner.style.height = baseH + 'px';
   inner.style.transformOrigin = '0 0';
   inner.style.transform = `translate(${_mapPanX}px,${_mapPanY}px) scale(${_mapScale})`;
   syncRenderedTokenPositions();
@@ -461,6 +469,12 @@ function mapZoom(dir, cx, cy) {
 document.addEventListener('DOMContentLoaded', () => {
   const mapEl = document.getElementById('map-area');
   if (!mapEl) return;
+
+  refreshMapBaseSize(true);
+  applyMapTransform();
+  window.addEventListener('resize', () => {
+    applyMapTransform();
+  });
 
   mapEl.addEventListener('wheel', e => {
     e.preventDefault();
