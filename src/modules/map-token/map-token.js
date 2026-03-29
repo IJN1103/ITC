@@ -13,20 +13,24 @@ let _mapBaseHeight = 0;
 let _activeDragSession = null;   // 드래그 중이면 세션 객체, 아니면 null
 let _pendingTokenRender = false; // 드래그 중 renderAllTokens 호출이 보류되었는지
 
-function refreshMapBaseSize(force = false) {
-  const map = document.getElementById('map-area');
-  if (!map) return { width: _mapBaseWidth || 1, height: _mapBaseHeight || 1 };
-  /* 캐시된 값이 유효한 크기(> 1)일 때만 재사용, 1 이하면 다시 읽음 */
-  if (!force && _mapBaseWidth > 1 && _mapBaseHeight > 1) {
+function refreshMapBaseSize() {
+  /* 이미 유효한 크기가 잠겼으면 그대로 반환 (고정 논리 캔버스) */
+  if (_mapBaseWidth > 1 && _mapBaseHeight > 1) {
     return { width: _mapBaseWidth, height: _mapBaseHeight };
   }
-  _mapBaseWidth = map.clientWidth || _mapBaseWidth || 1;
-  _mapBaseHeight = map.clientHeight || _mapBaseHeight || 1;
-  return { width: _mapBaseWidth, height: _mapBaseHeight };
+  const map = document.getElementById('map-area');
+  if (!map) return { width: 1, height: 1 };
+  const w = map.clientWidth;
+  const h = map.clientHeight;
+  if (w > 1 && h > 1) {
+    _mapBaseWidth = w;
+    _mapBaseHeight = h;
+  }
+  return { width: _mapBaseWidth || 1, height: _mapBaseHeight || 1 };
 }
 
 function getMapBaseSize() {
-  return refreshMapBaseSize(false);
+  return refreshMapBaseSize();
 }
 
 function getMapExpansion() {
@@ -446,7 +450,7 @@ function applyMapTransform() {
   const inner = document.getElementById('map-inner');
   const map = document.getElementById('map-area');
   if (!inner || !map) return;
-  const { width: baseW, height: baseH } = refreshMapBaseSize(true);
+  const { width: baseW, height: baseH } = refreshMapBaseSize();
   inner.style.width = baseW + 'px';
   inner.style.height = baseH + 'px';
   inner.style.transformOrigin = '0 0';
@@ -477,7 +481,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const mapEl = document.getElementById('map-area');
   if (!mapEl) return;
 
-  refreshMapBaseSize(true);
+  refreshMapBaseSize();
   applyMapTransform();
   window.addEventListener('resize', () => {
     applyMapTransform();
