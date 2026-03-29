@@ -9,38 +9,42 @@ let _mapPanX = 0, _mapPanY = 0;
 let _mapBaseWidth = 0;
 let _mapBaseHeight = 0;
 
-function refreshMapBaseSize(force = false) {
-  if (!force && _mapBaseWidth && _mapBaseHeight) {
-    return { width: _mapBaseWidth, height: _mapBaseHeight };
-  }
-  const map = document.getElementById('map-area');
-  const nextWidth = map?.clientWidth || _mapBaseWidth || 1;
-  const nextHeight = map?.clientHeight || _mapBaseHeight || 1;
-  _mapBaseWidth = nextWidth || 1;
-  _mapBaseHeight = nextHeight || 1;
-  return { width: _mapBaseWidth, height: _mapBaseHeight };
-}
-
 function getMapBaseSize() {
-  if (!_mapBaseWidth || !_mapBaseHeight) return refreshMapBaseSize();
+  const inner = document.getElementById('map-inner');
+  const map = document.getElementById('map-area');
+  if (!_mapBaseWidth || !_mapBaseHeight) {
+    _mapBaseWidth = inner?.offsetWidth || map?.clientWidth || 1;
+    _mapBaseHeight = inner?.offsetHeight || map?.clientHeight || 1;
+  }
   return { width: _mapBaseWidth || 1, height: _mapBaseHeight || 1 };
 }
 
 function getMapExpansion() {
+  const map = document.getElementById('map-area');
   const { width: baseW, height: baseH } = getMapBaseSize();
-  return { x: 1, y: 1, baseW, baseH };
+  if (!map) return { x: 1, y: 1, baseW, baseH };
+  const scale = _mapScale || 1;
+  return {
+    x: Math.max(1, (map.clientWidth || 1) / (baseW * scale)),
+    y: Math.max(1, (map.clientHeight || 1) / (baseH * scale)),
+    baseW,
+    baseH,
+  };
 }
 
 function storedTokenPercentToDisplay(value, axis = 'x') {
-  return Number(value) || 0;
+  const factor = axis === 'y' ? getMapExpansion().y : getMapExpansion().x;
+  return (Number(value) || 0) / factor;
 }
 
 function displayTokenPercentToStored(value, axis = 'x') {
-  return Number(value) || 0;
+  const factor = axis === 'y' ? getMapExpansion().y : getMapExpansion().x;
+  return (Number(value) || 0) * factor;
 }
 
 function getTokenStoredPercentMax(axis = 'x') {
-  return 100;
+  const factor = axis === 'y' ? getMapExpansion().y : getMapExpansion().x;
+  return 100 * factor;
 }
 
 function clampTokenStoredPercent(value, axis = 'x') {
@@ -262,36 +266,51 @@ function getTokenStartPosition(tokenId) {
   };
 }
 
+function getMapPointerDisplayPercent(clientX, clientY) {
+  const map = document.getElementById('map-area');
+  const inner = document.getElementById('map-inner');
+  if (!map || !inner) return { x: 0, y: 0 };
+  const rect = map.getBoundingClientRect();
+  const innerW = inner.offsetWidth || 1;
+  const innerH = inner.offsetHeight || 1;
+  const scale = _mapScale || 1;
+  const worldX = ((clientX - rect.left) - _mapPanX) / scale;
+  const worldY = ((clientY - rect.top) - _mapPanY) / scale;
+  return {
+    x: (worldX / innerW) * 100,
+    y: (worldY / innerH) * 100,
+  };
+}
+
 function buildTokenDragSession(tokenId, startEvent) {
   const targetIds = getDragTargetIds(tokenId);
-  const { width: natW, height: natH } = getMapBaseSize();
-  const scale = _mapScale || 1;
   const startPos = {};
   targetIds.forEach((id) => {
     startPos[id] = getTokenStartPosition(id);
   });
   return {
-    startClientX: startEvent.clientX,
-    startClientY: startEvent.clientY,
-    natW,
-    natH,
-    scale,
+    startPointer: getMapPointerDisplayPercent(startEvent.clientX, startEvent.clientY),
     targetIds,
     startPos,
   };
 }
 
 function applyTokenDragSession(session, moveEvent) {
-  const dxPct = ((moveEvent.clientX - session.startClientX) / (session.natW * session.scale)) * 100;
-  const dyPct = ((moveEvent.clientY - session.startClientY) / (session.natH * session.scale)) * 100;
+  const currentPointer = getMapPointerDisplayPercent(moveEvent.clientX, moveEvent.clientY);
+  const dxDisplayPct = currentPointer.x - session.startPointer.x;
+  const dyDisplayPct = currentPointer.y - session.startPointer.y;
   session.targetIds.forEach((id) => {
     const targetEl = getTokenEl(id);
     const pos = session.startPos[id];
     if (!targetEl || !pos) return;
-    const nextLeft = clampTokenStoredPercent(pos.left + dxPct, 'x');
-    const nextTop = clampTokenStoredPercent(pos.top + dyPct, 'y');
-    targetEl.style.left = storedTokenPercentToDisplay(nextLeft, 'x') + '%';
-    targetEl.style.top = storedTokenPercentToDisplay(nextTop, 'y') + '%';
+    const startDisplayLeft = storedTokenPercentToDisplay(pos.left, 'x');
+    const startDisplayTop = storedTokenPercentToDisplay(pos.top, 'y');
+    const nextDisplayLeft = Math.max(0, Math.min(100, startDisplayLeft + dxDisplayPct));
+    const nextDisplayTop = Math.max(0, Math.min(100, startDisplayTop + dyDisplayPct));
+    const nextStoredLeft = clampTokenStoredPercent(displayTokenPercentToStored(nextDisplayLeft, 'x'), 'x');
+    const nextStoredTop = clampTokenStoredPercent(displayTokenPercentToStored(nextDisplayTop, 'y'), 'y');
+    targetEl.style.left = storedTokenPercentToDisplay(nextStoredLeft, 'x') + '%';
+    targetEl.style.top = storedTokenPercentToDisplay(nextStoredTop, 'y') + '%';
   });
 }
 
@@ -441,7 +460,10 @@ function applyMapTransform() {
   const inner = document.getElementById('map-inner');
   const map = document.getElementById('map-area');
   if (!inner || !map) return;
-  getMapBaseSize();
+  const { width: baseW, height: baseH } = getMapBaseSize();
+  const expansion = getMapExpansion();
+  inner.style.width = (baseW * expansion.x) + 'px';
+  inner.style.height = (baseH * expansion.y) + 'px';
   inner.style.transformOrigin = '0 0';
   inner.style.transform = `translate(${_mapPanX}px,${_mapPanY}px) scale(${_mapScale})`;
   syncRenderedTokenPositions();
@@ -534,13 +556,6 @@ document.addEventListener('DOMContentLoaded', () => {
   mapEl.addEventListener('auxclick', e => {
     if (e.button === 1) e.preventDefault();
   });
-
-  refreshMapBaseSize(true);
-  applyMapTransform();
-});
-
-window.addEventListener('resize', () => {
-  applyMapTransform();
 });
 
 let _tokenMemoBubbleEl = null;
