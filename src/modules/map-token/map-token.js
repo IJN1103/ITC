@@ -628,7 +628,7 @@ function refreshTokenOwnerBar(token) {
     return;
   }
   bar.style.display = '';
-  bar.innerHTML = `<span style="display:block;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:4px">토큰 소유자</span><span>${esc(getTokenOwnerDisplay(token))}</span>`;
+  bar.innerHTML = `<span style="color:var(--muted)">소유자:</span> ${esc(getTokenOwnerDisplay(token))}`;
 }
 
 function showTokenMemoBubble(tokenEl, memo, tokenId) {
@@ -896,10 +896,6 @@ function openTokenEdit(tokenId) {
   const t = St.tokens[tokenId];
   if (!t) return;
 
-  if (!t.ownerId && St.myId) {
-    t.ownerId = St.myId;
-    t.ownerName = St.myName || '';
-  }
   refreshTokenOwnerBar(t);
 
   document.getElementById('te-name').value = t.name || '';
@@ -1082,10 +1078,6 @@ async function saveTokenEdit() {
 
   t.name = document.getElementById('te-name').value.trim() || '?';
   t.initiative = parseFloat(document.getElementById('te-initiative').value) || 0;
-  if (!t.ownerId && St.myId) {
-    t.ownerId = St.myId;
-    t.ownerName = St.myName || '';
-  }
   t.memo = document.getElementById('te-memo').value;
   t.tokenSize = parseInt(document.getElementById('te-size').value) || 1;
   t.x = parseFloat(document.getElementById('te-x').value) || t.x;
