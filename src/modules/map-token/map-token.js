@@ -6,29 +6,11 @@
 let _mapScale = 1;
 let _mapPanX = 0, _mapPanY = 0;
 
-let _mapBaseWidth = 0;
-let _mapBaseHeight = 0;
-
 function getMapBaseSize() {
-  const inner = document.getElementById('map-inner');
   const map = document.getElementById('map-area');
-  if (!_mapBaseWidth || !_mapBaseHeight) {
-    _mapBaseWidth = map?.clientWidth || inner?.offsetWidth || 1;
-    _mapBaseHeight = map?.clientHeight || inner?.offsetHeight || 1;
-  }
-  return { width: _mapBaseWidth || 1, height: _mapBaseHeight || 1 };
-}
-
-function getMapExpansion() {
-  const map = document.getElementById('map-area');
-  const { width: baseW, height: baseH } = getMapBaseSize();
-  if (!map) return { x: 1, y: 1, baseW, baseH };
-  const scale = _mapScale || 1;
   return {
-    x: (map.clientWidth || baseW || 1) / ((baseW || 1) * scale),
-    y: (map.clientHeight || baseH || 1) / ((baseH || 1) * scale),
-    baseW,
-    baseH,
+    width: Math.max(1, map?.clientWidth || 1),
+    height: Math.max(1, map?.clientHeight || 1),
   };
 }
 
@@ -42,6 +24,19 @@ function displayTokenPercentToStored(value, axis = 'x') {
 
 function getTokenStoredPercentMax(axis = 'x') {
   return 100;
+}
+
+function getPointerWorldPercent(clientX, clientY) {
+  const map = document.getElementById('map-area');
+  const { width, height } = getMapBaseSize();
+  if (!map) return { x: 0, y: 0 };
+  const rect = map.getBoundingClientRect();
+  const localX = (clientX - rect.left - _mapPanX) / (_mapScale || 1);
+  const localY = (clientY - rect.top - _mapPanY) / (_mapScale || 1);
+  return {
+    x: (localX / width) * 100,
+    y: (localY / height) * 100,
+  };
 }
 
 function clampTokenStoredPercent(value, axis = 'x') {
@@ -265,26 +260,21 @@ function getTokenStartPosition(tokenId) {
 
 function buildTokenDragSession(tokenId, startEvent) {
   const targetIds = getDragTargetIds(tokenId);
-  const { width: natW, height: natH } = getMapBaseSize();
-  const scale = _mapScale || 1;
   const startPos = {};
   targetIds.forEach((id) => {
     startPos[id] = getTokenStartPosition(id);
   });
   return {
-    startClientX: startEvent.clientX,
-    startClientY: startEvent.clientY,
-    natW,
-    natH,
-    scale,
+    startPointer: getPointerWorldPercent(startEvent.clientX, startEvent.clientY),
     targetIds,
     startPos,
   };
 }
 
 function applyTokenDragSession(session, moveEvent) {
-  const dxPct = ((moveEvent.clientX - session.startClientX) / (session.natW * session.scale)) * 100;
-  const dyPct = ((moveEvent.clientY - session.startClientY) / (session.natH * session.scale)) * 100;
+  const pointer = getPointerWorldPercent(moveEvent.clientX, moveEvent.clientY);
+  const dxPct = pointer.x - session.startPointer.x;
+  const dyPct = pointer.y - session.startPointer.y;
   session.targetIds.forEach((id) => {
     const targetEl = getTokenEl(id);
     const pos = session.startPos[id];
@@ -442,10 +432,8 @@ function applyMapTransform() {
   const inner = document.getElementById('map-inner');
   const map = document.getElementById('map-area');
   if (!inner || !map) return;
-  const { width: baseW, height: baseH } = getMapBaseSize();
-  const expansion = getMapExpansion();
-  inner.style.width = (baseW * expansion.x) + 'px';
-  inner.style.height = (baseH * expansion.y) + 'px';
+  inner.style.width = '100%';
+  inner.style.height = '100%';
   inner.style.transformOrigin = '0 0';
   inner.style.transform = `translate(${_mapPanX}px,${_mapPanY}px) scale(${_mapScale})`;
   syncRenderedTokenPositions();
