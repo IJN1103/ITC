@@ -122,35 +122,9 @@ function refreshProfileAvatar() {
 
 
 
-function withTimeout(promise, ms = 3500) {
-  return new Promise((resolve, reject) => {
-    let done = false;
-    const timer = setTimeout(() => {
-      if (done) return;
-      done = true;
-      reject(new Error('timeout'));
-    }, ms);
-    Promise.resolve(promise).then((value) => {
-      if (done) return;
-      done = true;
-      clearTimeout(timer);
-      resolve(value);
-    }).catch((err) => {
-      if (done) return;
-      done = true;
-      clearTimeout(timer);
-      reject(err);
-    });
-  });
-}
+function withTimeout(promise, ms = 3500) { return _itcWithTimeout(promise, ms); }
 
-function getCloudinaryRuntimeConfig() {
-  const cfg = window._ITC_CLOUDINARY || {};
-  const cloudName = String(cfg.cloudName || '').trim();
-  const unsignedPreset = String(cfg.unsignedPreset || '').trim();
-  if (!cloudName || !unsignedPreset) return null;
-  return { cloudName, unsignedPreset };
-}
+function getCloudinaryRuntimeConfig() { return _itcGetCloudinaryConfig(); }
 
 async function getStorageApiQuick() {
   const fb = window._FB;
@@ -164,35 +138,9 @@ async function getStorageApiQuick() {
 }
 
 async function uploadAvatarBlobToCloudinary(blob, fileName = 'avatar.jpg') {
-  const cfg = getCloudinaryRuntimeConfig();
-  if (!cfg) throw new Error('cloudinary-config-missing');
   if (!blob) throw new Error('empty-avatar-blob');
-  const formData = new FormData();
-  formData.append('file', blob, fileName);
-  formData.append('upload_preset', cfg.unsignedPreset);
-  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-  const timer = controller ? setTimeout(() => controller.abort(), 20000) : null;
-  try {
-    const res = await fetch(`https://api.cloudinary.com/v1_1/${encodeURIComponent(cfg.cloudName)}/image/upload`, {
-      method: 'POST',
-      body: formData,
-      signal: controller?.signal,
-    });
-    const payload = await res.json().catch(() => ({}));
-    if (!res.ok || !payload?.secure_url) {
-      throw new Error(payload?.error?.message || 'cloudinary upload failed');
-    }
-    return {
-      url: payload.secure_url,
-      path: payload.public_id || '',
-      contentType: blob.type || 'image/jpeg',
-    };
-  } catch (err) {
-    if (err?.name === 'AbortError') throw new Error('timeout');
-    throw err;
-  } finally {
-    if (timer) clearTimeout(timer);
-  }
+  const result = await _itcUploadToCloudinary({ blob, fileName, timeout: 20000 });
+  return { url: result.url, path: result.publicId, contentType: result.contentType };
 }
 
 
