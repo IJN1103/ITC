@@ -387,12 +387,7 @@ function buildMessageNodeFromRecord(channel = 'chat', record) {
   if (channel === 'casual') {
     return buildCasualMsgElement(record.name, record.text, record.uid, record.timestamp, record._key);
   }
-  return buildChatMsgElement(
-    record.name, record.text, record.type, record.uid, record.timestamp,
-    record.speakAsAvatar, record.speakAsJournalId, record.whisperTo, record.whisperToName,
-    record.nameColor, record._key, channel, record.standingImg, record.tokenId,
-    record.standingLabel, !!record.imageWide, record.imageMeta || null, !!record.hideImageMeta
-  );
+  return buildChatMsgElement({ ...record, msgKey: record._key, channel });
 }
 
 function trimRenderedMessages(channel = 'chat') {
@@ -1185,7 +1180,7 @@ async function sendPreparedChatImage(preparedOrDataUrl, imageWide = false, image
       if (!St.roomCode) throw new Error('roomCode missing');
       return push(ref(db, `rooms/${St.roomCode}/chat`), msg);
     }
-    appendChatMsg(msg.name, finalSrc, 'speak-as-image', St.myId, msg.time, saAvatar, saJId, null, null, null, null, 'chat', null, null, null, !!imageWide, normalizedMeta, !!hideImageMeta);
+    appendChatMsg({ name: msg.name, text: finalSrc, type: 'speak-as-image', uid: St.myId, timestamp: msg.time, speakAsAvatar: saAvatar, speakAsJournalId: saJId, channel: 'chat', imageWide: !!imageWide, imageMeta: normalizedMeta, hideImageMeta: !!hideImageMeta });
     return Promise.resolve();
   }
 
@@ -1381,7 +1376,7 @@ function sendMessage(name, text, type = 'normal', extra = null) {
     if (!St.roomCode) return Promise.reject(new Error('roomCode missing'));
     return push(ref(db, `rooms/${St.roomCode}/chat`), msg);
   }
-  appendChatMsg(name, text, type, St.myId, msg.time, null, null, null, null, msg.nameColor || null, null, 'chat', null, null, null, !!msg.imageWide, msg.imageMeta || null, !!msg.hideImageMeta);
+  appendChatMsg({ name, text, type, uid: St.myId, timestamp: msg.time, nameColor: msg.nameColor || null, channel: 'chat', imageWide: !!msg.imageWide, imageMeta: msg.imageMeta || null, hideImageMeta: !!msg.hideImageMeta });
   return Promise.resolve();
 }
 
@@ -1589,7 +1584,7 @@ function sendWhisperMessage(senderName, text, targetUid, targetName) {
     if (!St.roomCode) return Promise.reject(new Error('roomCode missing'));
     return push(ref(db, `rooms/${St.roomCode}/chat`), msg);
   }
-  appendChatMsg(msg.name, text, 'whisper', St.myId, msg.time, null, null, targetUid, targetName);
+  appendChatMsg({ name: msg.name, text, type: 'whisper', uid: St.myId, timestamp: msg.time, whisperTo: targetUid, whisperToName: targetName });
   return Promise.resolve();
 }
 
@@ -1611,7 +1606,7 @@ function openLightbox(src) {
   document.body.appendChild(lb);
 }
 
-function addLocalMessage(type, name, text) { appendChatMsg(name, text, type); }
+function addLocalMessage(type, name, text) { appendChatMsg({ name, text, type }); }
 
 function getAvatarHtml(name, uid) {
   let imgSrc = null;
@@ -1657,7 +1652,11 @@ function buildStandardChatImageSection(name, time, src, avatarHtml, imageWide = 
   return `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name${safeNameClass}"${extraNameStyle}>${esc(name)}</span><span class="msg-time">${time}</span></div>${imageHtml}</div>`;
 }
 
-function buildChatMsgElement(name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId, whisperTo, whisperToName, nameColor, msgKey, channel, standingImg, tokenId, standingLabel, imageWide = false, imageMeta = null, hideImageMeta = false) {
+function buildChatMsgElement(msg = {}) {
+  const { name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId,
+          whisperTo, whisperToName, nameColor, msgKey, channel,
+          standingImg, tokenId, standingLabel,
+          imageWide = false, imageMeta = null, hideImageMeta = false } = msg;
   const d = timestamp ? new Date(timestamp) : new Date();
   const time = `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
 
@@ -1753,28 +1752,36 @@ function buildChatMsgElement(name, text, type, uid, timestamp, speakAsAvatar, sp
   return div;
 }
 
-function appendChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId, whisperTo, whisperToName, nameColor, msgKey, channel, standingImg, tokenId, standingLabel, imageWide = false, imageMeta = null, hideImageMeta = false) {
-  const actualChannel = channel || 'chat';
-  const safeKey = upsertStoredMessage(actualChannel, msgKey, {
-    name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId,
-    whisperTo, whisperToName, nameColor, standingImg, tokenId, standingLabel, imageWide, hideImageMeta, imageMeta: normalizeChatImageMeta(imageMeta)
+function appendChatMsg(msg = {}) {
+  const actualChannel = msg.channel || 'chat';
+  const safeKey = upsertStoredMessage(actualChannel, msg.msgKey, {
+    name: msg.name, text: msg.text, type: msg.type, uid: msg.uid, timestamp: msg.timestamp,
+    speakAsAvatar: msg.speakAsAvatar, speakAsJournalId: msg.speakAsJournalId,
+    whisperTo: msg.whisperTo, whisperToName: msg.whisperToName, nameColor: msg.nameColor,
+    standingImg: msg.standingImg, tokenId: msg.tokenId, standingLabel: msg.standingLabel,
+    imageWide: msg.imageWide, hideImageMeta: msg.hideImageMeta,
+    imageMeta: normalizeChatImageMeta(msg.imageMeta)
   });
   bindMessageViewport(actualChannel);
-  const div = buildChatMsgElement(name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId, whisperTo, whisperToName, nameColor, safeKey, actualChannel, standingImg, tokenId, standingLabel, imageWide, imageMeta, hideImageMeta);
+  const div = buildChatMsgElement({ ...msg, msgKey: safeKey, channel: actualChannel });
   queueMessageRender(actualChannel, div, safeKey, true);
-  if (type === 'speak-as' && (!timestamp || Date.now() - timestamp < 5000)) {
-    showDialogueBoxFromMsg(name, text, speakAsJournalId, standingImg, tokenId, standingLabel);
+  if (msg.type === 'speak-as' && (!msg.timestamp || Date.now() - msg.timestamp < 5000)) {
+    showDialogueBoxFromMsg(msg.name, msg.text, msg.speakAsJournalId, msg.standingImg, msg.tokenId, msg.standingLabel);
   }
 }
 
-function replaceChatMsg(name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId, whisperTo, whisperToName, nameColor, msgKey, channel, standingImg, tokenId, standingLabel, imageWide = false, imageMeta = null, hideImageMeta = false) {
-  const actualChannel = channel || 'chat';
-  const safeKey = upsertStoredMessage(actualChannel, msgKey, {
-    name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId,
-    whisperTo, whisperToName, nameColor, standingImg, tokenId, standingLabel, imageWide, hideImageMeta, imageMeta: normalizeChatImageMeta(imageMeta)
+function replaceChatMsg(msg = {}) {
+  const actualChannel = msg.channel || 'chat';
+  const safeKey = upsertStoredMessage(actualChannel, msg.msgKey, {
+    name: msg.name, text: msg.text, type: msg.type, uid: msg.uid, timestamp: msg.timestamp,
+    speakAsAvatar: msg.speakAsAvatar, speakAsJournalId: msg.speakAsJournalId,
+    whisperTo: msg.whisperTo, whisperToName: msg.whisperToName, nameColor: msg.nameColor,
+    standingImg: msg.standingImg, tokenId: msg.tokenId, standingLabel: msg.standingLabel,
+    imageWide: msg.imageWide, hideImageMeta: msg.hideImageMeta,
+    imageMeta: normalizeChatImageMeta(msg.imageMeta)
   });
   bindMessageViewport(actualChannel);
-  const div = buildChatMsgElement(name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId, whisperTo, whisperToName, nameColor, safeKey, actualChannel, standingImg, tokenId, standingLabel, imageWide, imageMeta, hideImageMeta);
+  const div = buildChatMsgElement({ ...msg, msgKey: safeKey, channel: actualChannel });
   replaceRenderedMessage(actualChannel, safeKey, div);
 }
 
