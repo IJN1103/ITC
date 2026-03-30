@@ -34,20 +34,8 @@ let _sheetAvatarData = null;
 let _sheetAvatarStoredUrl = null;
 let _sheetAvatarUploadPromise = null;
 
-function getCloudinaryJournalConfig() {
-  const cfg = window._ITC_CLOUDINARY || {};
-  if (!cfg.cloudName || !cfg.unsignedPreset) return null;
-  return cfg;
-}
-
-function blobFromCanvas(canvas, type = 'image/jpeg', quality = 0.82) {
-  return new Promise((resolve, reject) => {
-    canvas.toBlob(blob => {
-      if (blob) resolve(blob);
-      else reject(new Error('blob 생성 실패'));
-    }, type, quality);
-  });
-}
+function getCloudinaryJournalConfig() { return _itcGetCloudinaryConfig(); }
+function blobFromCanvas(canvas, type, quality) { return _itcCanvasToBlob(canvas, type || 'image/jpeg', quality || 0.82); }
 
 async function makeJournalAvatarBlob(file) {
   const bitmap = await createImageBitmap(file);
@@ -65,23 +53,14 @@ async function makeJournalAvatarBlob(file) {
 }
 
 async function uploadJournalAvatarToCloudinary(file, journalId) {
-  const cfg = getCloudinaryJournalConfig();
-  if (!cfg) throw new Error('Cloudinary 설정이 비어 있어요.');
   const blob = await makeJournalAvatarBlob(file);
-  const form = new FormData();
-  form.append('file', blob, `journal-avatar-${journalId || Date.now()}.jpg`);
-  form.append('upload_preset', cfg.unsignedPreset);
-  form.append('folder', 'itc/journal-avatars');
-  if (journalId) form.append('public_id', `journal-${journalId}-${Date.now()}`);
-  const res = await fetch(`https://api.cloudinary.com/v1_1/${cfg.cloudName}/image/upload`, {
-    method: 'POST',
-    body: form,
+  const result = await _itcUploadToCloudinary({
+    blob,
+    folder: 'itc/journal-avatars',
+    fileName: `journal-avatar-${journalId || Date.now()}.jpg`,
+    publicId: journalId ? `journal-${journalId}-${Date.now()}` : undefined,
   });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok || !data.secure_url) {
-    throw new Error(data?.error?.message || 'Cloudinary 업로드 실패');
-  }
-  return data.secure_url;
+  return result.url;
 }
 
 
@@ -473,16 +452,12 @@ function triggerHandoutImagePicker() {
 }
 
 async function uploadHandoutImageToCloudinary(file, handoutId) {
-  const cfg = getCloudinaryJournalConfig();
-  if (!cfg) throw new Error('Cloudinary 설정이 비어 있어요.');
-  const form = new FormData();
-  form.append('file', file, `handout-${handoutId || Date.now()}-${Date.now()}.png`);
-  form.append('upload_preset', cfg.unsignedPreset);
-  form.append('folder', `itc/handouts/${St.roomCode || 'common'}`);
-  const res = await fetch(`https://api.cloudinary.com/v1_1/${cfg.cloudName}/image/upload`, { method:'POST', body: form });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok || !data.secure_url) throw new Error(data?.error?.message || '핸드아웃 이미지 업로드 실패');
-  return data.secure_url;
+  const result = await _itcUploadToCloudinary({
+    blob: file,
+    folder: `itc/handouts/${St.roomCode || 'common'}`,
+    fileName: `handout-${handoutId || Date.now()}-${Date.now()}.png`,
+  });
+  return result.url;
 }
 
 async function handleHandoutImage(input) {
