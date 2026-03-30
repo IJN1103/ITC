@@ -687,6 +687,29 @@ function renderAllTokens(tokens) {
   applyMapTransform();
 }
 
+/* ── Firebase onChild* 용 개별 토큰 업데이트 ── */
+
+function addOrUpdateSingleToken(id, data) {
+  /* 드래그 중인 토큰이면 건너뜀 — 드래그 끝날 때 자동 반영 */
+  if (_activeDragSession && _activeDragSession.targetIds.includes(id)) return;
+
+  const existing = getTokenEl(id);
+  if (existing) existing.remove();
+
+  if (data) createTokenEl(data);
+
+  syncMultiTokenSelectionWithTokens(St.tokens);
+  updateMultiTokenSelectionUI();
+  renderMapStatusPanel(St.tokens);
+}
+
+function removeSingleToken(id) {
+  const el = getTokenEl(id);
+  if (el) el.remove();
+  setMultiTokenSelection(_multiSelectedTokenIds.filter(x => x !== id));
+  renderMapStatusPanel(St.tokens);
+}
+
 function createTokenEl(t) {
   const inner = document.getElementById('map-inner');
   const el = document.createElement('div');
