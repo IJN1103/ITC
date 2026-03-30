@@ -933,13 +933,7 @@ function togglePendingChatImageHideMeta(checked) {
   _pendingChatImageHideMeta = !!checked;
 }
 
-function getCloudinaryRuntimeConfig() {
-  const cfg = window._ITC_CLOUDINARY || {};
-  const cloudName = String(cfg.cloudName || '').trim();
-  const unsignedPreset = String(cfg.unsignedPreset || '').trim();
-  if (!cloudName || !unsignedPreset) return null;
-  return { cloudName, unsignedPreset };
-}
+function getCloudinaryRuntimeConfig() { return _itcGetCloudinaryConfig(); }
 
 async function fileToDataUrl(file) {
   return new Promise((resolve, reject) => {
@@ -951,15 +945,7 @@ async function fileToDataUrl(file) {
 }
 
 async function canvasToJpegBlob(canvas, quality = 0.84) {
-  return new Promise((resolve, reject) => {
-    canvas.toBlob((blob) => {
-      if (!blob) {
-        reject(new Error('이미지 처리에 실패했어요.'));
-        return;
-      }
-      resolve(blob);
-    }, 'image/jpeg', quality);
-  });
+  return _itcCanvasToBlob(canvas, 'image/jpeg', quality);
 }
 
 function makePreparedChatImageBase(meta = {}) {
@@ -1103,27 +1089,7 @@ async function queuePendingChatImages(files) {
   renderPendingChatImages();
 }
 
-function withTimeout(promise, ms = 3500) {
-  return new Promise((resolve, reject) => {
-    let done = false;
-    const timer = setTimeout(() => {
-      if (done) return;
-      done = true;
-      reject(new Error('timeout'));
-    }, ms);
-    Promise.resolve(promise).then((value) => {
-      if (done) return;
-      done = true;
-      clearTimeout(timer);
-      resolve(value);
-    }).catch((err) => {
-      if (done) return;
-      done = true;
-      clearTimeout(timer);
-      reject(err);
-    });
-  });
-}
+function withTimeout(promise, ms = 3500) { return _itcWithTimeout(promise, ms); }
 
 async function getStorageApiQuick() {
   const fb = window._FB;
@@ -1152,31 +1118,9 @@ function blobFromDataUrl(dataUrl) {
 }
 
 async function uploadChatImageBlobToCloudinary(blob, fileName = 'chat.jpg') {
-  const cfg = getCloudinaryRuntimeConfig();
-  if (!cfg || !blob) return null;
-  const formData = new FormData();
-  formData.append('file', blob, fileName);
-  formData.append('upload_preset', cfg.unsignedPreset);
-  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-  const timer = controller ? setTimeout(() => controller.abort(), 20000) : null;
-  try {
-    const res = await fetch(`https://api.cloudinary.com/v1_1/${encodeURIComponent(cfg.cloudName)}/image/upload`, {
-      method: 'POST',
-      body: formData,
-      signal: controller?.signal,
-    });
-    const payload = await res.json().catch(() => ({}));
-    if (!res.ok || !payload?.secure_url) {
-      throw new Error(payload?.error?.message || 'cloudinary upload failed');
-    }
-    return {
-      url: payload.secure_url,
-      path: payload.public_id || '',
-      contentType: blob.type || 'image/jpeg',
-    };
-  } finally {
-    if (timer) clearTimeout(timer);
-  }
+  if (!_itcGetCloudinaryConfig() || !blob) return null;
+  const result = await _itcUploadToCloudinary({ blob, fileName, timeout: 20000 });
+  return { url: result.url, path: result.publicId, contentType: result.contentType };
 }
 
 async function uploadChatImageDataUrl(dataUrl, roomCode, preparedItem = null) {
