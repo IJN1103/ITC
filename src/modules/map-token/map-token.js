@@ -69,83 +69,17 @@ function syncRenderedTokenPositions() {
 
 let _teTokenImgBlob = null;
 
-function getCloudinaryConfigForToken() {
-  const cfg = window._ITC_CLOUDINARY || {};
-  if (!cfg.cloudName || !cfg.unsignedPreset) return null;
-  return cfg;
-}
-
-function mapTokenWithTimeout(promise, ms = 15000) {
-  return new Promise((resolve, reject) => {
-    let done = false;
-    const timer = setTimeout(() => {
-      if (done) return;
-      done = true;
-      reject(new Error('timeout'));
-    }, ms);
-    Promise.resolve(promise).then((value) => {
-      if (done) return;
-      done = true;
-      clearTimeout(timer);
-      resolve(value);
-    }).catch((err) => {
-      if (done) return;
-      done = true;
-      clearTimeout(timer);
-      reject(err);
-    });
-  });
-}
-
-function mapTokenCanvasToBlob(canvas, type = 'image/png', quality) {
-  return new Promise((resolve, reject) => {
-    canvas.toBlob((blob) => {
-      if (blob) resolve(blob);
-      else reject(new Error('blob 생성 실패'));
-    }, type, quality);
-  });
-}
-
-async function makeTokenImageBlob(file, max = 800) {
-  const bmp = await createImageBitmap(file);
-  try {
-    let w = bmp.width, h = bmp.height;
-    if (w > max || h > max) {
-      const r = Math.min(max / w, max / h);
-      w = Math.round(w * r);
-      h = Math.round(h * r);
-    }
-    const canvas = document.createElement('canvas');
-    canvas.width = w;
-    canvas.height = h;
-    canvas.getContext('2d').drawImage(bmp, 0, 0, w, h);
-    const isPng = /png/i.test(file.type || '');
-    return await mapTokenCanvasToBlob(canvas, isPng ? 'image/png' : 'image/jpeg', isPng ? undefined : 0.9);
-  } finally {
-    if (bmp && typeof bmp.close === 'function') bmp.close();
-  }
-}
+function getCloudinaryConfigForToken() { return _itcGetCloudinaryConfig(); }
+function mapTokenWithTimeout(promise, ms) { return _itcWithTimeout(promise, ms); }
+function mapTokenCanvasToBlob(canvas, type, quality) { return _itcCanvasToBlob(canvas, type, quality); }
+function makeTokenImageBlob(file, max) { return _itcMakeImageBlob(file, max || 800); }
 
 async function uploadTokenBlobToCloudinary(blob, folder = 'itc/tokens') {
-  const cfg = getCloudinaryConfigForToken();
-  if (!cfg) return null;
-  const form = new FormData();
-  form.append('file', blob);
-  form.append('upload_preset', cfg.unsignedPreset);
-  form.append('folder', folder);
-  const url = `https://api.cloudinary.com/v1_1/${cfg.cloudName}/image/upload`;
-  const res = await mapTokenWithTimeout(fetch(url, { method: 'POST', body: form }), 20000);
-  if (!res.ok) throw new Error(`cloudinary upload failed: ${res.status}`);
-  const json = await res.json();
-  if (!json?.secure_url) throw new Error('cloudinary secure_url missing');
-  return json.secure_url;
+  const result = await _itcUploadToCloudinary({ blob, folder });
+  return result.url;
 }
 
-function revokeTokenPreviewUrl(url) {
-  if (url && String(url).startsWith('blob:')) {
-    try { URL.revokeObjectURL(url); } catch (e) {}
-  }
-}
+function revokeTokenPreviewUrl(url) { _itcRevokePreview(url); }
 
 function cleanupTokenEditPendingAssets() {
   revokeTokenPreviewUrl(_teTokenImgData);
@@ -685,29 +619,6 @@ function renderAllTokens(tokens) {
   renderMapStatusPanel(tokens);
   /* 게임 화면 진입 후 맵 크기가 정상 반영되도록 보장 */
   applyMapTransform();
-}
-
-/* ── Firebase onChild* 용 개별 토큰 업데이트 ── */
-
-function addOrUpdateSingleToken(id, data) {
-  /* 드래그 중인 토큰이면 건너뜀 — 드래그 끝날 때 자동 반영 */
-  if (_activeDragSession && _activeDragSession.targetIds.includes(id)) return;
-
-  const existing = getTokenEl(id);
-  if (existing) existing.remove();
-
-  if (data) createTokenEl(data);
-
-  syncMultiTokenSelectionWithTokens(St.tokens);
-  updateMultiTokenSelectionUI();
-  renderMapStatusPanel(St.tokens);
-}
-
-function removeSingleToken(id) {
-  const el = getTokenEl(id);
-  if (el) el.remove();
-  setMultiTokenSelection(_multiSelectedTokenIds.filter(x => x !== id));
-  renderMapStatusPanel(St.tokens);
 }
 
 function createTokenEl(t) {
