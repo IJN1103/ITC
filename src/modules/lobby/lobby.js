@@ -348,56 +348,13 @@ function renderCampaigns(rooms) {
 }
 
 
-function getCloudinaryConfig() {
-  const cfg = window._ITC_CLOUDINARY || {};
-  if (!cfg.cloudName || !cfg.unsignedPreset) return null;
-  return cfg;
-}
-
-function lobbyWithTimeout(promise, ms = 12000) {
-  return new Promise((resolve, reject) => {
-    let done = false;
-    const timer = setTimeout(() => {
-      if (done) return;
-      done = true;
-      reject(new Error('timeout'));
-    }, ms);
-    Promise.resolve(promise).then((value) => {
-      if (done) return;
-      done = true;
-      clearTimeout(timer);
-      resolve(value);
-    }).catch((err) => {
-      if (done) return;
-      done = true;
-      clearTimeout(timer);
-      reject(err);
-    });
-  });
-}
-
-function lobbyCanvasToBlob(canvas, type = 'image/jpeg', quality = 0.82) {
-  return new Promise((resolve, reject) => {
-    canvas.toBlob((blob) => {
-      if (blob) resolve(blob);
-      else reject(new Error('blob 생성 실패'));
-    }, type, quality);
-  });
-}
+function getCloudinaryConfig() { return _itcGetCloudinaryConfig(); }
+function lobbyWithTimeout(promise, ms) { return _itcWithTimeout(promise, ms || 12000); }
+function lobbyCanvasToBlob(canvas, type, quality) { return _itcCanvasToBlob(canvas, type || 'image/jpeg', quality || 0.82); }
 
 async function uploadLobbyBlobToCloudinary(blob, folder = 'itc/session-covers') {
-  const cfg = getCloudinaryConfig();
-  if (!cfg) return null;
-  const form = new FormData();
-  form.append('file', blob);
-  form.append('upload_preset', cfg.unsignedPreset);
-  form.append('folder', folder);
-  const url = `https://api.cloudinary.com/v1_1/${cfg.cloudName}/image/upload`;
-  const res = await lobbyWithTimeout(fetch(url, { method: 'POST', body: form }), 15000);
-  if (!res.ok) throw new Error(`cloudinary upload failed: ${res.status}`);
-  const json = await res.json();
-  if (!json?.secure_url) throw new Error('cloudinary secure_url missing');
-  return json.secure_url;
+  const result = await _itcUploadToCloudinary({ blob, folder, timeout: 15000 });
+  return result.url;
 }
 
 async function makeCoverBlobFromFile(file) {
