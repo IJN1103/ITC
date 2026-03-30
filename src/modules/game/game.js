@@ -201,17 +201,52 @@ function setupFirebaseListeners() {
     }));
   }
 
-  trackFirebaseListener(onValue(ref(db, `rooms/${code}/tokens`), snap => {
-    const tokens = snap.val() || {};
-    St.tokens = tokens;
-    renderAllTokens(tokens);
-    if (typeof updateMultiTokenSelectionUI === 'function') updateMultiTokenSelectionUI();
+  /* ── 토큰: 개별 변경 감지 ── */
+  St.tokens = {};
+  const tokensRef = ref(db, `rooms/${code}/tokens`);
+  trackFirebaseListener(onChildAdded(tokensRef, snap => {
+    const id = snap.key;
+    const data = snap.val() || {};
+    data.id = id;
+    St.tokens[id] = data;
+    if (typeof addOrUpdateSingleToken === 'function') addOrUpdateSingleToken(id, data);
+  }));
+  trackFirebaseListener(onChildChanged(tokensRef, snap => {
+    const id = snap.key;
+    const data = snap.val() || {};
+    data.id = id;
+    St.tokens[id] = data;
+    if (typeof addOrUpdateSingleToken === 'function') addOrUpdateSingleToken(id, data);
+  }));
+  trackFirebaseListener(onChildRemoved(tokensRef, snap => {
+    const id = snap.key;
+    delete St.tokens[id];
+    if (typeof removeSingleToken === 'function') removeSingleToken(id);
   }));
 
-  trackFirebaseListener(onValue(ref(db, `rooms/${code}/journals`), snap => {
-    _allJournals = [];
-    const data = snap.val() || {};
-    Object.entries(data).forEach(([id, j]) => { j.id = id; _allJournals.push(j); });
+  /* ── 저널: 개별 변경 감지 ── */
+  _allJournals = [];
+  const journalsRef = ref(db, `rooms/${code}/journals`);
+  trackFirebaseListener(onChildAdded(journalsRef, snap => {
+    const id = snap.key;
+    const j = snap.val() || {};
+    j.id = id;
+    const idx = _allJournals.findIndex(x => x.id === id);
+    if (idx >= 0) _allJournals[idx] = j; else _allJournals.push(j);
+    renderJournalList();
+    saRefreshToolbar();
+  }));
+  trackFirebaseListener(onChildChanged(journalsRef, snap => {
+    const id = snap.key;
+    const j = snap.val() || {};
+    j.id = id;
+    const idx = _allJournals.findIndex(x => x.id === id);
+    if (idx >= 0) _allJournals[idx] = j; else _allJournals.push(j);
+    renderJournalList();
+    saRefreshToolbar();
+  }));
+  trackFirebaseListener(onChildRemoved(journalsRef, snap => {
+    _allJournals = _allJournals.filter(x => x.id !== snap.key);
     renderJournalList();
     saRefreshToolbar();
   }));
@@ -251,6 +286,9 @@ async function enterGame() {
   document.getElementById('screen-auth').style.display  = 'none';
   document.getElementById('screen-lobby').style.display = 'none';
   document.getElementById('screen-game').style.display  = 'flex';
+
+  /* 게임 화면이 visible 된 직후 맵 크기 확정 */
+  if (typeof applyMapTransform === 'function') applyMapTransform();
 
   document.getElementById('topbar-code').textContent = St.roomCode;
   document.getElementById('topbar-system').textContent = SYS_LABELS[St.system] || St.system;
