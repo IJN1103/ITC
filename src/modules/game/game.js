@@ -137,7 +137,7 @@ function setupFirebaseListeners() {
 
   const addChatRecord = (key, m) => {
     if (!shouldShowChatMessage(m) || _processedChatKeys.has(key)) return;
-    appendChatMsg(m.name, m.text, m.type || 'normal', m.uid, m.time, m.speakAsAvatar || null, m.speakAsJournalId || null, m.whisperTo || null, m.whisperToName || null, m.nameColor || null, key, 'chat', m.standingImg || null, m.tokenId || null, m.standingLabel || null, !!m.imageWide, m.imageMeta || null, !!m.hideImageMeta);
+    appendChatMsg({ name: m.name, text: m.text, type: m.type || 'normal', uid: m.uid, timestamp: m.time, speakAsAvatar: m.speakAsAvatar, speakAsJournalId: m.speakAsJournalId, whisperTo: m.whisperTo, whisperToName: m.whisperToName, nameColor: m.nameColor, msgKey: key, channel: 'chat', standingImg: m.standingImg, tokenId: m.tokenId, standingLabel: m.standingLabel, imageWide: !!m.imageWide, imageMeta: m.imageMeta, hideImageMeta: !!m.hideImageMeta });
     _processedChatKeys.add(key);
   };
 
@@ -149,7 +149,7 @@ function setupFirebaseListeners() {
       }
       return;
     }
-    replaceChatMsg(m.name, m.text, m.type || 'normal', m.uid, m.time, m.speakAsAvatar || null, m.speakAsJournalId || null, m.whisperTo || null, m.whisperToName || null, m.nameColor || null, key, 'chat', m.standingImg || null, m.tokenId || null, m.standingLabel || null, !!m.imageWide, m.imageMeta || null, !!m.hideImageMeta);
+    replaceChatMsg({ name: m.name, text: m.text, type: m.type || 'normal', uid: m.uid, timestamp: m.time, speakAsAvatar: m.speakAsAvatar, speakAsJournalId: m.speakAsJournalId, whisperTo: m.whisperTo, whisperToName: m.whisperToName, nameColor: m.nameColor, msgKey: key, channel: 'chat', standingImg: m.standingImg, tokenId: m.tokenId, standingLabel: m.standingLabel, imageWide: !!m.imageWide, imageMeta: m.imageMeta, hideImageMeta: !!m.hideImageMeta });
     _processedChatKeys.add(key);
   };
 
