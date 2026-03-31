@@ -290,6 +290,8 @@ function copyRoomCode() {
 /* 로비로 돌아가기 (방은 유지) */
 async function goToLobby() {
   if (St.roomCode && !confirm('로비로 돌아갈까요?\n방은 유지되며 나중에 다시 입장할 수 있어요.')) return;
+  if (typeof clearTypingState === 'function') clearTypingState();
+  if (typeof cleanupFirebaseListeners === 'function') cleanupFirebaseListeners();
   if (window._FB?.CONFIGURED && St.roomCode) {
     const { db, ref, update } = window._FB;
     await update(ref(db, `rooms/${St.roomCode}/players/${St.myId}`), { online: false });
@@ -298,11 +300,8 @@ async function goToLobby() {
   sessionStorage.removeItem('itc_session_code');
   sessionStorage.removeItem('itc_session_sys');
   sessionStorage.removeItem('itc_session_role');
-
-  sessionStorage.removeItem('itc_session_code');
-  sessionStorage.removeItem('itc_session_sys');
-  sessionStorage.removeItem('itc_session_role');
   St.roomCode = ''; St.isGM = false;
+  if (typeof clearPendingChatImages === 'function') clearPendingChatImages();
   closeModal('modal-settings');
   showLobby();
 }
