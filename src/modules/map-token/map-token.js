@@ -625,12 +625,42 @@ function renderAllTokens(tokens) {
 
 function addOrUpdateSingleToken(id, data) {
   if (_activeDragSession && _activeDragSession.targetIds.includes(id)) return;
+
   const existing = getTokenEl(id);
+
+  /* ── fast path: 기존 요소가 있고 위치만 바뀐 경우 DOM 재생성 없이 처리 ── */
+  if (existing && data) {
+    const prev = existing._tokenSnapshot;
+    if (prev
+      && prev.name === (data.name || '')
+      && prev.tokenImg === (data.tokenImg || '')
+      && prev.type === (data.type || '')
+      && prev.tokenSize === (data.tokenSize || 1)
+      && prev.rotation === (data.rotation || 0)
+      && prev.memo === (data.memo || '')
+      && prev.standingAsToken === (!!data.standingAsToken)
+      && prev.standingsKey === _standingsKey(data)
+    ) {
+      /* 위치만 갱신 */
+      existing.style.left = storedTokenPercentToDisplay(data.x, 'x') + '%';
+      existing.style.top = storedTokenPercentToDisplay(data.y, 'y') + '%';
+      renderMapStatusPanel(St.tokens);
+      return;
+    }
+  }
+
+  /* ── safe path: 구조 변경 → 완전 재생성 ── */
   if (existing) existing.remove();
   if (data) createTokenEl(data);
   syncMultiTokenSelectionWithTokens(St.tokens);
   updateMultiTokenSelectionUI();
   renderMapStatusPanel(St.tokens);
+}
+
+/* 스탠딩 배열의 fingerprint (변경 감지용) */
+function _standingsKey(t) {
+  if (!Array.isArray(t?.standings) || !t.standings.length) return '';
+  return t.standings.map(s => (s.label || '') + '|' + (s.img || '')).join(',');
 }
 
 function removeSingleToken(id) {
@@ -687,6 +717,12 @@ function createTokenEl(t) {
   el.addEventListener('dblclick', e => { e.preventDefault(); e.stopPropagation(); hideTokenMemoBubble(); if (typeof openTokenEdit === 'function') openTokenEdit(t.id); });
   el.addEventListener('contextmenu', e => { e.preventDefault(); e.stopPropagation(); hideTokenMemoBubble(); showTokenCtx(e, t.id); });
   makeDraggable(el, t.id);
+  /* fast path 비교용 스냅샷 저장 */
+  el._tokenSnapshot = {
+    name: t.name || '', tokenImg: t.tokenImg || '', type: t.type || '',
+    tokenSize: t.tokenSize || 1, rotation: t.rotation || 0, memo: t.memo || '',
+    standingAsToken: !!t.standingAsToken, standingsKey: _standingsKey(t),
+  };
   inner.appendChild(el);
 }
 
