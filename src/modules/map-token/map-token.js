@@ -10,6 +10,10 @@ let _mapBaseWidth = 0;
 let _mapBaseHeight = 0;
 
 /* ── 드래그 보호 상태 ── */
+let _activeDragSession = null;
+let _pendingTokenRender = false;
+
+/* ── 드래그 보호 상태 ── */
 let _activeDragSession = null;   // 드래그 중이면 세션 객체, 아니면 null
 let _pendingTokenRender = false; // 드래그 중 renderAllTokens 호출이 보류되었는지
 
@@ -619,6 +623,25 @@ function renderAllTokens(tokens) {
   renderMapStatusPanel(tokens);
   /* 게임 화면 진입 후 맵 크기가 정상 반영되도록 보장 */
   applyMapTransform();
+}
+
+/* ── Firebase onChild* 용 개별 토큰 업데이트 ── */
+
+function addOrUpdateSingleToken(id, data) {
+  if (_activeDragSession && _activeDragSession.targetIds.includes(id)) return;
+  const existing = getTokenEl(id);
+  if (existing) existing.remove();
+  if (data) createTokenEl(data);
+  syncMultiTokenSelectionWithTokens(St.tokens);
+  updateMultiTokenSelectionUI();
+  renderMapStatusPanel(St.tokens);
+}
+
+function removeSingleToken(id) {
+  const el = getTokenEl(id);
+  if (el) el.remove();
+  setMultiTokenSelection(_multiSelectedTokenIds.filter(x => x !== id));
+  renderMapStatusPanel(St.tokens);
 }
 
 function createTokenEl(t) {
