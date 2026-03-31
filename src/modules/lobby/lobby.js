@@ -509,7 +509,9 @@ async function removeCampaign(e, code, key, isGM = false) {
       playerIds.forEach((uid) => {
         updates[`users/${uid}/rooms/${code}`] = null;
       });
-      updates[`rooms/${code}`] = null;
+      /* 방 하위 경로를 개별 삭제 (루트 단일 삭제 시 권한 오류 방지) */
+      const roomPaths = ['meta','players','chat','casual','tokens','journals','handouts','characters','bgm','lastRoll','typing','avatars'];
+      roomPaths.forEach((p) => { updates[`rooms/${code}/${p}`] = null; });
       await update(ref(db), updates);
 
       try { localStorage.removeItem('itc_cover_' + code); } catch (err) {}
