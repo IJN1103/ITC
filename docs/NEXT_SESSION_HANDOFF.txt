@@ -1,126 +1,119 @@
-ITC-main — NEXT SESSION HANDOFF
-=================================
-
-이 파일은 다음 세션의 AI에게 현재 프로젝트 상황을 빠르게 전달하기 위한 메모입니다.
-이전에 루트에 흩어져 있던 상태/스캔/체크리스트용 txt 파일들은 정리하고, 이 파일 하나로 합쳤습니다.
+ITC-main — NEXT SESSION HANDOFF (2025-06 갱신)
+================================================
 
 1) 프로젝트 개요
 ----------------
 - TRPG 채팅 기반 웹앱
-- 사용 패턴:
-  - 한 방 최대 5명 고정
-  - 여러 세션이 동시에 열리는 구조
-  - 채팅량 많음
-  - 이미지 업로드 빈번
-  - 방을 오래 켜두는 경우 많음
-- 사용자는 비개발자에 가까운 "바이브 코딩" 방식으로 작업 중
+- 한 방 최대 5명, 사이트 전체 목표 300명
+- 채팅량 많음, 이미지 업로드 빈번, 방 장시간 유지
+- "바이브 코딩" 방식 — 파일 덮어쓰기 중심, 부분 코드 금지
 
-2) 작업 방식 규칙 (매우 중요)
-----------------------------
-- 항상 변경된 파일만 전달
+2) 작업 방식 규칙
+-----------------
+- 변경된 파일만 전달
 - 파일명 절대 변경 금지
-- 부분 코드가 아니라 항상 전체 파일 제공
-- 사용자는 "다운로드 -> 덮어쓰기" 방식만 선호
-- 설명은 코드 설명보다 적용 방법 중심
-- 대규모 리팩토링보다 안전한 단계별 수정 선호
+- 항상 전체 파일 제공 (부분 코드 금지)
+- 구조 리팩토링은 지시 없이 금지
+- 한 번에 하나의 문제만, 최소 수정, 안정성 최우선
 
-3) 최근까지 완료된 핵심 작업
+3) 핵심 아키텍처
+----------------
+[좌표계]
+- 토큰 좌표: % 기반 단일 좌표계
+- stored = display (변환 없음)
+- 드래그 계산: % 기준
+- zoom/scale: CSS transform에서만 사용
+- map-inner: 고정 논리 캔버스 (최초 유효 크기로 잠금, 이후 불변)
+- map-area: 뷰포트
+
+[절대 깨면 안 되는 규칙]
+- 토큰 좌표 계산에 scale 넣지 말 것
+- expansion 같은 보정 다시 만들지 말 것
+- stored/display 변환 분리하지 말 것
+- 드래그 계산에 px 기준 쓰지 말 것
+
+4) 최근 완료된 최적화 작업
 --------------------------
-[이미지 / 저장 구조]
-- 채팅 이미지 Cloudinary 전환 완료
-- 프로필 아바타 Cloudinary 전환 완료
-- 저널 / speak-as 아바타 Cloudinary 전환 완료
-- 로비 커버 / 토큰 이미지 Cloudinary 전환 완료
-- URL-only 흐름으로 정리 진행
-- 레거시 base64 생성 경로와 주요 읽기 경로 정리 완료 단계
+[Firebase 리스너 최적화]
+- tokens: onValue → onChildAdded/Changed/Removed 전환 완료
+- journals: onValue → onChildAdded/Changed/Removed 전환 완료
+- chat/casual: 이미 onChild* 방식 (기존)
+- players: onValue 유지 (digest 비교로 충분)
+- bgm/lastRoll/typing: onValue 유지 (소량 데이터)
 
-[업로드 UX / 안정화]
-- 프로필 업로드 중 중복 클릭 방지
-- 프로필 업로드 실패 시 안내 문구 보강
-- 채팅 이미지 준비/업로드 중 잠금 처리
-- 여러 장 업로드 중 일부 실패하면 남은 이미지만 큐에 복구
-- 이미지 준비/업로드 상태 문구 보강
+[토큰 개별 업데이트]
+- addOrUpdateSingleToken(): 위치만 변경 시 fast path (style만 갱신)
+- removeSingleToken(): 개별 토큰 DOM 제거
+- 드래그 보호: _activeDragSession으로 드래그 중 Firebase 콜백 차단
 
-[구조 정리]
-- auth / profile / chat 쪽 avatar runtime 접근 정리
-- chat 이미지 큐 상태 처리 정리
-- base64 차단 보호 로직 유지
+[공통 유틸리티 통합]
+- src/core/image-utils.js 신규 생성
+- Cloudinary 업로드 5곳 → 공통 _itcUploadToCloudinary() 1곳
+- 이미지 리사이즈/blob/timeout 헬퍼 통합
+- 각 모듈은 기존 함수명 유지한 채 래퍼로 호출
 
-[기능 복구]
-- "채팅 지우기" 버튼이 한 번 사라졌었고, 이후 복구 작업 진행됨
-- GM만 보이고 일반 유저에게는 안 보여야 함
-- 저널 탭에서는 숨김 유지 필요
+[채팅 시그니처 정리]
+- buildChatMsgElement, appendChatMsg, replaceChatMsg: 18개 파라미터 → 객체 1개
+- game.js 호출처도 객체 형식으로 전환 완료
 
-4) 현재 유지되어야 하는 핵심 UX
------------------------------
-[채팅 이미지]
-- + 버튼으로 이미지 선택
-- 최대 4장
-- 선택 직후 바로 전송되지 않고 미리보기 큐에 올라가야 함
-- X 버튼으로 개별 삭제 가능
-- 드래그로 순서 변경 가능
-- 전송 버튼으로만 실제 전송
-- 가로폭 채우기 옵션 유지
-- 이미지 1장마다 개별 메시지로 전송
+[소유권 안정화]
+- 토큰 생성 시 ownerId/ownerName 자동 주입
+- 편집/저장 시 소유자 조용히 덮어쓰기 제거
+- index.html에 te-owner-bar 요소 추가
+- 편집창 상단에 "소유자: 닉네임 (나)" 한 줄 표시
 
-[프로필]
-- 이미지 선택 -> 크롭 -> 저장
-- 저장 중 중복 클릭 방지
-- 실패 시 재시도 가능한 상태 유지
+[방 삭제 수정]
+- multi-path update → remove() 직접 호출로 변경 (권한 오류 방지)
 
-[채팅 구조]
-- 강한 가상스크롤 없음
-- 최신 메시지 append-only
-- 일정 개수 초과 시 위쪽 DOM 제거
-- 위로 스크롤 시 과거 메시지 복원
+5) 현재 파일 구조
+-----------------
+index.html              — 메인 HTML + Firebase 초기화
+src/core/image-utils.js — 공통 이미지 유틸리티 (신규)
+src/v1-core.js          — 전역 상태(St), esc(), showToast() 등
+src/modules/
+  auth/auth.js          — 로그인/회원가입
+  auth/profile.js       — 프로필 아바타
+  lobby/lobby.js        — 로비/세션 관리
+  game/game.js          — Firebase 리스너, 게임 진입
+  dice-v1/dice.js       — 다이스
+  chat-v1/chat.js       — 채팅 (가상스크롤, 이미지)
+  map-token/map-token.js — 맵/토큰 (좌표, 드래그, 편집)
+  bgm-v1/bgm.js        — BGM
+  ui/ui.js              — 권한, UI 헬퍼
+  popout-v1/popout.js   — 팝아웃 창
+  journal-v1/journal.js — 저널/핸드아웃/캐릭터시트
+  speak-as/speak-as.js  — 스피크어즈/스탠딩
+styles/all.css          — 통합 CSS
 
-5) 현재 성능에 대한 현실적 판단
------------------------------
-- 한 방 최대 5명 기준이면 구조상 유리한 편
-- 총 100명 전후는 현실적인 구간
-- 총 150명 정도는 테스트해볼 만한 구간
-- 총 200명 전후부터는 실사용 패턴에 따라 흔들릴 가능성 있음
-- 총 300명 "안정권"은 아직 추가 최적화 없이 장담하기 어려움
+6) 삭제된 파일 (stale)
+----------------------
+- tabletool.html         — 미사용 레거시
+- tabletool_v2.html      — 미사용 레거시
+- docs/ARCHITECTURE.md   — v2 목표 설계, 현재와 불일치
+- docs/MIGRATION_PLAN.md — v1→v2 마이그레이션, 완료/폐기
+- docs/FINAL_HISTORY.md  — 과거 이력 요약, 이 파일로 대체
+- docs/PERFORMANCE_LOG.md — 과거 성능 메모, 이 파일로 대체
+- docs/OPTIMIZATION_NOTES.md — 과거 최적화 메모, 이 파일로 대체
+- docs/STRUCTURE_SIMPLIFICATION_PRECHECK.txt — 과거 점검표
 
-현재 판단:
-- base64 제거 작업: 마감 단계
-- 업로드 UX 안정화: 마감 단계
-- 구조 단순화 1차: 완료
-- 다음 큰 작업: 성능 미세 최적화 + 실사용 중 예외 버그 보정 계속
-
-6) 다음 세션에서 우선 볼 것
--------------------------
-1. "채팅 지우기" 버튼이 실제로 정상 노출/동작하는지 먼저 확인
-2. GM / 일반 유저 / 저널 탭에서 버튼 표시 조건 확인
-3. 프로필 사진 변경 정상 동작 확인
-4. 일반 이미지 / 여러 장 / GIF 전송 확인
-5. 이미지 준비 중 / 업로드 중 잠금 확인
-6. speak-as / 저널 / 팝아웃 / 플레이어 목록 아바타 확인
-7. 성능 미세 최적화와 예외 버그 보정 진행
-
-7) 다음 최적화 우선순위
----------------------
-- onValue로 크게 받는 players / tokens / journals / typing 쪽 부담 줄이기 검토
-- chat.js 내부 렌더/상태 갱신 호출 수 줄일 수 있는지 점검
-- object URL revoke 누락 여부 재점검
-- avatar sanitize / localStorage 접근 공통 helper 범위 확대 검토
-- 실사용 중 터지는 예외 케이스를 발견할 때마다 작은 패치로 반영
-
-8) 지금 절대 깨지면 안 되는 것
-----------------------------
-- 채팅 이미지 미리보기 UX
-- 가로폭 채우기 옵션
+7) 절대 깨지면 안 되는 것
+--------------------------
+- 채팅 이미지 미리보기 + 가로폭 옵션
 - 프로필 크롭 저장
-- 채팅 지우기 버튼
 - speak-as / journal / popout 아바타 흐름
-- 새로고침 후 최신 메시지 쪽으로 보는 흐름
+- 토큰 좌표계 (% 단일, scale 미개입)
+- 드래그 보호 (_activeDragSession)
+- image-utils.js 공통 함수 의존성
+
+8) 다음 작업 후보
+-----------------
+- 장시간 안정성: 타이머 누수 점검, objectURL revoke 재점검
+- Firebase 보안 규칙 적용 (database.rules.json 제공 완료)
+- Cloudinary unsigned preset 용량/횟수 제한 설정
+- 실사용 중 예외 버그 보정
 
 9) 참고 설정
 -----------
 - Cloudinary cloudName: dnr5jzdnp
-- unsignedPreset: itc_unsigned_upload
-
-10) 이 파일의 목적
-----------------
-- 다음 세션 AI가 루트에 흩어진 작업 로그 파일들을 뒤질 필요 없이
-  현재 상태를 빠르게 이해하도록 돕는 단일 handoff 메모
+- Cloudinary unsignedPreset: itc_unsigned_upload
+- Firebase projectId: project-itc-2d34d
