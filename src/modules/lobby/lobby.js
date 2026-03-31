@@ -505,14 +505,13 @@ async function removeCampaign(e, code, key, isGM = false) {
     try {
       const playersSnap = await get(ref(db, `rooms/${code}/players`));
       const playerIds = playersSnap.exists() ? Object.keys(playersSnap.val() || {}) : [];
-      const updates = {};
-      playerIds.forEach((uid) => {
-        updates[`users/${uid}/rooms/${code}`] = null;
-      });
-      /* 방 하위 경로를 개별 삭제 (루트 단일 삭제 시 권한 오류 방지) */
-      const roomPaths = ['meta','players','chat','casual','tokens','journals','handouts','characters','bgm','lastRoll','typing','avatars'];
-      roomPaths.forEach((p) => { updates[`rooms/${code}/${p}`] = null; });
-      await update(ref(db), updates);
+
+      /* 각 유저의 rooms 목록에서 제거 */
+      for (const uid of playerIds) {
+        try { await remove(ref(db, `users/${uid}/rooms/${code}`)); } catch (e) {}
+      }
+      /* 방 자체 삭제 */
+      await remove(ref(db, `rooms/${code}`));
 
       try { localStorage.removeItem('itc_cover_' + code); } catch (err) {}
       try {
