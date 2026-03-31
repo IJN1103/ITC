@@ -13,10 +13,6 @@ let _mapBaseHeight = 0;
 let _activeDragSession = null;
 let _pendingTokenRender = false;
 
-/* ── 드래그 보호 상태 ── */
-let _activeDragSession = null;   // 드래그 중이면 세션 객체, 아니면 null
-let _pendingTokenRender = false; // 드래그 중 renderAllTokens 호출이 보류되었는지
-
 function refreshMapBaseSize() {
   /* 이미 유효한 크기가 잠겼으면 그대로 반환 (고정 논리 캔버스) */
   if (_mapBaseWidth > 1 && _mapBaseHeight > 1) {
