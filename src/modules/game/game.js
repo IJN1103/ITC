@@ -573,6 +573,8 @@ function saveCharacter() {
 
 async function leaveRoom() {
   if (!confirm('방에서 완전히 나가시겠습니까?\n(나중에 코드로 다시 입장할 수 있어요)')) return;
+  if (typeof clearTypingState === 'function') clearTypingState();
+  cleanupFirebaseListeners();
   if (window._FB?.CONFIGURED) {
     const { db, ref, remove, get } = window._FB;
     await remove(ref(db, `rooms/${St.roomCode}/players/${St.myId}`));
@@ -597,3 +599,11 @@ async function leaveRoom() {
 window.setupFirebaseListeners = setupFirebaseListeners;
 window.syncMyAvatarToRoom = syncMyAvatarToRoom;
 window.enterGame = enterGame;
+
+/* ── 탭 복귀 시 presence 재동기화 ── */
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible') return;
+  if (!window._FB?.CONFIGURED || !St.roomCode || !St.myId) return;
+  const { db, ref, set } = window._FB;
+  set(ref(db, `rooms/${St.roomCode}/players/${St.myId}/online`), true);
+});
