@@ -111,8 +111,7 @@ styles/all.css          — 통합 CSS
 -----------------
 - PHASE 4-1: 저널 목록 전체 재렌더 제거 완료
 - PHASE 4-2: 채팅 히스토리 구조 개선 완료
-- PHASE 5-1: 토큰 onChildChanged 반영을 위치/상태/구조 변경으로 분리 완료
-- 다음 후보: map-status-panel 증분 렌더 또는 토큰 동기화 보호 범위 재점검
+- 장시간 안정성: 타이머 누수 점검, objectURL revoke 재점검
 - Firebase 보안 규칙 적용 (database.rules.json 제공 완료)
 - Cloudinary unsigned preset 용량/횟수 제한 설정
 - 실사용 중 예외 버그 보정
@@ -122,3 +121,10 @@ styles/all.css          — 통합 CSS
 - Cloudinary cloudName: dnr5jzdnp
 - Cloudinary unsignedPreset: itc_unsigned_upload
 - Firebase projectId: project-itc-2d34d
+
+
+[2026-04-02 patch]
+- 토큰 좌표 기준을 각 클라이언트 map-area 크기 종속에서 고정 논리 캔버스(1600x900) 기준으로 변경.
+- 목적: 화면 크기가 다른 플레이어 사이에서도 같은 token x/y가 동일한 상대 위치로 보이도록 안정화.
+- 수정 파일: src/modules/map-token/map-token.js
+- 주의: 이번 수정은 토큰 위치 기준만 고정화한 것이며, 드래그/줌 로직 구조 자체는 유지함.

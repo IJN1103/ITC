@@ -6,27 +6,26 @@
 let _mapScale = 1;
 let _mapPanX = 0, _mapPanY = 0;
 
-let _mapBaseWidth = 0;
-let _mapBaseHeight = 0;
+const MAP_LOGICAL_WIDTH = 1600;
+const MAP_LOGICAL_HEIGHT = 900;
+
+let _mapBaseWidth = MAP_LOGICAL_WIDTH;
+let _mapBaseHeight = MAP_LOGICAL_HEIGHT;
 
 /* ── 드래그 보호 상태 ── */
 let _activeDragSession = null;
 let _pendingTokenRender = false;
 
 function refreshMapBaseSize() {
-  /* 이미 유효한 크기가 잠겼으면 그대로 반환 (고정 논리 캔버스) */
-  if (_mapBaseWidth > 1 && _mapBaseHeight > 1) {
-    return { width: _mapBaseWidth, height: _mapBaseHeight };
-  }
-  const map = document.getElementById('map-area');
-  if (!map) return { width: 1, height: 1 };
-  const w = map.clientWidth;
-  const h = map.clientHeight;
-  if (w > 1 && h > 1) {
-    _mapBaseWidth = w;
-    _mapBaseHeight = h;
-  }
-  return { width: _mapBaseWidth || 1, height: _mapBaseHeight || 1 };
+  /*
+    토큰 좌표/거리 기준은 모든 플레이어에게 동일해야 하므로
+    viewport 크기가 아니라 고정 논리 캔버스를 기준으로 유지한다.
+    이전처럼 각 클라이언트 map-area 크기를 기준으로 삼으면
+    화면 크기가 다른 플레이어끼리 같은 x/y 값이 서로 다른 픽셀 위치로 보일 수 있다.
+  */
+  _mapBaseWidth = MAP_LOGICAL_WIDTH;
+  _mapBaseHeight = MAP_LOGICAL_HEIGHT;
+  return { width: _mapBaseWidth, height: _mapBaseHeight };
 }
 
 function getMapBaseSize() {
