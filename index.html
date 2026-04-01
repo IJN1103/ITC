@@ -15,7 +15,7 @@ import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword,
          updateProfile, onAuthStateChanged, signOut, GoogleAuthProvider, signInWithPopup }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getDatabase, ref, set, push, onValue, update, remove, get, serverTimestamp, onDisconnect,
-         query, limitToLast, onChildAdded, onChildChanged, onChildRemoved }
+         query, limitToLast, onChildAdded, onChildChanged, onChildRemoved, runTransaction }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
 // ↓↓↓ 여기에 Firebase 설정을 붙여넣으세요 ↓↓↓
@@ -61,7 +61,7 @@ window._ITC_CLOUDINARY = {
 
 window._FB = {
   CONFIGURED, app, auth, db, storage: null,
-  ref, set, push, onValue, update, remove, get, serverTimestamp, onDisconnect,
+  ref, set, push, onValue, update, remove, get, serverTimestamp, onDisconnect, runTransaction,
   storageRef: null, uploadBytes: null, getDownloadURL: null,
   query, limitToLast, onChildAdded, onChildChanged, onChildRemoved,
   createUserWithEmailAndPassword, signInWithEmailAndPassword,

@@ -227,31 +227,56 @@ async function joinRoom() {
   if (code.length !== 6) { alert('방 코드는 6자리입니다.'); return; }
 
   if (window._FB?.CONFIGURED) {
-    const { db, ref, get, set } = window._FB;
+    const { db, ref, get, set, runTransaction } = window._FB;
     let snap;
     try {
       snap = await get(ref(db, `rooms/${code}/meta`));
-    } catch(e) {
+    } catch (e) {
       alert('방을 찾는 중 오류가 발생했습니다. 로그인 상태를 확인해 주세요.');
       return;
     }
     if (!snap.exists()) { alert('방을 찾을 수 없습니다. 코드를 다시 확인해 주세요.'); return; }
 
-    const playersSnap = await get(ref(db, `rooms/${code}/players`));
-    const playersData = playersSnap.exists() ? playersSnap.val() : {};
-    const playerCount = Object.keys(playersData).length;
-    const alreadyJoined = !!playersData[St.myId];
-    if (playerCount >= 5 && !alreadyJoined) {
-      alert('이 방은 이미 최대 인원(5명)에 도달했습니다.');
+    const meta = snap.val() || {};
+    const role = meta.ownerId === St.myId ? 'gm' : 'player';
+    const playerPayload = getPlayerPayload(role);
+    let joinCommitted = false;
+    let joinAbortedReason = '';
+
+    try {
+      const txResult = await runTransaction(ref(db, `rooms/${code}/players`), (currentPlayers) => {
+        const players = currentPlayers && typeof currentPlayers === 'object' ? { ...currentPlayers } : {};
+        const alreadyJoined = !!players[St.myId];
+        const playerCount = Object.keys(players).length;
+
+        if (playerCount >= 5 && !alreadyJoined) {
+          joinAbortedReason = 'room_full';
+          return;
+        }
+
+        players[St.myId] = playerPayload;
+        joinAbortedReason = '';
+        return players;
+      });
+      joinCommitted = !!txResult?.committed;
+    } catch (e) {
+      alert('방 참가 처리 중 오류가 발생했습니다. 다시 시도해 주세요.');
       return;
     }
 
-    St.system = snap.val().system || 'coc7';
+    if (!joinCommitted) {
+      if (joinAbortedReason === 'room_full') {
+        alert('이 방은 이미 최대 인원(5명)에 도달했습니다.');
+      } else {
+        alert('방 참가에 실패했습니다. 잠시 후 다시 시도해 주세요.');
+      }
+      return;
+    }
+
+    St.system = meta.system || 'coc7';
     St.roomCode = code;
-    const meta = snap.val();
-    const role = meta.ownerId === St.myId ? 'gm' : 'player';
     St.isGM = (role === 'gm');
-    await set(ref(db, `rooms/${code}/players/${St.myId}`), getPlayerPayload(role));
+
     await set(ref(db, `users/${St.myId}/rooms/${code}`), {
       code, title: meta.title || '무제 세션',
       system: meta.system || 'coc7',
