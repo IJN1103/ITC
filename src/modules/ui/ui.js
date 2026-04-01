@@ -275,8 +275,11 @@ function switchPanelTab(tab, btn) {
 function copyRoomCode() {
   navigator.clipboard.writeText(St.roomCode).then(() => {
     const el = document.getElementById('topbar-code');
+    if (!el) return;
     el.textContent = '✓ 복사됨';
-    setTimeout(() => el.textContent = St.roomCode, 1500);
+    setTimeout(() => {
+      if (el && el.isConnected) el.textContent = St.roomCode;
+    }, 1500);
   });
 }
 

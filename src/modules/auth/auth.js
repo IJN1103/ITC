@@ -173,8 +173,9 @@ function setLoading(prefix, on) {
 
 function showErr(id, msg) {
   const el = document.getElementById(id);
+  if (!el) return;
   el.textContent = msg; el.classList.add('show');
-  setTimeout(() => el.classList.remove('show'), 4000);
+  setTimeout(() => { if (el && el.isConnected) el.classList.remove('show'); }, 4000);
 }
 
 const FB_ERR = {

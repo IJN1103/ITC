@@ -584,7 +584,10 @@ function autoSave() {
 function saveCharacter() {
   autoSave();
   const btn = document.querySelector('.panel-header button');
-  if (btn) { btn.textContent = '✓ 저장됨'; setTimeout(() => btn.textContent = '저장', 1500); }
+  if (btn) {
+    btn.textContent = '✓ 저장됨';
+    setTimeout(() => { if (btn && btn.isConnected) btn.textContent = '저장'; }, 1500);
+  }
 }
 
 async function leaveRoom() {

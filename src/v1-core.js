@@ -75,7 +75,7 @@ function showToast(msg) {
   t.textContent = msg;
   t.style.display = 'block';
   clearTimeout(t._timer);
-  t._timer = setTimeout(() => { t.style.display = 'none'; }, 2200);
+  t._timer = setTimeout(() => { if (t && t.isConnected) t.style.display = 'none'; }, 2200);
 }
 
 const SYS_LABELS = { coc7:'CoC 7판', dx3:'더블크로스 3rd', shinobigami:'시노비가미', insane:'인세인' };

@@ -164,10 +164,19 @@ function handleAvatarUpload(input) {
       try { URL.revokeObjectURL(window._crop.objectUrl); } catch (e) {}
     }
     window._crop = { img, scale: 1, ox: 0, oy: 0, drag: false, lx: 0, ly: 0, objectUrl };
-    document.getElementById('crop-scale').value = 100;
-    document.getElementById('crop-scale-val').textContent = '100%';
-    document.getElementById('crop-zone').style.display = 'block';
-    setTimeout(() => { setupCropCanvas(); drawCrop(); setupCropDrag(); }, 50);
+    const scaleEl = document.getElementById('crop-scale');
+    const scaleValEl = document.getElementById('crop-scale-val');
+    const cropZoneEl = document.getElementById('crop-zone');
+    if (scaleEl) scaleEl.value = 100;
+    if (scaleValEl) scaleValEl.textContent = '100%';
+    if (cropZoneEl) cropZoneEl.style.display = 'block';
+    setTimeout(() => {
+      const liveCropZoneEl = document.getElementById('crop-zone');
+      if (!liveCropZoneEl || !liveCropZoneEl.isConnected) return;
+      setupCropCanvas();
+      drawCrop();
+      setupCropDrag();
+    }, 50);
   };
   img.onerror = () => {
     try { URL.revokeObjectURL(objectUrl); } catch (e) {}

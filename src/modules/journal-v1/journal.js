@@ -337,7 +337,10 @@ function openHandoutEditor(id) {
   if (hintEl) hintEl.textContent = '';
   updateHandoutFontLabel(handout?.contentHtml || '' );
   overlay.classList.add('open');
-  setTimeout(() => { if (!titleEl.readOnly) titleEl.focus(); }, 60);
+  setTimeout(() => {
+    if (!titleEl || !titleEl.isConnected || titleEl.readOnly) return;
+    titleEl.focus();
+  }, 60);
 }
 
 function closeHandoutDrawer() {
@@ -599,7 +602,11 @@ async function saveHandoutFromDrawer() {
   }
   if (hint) hint.textContent = '저장됐어요 ✓';
   fetchHandoutsFromFB();
-  setTimeout(() => { closeHandoutDrawer(); }, 120);
+  setTimeout(() => {
+    const overlay = document.getElementById('handout-drawer');
+    if (!overlay || !overlay.isConnected) return;
+    closeHandoutDrawer();
+  }, 120);
 }
 
 function deleteHandoutFromDrawer() {
@@ -806,8 +813,12 @@ function openJournalEditor(id) {
   }
 
   if (hintEl) hintEl.textContent = '';
-  document.getElementById('journal-drawer').classList.add('open');
-  setTimeout(() => titleEl.focus(), 100);
+  const drawer = document.getElementById('journal-drawer');
+  if (drawer) drawer.classList.add('open');
+  setTimeout(() => {
+    if (!titleEl || !titleEl.isConnected) return;
+    titleEl.focus();
+  }, 100);
 }
 
 function closeJournalDrawer() {
@@ -875,8 +886,12 @@ function createNewJournal() {
   const delBtn = document.querySelector('.sheet-del-btn');
   if (delBtn) delBtn.style.display = 'none';
 
-  document.getElementById('sheet-overlay').classList.add('open');
-  setTimeout(() => document.getElementById('sh-name')?.focus(), 150);
+  const overlay = document.getElementById('sheet-overlay');
+  if (overlay) overlay.classList.add('open');
+  setTimeout(() => {
+    const nameEl = document.getElementById('sh-name');
+    if (nameEl && nameEl.isConnected) nameEl.focus();
+  }, 150);
 }
 
 function saveJournalFromDrawer() {
@@ -1562,7 +1577,7 @@ async function handleSheetAvatar(input) {
       if (hint) hint.textContent = '아바타 업로드 완료 ✓';
       setTimeout(() => {
         const liveHint = document.getElementById('sheet-hint');
-        if (liveHint && liveHint.textContent === '아바타 업로드 완료 ✓') liveHint.textContent = '';
+        if (liveHint && liveHint.isConnected && liveHint.textContent === '아바타 업로드 완료 ✓') liveHint.textContent = '';
       }, 1800);
       return url;
     })
@@ -1735,7 +1750,7 @@ async function saveSheet() {
   }
 
   const hint = document.getElementById('sheet-hint');
-  if (hint) { hint.textContent = '저장됐어요 ✓'; setTimeout(() => { hint.textContent = ''; }, 2000); }
+  if (hint) { hint.textContent = '저장됐어요 ✓'; setTimeout(() => { if (hint && hint.isConnected) hint.textContent = ''; }, 2000); }
 
   closeSheet();
 }

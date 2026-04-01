@@ -27,7 +27,10 @@ function rollDice(ci) {
   const isSecret = document.getElementById('secret-roll').checked;
 
   const btn = document.getElementById('dBtn-' + ci);
-  if (btn) { btn.classList.add('rolling'); setTimeout(() => btn.classList.remove('rolling'), 400); }
+  if (btn) {
+    btn.classList.add('rolling');
+    setTimeout(() => { if (btn && btn.isConnected) btn.classList.remove('rolling'); }, 400);
+  }
 
   let rolls = [], total = 0, detail = '';
 
@@ -79,9 +82,15 @@ function rollSkillCheck(name, val) {
 
 function showRollResult(roll) {
   const n = document.getElementById('roll-num');
+  const strEl = document.getElementById('roll-str');
+  if (!n || !strEl) return;
   n.style.opacity = '0';
-  setTimeout(() => { n.textContent = roll.total; n.style.opacity = '1'; }, 120);
-  document.getElementById('roll-str').textContent = roll.detail || '';
+  setTimeout(() => {
+    if (!n || !n.isConnected) return;
+    n.textContent = roll.total;
+    n.style.opacity = '1';
+  }, 120);
+  strEl.textContent = roll.detail || '';
 }
 
 function rollFromFormula(formula) {
