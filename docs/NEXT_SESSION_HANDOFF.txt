@@ -111,7 +111,8 @@ styles/all.css          — 통합 CSS
 -----------------
 - PHASE 4-1: 저널 목록 전체 재렌더 제거 완료
 - PHASE 4-2: 채팅 히스토리 구조 개선 완료
-- 장시간 안정성: 타이머 누수 점검, objectURL revoke 재점검
+- PHASE 5-1: 토큰 onChildChanged 반영을 위치/상태/구조 변경으로 분리 완료
+- 다음 후보: map-status-panel 증분 렌더 또는 토큰 동기화 보호 범위 재점검
 - Firebase 보안 규칙 적용 (database.rules.json 제공 완료)
 - Cloudinary unsigned preset 용량/횟수 제한 설정
 - 실사용 중 예외 버그 보정
