@@ -37,7 +37,7 @@ ITC-main — NEXT SESSION HANDOFF (2025-06 갱신)
 [Firebase 리스너 최적화]
 - tokens: onValue → onChildAdded/Changed/Removed 전환 완료
 - journals: onValue → onChildAdded/Changed/Removed 전환 완료
-- chat/casual: 이미 onChild* 방식 (기존)
+- chat/casual: onChild* 실시간 반영 유지 + 상단 스크롤 시 과거 히스토리 페이지 로드 추가
 - players: onValue 유지 (digest 비교로 충분)
 - bgm/lastRoll/typing: onValue 유지 (소량 데이터)
 
@@ -110,7 +110,7 @@ styles/all.css          — 통합 CSS
 8) 다음 작업 후보
 -----------------
 - PHASE 4-1: 저널 목록 전체 재렌더 제거 완료
-- PHASE 4-2: 채팅 히스토리 구조 개선
+- PHASE 4-2: 채팅 히스토리 구조 개선 완료
 - 장시간 안정성: 타이머 누수 점검, objectURL revoke 재점검
 - Firebase 보안 규칙 적용 (database.rules.json 제공 완료)
 - Cloudinary unsigned preset 용량/횟수 제한 설정

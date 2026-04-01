@@ -141,7 +141,7 @@ function setupFirebaseListeners() {
   bindRoomStabilityEvents();
   _lastSyncedRoomAvatar = null;
 
-  const { db, ref, onValue, onChildAdded, onChildChanged, onChildRemoved, query, limitToLast } = window._FB;
+  const { db, ref, onValue, onChildAdded, onChildChanged, onChildRemoved, query, limitToLast, orderByKey, endAt, get } = window._FB;
   const code = St.roomCode;
 
   _processedChatKeys.clear();
@@ -171,6 +171,9 @@ function setupFirebaseListeners() {
   const chatRef = (query && limitToLast) ? query(chatBaseRef, limitToLast(100)) : chatBaseRef;
   const casualBaseRef = ref(db, `rooms/${code}/casual`);
   const casualRef = (query && limitToLast) ? query(casualBaseRef, limitToLast(100)) : casualBaseRef;
+  const historyPageSize = 80;
+  let oldestChatKey = '';
+  let oldestCasualKey = '';
 
   const shouldShowChatMessage = (m) => {
     if (!m) return false;
@@ -182,6 +185,7 @@ function setupFirebaseListeners() {
     if (!shouldShowChatMessage(m) || _processedChatKeys.has(key)) return;
     appendChatMsg({ name: m.name, text: m.text, type: m.type || 'normal', uid: m.uid, timestamp: m.time, speakAsAvatar: m.speakAsAvatar, speakAsJournalId: m.speakAsJournalId, whisperTo: m.whisperTo, whisperToName: m.whisperToName, nameColor: m.nameColor, msgKey: key, channel: 'chat', standingImg: m.standingImg, tokenId: m.tokenId, standingLabel: m.standingLabel, imageWide: !!m.imageWide, imageMeta: m.imageMeta, hideImageMeta: !!m.hideImageMeta });
     _processedChatKeys.add(key);
+    if (!oldestChatKey || key < oldestChatKey) oldestChatKey = key;
   };
 
   const changeChatRecord = (key, m) => {
@@ -218,6 +222,7 @@ function setupFirebaseListeners() {
     if (!m || _processedCasualKeys.has(key)) return;
     appendCasualMsg(m.name, m.text, m.uid, m.time, key);
     _processedCasualKeys.add(key);
+    if (!oldestCasualKey || key < oldestCasualKey) oldestCasualKey = key;
   };
 
   const changeCasualRecord = (key, m) => {
@@ -230,6 +235,78 @@ function setupFirebaseListeners() {
     removeCasualMsg(key);
     _processedCasualKeys.delete(key);
   };
+
+  const loadOlderChatHistory = async () => {
+    if (!query || !limitToLast || !orderByKey || !endAt || !get || !oldestChatKey) {
+      return { count: 0, exhausted: true };
+    }
+    const snap = await get(query(chatBaseRef, orderByKey(), endAt(oldestChatKey), limitToLast(historyPageSize + 1)));
+    const rows = Object.entries(snap.val() || {}).sort((a, b) => a[0].localeCompare(b[0]));
+    const olderRows = rows.filter(([k]) => k < oldestChatKey);
+    if (!olderRows.length) return { count: 0, exhausted: true };
+
+    let loaded = 0;
+    olderRows.forEach(([key, m]) => {
+      if (!shouldShowChatMessage(m) || _processedChatKeys.has(key)) return;
+      if (typeof storeMessageRecord === 'function') {
+        storeMessageRecord('chat', {
+          name: m.name,
+          text: m.text,
+          type: m.type || 'normal',
+          uid: m.uid,
+          timestamp: m.time,
+          speakAsAvatar: m.speakAsAvatar,
+          speakAsJournalId: m.speakAsJournalId,
+          whisperTo: m.whisperTo,
+          whisperToName: m.whisperToName,
+          nameColor: m.nameColor,
+          standingImg: m.standingImg,
+          tokenId: m.tokenId,
+          standingLabel: m.standingLabel,
+          imageWide: !!m.imageWide,
+          imageMeta: m.imageMeta,
+          hideImageMeta: !!m.hideImageMeta,
+        }, key, { position: 'prepend' });
+      }
+      _processedChatKeys.add(key);
+      loaded += 1;
+    });
+    oldestChatKey = olderRows[0]?.[0] || oldestChatKey;
+    return { count: loaded, exhausted: olderRows.length < historyPageSize };
+  };
+
+  const loadOlderCasualHistory = async () => {
+    if (!query || !limitToLast || !orderByKey || !endAt || !get || !oldestCasualKey) {
+      return { count: 0, exhausted: true };
+    }
+    const snap = await get(query(casualBaseRef, orderByKey(), endAt(oldestCasualKey), limitToLast(historyPageSize + 1)));
+    const rows = Object.entries(snap.val() || {}).sort((a, b) => a[0].localeCompare(b[0]));
+    const olderRows = rows.filter(([k]) => k < oldestCasualKey);
+    if (!olderRows.length) return { count: 0, exhausted: true };
+
+    let loaded = 0;
+    olderRows.forEach(([key, m]) => {
+      if (!m || _processedCasualKeys.has(key)) return;
+      if (typeof storeMessageRecord === 'function') {
+        storeMessageRecord('casual', {
+          name: m.name,
+          text: m.text,
+          uid: m.uid,
+          timestamp: m.time,
+          nameColor: m.nameColor,
+        }, key, { position: 'prepend' });
+      }
+      _processedCasualKeys.add(key);
+      loaded += 1;
+    });
+    oldestCasualKey = olderRows[0]?.[0] || oldestCasualKey;
+    return { count: loaded, exhausted: olderRows.length < historyPageSize };
+  };
+
+  if (typeof configureHistoryPaging === 'function') {
+    configureHistoryPaging('chat', { loadOlder: loadOlderChatHistory, exhausted: false });
+    configureHistoryPaging('casual', { loadOlder: loadOlderCasualHistory, exhausted: false });
+  }
 
   if (onChildAdded && onChildChanged && onChildRemoved) {
     trackFirebaseListener(onChildAdded(casualRef, snap => addCasualRecord(snap.key, snap.val() || {})));

@@ -97,6 +97,9 @@ const _renderState = {
     itemHeights: new Map(),
     overscan: 10,
     minWindow: 26,
+    historyLoader: null,
+    historyLoading: false,
+    historyExhausted: true,
   },
   casual: {
     containerId: 'casual-messages',
@@ -124,6 +127,9 @@ const _renderState = {
     itemHeights: new Map(),
     overscan: 10,
     minWindow: 26,
+    historyLoader: null,
+    historyLoading: false,
+    historyExhausted: true,
   },
 };
 
@@ -353,13 +359,15 @@ function scheduleVirtualRender(channel = 'chat', options = {}) {
   });
 }
 
-function upsertStoredMessage(channel = 'chat', key, record) {
+function upsertStoredMessage(channel = 'chat', key, record, options = {}) {
   const state = getRenderState(channel);
   const safeKey = makeStoredMessageKey(channel, key);
   const existing = state.storeMap.has(safeKey);
+  const position = options?.position === 'prepend' ? 'prepend' : 'append';
 
   if (!existing) {
-    state.storeOrder.push(safeKey);
+    if (position === 'prepend') state.storeOrder.unshift(safeKey);
+    else state.storeOrder.push(safeKey);
   }
   state.storeMap.set(safeKey, { ...(record || {}), _key: safeKey });
 
@@ -374,6 +382,37 @@ function upsertStoredMessage(channel = 'chat', key, record) {
   }
   return safeKey;
 }
+
+function storeMessageRecord(channel = 'chat', record = {}, key = '', options = {}) {
+  if (channel === 'casual') {
+    return upsertStoredMessage(channel, key, {
+      name: record.name,
+      text: record.text,
+      uid: record.uid,
+      timestamp: record.timestamp,
+      nameColor: record.nameColor,
+    }, options);
+  }
+  return upsertStoredMessage(channel, key, {
+    name: record.name,
+    text: record.text,
+    type: record.type,
+    uid: record.uid,
+    timestamp: record.timestamp,
+    speakAsAvatar: record.speakAsAvatar,
+    speakAsJournalId: record.speakAsJournalId,
+    whisperTo: record.whisperTo,
+    whisperToName: record.whisperToName,
+    nameColor: record.nameColor,
+    standingImg: record.standingImg,
+    tokenId: record.tokenId,
+    standingLabel: record.standingLabel,
+    imageWide: record.imageWide,
+    hideImageMeta: record.hideImageMeta,
+    imageMeta: normalizeChatImageMeta(record.imageMeta),
+  }, options);
+}
+
 
 function removeStoredMessage(channel = 'chat', key) {
   const state = getRenderState(channel);
@@ -613,6 +652,35 @@ function removeRenderedMessage(channel = 'chat', key) {
   syncStickyState(channel, el);
 }
 
+
+function configureHistoryPaging(channel = 'chat', options = {}) {
+  const state = getRenderState(channel);
+  state.historyLoader = typeof options.loadOlder === 'function' ? options.loadOlder : null;
+  state.historyLoading = false;
+  state.historyExhausted = !!options.exhausted || !state.historyLoader;
+}
+
+async function requestOlderHistory(channel = 'chat') {
+  const state = getRenderState(channel);
+  if (!state.historyLoader || state.historyLoading || state.historyExhausted) return 0;
+  state.historyLoading = true;
+  try {
+    const result = await state.historyLoader();
+    const count = Number(typeof result === 'number' ? result : (result?.count || 0)) || 0;
+    if (typeof result === 'object' && result && Object.prototype.hasOwnProperty.call(result, 'exhausted')) {
+      state.historyExhausted = !!result.exhausted;
+    } else if (count <= 0) {
+      state.historyExhausted = true;
+    }
+    return count;
+  } catch (err) {
+    console.error(`requestOlderHistory(${channel}) failed`, err);
+    return 0;
+  } finally {
+    state.historyLoading = false;
+  }
+}
+
 function bindMessageViewport(channel = 'chat') {
   const state = getRenderState(channel);
   const el = getRenderContainer(channel);
@@ -647,8 +715,17 @@ function bindMessageViewport(channel = 'chat') {
         return;
       }
 
-      if (isNearTop(el, 28)) prependStoredWindow(channel);
-      else if (isNearBottom(el, 28)) {
+      if (isNearTop(el, 28)) {
+        if (!prependStoredWindow(channel)) {
+          requestOlderHistory(channel).then((loadedCount) => {
+            if (loadedCount > 0) {
+              if (state.virtualEnabled) scheduleVirtualRender(channel, { forceStickBottom: false });
+              else prependStoredWindow(channel, loadedCount);
+            }
+            syncStickyState(channel, el);
+          });
+        }
+      } else if (isNearBottom(el, 28)) {
         if (appendStoredWindow(channel)) {
           requestAnimationFrame(() => syncStickyState(channel, el));
         } else {
@@ -688,6 +765,8 @@ function resetRenderedMessages(channel = 'chat') {
   state.renderedEnd = 0;
   state.topSpacer = null;
   state.bottomSpacer = null;
+  state.historyLoading = false;
+  state.historyExhausted = !state.historyLoader;
   if (!el) return;
   el.innerHTML = '';
   if (state.virtualEnabled) ensureVirtualElements(channel);
@@ -1819,5 +1898,8 @@ window.queueMessageRender = queueMessageRender;
 window.replaceRenderedMessage = replaceRenderedMessage;
 window.removeRenderedMessage = removeRenderedMessage;
 window.resetRenderedMessages = resetRenderedMessages;
+window.storeMessageRecord = storeMessageRecord;
+window.prependStoredWindow = prependStoredWindow;
+window.configureHistoryPaging = configureHistoryPaging;
 window.getChatImageClassName = getChatImageClassName;
 window.getChatImageInlineStyle = getChatImageInlineStyle;
