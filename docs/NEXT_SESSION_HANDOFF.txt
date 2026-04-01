@@ -85,16 +85,12 @@ src/modules/
   speak-as/speak-as.js  — 스피크어즈/스탠딩
 styles/all.css          — 통합 CSS
 
-6) 삭제된 파일 (stale)
-----------------------
-- tabletool.html         — 미사용 레거시
-- tabletool_v2.html      — 미사용 레거시
-- docs/ARCHITECTURE.md   — v2 목표 설계, 현재와 불일치
-- docs/MIGRATION_PLAN.md — v1→v2 마이그레이션, 완료/폐기
-- docs/FINAL_HISTORY.md  — 과거 이력 요약, 이 파일로 대체
-- docs/PERFORMANCE_LOG.md — 과거 성능 메모, 이 파일로 대체
-- docs/OPTIMIZATION_NOTES.md — 과거 최적화 메모, 이 파일로 대체
-- docs/STRUCTURE_SIMPLIFICATION_PRECHECK.txt — 과거 점검표
+6) stale 파일 정리 상태
+------------------------
+- 아래 파일들은 현재 런타임/문서 기준에서 참조되지 않는 레거시로 확인됨
+- 프로젝트 루트: tabletool.html, tabletool_v2.html
+- docs/: ARCHITECTURE.md, MIGRATION_PLAN.md, FINAL_HISTORY.md, PERFORMANCE_LOG.md, OPTIMIZATION_NOTES.md, STRUCTURE_SIMPLIFICATION_PRECHECK.txt
+- 정리 시 런타임 영향 없음 (검색 기준 직접 참조 0건 확인)
 
 7) 절대 깨지면 안 되는 것
 --------------------------
@@ -107,6 +103,7 @@ styles/all.css          — 통합 CSS
 
 8) 다음 작업 후보
 -----------------
+- PHASE 3-1: 방 인원 제한 transaction 처리
 - 장시간 안정성: 타이머 누수 점검, objectURL revoke 재점검
 - Firebase 보안 규칙 적용 (database.rules.json 제공 완료)
 - Cloudinary unsigned preset 용량/횟수 제한 설정
