@@ -644,7 +644,6 @@ function addOrUpdateSingleToken(id, data) {
       /* 위치만 갱신 */
       existing.style.left = storedTokenPercentToDisplay(data.x, 'x') + '%';
       existing.style.top = storedTokenPercentToDisplay(data.y, 'y') + '%';
-      renderMapStatusPanel(St.tokens);
       return;
     }
   }
