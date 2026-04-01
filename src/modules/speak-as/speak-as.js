@@ -5,6 +5,12 @@
 
 const _JAV = {};
 
+function getSpeakAsServerTimestamp() {
+  return (window._FB?.CONFIGURED && typeof window._FB.serverTimestamp === 'function')
+    ? window._FB.serverTimestamp()
+    : Date.now();
+}
+
 function saIsEphemeralAvatarSrc(src) {
   return typeof src === 'string' && /^blob:/i.test(src);
 }
@@ -54,7 +60,7 @@ function saSendMessage(journal, text) {
   }
   if (window._FB?.CONFIGURED) {
     const { db, ref, push } = window._FB;
-    push(ref(db, `rooms/${St.roomCode}/chat`), msg);
+    push(ref(db, `rooms/${St.roomCode}/chat`), { ...msg, time: getSpeakAsServerTimestamp() });
   } else {
     appendChatMsg(msg.name, text, 'speak-as', St.myId, msg.time, msg.speakAsAvatar, msg.speakAsJournalId, null, null, msg.nameColor, null, 'chat', null, msg.tokenId, msg.standingLabel);
   }

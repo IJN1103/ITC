@@ -103,7 +103,8 @@ styles/all.css          — 통합 CSS
 
 8) 다음 작업 후보
 -----------------
-- PHASE 3-1: 방 인원 제한 transaction 처리
+- PHASE 3-2: 서버 시간 기준으로 전환
+- PHASE 3-3: 데이터 저장 규칙 정리
 - 장시간 안정성: 타이머 누수 점검, objectURL revoke 재점검
 - Firebase 보안 규칙 적용 (database.rules.json 제공 완료)
 - Cloudinary unsigned preset 용량/횟수 제한 설정

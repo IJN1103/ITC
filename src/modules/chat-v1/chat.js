@@ -1,3 +1,9 @@
+function getChatServerTimestamp() {
+  return (window._FB?.CONFIGURED && typeof window._FB.serverTimestamp === 'function')
+    ? window._FB.serverTimestamp()
+    : Date.now();
+}
+
 /**
  * ITC TRPG — Chat 모듈
  * 채팅, 잡담, 귓말, 타이핑, 이미지 업로드
@@ -1178,7 +1184,7 @@ async function sendPreparedChatImage(preparedOrDataUrl, imageWide = false, image
     if (window._FB?.CONFIGURED) {
       const { db, ref, push } = window._FB;
       if (!St.roomCode) throw new Error('roomCode missing');
-      return push(ref(db, `rooms/${St.roomCode}/chat`), msg);
+      return push(ref(db, `rooms/${St.roomCode}/chat`), { ...msg, time: getChatServerTimestamp() });
     }
     appendChatMsg({ name: msg.name, text: finalSrc, type: 'speak-as-image', uid: St.myId, timestamp: msg.time, speakAsAvatar: saAvatar, speakAsJournalId: saJId, channel: 'chat', imageWide: !!imageWide, imageMeta: normalizedMeta, hideImageMeta: !!hideImageMeta });
     return Promise.resolve();
@@ -1368,13 +1374,14 @@ async function sendChat() {
 }
 
 function sendMessage(name, text, type = 'normal', extra = null) {
-  const msg = { name, text, type, uid: St.myId, time: Date.now() };
+  const localTime = Date.now();
+  const msg = { name, text, type, uid: St.myId, time: localTime };
   if ((type === 'normal' || type === 'desc') && St.myNameColor) msg.nameColor = St.myNameColor;
   if (extra && typeof extra === 'object') Object.assign(msg, extra);
   if (window._FB?.CONFIGURED) {
     const { db, ref, push } = window._FB;
     if (!St.roomCode) return Promise.reject(new Error('roomCode missing'));
-    return push(ref(db, `rooms/${St.roomCode}/chat`), msg);
+    return push(ref(db, `rooms/${St.roomCode}/chat`), { ...msg, time: getChatServerTimestamp() });
   }
   appendChatMsg({ name, text, type, uid: St.myId, timestamp: msg.time, nameColor: msg.nameColor || null, channel: 'chat', imageWide: !!msg.imageWide, imageMeta: msg.imageMeta || null, hideImageMeta: !!msg.hideImageMeta });
   return Promise.resolve();
@@ -1389,12 +1396,13 @@ function sendCasual() {
 }
 
 function sendCasualMsg(name, text) {
-  const msg = { name, text, uid: St.myId, time: Date.now() };
+  const localTime = Date.now();
+  const msg = { name, text, uid: St.myId, time: localTime };
   if (St.casualNameColor) msg.nameColor = St.casualNameColor;
   if (window._FB?.CONFIGURED) {
     const { db, ref, push } = window._FB;
     if (!St.roomCode) return Promise.reject(new Error('roomCode missing'));
-    return push(ref(db, `rooms/${St.roomCode}/casual`), msg);
+    return push(ref(db, `rooms/${St.roomCode}/casual`), { ...msg, time: getChatServerTimestamp() });
   }
   appendCasualMsg(name, text, St.myId, msg.time, null, St.casualNameColor || '');
   return Promise.resolve();
@@ -1492,7 +1500,7 @@ function broadcastTyping() {
   } else if (tab === 'casual' && _casualNickname) {
     displayName = _casualNickname;
   }
-  set(ref(db, `rooms/${St.roomCode}/typing/${St.myId}`), { name: displayName, tab, time: Date.now() });
+  set(ref(db, `rooms/${St.roomCode}/typing/${St.myId}`), { name: displayName, tab, time: getChatServerTimestamp() });
   if (_typingTimer) clearTimeout(_typingTimer);
   _typingTimer = setTimeout(() => {
     remove(ref(db, `rooms/${St.roomCode}/typing/${St.myId}`));
@@ -1527,10 +1535,11 @@ function clearTypingState() {
 function saSendCasual(journal, text) {
   const name = journal.title || '무제';
   const avatar = saGetAvatar(journal.id);
-  const msg = { name, text: text.replace(/@\S+/g,'').trim(), uid: St.myId, time: Date.now(), speakAsAvatar: avatar, speakAsJournalId: journal.id };
+  const localTime = Date.now();
+  const msg = { name, text: text.replace(/@\S+/g,'').trim(), uid: St.myId, time: localTime, speakAsAvatar: avatar, speakAsJournalId: journal.id };
   if (window._FB?.CONFIGURED) {
     const { db, ref, push } = window._FB;
-    push(ref(db, `rooms/${St.roomCode}/casual`), msg);
+    push(ref(db, `rooms/${St.roomCode}/casual`), { ...msg, time: getChatServerTimestamp() });
   } else {
     appendCasualMsg(name, msg.text, St.myId, msg.time);
   }
@@ -1574,15 +1583,16 @@ function removeCasualMsg(msgKey) {
 }
 
 function sendWhisperMessage(senderName, text, targetUid, targetName) {
+  const localTime = Date.now();
   const msg = {
     name: senderName, text, type: 'whisper',
-    uid: St.myId, time: Date.now(),
+    uid: St.myId, time: localTime,
     whisperTo: targetUid, whisperToName: targetName
   };
   if (window._FB?.CONFIGURED) {
     const { db, ref, push } = window._FB;
     if (!St.roomCode) return Promise.reject(new Error('roomCode missing'));
-    return push(ref(db, `rooms/${St.roomCode}/chat`), msg);
+    return push(ref(db, `rooms/${St.roomCode}/chat`), { ...msg, time: getChatServerTimestamp() });
   }
   appendChatMsg({ name: msg.name, text, type: 'whisper', uid: St.myId, timestamp: msg.time, whisperTo: targetUid, whisperToName: targetName });
   return Promise.resolve();

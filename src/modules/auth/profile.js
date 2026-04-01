@@ -5,6 +5,12 @@
 
 let _isApplyingProfileCrop = false;
 
+function getProfileServerTimestamp() {
+  return (window._FB?.CONFIGURED && typeof window._FB.serverTimestamp === 'function')
+    ? window._FB.serverTimestamp()
+    : Date.now();
+}
+
 function initProfileModal() {
   const user = window._currentUser;
   if (!user) return;
@@ -254,7 +260,7 @@ async function syncAvatarToFirebase(avatarSrc, meta = null) {
   if (!user || !window._FB?.CONFIGURED) return;
 
   const { db, ref, update } = window._FB;
-  const now = Date.now();
+  const serverNow = getProfileServerTimestamp();
   const avatarValue = avatarSrc || '';
   const avatarStoragePath = meta?.path || '';
   try {
@@ -262,7 +268,7 @@ async function syncAvatarToFirebase(avatarSrc, meta = null) {
       avatar: avatarValue,
       avatarUrl: avatarValue,
       avatarStoragePath,
-      updatedAt: now,
+      updatedAt: serverNow,
     });
   } catch (e) {}
 
@@ -273,7 +279,7 @@ async function syncAvatarToFirebase(avatarSrc, meta = null) {
         avatarUrl: avatarValue,
         avatarStoragePath,
         name: St.myName || user.displayName || '플레이어',
-        updatedAt: now,
+        updatedAt: serverNow,
       });
     } catch (e) {}
 
@@ -282,7 +288,7 @@ async function syncAvatarToFirebase(avatarSrc, meta = null) {
         value: avatarValue,
         url: avatarValue,
         storagePath: avatarStoragePath,
-        updatedAt: now,
+        updatedAt: serverNow,
       });
     } catch (e) {}
   }
@@ -383,9 +389,9 @@ async function saveNickname() {
     document.getElementById('user-name-nav').textContent = nick;
     if (window._FB?.CONFIGURED) {
       const { db, ref, update } = window._FB;
-      await update(ref(db, `users/${user.uid}/profile`), { name: nick, updatedAt: Date.now() });
+      await update(ref(db, `users/${user.uid}/profile`), { name: nick, updatedAt: getProfileServerTimestamp() });
       if (St.roomCode) {
-        await update(ref(db, `rooms/${St.roomCode}/players/${user.uid}`), { name: nick, updatedAt: Date.now() });
+        await update(ref(db, `rooms/${St.roomCode}/players/${user.uid}`), { name: nick, updatedAt: getProfileServerTimestamp() });
       }
     }
     showProfileMsg('닉네임이 저장됐어요!', 'ok');

@@ -1,3 +1,9 @@
+function getGameServerTimestamp() {
+  return (window._FB?.CONFIGURED && typeof window._FB.serverTimestamp === 'function')
+    ? window._FB.serverTimestamp()
+    : Date.now();
+}
+
 /**
  * ITC TRPG — Game Core 모듈
  * Firebase 리스너, 게임 진입, 플레이어 관리, 캐릭터 시트
@@ -39,7 +45,7 @@ function syncMyAvatarToRoom(avatarOverride = undefined, force = false) {
       value: nextAvatar,
       url: nextAvatar,
       storagePath: avatarStoragePath,
-      updatedAt: Date.now(),
+      updatedAt: getGameServerTimestamp(),
     }).catch(() => {}),
     update(ref(db, `rooms/${St.roomCode}/players/${St.myId}`), {
       avatar: nextAvatar,
@@ -571,7 +577,7 @@ function autoSave() {
   if (!window._FB?.CONFIGURED || !window._currentUser) return;
   const { db, ref, set } = window._FB;
   const uid = window._currentUser.uid;
-  const charData = { ...St.character, updatedAt: Date.now() };
+  const charData = { ...St.character, updatedAt: getGameServerTimestamp() };
 
   if (St.roomCode) {
     set(ref(db, `rooms/${St.roomCode}/characters/${uid}`), charData);

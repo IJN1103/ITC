@@ -60,6 +60,12 @@ function getSharedAvatarRuntime() {
 let selectedSystem = 'coc7';
 let _myCharsUnsub = null;
 
+function getLobbyServerTimestamp() {
+  return (window._FB?.CONFIGURED && typeof window._FB.serverTimestamp === 'function')
+    ? window._FB.serverTimestamp()
+    : Date.now();
+}
+
 function showLobby() {
   document.getElementById('screen-auth').style.display  = 'none';
   document.getElementById('screen-game').style.display  = 'none';
@@ -137,8 +143,8 @@ async function createNewCharacter() {
 
   const charData = {
     name, system: sys, job:'',
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
+    createdAt: getLobbyServerTimestamp(),
+    updatedAt: getLobbyServerTimestamp(),
     ...(defaults[sys] || {}),
   };
 
@@ -176,14 +182,14 @@ function getPlayerPayload(role) {
 
   return {
     name: St.myName,
-    joinedAt: Date.now(),
+    joinedAt: getLobbyServerTimestamp(),
     uid: St.myId,
     role,
     avatar,
     casualNick,
     nameColor,
     online: true,
-    updatedAt: Date.now(),
+    updatedAt: getLobbyServerTimestamp(),
   };
 }
 
@@ -202,13 +208,13 @@ async function createRoom() {
   if (window._FB?.CONFIGURED) {
     const { db, ref, set } = window._FB;
     await set(ref(db, `rooms/${code}/meta`), {
-      system: selectedSystem, createdAt: Date.now(),
+      system: selectedSystem, createdAt: getLobbyServerTimestamp(),
       createdBy: St.myName, ownerId: St.myId, title: roomTitle,
     });
     await set(ref(db, `rooms/${code}/players/${St.myId}`), getPlayerPayload('gm'));
     await set(ref(db, `users/${St.myId}/rooms/${code}`), {
       code, title: roomTitle, system: selectedSystem,
-      role: 'gm', ownerId: St.myId, joinedAt: Date.now(),
+      role: 'gm', ownerId: St.myId, joinedAt: getLobbyServerTimestamp(),
     });
     setupFirebaseListeners();
   }
@@ -280,7 +286,7 @@ async function joinRoom() {
     await set(ref(db, `users/${St.myId}/rooms/${code}`), {
       code, title: meta.title || '무제 세션',
       system: meta.system || 'coc7',
-      role, ownerId: meta.ownerId || '', joinedAt: Date.now(),
+      role, ownerId: meta.ownerId || '', joinedAt: getLobbyServerTimestamp(),
     });
     setupFirebaseListeners();
   } else {

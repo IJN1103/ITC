@@ -1,3 +1,9 @@
+function getJournalServerTimestamp() {
+  return (window._FB?.CONFIGURED && typeof window._FB.serverTimestamp === 'function')
+    ? window._FB.serverTimestamp()
+    : Date.now();
+}
+
 
 function getSharedJournalAvatarRuntime() {
   return {
@@ -570,10 +576,15 @@ async function saveHandoutFB(handout) {
     createdAt: normalized.createdAt,
     updatedAt: normalized.updatedAt,
   };
+  const remotePayload = {
+    ...payload,
+    createdAt: payload.createdAt || getJournalServerTimestamp(),
+    updatedAt: getJournalServerTimestamp(),
+  };
   if (window._FB?.CONFIGURED && St.roomCode) {
     try {
       const { db, ref, set } = window._FB;
-      await set(ref(db, `rooms/${St.roomCode}/handouts/${normalized.id}`), payload);
+      await set(ref(db, `rooms/${St.roomCode}/handouts/${normalized.id}`), remotePayload);
     } catch (err) {
       console.error('handout save failed', err, payload);
       return false;
@@ -683,7 +694,10 @@ function saveJournalFB(journal) {
 
   if (window._FB?.CONFIGURED) {
     const { db, ref, update } = window._FB;
-    update(ref(db, `rooms/${St.roomCode}/journals/${journal.id}`), payload);
+    const remotePayload = { ...payload };
+    if (!remotePayload.createdAt) remotePayload.createdAt = getJournalServerTimestamp();
+    remotePayload.updatedAt = getJournalServerTimestamp();
+    update(ref(db, `rooms/${St.roomCode}/journals/${journal.id}`), remotePayload);
   } else {
     const idx = _allJournals.findIndex(j => j.id === journal.id);
     if (idx >= 0) _allJournals[idx] = { ..._allJournals[idx], ...payload };
@@ -704,7 +718,11 @@ function saveJournalSheetFB(journalId, sheetData, metaPatch = {}) {
   if (window._FB?.CONFIGURED) {
     const { db, ref, update, set } = window._FB;
     if (Object.keys(safeMetaPatch).length) {
-      update(ref(db, `rooms/${St.roomCode}/journals/${journalId}`), safeMetaPatch);
+      const remoteMetaPatch = { ...safeMetaPatch, updatedAt: getJournalServerTimestamp() };
+      if (!remoteMetaPatch.createdAt && !_allJournals.find(j => j.id === journalId)?.createdAt) {
+        remoteMetaPatch.createdAt = getJournalServerTimestamp();
+      }
+      update(ref(db, `rooms/${St.roomCode}/journals/${journalId}`), remoteMetaPatch);
     }
     set(ref(db, `rooms/${St.roomCode}/journals/${journalId}/sheet`), sheetData || {});
   } else {

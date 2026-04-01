@@ -1,3 +1,9 @@
+function getAuthServerTimestamp() {
+  return (window._FB?.CONFIGURED && typeof window._FB.serverTimestamp === 'function')
+    ? window._FB.serverTimestamp()
+    : Date.now();
+}
+
 /**
  * ITC TRPG — Auth 모듈
  * 로그인, 회원가입, Google 로그인, 로그아웃
@@ -122,8 +128,8 @@ async function loadUserProfile(user) {
     await set(profileRef, {
       ...baseProfile,
       avatar: '',
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
+      createdAt: getAuthServerTimestamp(),
+      updatedAt: getAuthServerTimestamp(),
     });
     if (typeof refreshProfileAvatar === 'function') {
       try { refreshProfileAvatar(); } catch (e) {}
@@ -148,7 +154,7 @@ async function loadUserProfile(user) {
   if (!profile.name && baseProfile.name) patch.name = baseProfile.name;
   if (!profile.email && baseProfile.email) patch.email = baseProfile.email;
   if (Object.keys(patch).length) {
-    patch.updatedAt = Date.now();
+    patch.updatedAt = getAuthServerTimestamp();
     await update(profileRef, patch);
   }
 

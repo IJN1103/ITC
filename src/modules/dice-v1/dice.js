@@ -3,6 +3,12 @@
  * 다이스 버튼, 굴림, 수식 파서
  */
 
+function getDiceServerTimestamp() {
+  return (window._FB?.CONFIGURED && typeof window._FB.serverTimestamp === 'function')
+    ? window._FB.serverTimestamp()
+    : Date.now();
+}
+
 const DICE_CONFIGS = {
   coc7: [{l:'D100',s:100,i:'⬡'},{l:'D10',s:10,i:'◆'},{l:'D6',s:6,i:'■'},{l:'D4',s:4,i:'▲'},{l:'D8',s:8,i:'◈'},{l:'D20',s:20,i:'◉'}],
   dx3:  [{l:'DX',s:10,i:'◆',dx:true},{l:'D6',s:6,i:'■'},{l:'D10',s:10,i:'◆'}],
@@ -62,7 +68,7 @@ function rollDice(ci) {
 
   if (window._FB?.CONFIGURED && !isSecret) {
     const { db, ref, set } = window._FB;
-    set(ref(db, `rooms/${St.roomCode}/lastRoll`), rollObj);
+    set(ref(db, `rooms/${St.roomCode}/lastRoll`), { ...rollObj, time: getDiceServerTimestamp() });
   }
 }
 
@@ -166,7 +172,7 @@ function rollFromFormula(formula) {
   sendMessage(St.myName, `🎲 ${label} → ${grandTotal}  (${detail})`, 'dice');
   if (window._FB?.CONFIGURED) {
     const { db, ref, set } = window._FB;
-    set(ref(db, `rooms/${St.roomCode}/lastRoll`), rollObj);
+    set(ref(db, `rooms/${St.roomCode}/lastRoll`), { ...rollObj, time: getDiceServerTimestamp() });
   }
 }
 
