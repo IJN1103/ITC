@@ -667,12 +667,55 @@ function saveJournals(list) {
 function saveJournalFB(journal) {
   if (!journal?.id) return;
   if (!journal.ownerId) journal.ownerId = St.myId;
+
+  const payload = {};
+  Object.keys(journal).forEach((key) => {
+    const value = journal[key];
+    if (value !== undefined) payload[key] = value;
+  });
+
   if (window._FB?.CONFIGURED) {
-    const { db, ref, set } = window._FB;
-    set(ref(db, `rooms/${St.roomCode}/journals/${journal.id}`), journal);
+    const { db, ref, update } = window._FB;
+    update(ref(db, `rooms/${St.roomCode}/journals/${journal.id}`), payload);
   } else {
     const idx = _allJournals.findIndex(j => j.id === journal.id);
-    if (idx >= 0) _allJournals[idx] = journal; else _allJournals.push(journal);
+    if (idx >= 0) _allJournals[idx] = { ..._allJournals[idx], ...payload };
+    else _allJournals.push(payload);
+    localStorage.setItem(journalKey(), JSON.stringify(_allJournals));
+  }
+}
+
+function saveJournalSheetFB(journalId, sheetData, metaPatch = {}) {
+  if (!journalId) return;
+
+  const safeMetaPatch = {};
+  Object.keys(metaPatch || {}).forEach((key) => {
+    const value = metaPatch[key];
+    if (value !== undefined) safeMetaPatch[key] = value;
+  });
+
+  if (window._FB?.CONFIGURED) {
+    const { db, ref, update, set } = window._FB;
+    if (Object.keys(safeMetaPatch).length) {
+      update(ref(db, `rooms/${St.roomCode}/journals/${journalId}`), safeMetaPatch);
+    }
+    set(ref(db, `rooms/${St.roomCode}/journals/${journalId}/sheet`), sheetData || {});
+  } else {
+    const idx = _allJournals.findIndex(j => j.id === journalId);
+    if (idx >= 0) {
+      _allJournals[idx] = {
+        ..._allJournals[idx],
+        ...safeMetaPatch,
+        sheet: sheetData || {},
+      };
+    } else {
+      _allJournals.push({
+        id: journalId,
+        ownerId: St.myId,
+        ...safeMetaPatch,
+        sheet: sheetData || {},
+      });
+    }
     localStorage.setItem(journalKey(), JSON.stringify(_allJournals));
   }
 }
@@ -843,8 +886,16 @@ function saveJournalFromDrawer() {
   const hint  = document.getElementById('jd-footer-hint');
   const existing = _allJournals.find(j => j.id === _currentJournalId);
   if (existing) {
-    existing.title = title; existing.body = body; existing.updatedAt = Date.now();
-    saveJournalFB(existing);
+    existing.title = title;
+    existing.body = body;
+    existing.updatedAt = Date.now();
+    saveJournalFB({
+      id: _currentJournalId,
+      ownerId: existing.ownerId || St.myId,
+      title,
+      body,
+      updatedAt: existing.updatedAt,
+    });
   } else {
     saveJournalFB({ id: _currentJournalId, title, body, ownerId: St.myId, createdAt: Date.now(), updatedAt: Date.now() });
   }
@@ -1636,16 +1687,27 @@ async function saveSheet() {
       || null
     );
     if (_keepAv) {
-      data.avatar      = _keepAv;
+      data.avatar = _keepAv;
       existing.avatar = _keepAv;
       saSetAvatar(_sheetJournalId, _keepAv);
     }
-    existing.sheet     = data;
-    existing.title     = data.name || existing.title;
-    existing.updatedAt = Date.now();
-    existing.assignedTokenId = _jdAssignedTokenId || null;
-    if (_sheetAssignedTo !== undefined) existing.assignedTo = _sheetAssignedTo || [];
-    saveJournalFB(existing);
+
+    const metaPatch = {
+      ownerId: existing.ownerId || St.myId,
+      title: data.name || existing.title,
+      updatedAt: Date.now(),
+      assignedTokenId: _jdAssignedTokenId || null,
+    };
+    if (_sheetAssignedTo !== undefined) metaPatch.assignedTo = _sheetAssignedTo || [];
+    if (_keepAv) metaPatch.avatar = _keepAv;
+
+    existing.sheet = data;
+    existing.title = metaPatch.title;
+    existing.updatedAt = metaPatch.updatedAt;
+    existing.assignedTokenId = metaPatch.assignedTokenId;
+    if (_sheetAssignedTo !== undefined) existing.assignedTo = metaPatch.assignedTo;
+
+    saveJournalSheetFB(_sheetJournalId, data, metaPatch);
   } else {
     const newJ = {
       id: _sheetJournalId,
