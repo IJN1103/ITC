@@ -4,6 +4,35 @@ function getGameServerTimestamp() {
     : Date.now();
 }
 
+function sanitizeGameStoredValue(value) {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (typeof value === 'function') return undefined;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+  if (typeof value === 'string' || typeof value === 'boolean') return value;
+  if (Array.isArray(value)) {
+    return value.map((item) => {
+      const next = sanitizeGameStoredValue(item);
+      return next === undefined ? '' : next;
+    });
+  }
+  if (typeof value === 'object') {
+    const out = {};
+    Object.keys(value).forEach((key) => {
+      const next = sanitizeGameStoredValue(value[key]);
+      if (next !== undefined) out[key] = next;
+    });
+    return out;
+  }
+  return value;
+}
+
+function buildCharacterStoragePayload(rawCharacter) {
+  const safe = sanitizeGameStoredValue(rawCharacter || {});
+  return safe && typeof safe === 'object' && !Array.isArray(safe) ? safe : {};
+}
+
+
 /**
  * ITC TRPG — Game Core 모듈
  * Firebase 리스너, 게임 진입, 플레이어 관리, 캐릭터 시트
@@ -577,7 +606,10 @@ function autoSave() {
   if (!window._FB?.CONFIGURED || !window._currentUser) return;
   const { db, ref, set } = window._FB;
   const uid = window._currentUser.uid;
-  const charData = { ...St.character, updatedAt: getGameServerTimestamp() };
+  const charData = {
+    ...buildCharacterStoragePayload(St.character),
+    updatedAt: getGameServerTimestamp(),
+  };
 
   if (St.roomCode) {
     set(ref(db, `rooms/${St.roomCode}/characters/${uid}`), charData);

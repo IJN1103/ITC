@@ -73,6 +73,122 @@ async function uploadJournalAvatarToCloudinary(file, journalId) {
 function journalKey() { return 'itc_journals_' + St.myId + '_' + St.roomCode; }
 function handoutKey() { return 'itc_handouts_' + St.myId + '_' + St.roomCode; }
 
+function sanitizeStoredJournalValue(value, path = []) {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (typeof value === 'function') return undefined;
+  if (typeof value === 'string') {
+    if (path[path.length - 1] === 'avatar') {
+      return getSharedJournalAvatarRuntime().sanitizePersistentAvatarSrc(value);
+    }
+    return value;
+  }
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+  if (typeof value === 'boolean') return value;
+  if (Array.isArray(value)) {
+    return value.map((item) => {
+      const next = sanitizeStoredJournalValue(item, path);
+      return next === undefined ? '' : next;
+    });
+  }
+  if (typeof value === 'object') {
+    const out = {};
+    Object.keys(value).forEach((key) => {
+      const next = sanitizeStoredJournalValue(value[key], path.concat(key));
+      if (next !== undefined) out[key] = next;
+    });
+    return out;
+  }
+  return value;
+}
+
+function normalizeJournal(raw, idOverride) {
+  const id = String(idOverride || raw?.id || '').trim();
+  if (!id) return null;
+
+  const createdAt = Number(raw?.createdAt || Date.now()) || Date.now();
+  const updatedAt = Number(raw?.updatedAt || createdAt) || createdAt;
+  const assignedTo = [...new Set((Array.isArray(raw?.assignedTo) ? raw.assignedTo : []).map(v => String(v || '').trim()).filter(Boolean))];
+  const assignedTokenId = String(raw?.assignedTokenId || '').trim();
+  const avatar = getSharedJournalAvatarRuntime().sanitizePersistentAvatarSrc(
+    raw?.avatar || raw?.sheet?.avatar || ''
+  );
+  const nameColor = String(raw?.nameColor || '').trim();
+  const safeSheet = sanitizeStoredJournalValue(raw?.sheet || {}, ['sheet']);
+
+  if (avatar) safeSheet.avatar = avatar;
+  else if (safeSheet && typeof safeSheet === 'object' && 'avatar' in safeSheet) delete safeSheet.avatar;
+
+  return {
+    id,
+    title: String(raw?.title || '무제 저널').trim() || '무제 저널',
+    body: typeof raw?.body === 'string' ? raw.body : '',
+    ownerId: String(raw?.ownerId || St.myId || '').trim(),
+    createdAt,
+    updatedAt,
+    assignedTokenId: assignedTokenId || null,
+    assignedTo,
+    avatar,
+    nameColor,
+    sheet: safeSheet && typeof safeSheet === 'object' ? safeSheet : {},
+  };
+}
+
+function buildJournalStoragePayload(journal) {
+  const normalized = normalizeJournal(journal);
+  if (!normalized) return null;
+  const payload = {
+    title: normalized.title,
+    body: normalized.body,
+    ownerId: normalized.ownerId,
+    createdAt: normalized.createdAt,
+    updatedAt: normalized.updatedAt,
+    assignedTokenId: normalized.assignedTokenId,
+    assignedTo: normalized.assignedTo,
+    nameColor: normalized.nameColor,
+    sheet: normalized.sheet || {},
+  };
+  if (normalized.avatar) {
+    payload.avatar = normalized.avatar;
+    if (payload.sheet && typeof payload.sheet === 'object') payload.sheet.avatar = normalized.avatar;
+  }
+  return payload;
+}
+
+function sanitizeJournalMetaPatch(metaPatch = {}, currentJournal = null) {
+  const current = currentJournal && typeof currentJournal === 'object' ? currentJournal : null;
+  const assignedTo = metaPatch.assignedTo !== undefined
+    ? [...new Set((Array.isArray(metaPatch.assignedTo) ? metaPatch.assignedTo : []).map(v => String(v || '').trim()).filter(Boolean))]
+    : (current?.assignedTo || []);
+  const assignedTokenId = metaPatch.assignedTokenId !== undefined
+    ? (String(metaPatch.assignedTokenId || '').trim() || null)
+    : (current?.assignedTokenId || null);
+  const avatar = metaPatch.avatar !== undefined
+    ? getSharedJournalAvatarRuntime().sanitizePersistentAvatarSrc(metaPatch.avatar)
+    : getSharedJournalAvatarRuntime().sanitizePersistentAvatarSrc(current?.avatar || current?.sheet?.avatar || '');
+  const title = metaPatch.title !== undefined
+    ? (String(metaPatch.title || '').trim() || '무제 저널')
+    : (String(current?.title || '무제 저널').trim() || '무제 저널');
+  const ownerId = metaPatch.ownerId !== undefined
+    ? String(metaPatch.ownerId || St.myId || '').trim()
+    : String(current?.ownerId || St.myId || '').trim();
+  const createdAt = Number(metaPatch.createdAt || current?.createdAt || Date.now()) || Date.now();
+  const nameColor = metaPatch.nameColor !== undefined
+    ? String(metaPatch.nameColor || '').trim()
+    : String(current?.nameColor || '').trim();
+
+  const safe = {
+    title,
+    ownerId,
+    createdAt,
+    assignedTokenId,
+    assignedTo,
+    nameColor,
+  };
+  if (avatar) safe.avatar = avatar;
+  return safe;
+}
+
 let _currentHandoutId = null;
 let _handoutSyncOff = null;
 let _handoutSyncRoom = '';
@@ -663,45 +779,46 @@ function fetchJournalsFromFB() {
   get(ref(db, `rooms/${St.roomCode}/journals`)).then(snap => {
     const data = snap.val() || {};
     _allJournals = [];
-    Object.entries(data).forEach(([id, j]) => { j.id = id; _allJournals.push(j); });
+    Object.entries(data).forEach(([id, j]) => {
+      const normalized = normalizeJournal(j, id);
+      if (normalized) _allJournals.push(normalized);
+    });
     renderJournalList();
     saRefreshToolbar();
   }).catch(() => {});
 }
 
 function saveJournals(list) {
+  const normalizedList = (Array.isArray(list) ? list : []).map(j => normalizeJournal(j)).filter(Boolean);
   if (!window._FB?.CONFIGURED) {
-    localStorage.setItem(journalKey(), JSON.stringify(list));
-    _allJournals = list;
+    localStorage.setItem(journalKey(), JSON.stringify(normalizedList));
+    _allJournals = normalizedList;
     return;
   }
   const { db, ref, set } = window._FB;
-  list.forEach(j => {
-    if (!j.ownerId) j.ownerId = St.myId;
-    set(ref(db, `rooms/${St.roomCode}/journals/${j.id}`), j);
+  normalizedList.forEach(j => {
+    const payload = buildJournalStoragePayload(j);
+    if (!payload) return;
+    set(ref(db, `rooms/${St.roomCode}/journals/${j.id}`), payload);
   });
 }
 
 function saveJournalFB(journal) {
-  if (!journal?.id) return;
-  if (!journal.ownerId) journal.ownerId = St.myId;
-
-  const payload = {};
-  Object.keys(journal).forEach((key) => {
-    const value = journal[key];
-    if (value !== undefined) payload[key] = value;
-  });
+  const normalized = normalizeJournal(journal);
+  if (!normalized) return;
+  const payload = buildJournalStoragePayload(normalized);
+  if (!payload) return;
 
   if (window._FB?.CONFIGURED) {
     const { db, ref, update } = window._FB;
     const remotePayload = { ...payload };
     if (!remotePayload.createdAt) remotePayload.createdAt = getJournalServerTimestamp();
     remotePayload.updatedAt = getJournalServerTimestamp();
-    update(ref(db, `rooms/${St.roomCode}/journals/${journal.id}`), remotePayload);
+    update(ref(db, `rooms/${St.roomCode}/journals/${normalized.id}`), remotePayload);
   } else {
-    const idx = _allJournals.findIndex(j => j.id === journal.id);
-    if (idx >= 0) _allJournals[idx] = { ..._allJournals[idx], ...payload };
-    else _allJournals.push(payload);
+    const idx = _allJournals.findIndex(j => j.id === normalized.id);
+    if (idx >= 0) _allJournals[idx] = normalized;
+    else _allJournals.push(normalized);
     localStorage.setItem(journalKey(), JSON.stringify(_allJournals));
   }
 }
@@ -709,38 +826,33 @@ function saveJournalFB(journal) {
 function saveJournalSheetFB(journalId, sheetData, metaPatch = {}) {
   if (!journalId) return;
 
-  const safeMetaPatch = {};
-  Object.keys(metaPatch || {}).forEach((key) => {
-    const value = metaPatch[key];
-    if (value !== undefined) safeMetaPatch[key] = value;
-  });
+  const currentJournal = _allJournals.find(j => j.id === journalId) || null;
+  const safeMetaPatch = sanitizeJournalMetaPatch(metaPatch, currentJournal);
+  const safeSheetData = sanitizeStoredJournalValue(sheetData || {}, ['sheet']) || {};
+  const safeAvatar = getSharedJournalAvatarRuntime().sanitizePersistentAvatarSrc(
+    safeMetaPatch.avatar || safeSheetData.avatar || currentJournal?.avatar || currentJournal?.sheet?.avatar || ''
+  );
+  if (safeAvatar) safeSheetData.avatar = safeAvatar;
+  else if ('avatar' in safeSheetData) delete safeSheetData.avatar;
 
   if (window._FB?.CONFIGURED) {
     const { db, ref, update, set } = window._FB;
-    if (Object.keys(safeMetaPatch).length) {
-      const remoteMetaPatch = { ...safeMetaPatch, updatedAt: getJournalServerTimestamp() };
-      if (!remoteMetaPatch.createdAt && !_allJournals.find(j => j.id === journalId)?.createdAt) {
-        remoteMetaPatch.createdAt = getJournalServerTimestamp();
-      }
-      update(ref(db, `rooms/${St.roomCode}/journals/${journalId}`), remoteMetaPatch);
+    const remoteMetaPatch = { ...safeMetaPatch, updatedAt: getJournalServerTimestamp() };
+    if (!remoteMetaPatch.createdAt && !currentJournal?.createdAt) {
+      remoteMetaPatch.createdAt = getJournalServerTimestamp();
     }
-    set(ref(db, `rooms/${St.roomCode}/journals/${journalId}/sheet`), sheetData || {});
+    update(ref(db, `rooms/${St.roomCode}/journals/${journalId}`), remoteMetaPatch);
+    set(ref(db, `rooms/${St.roomCode}/journals/${journalId}/sheet`), safeSheetData);
   } else {
+    const nextJournal = normalizeJournal({
+      ...(currentJournal || {}),
+      id: journalId,
+      ...safeMetaPatch,
+      sheet: safeSheetData,
+    }, journalId);
     const idx = _allJournals.findIndex(j => j.id === journalId);
-    if (idx >= 0) {
-      _allJournals[idx] = {
-        ..._allJournals[idx],
-        ...safeMetaPatch,
-        sheet: sheetData || {},
-      };
-    } else {
-      _allJournals.push({
-        id: journalId,
-        ownerId: St.myId,
-        ...safeMetaPatch,
-        sheet: sheetData || {},
-      });
-    }
+    if (idx >= 0) _allJournals[idx] = nextJournal;
+    else _allJournals.push(nextJournal);
     localStorage.setItem(journalKey(), JSON.stringify(_allJournals));
   }
 }
@@ -763,8 +875,10 @@ function migrateLocalJournals() {
     if (local.length === 0) return;
     const { db, ref, set } = window._FB;
     local.forEach(j => {
-      if (!j.ownerId) j.ownerId = St.myId;
-      set(ref(db, `rooms/${St.roomCode}/journals/${j.id}`), j);
+      const normalized = normalizeJournal(j);
+      const payload = buildJournalStoragePayload(normalized);
+      if (!normalized || !payload) return;
+      set(ref(db, `rooms/${St.roomCode}/journals/${normalized.id}`), payload);
     });
     localStorage.removeItem(localKey);
   } catch(e) {}
@@ -923,10 +1037,12 @@ function saveJournalFromDrawer() {
     existing.body = body;
     existing.updatedAt = Date.now();
     saveJournalFB({
+      ...existing,
       id: _currentJournalId,
       ownerId: existing.ownerId || St.myId,
       title,
       body,
+      createdAt: existing.createdAt || Date.now(),
       updatedAt: existing.updatedAt,
     });
   } else {
