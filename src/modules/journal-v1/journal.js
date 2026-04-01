@@ -884,43 +884,125 @@ function migrateLocalJournals() {
   } catch(e) {}
 }
 
+function setJournalListEmptyState(messageHtml) {
+  const empty = document.getElementById('journal-empty');
+  if (!empty) return;
+  if (messageHtml) {
+    empty.style.display = 'block';
+    empty.innerHTML = messageHtml;
+  } else {
+    empty.style.display = 'none';
+  }
+}
+
+function buildJournalListItem(j) {
+  const div = document.createElement('div');
+  div.className = 'journal-item';
+  div.dataset.journalId = j.id;
+  div.onclick = () => openSheet(j.id);
+  const d = new Date(j.updatedAt || j.createdAt);
+  const ds = `${d.getMonth()+1}/${d.getDate()} ${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
+  const pre = (j.body || '').replace(/\n/g,' ').slice(0,40) || '내용 없음';
+  const initials = (j.title || '저').trim()[0]?.toUpperCase() || '?';
+  const imgSrc = saGetAvatar(j.id) || '';
+  const avatarHtml = imgSrc
+    ? `<div class="journal-avatar"><img src="${imgSrc}" alt="avatar"></div>`
+    : `<div class="journal-avatar">${esc(initials)}</div>`;
+  const players = St.players || {};
+  const ownerName = j.ownerId && players[j.ownerId] ? players[j.ownerId].name : '';
+  const ownerTag = ownerName && j.ownerId !== St.myId ? `<span style="font-size:9px;color:var(--muted);margin-left:4px">(${esc(ownerName)})</span>` : '';
+  const assignedNames = (j.assignedTo || []).map(uid => players[uid]?.name).filter(Boolean);
+  const assignTag = assignedNames.length > 0 ? `<span style="font-size:9px;color:var(--green);margin-left:4px">(부여: ${esc(assignedNames.join(', '))})</span>` : '';
+  const canDelete = St.isGM || j.ownerId === St.myId;
+  const delHtml = canDelete ? `<button class="journal-item-del" data-jid="${j.id}" onclick="event.stopPropagation();deleteJournalById(this.dataset.jid)" title="삭제">🗑</button>` : '';
+  div.innerHTML = `${avatarHtml}<div class="journal-item-body">
+    <div class="journal-item-title">${esc(j.title||'무제 저널')}${ownerTag}${assignTag}</div>
+    <div class="journal-item-meta"><span style="color:var(--dim);font-size:11px">${esc(pre)}${(j.body||'').length>40?'…':''}</span><span>${ds}</span></div>
+  </div>${delHtml}`;
+  return div;
+}
+
+function syncJournalListItem(journalId) {
+  const container = document.getElementById('journal-list-container');
+  if (!container) return;
+  if (!St.roomCode) {
+    container.querySelectorAll('.journal-item').forEach(el => el.remove());
+    setJournalListEmptyState('방에 입장하면 저널을 볼 수 있어요.');
+    saRefreshToolbar();
+    return;
+  }
+
+  const visibleList = loadJournals();
+  const orderedList = visibleList.slice().reverse();
+  if (!orderedList.length) {
+    container.querySelectorAll('.journal-item').forEach(el => el.remove());
+    setJournalListEmptyState('저널이 없어요.<br>위 + 버튼으로 새 저널을 만들어보세요.');
+    saRefreshToolbar();
+    return;
+  }
+
+  const idx = orderedList.findIndex(item => item.id === journalId);
+  const existing = container.querySelector(`.journal-item[data-journal-id="${journalId}"]`);
+
+  if (idx === -1) {
+    if (existing) existing.remove();
+    setJournalListEmptyState('');
+    saRefreshToolbar();
+    return;
+  }
+
+  const nextItem = buildJournalListItem(orderedList[idx]);
+  if (existing) existing.replaceWith(nextItem);
+
+  const children = Array.from(container.querySelectorAll('.journal-item'));
+  const targetIndex = existing ? idx : idx;
+  const anchor = children[targetIndex] || null;
+  if (!existing) {
+    if (anchor) container.insertBefore(nextItem, anchor);
+    else container.appendChild(nextItem);
+  } else {
+    const refreshedChildren = Array.from(container.querySelectorAll('.journal-item'));
+    const currentIndex = refreshedChildren.indexOf(nextItem);
+    if (currentIndex !== idx) {
+      const desiredAnchor = refreshedChildren[idx] || null;
+      if (desiredAnchor) container.insertBefore(nextItem, desiredAnchor);
+      else container.appendChild(nextItem);
+    }
+  }
+
+  setJournalListEmptyState('');
+  saRefreshToolbar();
+}
+
+function removeJournalListItem(journalId) {
+  const container = document.getElementById('journal-list-container');
+  if (!container) return;
+  const existing = container.querySelector(`.journal-item[data-journal-id="${journalId}"]`);
+  if (existing) existing.remove();
+
+  if (!St.roomCode) setJournalListEmptyState('방에 입장하면 저널을 볼 수 있어요.');
+  else if (!loadJournals().length) setJournalListEmptyState('저널이 없어요.<br>위 + 버튼으로 새 저널을 만들어보세요.');
+  else setJournalListEmptyState('');
+  saRefreshToolbar();
+}
+
 function renderJournalList() {
   const container = document.getElementById('journal-list-container');
-  const empty     = document.getElementById('journal-empty');
   if (!container) return;
   container.querySelectorAll('.journal-item').forEach(el => el.remove());
   if (!St.roomCode) {
-    if (empty) { empty.style.display = 'block'; empty.textContent = '방에 입장하면 저널을 볼 수 있어요.'; }
+    setJournalListEmptyState('방에 입장하면 저널을 볼 수 있어요.');
     return;
   }
   const list = loadJournals();
-  if (!list.length) { if (empty) { empty.style.display = 'block'; empty.innerHTML = '저널이 없어요.<br>위 + 버튼으로 새 저널을 만들어보세요.'; } return; }
-  if (empty) empty.style.display = 'none';
-  list.slice().reverse().forEach(j => {
-    const div  = document.createElement('div');
-    div.className = 'journal-item';
-    div.onclick   = () => openSheet(j.id);
-    const d   = new Date(j.updatedAt || j.createdAt);
-    const ds  = `${d.getMonth()+1}/${d.getDate()} ${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
-    const pre = (j.body || '').replace(/\n/g,' ').slice(0,40) || '내용 없음';
-    const initials = (j.title || '저').trim()[0]?.toUpperCase() || '?';
-    const imgSrc    = saGetAvatar(j.id) || '';
-    const avatarHtml = imgSrc
-      ? `<div class="journal-avatar"><img src="${imgSrc}" alt="avatar"></div>`
-      : `<div class="journal-avatar">${esc(initials)}</div>`;
-    const players = St.players || {};
-    const ownerName = j.ownerId && players[j.ownerId] ? players[j.ownerId].name : '';
-    const ownerTag = ownerName && j.ownerId !== St.myId ? `<span style="font-size:9px;color:var(--muted);margin-left:4px">(${esc(ownerName)})</span>` : '';
-    const assignedNames = (j.assignedTo || []).map(uid => players[uid]?.name).filter(Boolean);
-    const assignTag = assignedNames.length > 0 ? `<span style="font-size:9px;color:var(--green);margin-left:4px">(부여: ${esc(assignedNames.join(', '))})</span>` : '';
-    const canDelete = St.isGM || j.ownerId === St.myId;
-    const delHtml = canDelete ? `<button class="journal-item-del" data-jid="${j.id}" onclick="event.stopPropagation();deleteJournalById(this.dataset.jid)" title="삭제">🗑</button>` : '';
-    div.innerHTML = `${avatarHtml}<div class="journal-item-body">
-      <div class="journal-item-title">${esc(j.title||'무제 저널')}${ownerTag}${assignTag}</div>
-      <div class="journal-item-meta"><span style="color:var(--dim);font-size:11px">${esc(pre)}${(j.body||'').length>40?'…':''}</span><span>${ds}</span></div>
-    </div>${delHtml}`;
-    container.appendChild(div);
-  });
+  if (!list.length) {
+    setJournalListEmptyState('저널이 없어요.<br>위 + 버튼으로 새 저널을 만들어보세요.');
+    return;
+  }
+  setJournalListEmptyState('');
+  const frag = document.createDocumentFragment();
+  list.slice().reverse().forEach(j => frag.appendChild(buildJournalListItem(j)));
+  container.appendChild(frag);
   saRefreshToolbar();
 }
 
