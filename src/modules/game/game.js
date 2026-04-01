@@ -9,6 +9,12 @@ let _firebaseUnsubs = [];
 let _playerDigest = '';
 let _roomAvatarSyncBound = false;
 let _lastSyncedRoomAvatar = null;
+let _typingState = {};
+
+function refreshTypingIndicators() {
+  renderTypingIndicator('typing-chat', _typingState, 'chat');
+  renderTypingIndicator('typing-casual', _typingState, 'casual');
+}
 
 function syncMyAvatarToRoom(avatarOverride = undefined, force = false) {
   if (!window._FB?.CONFIGURED || !St.roomCode || !St.myId) return Promise.resolve();
@@ -79,6 +85,8 @@ function refreshTopbarProfileSafe() {
 function cleanupFirebaseListeners() {
   _firebaseUnsubs.forEach(unsub => { try { if (typeof unsub === 'function') unsub(); } catch (e) {} });
   _firebaseUnsubs = [];
+  _typingState = {};
+  refreshTypingIndicators();
 }
 
 function trackFirebaseListener(unsub) {
@@ -271,10 +279,18 @@ function setupFirebaseListeners() {
   window._FB.set(presRef, true);
   window._FB.onDisconnect(presRef).set(false);
 
-  trackFirebaseListener(onValue(ref(db, `rooms/${code}/typing`), snap => {
-    const typing = snap.val() || {};
-    renderTypingIndicator('typing-chat', typing, 'chat');
-    renderTypingIndicator('typing-casual', typing, 'casual');
+  _typingState = {};
+  trackFirebaseListener(onChildAdded(ref(db, `rooms/${code}/typing`), snap => {
+    _typingState[snap.key] = snap.val() || {};
+    refreshTypingIndicators();
+  }));
+  trackFirebaseListener(onChildChanged(ref(db, `rooms/${code}/typing`), snap => {
+    _typingState[snap.key] = snap.val() || {};
+    refreshTypingIndicators();
+  }));
+  trackFirebaseListener(onChildRemoved(ref(db, `rooms/${code}/typing`), snap => {
+    delete _typingState[snap.key];
+    refreshTypingIndicators();
   }));
 }
 
