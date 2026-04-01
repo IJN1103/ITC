@@ -285,6 +285,46 @@ async function quickJoin(code) {
 }
 
 let _campaignUnsub = null;
+let _campaignMetaUnsubs = {};
+let _campaignMetaCache = {};
+let _staleCampaignCleanup = new Set();
+
+
+function syncCampaignMetaSubscriptions(rooms) {
+  if (!window._FB?.CONFIGURED) return;
+  const { db, ref, onValue } = window._FB;
+  const nextCodes = new Set(Object.values(rooms || {}).map((room) => String(room?.code || '').trim()).filter(Boolean));
+
+  Object.keys(_campaignMetaUnsubs).forEach((code) => {
+    if (nextCodes.has(code)) return;
+    try { _campaignMetaUnsubs[code]?.(); } catch (err) {}
+    delete _campaignMetaUnsubs[code];
+    delete _campaignMetaCache[code];
+    _staleCampaignCleanup.delete(code);
+  });
+
+  nextCodes.forEach((code) => {
+    if (_campaignMetaUnsubs[code]) return;
+    _campaignMetaUnsubs[code] = onValue(ref(db, `rooms/${code}/meta`), (snap) => {
+      _campaignMetaCache[code] = snap.exists() ? (snap.val() || {}) : null;
+      const currentRooms = window._myCampaignRoomsCache || {};
+      if (currentRooms && Object.keys(currentRooms).length) renderCampaigns(currentRooms);
+    });
+  });
+}
+
+async function cleanupStaleCampaignEntry(code) {
+  if (!window._FB?.CONFIGURED || !code || _staleCampaignCleanup.has(code)) return;
+  _staleCampaignCleanup.add(code);
+  try {
+    const { db, ref, remove } = window._FB;
+    await remove(ref(db, `users/${St.myId}/rooms/${code}`));
+  } catch (err) {
+    console.warn('stale campaign cleanup skipped', code, err);
+  } finally {
+    _staleCampaignCleanup.delete(code);
+  }
+}
 
 function loadMyCampaigns() {
   if (!window._FB?.CONFIGURED || !window._currentUser) return;
@@ -294,6 +334,8 @@ function loadMyCampaigns() {
 
   _campaignUnsub = onValue(ref(db, `users/${St.myId}/rooms`), snap => {
     const rooms = snap.val() || {};
+    window._myCampaignRoomsCache = rooms;
+    syncCampaignMetaSubscriptions(rooms);
     renderCampaigns(rooms);
   });
 }
@@ -303,7 +345,18 @@ function renderCampaigns(rooms) {
   const count = document.getElementById('campaign-count');
   if (!grid) return;
 
-  const entries = Object.entries(rooms).sort((a, b) => (b[1].joinedAt||0) - (a[1].joinedAt||0));
+  const rawEntries = Object.entries(rooms).sort((a, b) => (b[1].joinedAt||0) - (a[1].joinedAt||0));
+  const entries = rawEntries.filter(([, r]) => {
+    const code = String(r?.code || '').trim();
+    if (!code) return false;
+    const meta = _campaignMetaCache[code];
+    if (meta === null) {
+      cleanupStaleCampaignEntry(code);
+      return false;
+    }
+    return true;
+  });
+
   count.textContent = entries.length ? `${entries.length}개` : '';
 
   if (!entries.length) {
@@ -312,37 +365,42 @@ function renderCampaigns(rooms) {
   }
 
   grid.innerHTML = entries.map(([key, r]) => {
-    const imgKey  = 'itc_cover_' + r.code;
+    const code = String(r.code || '').trim();
+    const meta = _campaignMetaCache[code] || {};
+    const imgKey = 'itc_cover_' + code;
     const imgData = localStorage.getItem(imgKey);
-    const isGM    = r.role === 'gm' || r.ownerId === St.myId;
+    const isGM = r.role === 'gm' || r.ownerId === St.myId;
+    const finalTitle = meta.title || r.title || '무제 세션';
+    const finalSystem = meta.system || r.system || '';
+    const finalCover = imgData || meta.cover || r.cover || '';
 
-    const thumbHtml = imgData
-      ? `<img src="${imgData}" alt="커버">`
-      : `<div class="cc-thumb-placeholder"><div class="cc-ph-icon">🎲</div><span>${esc(SYS_LABELS[r.system] || r.system || '')}</span></div>`;
+    const thumbHtml = finalCover
+      ? `<img src="${esc(finalCover)}" alt="커버">`
+      : `<div class="cc-thumb-placeholder"><div class="cc-ph-icon">🎲</div><span>${esc(SYS_LABELS[finalSystem] || finalSystem || '')}</span></div>`;
 
     const overlayHtml = isGM
       ? `<label class="cc-thumb-overlay" title="커버 이미지 변경" onclick="event.stopPropagation()">
            📷 커버 변경
            <input type="file" accept="image/*" style="display:none"
-             onchange="handleCoverUpload(event,'${r.code}','${key}')">
+             onchange="handleCoverUpload(event,'${code}','${key}')">
          </label>`
       : '';
 
     return `
-    <div class="campaign-card" onclick="enterCampaign('${r.code}')">
+    <div class="campaign-card" onclick="enterCampaign('${code}')">
       <div class="cc-thumb">
         ${thumbHtml}
         ${overlayHtml}
       </div>
       <div class="cc-body">
         <div class="cc-role ${isGM ? 'gm' : 'pl'}">${isGM ? 'GM' : '플레이어'}</div>
-        <div class="cc-title">${esc(r.title || '무제 세션')}</div>
-        <div class="cc-sys">${SYS_LABELS[r.system] || r.system || ''}</div>
-        <div class="cc-code"># ${esc(r.code)}</div>
-        <button class="cc-enter" onclick="event.stopPropagation();enterCampaign('${r.code}')">입장 →</button>
+        <div class="cc-title">${esc(finalTitle)}</div>
+        <div class="cc-sys">${esc(SYS_LABELS[finalSystem] || finalSystem || '')}</div>
+        <div class="cc-code"># ${esc(code)}</div>
+        <button class="cc-enter" onclick="event.stopPropagation();enterCampaign('${code}')">입장 →</button>
       </div>
-      ${isGM ? `<button class="cc-edit" onclick="openSessionEdit(event,'${r.code}','${key}','${esc(r.title||'무제 세션')}')" title="세션 설정">✎</button>` : ''}
-      <button class="cc-del" onclick="removeCampaign(event,'${r.code}','${key}',${isGM ? 'true' : 'false'})" title="${isGM ? '세션 완전 삭제' : '목록에서 제거'}">✕</button>
+      ${isGM ? `<button class="cc-edit" onclick="openSessionEdit(event,'${code}','${key}','${esc(finalTitle)}')" title="세션 설정">✎</button>` : ''}
+      <button class="cc-del" onclick="removeCampaign(event,'${code}','${key}',${isGM ? 'true' : 'false'})" title="${isGM ? '세션 완전 삭제' : '목록에서 제거'}">✕</button>
     </div>`;
   }).join('');
 }
@@ -414,7 +472,7 @@ function openSessionEdit(e, code, key, title) {
   if (titleEl) titleEl.value = title;
 
   const imgContainer = document.getElementById('se-thumb-img');
-  const saved = localStorage.getItem('itc_cover_' + code);
+  const saved = localStorage.getItem('itc_cover_' + code) || _campaignMetaCache[code]?.cover || '';
   if (imgContainer) {
     if (saved) {
       imgContainer.innerHTML = `<img src="${saved}" style="width:100%;height:100%;object-fit:cover;display:block">`;
@@ -497,21 +555,14 @@ async function removeCampaign(e, code, key, isGM = false) {
   e.stopPropagation();
   if (!window._FB?.CONFIGURED) return;
 
-  const { db, ref, remove, get, update } = window._FB;
+  const { db, ref, remove } = window._FB;
 
   if (isGM) {
     if (!confirm('이 세션을 완전히 삭제할까요?\n삭제하면 방 자체와 참가자 목록에서 모두 사라져요.')) return;
 
     try {
-      const playersSnap = await get(ref(db, `rooms/${code}/players`));
-      const playerIds = playersSnap.exists() ? Object.keys(playersSnap.val() || {}) : [];
-
-      /* 각 유저의 rooms 목록에서 제거 */
-      for (const uid of playerIds) {
-        try { await remove(ref(db, `users/${uid}/rooms/${code}`)); } catch (e) {}
-      }
-      /* 방 자체 삭제 */
       await remove(ref(db, `rooms/${code}`));
+      try { await remove(ref(db, `users/${St.myId}/rooms/${code}`)); } catch (err) {}
 
       try { localStorage.removeItem('itc_cover_' + code); } catch (err) {}
       try {
@@ -519,6 +570,8 @@ async function removeCampaign(e, code, key, isGM = false) {
         localStorage.setItem('tt_recent', JSON.stringify(recent));
       } catch (err) {}
 
+      delete _campaignMetaCache[code];
+      _staleCampaignCleanup.delete(code);
       showToast('세션이 완전히 삭제됐어요.');
     } catch (err) {
       console.error('campaign delete failed', err);

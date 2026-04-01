@@ -214,20 +214,13 @@ async function endRoom() {
   if (!St.isGM || !window._FB?.CONFIGURED || !St.roomCode) return;
   if (!confirm('방을 종료하면 세션이 완전히 삭제되고 모든 플레이어 목록에서도 사라집니다. 계속하시겠습니까?')) return;
 
-  const { db, ref, get, update } = window._FB;
+  const { db, ref, remove } = window._FB;
 
   try {
     const roomCode = St.roomCode;
-    const playersSnap = await get(ref(db, `rooms/${roomCode}/players`));
-    const playerIds = playersSnap.exists() ? Object.keys(playersSnap.val() || {}) : [];
-    const updates = {};
 
-    playerIds.forEach((uid) => {
-      updates[`users/${uid}/rooms/${roomCode}`] = null;
-    });
-    updates[`rooms/${roomCode}`] = null;
-
-    await update(ref(db), updates);
+    await remove(ref(db, `rooms/${roomCode}`));
+    try { await remove(ref(db, `users/${St.myId}/rooms/${roomCode}`)); } catch (err) {}
 
     try { localStorage.removeItem('itc_cover_' + roomCode); } catch (err) {}
     try {
