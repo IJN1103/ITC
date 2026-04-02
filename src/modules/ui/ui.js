@@ -78,6 +78,8 @@ function refreshPermUI() {
   if (addToken) addToken.style.display = hasPerm('createToken') ? '' : 'none';
   const mapImportTrigger = document.getElementById('map-import-trigger');
   if (mapImportTrigger) mapImportTrigger.style.display = St.isGM ? '' : 'none';
+  const mapLayerTrigger = document.getElementById('map-layer-trigger');
+  if (mapLayerTrigger) mapLayerTrigger.style.display = St.isGM ? '' : 'none';
   document.querySelectorAll('.bgm-add').forEach(el => { el.style.display = hasPerm('manageBgm') ? '' : 'none'; });
   const descBtn = document.getElementById('desc-toggle-btn');
   if (descBtn) descBtn.style.display = hasPerm('sendDesc') ? '' : 'none';

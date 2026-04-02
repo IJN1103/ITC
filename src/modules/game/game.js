@@ -278,9 +278,10 @@ function setupFirebaseListeners() {
         fit: bgm.mapForegroundFit || 'contain',
         sourceName: bgm.mapForegroundSourceName || '',
       } : null,
-      objects: Array.isArray(bgm.mapObjects) ? bgm.mapObjects : [],
     };
+    St.mapLayerState = bgm.mapLayerState || null;
     if (typeof applyImportedMapState === 'function') applyImportedMapState(St.mapState);
+    if (typeof refreshMapLayerManager === 'function') refreshMapLayerManager();
   }));
 
   trackFirebaseListener(onValue(ref(db, `rooms/${code}/lastRoll`), snap => {
