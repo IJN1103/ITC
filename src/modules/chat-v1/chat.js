@@ -1829,10 +1829,13 @@ function buildChatMsgElement(msg = {}) {
     if (diceMatch) {
       const formula = diceMatch[1].trim();
       const result = diceMatch[2];
-      const rolls = diceMatch[3].trim();
-      const judgmentMeta = getDiceJudgmentMeta(rolls);
+      const rawRolls = diceMatch[3].trim();
+      const rollParts = rawRolls.split('||').map(part => part.trim()).filter(Boolean);
+      const rolls = rollParts[0] || rawRolls;
+      const judgmentMeta = getDiceJudgmentMeta(rollParts[1] || rawRolls);
       const judgmentHtml = judgmentMeta ? `<div class="dice-card-judgment roll-judgment ${judgmentMeta.className}">${esc(judgmentMeta.label)}</div>` : '';
-      div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name"${nameStyle}>${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-text">${fmtText(text)}</div><div class="dice-card"><div class="dice-card-formula">${esc(formula)}</div><div class="dice-card-result">${esc(result)}</div>${judgmentHtml}<div class="dice-card-rolls">${esc(rolls)}</div></div></div>`;
+      const skillCheckClass = formula.endsWith('판정') ? ' dice-card-skill-check' : '';
+      div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name"${nameStyle}>${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-text">${fmtText(text)}</div><div class="dice-card${skillCheckClass}"><div class="dice-card-formula">${esc(formula)}</div><div class="dice-card-result">${esc(result)}</div>${judgmentHtml}<div class="dice-card-rolls">${esc(rolls)}</div></div></div>`;
     } else {
       div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name"${nameStyle}>${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-text">${fmtText(text)}</div></div>`;
     }
@@ -1846,8 +1849,9 @@ function buildChatMsgElement(msg = {}) {
 function getDiceJudgmentMeta(text = '') {
   const normalized = String(text || '').trim();
   if (!normalized) return null;
+  if (normalized.includes('크리티컬')) return { label: '크리티컬', className: 'j-exs' };
+  if (normalized.includes('펌블')) return { label: '펌블', className: 'j-fumb' };
   if (normalized.includes('극단적 성공')) return { label: '극단적 성공', className: 'j-exs' };
-  if (normalized.includes('치명적 실패')) return { label: '치명적 실패', className: 'j-fumb' };
   if (normalized.includes('어려운 성공')) return { label: '어려운 성공', className: 'j-succ' };
   if (normalized.includes('보통 성공')) return { label: '보통 성공', className: 'j-succ' };
   if (normalized.includes('실패')) return { label: '실패', className: 'j-fail' };

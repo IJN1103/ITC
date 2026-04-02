@@ -74,7 +74,13 @@ function rollDice(ci) {
 
 function getSkillCheckOutcome(val, r) {
   const target = Math.max(0, Number(val) || 0);
-  if (r <= 5 || (target > 0 && r <= Math.floor(target / 5))) {
+  if (r === 1) {
+    return { label: '크리티컬', className: 'j-exs', success: true };
+  }
+  if (r === 100) {
+    return { label: '펌블', className: 'j-fumb', success: false };
+  }
+  if (target > 0 && r <= Math.floor(target / 5)) {
     return { label: '극단적 성공', className: 'j-exs', success: true };
   }
   if (target > 0 && r <= Math.floor(target / 2)) {
@@ -82,9 +88,6 @@ function getSkillCheckOutcome(val, r) {
   }
   if (target > 0 && r <= target) {
     return { label: '보통 성공', className: 'j-succ', success: true };
-  }
-  if (r >= 96) {
-    return { label: '치명적 실패', className: 'j-fumb', success: false };
   }
   return { label: '실패', className: 'j-fail', success: false };
 }
@@ -96,7 +99,7 @@ function renderSkillCheckResult(name, val, r, outcome) {
 }
 
 function sendSkillCheckMessage(name, val, r, outcome) {
-  sendMessage(St.myName, `🎲 ${name} 판정 → ${r} (기준 ${val} / ${outcome.label})`, 'dice');
+  sendMessage(St.myName, `🎲 ${name} 판정 → ${r} (목표치 ${val}||${outcome.label})`, 'dice');
 }
 
 function rollSkillCheck(name, val) {
