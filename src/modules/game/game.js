@@ -118,26 +118,14 @@ function setupFirebaseListeners() {
 
   trackFirebaseListener(onValue(ref(db, `rooms/${code}/players`), snap => {
     const players = snap.val() || {};
-    const pendingJoin = window._pendingRoomJoin;
-    const joinGraceActive = !!(
-      pendingJoin &&
-      pendingJoin.code === code &&
-      pendingJoin.uid === St.myId &&
-      Date.now() - Number(pendingJoin.verifiedAt || pendingJoin.startedAt || 0) < 4000
-    );
 
     if (!players[St.myId] && St.roomCode) {
-      if (joinGraceActive) return;
-      window._pendingRoomJoin = null;
       alert('GM에 의해 방에서 강퇴되었습니다.');
       cleanupFirebaseListeners();
       St.roomCode = '';
       document.getElementById('screen-game').style.display = 'none';
       document.getElementById('screen-lobby').style.display = 'flex';
       return;
-    }
-    if (players[St.myId] && pendingJoin && pendingJoin.code === code && pendingJoin.uid === St.myId) {
-      window._pendingRoomJoin = null;
     }
     const nextDigest = digestPlayers(players);
     if (nextDigest === _playerDigest) return;

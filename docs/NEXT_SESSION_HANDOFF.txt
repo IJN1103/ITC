@@ -125,3 +125,9 @@ styles/all.css          — 통합 CSS
 - Cloudinary cloudName: dnr5jzdnp
 - Cloudinary unsignedPreset: itc_unsigned_upload
 - Firebase projectId: project-itc-2d34d
+
+[2026-04-02] joinRoom 임시 방어 코드 정리
+- waitForJoinedPlayerRecord 폴링 제거
+- _pendingRoomJoin grace 처리 제거
+- players 부모 transaction 제거, players/$uid 직접 쓰기 기반으로 단순화
+- 현재 구조는 기존 rules와의 호환성을 우선함

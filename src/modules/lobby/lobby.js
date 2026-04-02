@@ -160,53 +160,33 @@ function genCode() {
 function genId() { return Math.random().toString(36).slice(2, 10); }
 
 
-function delay(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-async function waitForJoinedPlayerRecord(code, uid, attempts = 8, interval = 150) {
-  if (!window._FB?.CONFIGURED) return true;
-  const { db, ref, get } = window._FB;
-  for (let i = 0; i < attempts; i += 1) {
-    try {
-      const snap = await get(ref(db, `rooms/${code}/players/${uid}`));
-      if (snap.exists()) return true;
-    } catch (e) {}
-    if (i < attempts - 1) await delay(interval);
-  }
-  return false;
-}
 
 async function reserveSeatAndJoinRoom(code, role) {
   const fb = window._FB;
   if (!fb?.CONFIGURED) return { ok: true };
-  const { db, ref, runTransaction } = fb;
-  if (typeof runTransaction !== 'function') {
-    await fb.set(ref(db, `rooms/${code}/players/${St.myId}`), getPlayerPayload(role));
-    return { ok: true, alreadyJoined: false };
-  }
-
+  const { db, ref, get, set } = fb;
   const playersRef = ref(db, `rooms/${code}/players`);
-  const tx = await runTransaction(playersRef, (current) => {
-    const players = current && typeof current === 'object' ? { ...current } : {};
-    const alreadyJoined = !!players[St.myId];
-    const playerCount = Object.keys(players).length;
-    if (!alreadyJoined && playerCount >= 5) return;
-    players[St.myId] = {
-      ...(players[St.myId] || {}),
-      ...getPlayerPayload(role),
-      role,
-      uid: St.myId,
-      name: St.myName,
-      online: true,
-    };
-    return players;
-  }, { applyLocally: false });
+  const myPlayerRef = ref(db, `rooms/${code}/players/${St.myId}`);
 
-  if (!tx.committed) {
+  const playersSnap = await get(playersRef);
+  const players = playersSnap.val() || {};
+  const alreadyJoined = !!players[St.myId];
+  const playerCount = Object.keys(players).length;
+
+  if (!alreadyJoined && playerCount >= 5) {
     return { ok: false, reason: 'room-full' };
   }
-  return { ok: true, alreadyJoined: !!(tx.snapshot && tx.snapshot.child && tx.snapshot.child(St.myId).exists && tx.snapshot.child(St.myId).exists()) };
+
+  await set(myPlayerRef, {
+    ...(players[St.myId] || {}),
+    ...getPlayerPayload(role),
+    role,
+    uid: St.myId,
+    name: St.myName,
+    online: true,
+  });
+
+  return { ok: true, alreadyJoined };
 }
 
 function getPlayerPayload(role) {
@@ -304,21 +284,9 @@ async function joinRoom() {
       return;
     }
 
-    const verified = await waitForJoinedPlayerRecord(code, St.myId);
-    if (!verified) {
-      alert('방 참가 확인 중 문제가 발생했습니다. 다시 시도해 주세요.');
-      return;
-    }
-
     St.system = meta.system || 'coc7';
     St.roomCode = code;
     St.isGM = (role === 'gm');
-    window._pendingRoomJoin = {
-      code,
-      uid: St.myId,
-      startedAt: Date.now(),
-      verifiedAt: Date.now(),
-    };
 
     try {
       await set(ref(db, `users/${St.myId}/rooms/${code}`), {
