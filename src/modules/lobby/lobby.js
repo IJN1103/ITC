@@ -159,6 +159,56 @@ function genCode() {
 }
 function genId() { return Math.random().toString(36).slice(2, 10); }
 
+
+function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function waitForJoinedPlayerRecord(code, uid, attempts = 8, interval = 150) {
+  if (!window._FB?.CONFIGURED) return true;
+  const { db, ref, get } = window._FB;
+  for (let i = 0; i < attempts; i += 1) {
+    try {
+      const snap = await get(ref(db, `rooms/${code}/players/${uid}`));
+      if (snap.exists()) return true;
+    } catch (e) {}
+    if (i < attempts - 1) await delay(interval);
+  }
+  return false;
+}
+
+async function reserveSeatAndJoinRoom(code, role) {
+  const fb = window._FB;
+  if (!fb?.CONFIGURED) return { ok: true };
+  const { db, ref, runTransaction } = fb;
+  if (typeof runTransaction !== 'function') {
+    await fb.set(ref(db, `rooms/${code}/players/${St.myId}`), getPlayerPayload(role));
+    return { ok: true, alreadyJoined: false };
+  }
+
+  const playersRef = ref(db, `rooms/${code}/players`);
+  const tx = await runTransaction(playersRef, (current) => {
+    const players = current && typeof current === 'object' ? { ...current } : {};
+    const alreadyJoined = !!players[St.myId];
+    const playerCount = Object.keys(players).length;
+    if (!alreadyJoined && playerCount >= 5) return;
+    players[St.myId] = {
+      ...(players[St.myId] || {}),
+      ...getPlayerPayload(role),
+      role,
+      uid: St.myId,
+      name: St.myName,
+      online: true,
+    };
+    return players;
+  }, { applyLocally: false });
+
+  if (!tx.committed) {
+    return { ok: false, reason: 'room-full' };
+  }
+  return { ok: true, alreadyJoined: !!(tx.snapshot && tx.snapshot.child && tx.snapshot.child(St.myId).exists && tx.snapshot.child(St.myId).exists()) };
+}
+
 function getPlayerPayload(role) {
   const avatar = (() => {
     try {
@@ -227,82 +277,59 @@ async function joinRoom() {
   if (code.length !== 6) { alert('방 코드는 6자리입니다.'); return; }
 
   if (window._FB?.CONFIGURED) {
-    const { db, ref, get, set, runTransaction } = window._FB;
+    const { db, ref, get, set } = window._FB;
     let snap;
     try {
       snap = await get(ref(db, `rooms/${code}/meta`));
-    } catch (e) {
+    } catch(e) {
       alert('방을 찾는 중 오류가 발생했습니다. 로그인 상태를 확인해 주세요.');
       return;
     }
     if (!snap.exists()) { alert('방을 찾을 수 없습니다. 코드를 다시 확인해 주세요.'); return; }
 
-    St.system = snap.val().system || 'coc7';
-    St.roomCode = code;
-    const meta = snap.val();
+    const meta = snap.val() || {};
     const role = meta.ownerId === St.myId ? 'gm' : 'player';
-    St.isGM = (role === 'gm');
 
-    const roomTitle = meta.title || '무제 세션';
-    const roomSystem = meta.system || 'coc7';
-    const playersRef = ref(db, `rooms/${code}/players`);
-    const nextPlayer = getPlayerPayload(role);
-
-    let committed = false;
+    let joinResult;
     try {
-      if (typeof runTransaction === 'function') {
-        const tx = await runTransaction(playersRef, (players) => {
-          const current = players && typeof players === 'object' ? { ...players } : {};
-          const alreadyJoined = !!current[St.myId];
-          const playerCount = Object.keys(current).length;
-          if (playerCount >= 5 && !alreadyJoined) return;
-          current[St.myId] = {
-            ...(current[St.myId] || {}),
-            ...nextPlayer,
-            uid: St.myId,
-            role,
-            joinedAt: (current[St.myId] && current[St.myId].joinedAt) || nextPlayer.joinedAt,
-            updatedAt: Date.now(),
-            online: true,
-          };
-          return current;
-        }, { applyLocally: false });
-        committed = !!tx?.committed;
-      } else {
-        const playersSnap = await get(playersRef);
-        const playersData = playersSnap.exists() ? playersSnap.val() : {};
-        const playerCount = Object.keys(playersData).length;
-        const alreadyJoined = !!playersData[St.myId];
-        if (playerCount >= 5 && !alreadyJoined) {
-          committed = false;
-        } else {
-          await set(ref(db, `rooms/${code}/players/${St.myId}`), nextPlayer);
-          committed = true;
-        }
-      }
+      joinResult = await reserveSeatAndJoinRoom(code, role);
     } catch (e) {
-      console.error('joinRoom player transaction failed', e);
-      alert('방 참가 처리 중 오류가 발생했습니다. 다시 시도해 주세요.');
+      console.error('[lobby] joinRoom reserve failed', e);
+      alert('방 참가 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.');
       return;
     }
 
-    if (!committed) {
+    if (!joinResult?.ok) {
       alert('이 방은 이미 최대 인원(5명)에 도달했습니다.');
       return;
     }
 
+    const verified = await waitForJoinedPlayerRecord(code, St.myId);
+    if (!verified) {
+      alert('방 참가 확인 중 문제가 발생했습니다. 다시 시도해 주세요.');
+      return;
+    }
+
+    St.system = meta.system || 'coc7';
+    St.roomCode = code;
+    St.isGM = (role === 'gm');
     window._pendingRoomJoin = {
       code,
       uid: St.myId,
       startedAt: Date.now(),
-      graceUntil: Date.now() + 8000,
+      verifiedAt: Date.now(),
     };
 
-    await set(ref(db, `users/${St.myId}/rooms/${code}`), {
-      code, title: roomTitle,
-      system: roomSystem,
-      role, ownerId: meta.ownerId || '', joinedAt: Date.now(),
-    });
+    try {
+      await set(ref(db, `users/${St.myId}/rooms/${code}`), {
+        code, title: meta.title || '무제 세션',
+        system: meta.system || 'coc7',
+        role, ownerId: meta.ownerId || '', joinedAt: Date.now(),
+      });
+    } catch (e) {
+      console.warn('[lobby] users room write failed', e);
+    }
+
     setupFirebaseListeners();
   } else {
     St.roomCode = code; St.system = selectedSystem;
