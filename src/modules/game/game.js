@@ -1,38 +1,3 @@
-function getGameServerTimestamp() {
-  return (window._FB?.CONFIGURED && typeof window._FB.serverTimestamp === 'function')
-    ? window._FB.serverTimestamp()
-    : Date.now();
-}
-
-function sanitizeGameStoredValue(value) {
-  if (value === undefined) return undefined;
-  if (value === null) return null;
-  if (typeof value === 'function') return undefined;
-  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
-  if (typeof value === 'string' || typeof value === 'boolean') return value;
-  if (Array.isArray(value)) {
-    return value.map((item) => {
-      const next = sanitizeGameStoredValue(item);
-      return next === undefined ? '' : next;
-    });
-  }
-  if (typeof value === 'object') {
-    const out = {};
-    Object.keys(value).forEach((key) => {
-      const next = sanitizeGameStoredValue(value[key]);
-      if (next !== undefined) out[key] = next;
-    });
-    return out;
-  }
-  return value;
-}
-
-function buildCharacterStoragePayload(rawCharacter) {
-  const safe = sanitizeGameStoredValue(rawCharacter || {});
-  return safe && typeof safe === 'object' && !Array.isArray(safe) ? safe : {};
-}
-
-
 /**
  * ITC TRPG — Game Core 모듈
  * Firebase 리스너, 게임 진입, 플레이어 관리, 캐릭터 시트
@@ -74,7 +39,7 @@ function syncMyAvatarToRoom(avatarOverride = undefined, force = false) {
       value: nextAvatar,
       url: nextAvatar,
       storagePath: avatarStoragePath,
-      updatedAt: getGameServerTimestamp(),
+      updatedAt: Date.now(),
     }).catch(() => {}),
     update(ref(db, `rooms/${St.roomCode}/players/${St.myId}`), {
       avatar: nextAvatar,
@@ -141,7 +106,7 @@ function setupFirebaseListeners() {
   bindRoomStabilityEvents();
   _lastSyncedRoomAvatar = null;
 
-  const { db, ref, onValue, onChildAdded, onChildChanged, onChildRemoved, query, limitToLast, orderByKey, endAt, get } = window._FB;
+  const { db, ref, onValue, onChildAdded, onChildChanged, onChildRemoved, query, limitToLast } = window._FB;
   const code = St.roomCode;
 
   _processedChatKeys.clear();
@@ -153,9 +118,21 @@ function setupFirebaseListeners() {
 
   trackFirebaseListener(onValue(ref(db, `rooms/${code}/players`), snap => {
     const players = snap.val() || {};
-    if (!players[St.myId] && St.roomCode) {
+    const pendingJoin = window._pendingRoomJoin;
+    const isPendingCurrentRoom = !!(pendingJoin && pendingJoin.code === code && pendingJoin.uid === St.myId);
+    const hasSelf = !!players[St.myId];
+
+    if (hasSelf && isPendingCurrentRoom) {
+      window._pendingRoomJoin = null;
+    }
+
+    if (!hasSelf && St.roomCode) {
+      if (isPendingCurrentRoom && Date.now() <= (pendingJoin.graceUntil || 0)) {
+        return;
+      }
       alert('GM에 의해 방에서 강퇴되었습니다.');
       cleanupFirebaseListeners();
+      window._pendingRoomJoin = null;
       St.roomCode = '';
       document.getElementById('screen-game').style.display = 'none';
       document.getElementById('screen-lobby').style.display = 'flex';
@@ -171,9 +148,6 @@ function setupFirebaseListeners() {
   const chatRef = (query && limitToLast) ? query(chatBaseRef, limitToLast(100)) : chatBaseRef;
   const casualBaseRef = ref(db, `rooms/${code}/casual`);
   const casualRef = (query && limitToLast) ? query(casualBaseRef, limitToLast(100)) : casualBaseRef;
-  const historyPageSize = 80;
-  let oldestChatKey = '';
-  let oldestCasualKey = '';
 
   const shouldShowChatMessage = (m) => {
     if (!m) return false;
@@ -185,7 +159,6 @@ function setupFirebaseListeners() {
     if (!shouldShowChatMessage(m) || _processedChatKeys.has(key)) return;
     appendChatMsg({ name: m.name, text: m.text, type: m.type || 'normal', uid: m.uid, timestamp: m.time, speakAsAvatar: m.speakAsAvatar, speakAsJournalId: m.speakAsJournalId, whisperTo: m.whisperTo, whisperToName: m.whisperToName, nameColor: m.nameColor, msgKey: key, channel: 'chat', standingImg: m.standingImg, tokenId: m.tokenId, standingLabel: m.standingLabel, imageWide: !!m.imageWide, imageMeta: m.imageMeta, hideImageMeta: !!m.hideImageMeta });
     _processedChatKeys.add(key);
-    if (!oldestChatKey || key < oldestChatKey) oldestChatKey = key;
   };
 
   const changeChatRecord = (key, m) => {
@@ -222,7 +195,6 @@ function setupFirebaseListeners() {
     if (!m || _processedCasualKeys.has(key)) return;
     appendCasualMsg(m.name, m.text, m.uid, m.time, key);
     _processedCasualKeys.add(key);
-    if (!oldestCasualKey || key < oldestCasualKey) oldestCasualKey = key;
   };
 
   const changeCasualRecord = (key, m) => {
@@ -235,78 +207,6 @@ function setupFirebaseListeners() {
     removeCasualMsg(key);
     _processedCasualKeys.delete(key);
   };
-
-  const loadOlderChatHistory = async () => {
-    if (!query || !limitToLast || !orderByKey || !endAt || !get || !oldestChatKey) {
-      return { count: 0, exhausted: true };
-    }
-    const snap = await get(query(chatBaseRef, orderByKey(), endAt(oldestChatKey), limitToLast(historyPageSize + 1)));
-    const rows = Object.entries(snap.val() || {}).sort((a, b) => a[0].localeCompare(b[0]));
-    const olderRows = rows.filter(([k]) => k < oldestChatKey);
-    if (!olderRows.length) return { count: 0, exhausted: true };
-
-    let loaded = 0;
-    olderRows.forEach(([key, m]) => {
-      if (!shouldShowChatMessage(m) || _processedChatKeys.has(key)) return;
-      if (typeof storeMessageRecord === 'function') {
-        storeMessageRecord('chat', {
-          name: m.name,
-          text: m.text,
-          type: m.type || 'normal',
-          uid: m.uid,
-          timestamp: m.time,
-          speakAsAvatar: m.speakAsAvatar,
-          speakAsJournalId: m.speakAsJournalId,
-          whisperTo: m.whisperTo,
-          whisperToName: m.whisperToName,
-          nameColor: m.nameColor,
-          standingImg: m.standingImg,
-          tokenId: m.tokenId,
-          standingLabel: m.standingLabel,
-          imageWide: !!m.imageWide,
-          imageMeta: m.imageMeta,
-          hideImageMeta: !!m.hideImageMeta,
-        }, key, { position: 'prepend' });
-      }
-      _processedChatKeys.add(key);
-      loaded += 1;
-    });
-    oldestChatKey = olderRows[0]?.[0] || oldestChatKey;
-    return { count: loaded, exhausted: olderRows.length < historyPageSize };
-  };
-
-  const loadOlderCasualHistory = async () => {
-    if (!query || !limitToLast || !orderByKey || !endAt || !get || !oldestCasualKey) {
-      return { count: 0, exhausted: true };
-    }
-    const snap = await get(query(casualBaseRef, orderByKey(), endAt(oldestCasualKey), limitToLast(historyPageSize + 1)));
-    const rows = Object.entries(snap.val() || {}).sort((a, b) => a[0].localeCompare(b[0]));
-    const olderRows = rows.filter(([k]) => k < oldestCasualKey);
-    if (!olderRows.length) return { count: 0, exhausted: true };
-
-    let loaded = 0;
-    olderRows.forEach(([key, m]) => {
-      if (!m || _processedCasualKeys.has(key)) return;
-      if (typeof storeMessageRecord === 'function') {
-        storeMessageRecord('casual', {
-          name: m.name,
-          text: m.text,
-          uid: m.uid,
-          timestamp: m.time,
-          nameColor: m.nameColor,
-        }, key, { position: 'prepend' });
-      }
-      _processedCasualKeys.add(key);
-      loaded += 1;
-    });
-    oldestCasualKey = olderRows[0]?.[0] || oldestCasualKey;
-    return { count: loaded, exhausted: olderRows.length < historyPageSize };
-  };
-
-  if (typeof configureHistoryPaging === 'function') {
-    configureHistoryPaging('chat', { loadOlder: loadOlderChatHistory, exhausted: false });
-    configureHistoryPaging('casual', { loadOlder: loadOlderCasualHistory, exhausted: false });
-  }
 
   if (onChildAdded && onChildChanged && onChildRemoved) {
     trackFirebaseListener(onChildAdded(casualRef, snap => addCasualRecord(snap.key, snap.val() || {})));
@@ -353,8 +253,8 @@ function setupFirebaseListeners() {
     j.id = id;
     const idx = _allJournals.findIndex(x => x.id === id);
     if (idx >= 0) _allJournals[idx] = j; else _allJournals.push(j);
-    if (typeof syncJournalListItem === 'function') syncJournalListItem(id);
-    else renderJournalList();
+    renderJournalList();
+    saRefreshToolbar();
   }));
   trackFirebaseListener(onChildChanged(journalsRef, snap => {
     const id = snap.key;
@@ -362,14 +262,13 @@ function setupFirebaseListeners() {
     j.id = id;
     const idx = _allJournals.findIndex(x => x.id === id);
     if (idx >= 0) _allJournals[idx] = j; else _allJournals.push(j);
-    if (typeof syncJournalListItem === 'function') syncJournalListItem(id);
-    else renderJournalList();
+    renderJournalList();
+    saRefreshToolbar();
   }));
   trackFirebaseListener(onChildRemoved(journalsRef, snap => {
-    const id = snap.key;
-    _allJournals = _allJournals.filter(x => x.id !== id);
-    if (typeof removeJournalListItem === 'function') removeJournalListItem(id);
-    else renderJournalList();
+    _allJournals = _allJournals.filter(x => x.id !== snap.key);
+    renderJournalList();
+    saRefreshToolbar();
   }));
 
   trackFirebaseListener(onValue(ref(db, `rooms/${code}/bgm`), snap => {
@@ -684,10 +583,7 @@ function autoSave() {
   if (!window._FB?.CONFIGURED || !window._currentUser) return;
   const { db, ref, set } = window._FB;
   const uid = window._currentUser.uid;
-  const charData = {
-    ...buildCharacterStoragePayload(St.character),
-    updatedAt: getGameServerTimestamp(),
-  };
+  const charData = { ...St.character, updatedAt: Date.now() };
 
   if (St.roomCode) {
     set(ref(db, `rooms/${St.roomCode}/characters/${uid}`), charData);
@@ -700,10 +596,7 @@ function autoSave() {
 function saveCharacter() {
   autoSave();
   const btn = document.querySelector('.panel-header button');
-  if (btn) {
-    btn.textContent = '✓ 저장됨';
-    setTimeout(() => { if (btn && btn.isConnected) btn.textContent = '저장'; }, 1500);
-  }
+  if (btn) { btn.textContent = '✓ 저장됨'; setTimeout(() => btn.textContent = '저장', 1500); }
 }
 
 async function leaveRoom() {

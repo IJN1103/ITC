@@ -60,12 +60,6 @@ function getSharedAvatarRuntime() {
 let selectedSystem = 'coc7';
 let _myCharsUnsub = null;
 
-function getLobbyServerTimestamp() {
-  return (window._FB?.CONFIGURED && typeof window._FB.serverTimestamp === 'function')
-    ? window._FB.serverTimestamp()
-    : Date.now();
-}
-
 function showLobby() {
   document.getElementById('screen-auth').style.display  = 'none';
   document.getElementById('screen-game').style.display  = 'none';
@@ -143,8 +137,8 @@ async function createNewCharacter() {
 
   const charData = {
     name, system: sys, job:'',
-    createdAt: getLobbyServerTimestamp(),
-    updatedAt: getLobbyServerTimestamp(),
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
     ...(defaults[sys] || {}),
   };
 
@@ -182,14 +176,14 @@ function getPlayerPayload(role) {
 
   return {
     name: St.myName,
-    joinedAt: getLobbyServerTimestamp(),
+    joinedAt: Date.now(),
     uid: St.myId,
     role,
     avatar,
     casualNick,
     nameColor,
     online: true,
-    updatedAt: getLobbyServerTimestamp(),
+    updatedAt: Date.now(),
   };
 }
 
@@ -208,13 +202,13 @@ async function createRoom() {
   if (window._FB?.CONFIGURED) {
     const { db, ref, set } = window._FB;
     await set(ref(db, `rooms/${code}/meta`), {
-      system: selectedSystem, createdAt: getLobbyServerTimestamp(),
+      system: selectedSystem, createdAt: Date.now(),
       createdBy: St.myName, ownerId: St.myId, title: roomTitle,
     });
     await set(ref(db, `rooms/${code}/players/${St.myId}`), getPlayerPayload('gm'));
     await set(ref(db, `users/${St.myId}/rooms/${code}`), {
       code, title: roomTitle, system: selectedSystem,
-      role: 'gm', ownerId: St.myId, joinedAt: getLobbyServerTimestamp(),
+      role: 'gm', ownerId: St.myId, joinedAt: Date.now(),
     });
     setupFirebaseListeners();
   }
@@ -243,50 +237,71 @@ async function joinRoom() {
     }
     if (!snap.exists()) { alert('방을 찾을 수 없습니다. 코드를 다시 확인해 주세요.'); return; }
 
-    const meta = snap.val() || {};
+    St.system = snap.val().system || 'coc7';
+    St.roomCode = code;
+    const meta = snap.val();
     const role = meta.ownerId === St.myId ? 'gm' : 'player';
-    const playerPayload = getPlayerPayload(role);
-    let joinCommitted = false;
-    let joinAbortedReason = '';
+    St.isGM = (role === 'gm');
 
+    const roomTitle = meta.title || '무제 세션';
+    const roomSystem = meta.system || 'coc7';
+    const playersRef = ref(db, `rooms/${code}/players`);
+    const nextPlayer = getPlayerPayload(role);
+
+    let committed = false;
     try {
-      const txResult = await runTransaction(ref(db, `rooms/${code}/players`), (currentPlayers) => {
-        const players = currentPlayers && typeof currentPlayers === 'object' ? { ...currentPlayers } : {};
-        const alreadyJoined = !!players[St.myId];
-        const playerCount = Object.keys(players).length;
-
+      if (typeof runTransaction === 'function') {
+        const tx = await runTransaction(playersRef, (players) => {
+          const current = players && typeof players === 'object' ? { ...players } : {};
+          const alreadyJoined = !!current[St.myId];
+          const playerCount = Object.keys(current).length;
+          if (playerCount >= 5 && !alreadyJoined) return;
+          current[St.myId] = {
+            ...(current[St.myId] || {}),
+            ...nextPlayer,
+            uid: St.myId,
+            role,
+            joinedAt: (current[St.myId] && current[St.myId].joinedAt) || nextPlayer.joinedAt,
+            updatedAt: Date.now(),
+            online: true,
+          };
+          return current;
+        }, { applyLocally: false });
+        committed = !!tx?.committed;
+      } else {
+        const playersSnap = await get(playersRef);
+        const playersData = playersSnap.exists() ? playersSnap.val() : {};
+        const playerCount = Object.keys(playersData).length;
+        const alreadyJoined = !!playersData[St.myId];
         if (playerCount >= 5 && !alreadyJoined) {
-          joinAbortedReason = 'room_full';
-          return;
+          committed = false;
+        } else {
+          await set(ref(db, `rooms/${code}/players/${St.myId}`), nextPlayer);
+          committed = true;
         }
-
-        players[St.myId] = playerPayload;
-        joinAbortedReason = '';
-        return players;
-      });
-      joinCommitted = !!txResult?.committed;
+      }
     } catch (e) {
+      console.error('joinRoom player transaction failed', e);
       alert('방 참가 처리 중 오류가 발생했습니다. 다시 시도해 주세요.');
       return;
     }
 
-    if (!joinCommitted) {
-      if (joinAbortedReason === 'room_full') {
-        alert('이 방은 이미 최대 인원(5명)에 도달했습니다.');
-      } else {
-        alert('방 참가에 실패했습니다. 잠시 후 다시 시도해 주세요.');
-      }
+    if (!committed) {
+      alert('이 방은 이미 최대 인원(5명)에 도달했습니다.');
       return;
     }
 
-    St.system = meta.system || 'coc7';
-    St.roomCode = code;
-    St.isGM = (role === 'gm');
+    window._pendingRoomJoin = {
+      code,
+      uid: St.myId,
+      startedAt: Date.now(),
+      graceUntil: Date.now() + 8000,
+    };
 
     await set(ref(db, `users/${St.myId}/rooms/${code}`), {
-      code, title: meta.title || '무제 세션',
-      system: meta.system || 'coc7',
-      role, ownerId: meta.ownerId || '', joinedAt: getLobbyServerTimestamp(),
+      code, title: roomTitle,
+      system: roomSystem,
+      role, ownerId: meta.ownerId || '', joinedAt: Date.now(),
     });
     setupFirebaseListeners();
   } else {
