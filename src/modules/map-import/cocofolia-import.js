@@ -87,7 +87,12 @@
 
   async function ensureLiveRoomContext() {
     const roomCode = pickLiveRoomCode();
-    const myId = String(window.St?.myId || '').trim();
+    const myId = String(
+      window.St?.myId ||
+      window._currentUser?.uid ||
+      window._FB?.auth?.currentUser?.uid ||
+      ''
+    ).trim();
     if (!window._FB?.CONFIGURED) {
       throw new Error('Firebase가 연결된 실제 세션 방에서만 맵세팅을 적용할 수 있어요.');
     }
@@ -95,6 +100,7 @@
       throw new Error('현재 local 상태입니다. 실제 세션 방에 입장한 뒤 다시 시도해 주세요.');
     }
     if (window.St) window.St.roomCode = roomCode;
+    if (window.St && myId) window.St.myId = myId;
     if (!myId) {
       throw new Error('로그인 정보가 확인되지 않아요. 다시 로그인 후 시도해 주세요.');
     }
