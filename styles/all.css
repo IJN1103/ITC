@@ -568,9 +568,9 @@ to{transform:translateX(0);opacity:1;}
 .resource-sep{color:var(--muted);font-size:12px;}
 .skill-table-wrap{display:grid;grid-template-columns:repeat(3,1fr);gap:0 12px;}
 .skill-col-wrap{display:flex;flex-direction:column;}
-.skill-col-head{display:grid;grid-template-columns:16px 1fr 32px 36px 36px;gap:3px;padding:4px 4px 5px;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--border);margin-bottom:3px;text-align:center;}
+.skill-col-head{display:grid;grid-template-columns:16px 1fr 36px 36px 36px;gap:3px;padding:4px 4px 5px;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--border);margin-bottom:3px;text-align:center;}
 .skill-col-head span:nth-child(2){text-align:left;}
-.skill-row{display:grid;grid-template-columns:16px 1fr 32px 36px 36px;align-items:center;gap:3px;padding:2px 4px;border-radius:3px;transition:background .1s;}
+.skill-row{display:grid;grid-template-columns:16px 1fr 36px 36px 36px;align-items:center;gap:3px;padding:2px 4px;border-radius:3px;transition:background .1s;}
 .skill-row:hover{background:var(--s2);}
 .skill-check{width:13px;height:13px;accent-color:var(--accent);cursor:pointer;flex-shrink:0;}
 .skill-name{font-size:11px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
@@ -847,3 +847,7 @@ to{transform:translateX(0);opacity:1;}
 .map-status-stat-label{font-size:11px;font-weight:700;line-height:1.15;color:#d2c4ae;word-break:break-word}
 .map-status-stat-value{font-size:13px;font-weight:900;line-height:1;color:var(--accent);letter-spacing:.01em;text-align:right;white-space:nowrap}
 @media (max-width: 900px){.map-status-panel{max-width:min(380px,calc(100% - 40px))}.map-status-card,.map-status-card.no-stats{grid-template-columns:1fr}.map-status-avatar-wrap{width:70px}.map-status-avatar{width:56px;height:56px}.map-status-initiative-badge{right:4px}.map-status-stats-grid{grid-template-columns:repeat(2,minmax(84px,1fr))}}
+
+.current-status-grid .sh-label{min-height:15px;}
+.current-status-grid .sh-input{font-size:12px;}
+.skill-input[readonly]{opacity:.88;cursor:default;}

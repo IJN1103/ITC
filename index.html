@@ -582,9 +582,13 @@ window._FB = {
               <div class="sh-field"><div class="sh-label">이름</div><input class="sh-input" id="sh-name" placeholder="캐릭터 이름" oninput="if(!_sheetAvatarData) refreshSheetAvatar(null, this.value.trim()[0]?.toUpperCase()||'?')"></div>
               <div class="sh-field"><div class="sh-label">플레이어</div><input class="sh-input" id="sh-player" placeholder="플레이어 이름"></div>
               <div class="sh-field"><div class="sh-label">직업</div><input class="sh-input" id="sh-job" placeholder="탐사자 직업"></div>
-              <div class="sh-field"><div class="sh-label">나이 / 성별</div><input class="sh-input" id="sh-age" placeholder="예: 28 / 남성"></div>
-              <div class="sh-field"><div class="sh-label">거주지</div><input class="sh-input" id="sh-residence" placeholder="현재 거주지"></div>
+              <div class="sh-field"><div class="sh-label">국적</div><input class="sh-input" id="sh-nationality" placeholder="국적"></div>
               <div class="sh-field"><div class="sh-label">출생지</div><input class="sh-input" id="sh-birthplace" placeholder="출생지"></div>
+              <div class="sh-field"><div class="sh-label">이중 거주지</div><input class="sh-input" id="sh-residence" placeholder="이중 거주지"></div>
+              <div class="sh-field"><div class="sh-label">제1언어</div><input class="sh-input" id="sh-first_language" placeholder="제1언어"></div>
+              <div class="sh-field"><div class="sh-label">나이</div><input class="sh-input" id="sh-age" placeholder="나이"></div>
+              <div class="sh-field"><div class="sh-label">신장</div><input class="sh-input" id="sh-height" placeholder="예: 178"></div>
+              <div class="sh-field"><div class="sh-label">성별</div><input class="sh-input" id="sh-sex" placeholder="성별"></div>
             </div>
           </div>
         </div>
@@ -595,51 +599,66 @@ window._FB = {
         </div>
       </div>
 
-      <!-- 자원 (HP / 이성 / 마력 / 운 / 피해보너스 / 체구) -->
-      <div class="sh-sec">
-        <div class="sh-sec-title">자원</div>
-        <div class="resource-row" style="flex-wrap:wrap">
-          <div class="resource-box">
-            <div class="resource-label">체력 (HP)</div>
-            <div class="resource-vals">
-              <input class="resource-input" id="sh-hp" placeholder="0" type="number">
-              <span class="resource-sep">/</span>
-              <input class="resource-input" id="sh-hp-max" placeholder="0" type="number">
+      <!-- 자원 + 현재 상태 -->
+      <div style="display:grid;grid-template-columns:1.15fr .85fr;gap:16px">
+        <div class="sh-sec">
+          <div class="sh-sec-title">자원</div>
+          <div class="resource-row" style="flex-wrap:wrap">
+            <div class="resource-box">
+              <div class="resource-label">체력 (HP)</div>
+              <div class="resource-vals">
+                <input class="resource-input" id="sh-hp" placeholder="0" type="number">
+                <span class="resource-sep">/</span>
+                <input class="resource-input" id="sh-hp-max" placeholder="0" type="number">
+              </div>
+            </div>
+            <div class="resource-box">
+              <div class="resource-label">이성 (SAN)</div>
+              <div class="resource-vals">
+                <input class="resource-input" id="sh-san" placeholder="0" type="number">
+                <span class="resource-sep">/</span>
+                <input class="resource-input" id="sh-san-max" placeholder="0" type="number">
+              </div>
+            </div>
+            <div class="resource-box">
+              <div class="resource-label">마력 (MP)</div>
+              <div class="resource-vals">
+                <input class="resource-input" id="sh-mp" placeholder="0" type="number">
+                <span class="resource-sep">/</span>
+                <input class="resource-input" id="sh-mp-max" placeholder="0" type="number">
+              </div>
+            </div>
+            <div class="resource-box" style="flex:0.6">
+              <div class="resource-label">운 (Luck)</div>
+              <div class="resource-vals">
+                <input class="resource-input" id="sh-luck" placeholder="0" type="number">
+              </div>
+            </div>
+            <div class="resource-box" style="flex:0.6">
+              <div class="resource-label">피해 보너스</div>
+              <div class="resource-vals">
+                <input class="resource-input" id="sh-db" placeholder="없음" style="font-size:12px">
+              </div>
+            </div>
+            <div class="resource-box" style="flex:0.6">
+              <div class="resource-label">체구 (Build)</div>
+              <div class="resource-vals">
+                <input class="resource-input" id="sh-build" placeholder="0" type="number">
+              </div>
             </div>
           </div>
-          <div class="resource-box">
-            <div class="resource-label">이성 (SAN)</div>
-            <div class="resource-vals">
-              <input class="resource-input" id="sh-san" placeholder="0" type="number">
-              <span class="resource-sep">/</span>
-              <input class="resource-input" id="sh-san-max" placeholder="0" type="number">
-            </div>
-          </div>
-          <div class="resource-box">
-            <div class="resource-label">마력 (MP)</div>
-            <div class="resource-vals">
-              <input class="resource-input" id="sh-mp" placeholder="0" type="number">
-              <span class="resource-sep">/</span>
-              <input class="resource-input" id="sh-mp-max" placeholder="0" type="number">
-            </div>
-          </div>
-          <div class="resource-box" style="flex:0.6">
-            <div class="resource-label">운 (Luck)</div>
-            <div class="resource-vals">
-              <input class="resource-input" id="sh-luck" placeholder="0" type="number">
-            </div>
-          </div>
-          <div class="resource-box" style="flex:0.6">
-            <div class="resource-label">피해 보너스</div>
-            <div class="resource-vals">
-              <input class="resource-input" id="sh-db" placeholder="없음" style="font-size:12px">
-            </div>
-          </div>
-          <div class="resource-box" style="flex:0.6">
-            <div class="resource-label">체구 (Build)</div>
-            <div class="resource-vals">
-              <input class="resource-input" id="sh-build" placeholder="0" type="number">
-            </div>
+        </div>
+        <div class="sh-sec">
+          <div class="sh-sec-title">현재 상태</div>
+          <div class="sh-grid sh-grid-2 current-status-grid">
+            <div class="sh-field"><div class="sh-label">광기</div><input class="sh-input" id="sh-status-insane" placeholder=""></div>
+            <div class="sh-field"><div class="sh-label">일시적 광기</div><input class="sh-input" id="sh-status-temp-insane" placeholder=""></div>
+            <div class="sh-field"><div class="sh-label">광기의 발작</div><input class="sh-input" id="sh-status-bout" placeholder=""></div>
+            <div class="sh-field"><div class="sh-label">장기적 광기</div><input class="sh-input" id="sh-status-indefinite" placeholder=""></div>
+            <div class="sh-field"><div class="sh-label">남은 시간</div><input class="sh-input" id="sh-status-time-left" placeholder=""></div>
+            <div class="sh-field"><div class="sh-label">부상</div><input class="sh-input" id="sh-status-injury" placeholder=""></div>
+            <div class="sh-field"><div class="sh-label">중상</div><input class="sh-input" id="sh-status-major-wound" placeholder=""></div>
+            <div class="sh-field"><div class="sh-label">빈사</div><input class="sh-input" id="sh-status-dying" placeholder=""></div>
           </div>
         </div>
       </div>

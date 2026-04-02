@@ -1054,7 +1054,7 @@ function createNewJournal() {
   if (existingWrap) existingWrap.innerHTML = '';
   initSheetUI();
 
-  ['name','player','job','age','residence','birthplace'].forEach(k => {
+  ['name','player','job','age','height','sex','nationality','residence','birthplace','first_language'].forEach(k => {
     const el = document.getElementById('sh-'+k);
     if (el) el.value = '';
   });
@@ -1380,9 +1380,10 @@ function normalizeImportedCocSkillName(name = '') {
 
 function buildEmptyImportedCocSheet() {
   return {
-    name: '', player: '', job: '', age: '', residence: '', birthplace: '',
+    name: '', player: '', job: '', age: '', height: '', sex: '', nationality: '', residence: '', birthplace: '', first_language: '',
     str: 0, con: 0, siz: 0, dex: 0, app: 0, int: 0, pow: 0, edu: 0,
     hp: '', hp_max: '', san: '', san_max: '', mp: '', mp_max: '', luck: '', db: '', build: '',
+    status_insane: '', status_temp_insane: '', status_bout: '', status_indefinite: '', status_time_left: '', status_injury: '', status_major_wound: '', status_dying: '',
     skills: COC_SKILLS.map(sk => ({ checked: false, val: sk.base, half: Math.floor(sk.base / 2) })),
     unarmed_skill: '근접전(격투)',
     unarmed_dmg: '1d3+db',
@@ -1454,6 +1455,7 @@ function buildJournalFromCcfoliaCharacter(parsed) {
           checked: sheet.skills[skillIndex]?.checked || false,
           val: numericTarget,
           half: Math.floor(numericTarget / 2),
+          fifth: Math.floor(numericTarget / 5),
         };
         return;
       }
@@ -1554,7 +1556,7 @@ function initSheetUI() {
   const colHead = () => {
     const h = document.createElement('div');
     h.className = 'skill-col-head';
-    h.innerHTML = '<span></span><span>기능명</span><span>기본</span><span>현재</span><span>½값</span>';
+    h.innerHTML = '<span></span><span>기능명</span><span>현재</span><span>½값</span><span>⅕값</span>';
     return h;
   };
 
@@ -1570,13 +1572,21 @@ function initSheetUI() {
       row.innerHTML = `
         <input type="checkbox" class="skill-check" id="sk-check-${i}">
         <button type="button" class="skill-name skill-roll-trigger" title="${sk.name} 판정" data-skill-index="${i}" data-skill-name="${sk.name}">${sk.name}</button>
-        <span class="skill-base">${sk.base}</span>
-        <input class="skill-input" id="sk-val-${i}" type="number" min="0" max="99" value="${sk.base}">
-        <input class="skill-input half-val" id="sk-half-${i}" type="number" min="0" max="99" value="${Math.floor(sk.base / 2)}">`;
+        <input class="skill-input" id="sk-val-${i}" type="number" min="0" max="99" value="${sk.base}" oninput="updateSkillFractions(${i})">
+        <input class="skill-input half-val" id="sk-half-${i}" type="number" min="0" max="99" value="${Math.floor(sk.base / 2)}" readonly>
+        <input class="skill-input half-val" id="sk-fifth-${i}" type="number" min="0" max="99" value="${Math.floor(sk.base / 5)}" readonly>`;
       col.appendChild(row);
     });
     wrap.appendChild(col);
   });
+}
+
+function updateSkillFractions(index) {
+  const current = parseInt(document.getElementById(`sk-val-${index}`)?.value, 10) || 0;
+  const halfEl = document.getElementById(`sk-half-${index}`);
+  const fifthEl = document.getElementById(`sk-fifth-${index}`);
+  if (halfEl) halfEl.value = Math.floor(current / 2);
+  if (fifthEl) fifthEl.value = Math.floor(current / 5);
 }
 
 function updateStatHalf(key) {
@@ -1886,7 +1896,7 @@ function openSheet(journalId) {
   const j    = list.find(x => x.id === journalId);
   const data = j?.sheet || {};
 
-  ['name','player','job','age','residence','birthplace'].forEach(k => {
+  ['name','player','job','age','height','sex','nationality','residence','birthplace','first_language'].forEach(k => {
     const el = document.getElementById('sh-'+k);
     if (el) el.value = data[k] || '';
   });
@@ -1901,14 +1911,21 @@ function openSheet(journalId) {
     if (el) el.value = data[k.replace('-','_')] || '';
   });
 
+  ['status-insane','status-temp-insane','status-bout','status-indefinite','status-time-left','status-injury','status-major-wound','status-dying'].forEach(k => {
+    const el = document.getElementById('sh-'+k);
+    if (el) el.value = data[k.replace(/-/g, '_')] || '';
+  });
+
   COC_SKILLS.forEach((sk, i) => {
     const ck  = document.getElementById('sk-check-'+i);
     const val = document.getElementById('sk-val-'+i);
     const hlf = document.getElementById('sk-half-'+i);
+    const fif = document.getElementById('sk-fifth-'+i);
     const d   = data.skills?.[i] || {};
     if (ck)  ck.checked    = d.checked || false;
     if (val) val.value     = d.val  !== undefined ? d.val  : sk.base;
-    if (hlf) hlf.value     = d.half !== undefined ? d.half : Math.floor(sk.base/2);
+    if (hlf) hlf.value     = d.half !== undefined ? d.half : Math.floor((d.val !== undefined ? d.val : sk.base)/2);
+    if (fif) fif.value     = d.fifth !== undefined ? d.fifth : Math.floor((d.val !== undefined ? d.val : sk.base)/5);
   });
 
   const notes = document.getElementById('sh-notes');
@@ -2089,7 +2106,7 @@ async function saveSheet() {
   if (!_sheetJournalId) return;
   const data = {};
 
-  ['name','player','job','age','residence','birthplace'].forEach(k => {
+  ['name','player','job','age','height','sex','nationality','residence','birthplace','first_language'].forEach(k => {
     data[k] = document.getElementById('sh-'+k)?.value || '';
   });
 
@@ -2108,10 +2125,15 @@ async function saveSheet() {
     data[key] = document.getElementById('sh-'+k)?.value || '';
   });
 
+  ['status-insane','status-temp-insane','status-bout','status-indefinite','status-time-left','status-injury','status-major-wound','status-dying'].forEach(k => {
+    data[k.replace(/-/g, '_')] = document.getElementById('sh-'+k)?.value || '';
+  });
+
   data.skills = COC_SKILLS.map((sk, i) => ({
     checked: document.getElementById('sk-check-'+i)?.checked || false,
-    val:  parseInt(document.getElementById('sk-val-'+i)?.value)  ?? sk.base,
-    half: parseInt(document.getElementById('sk-half-'+i)?.value) ?? Math.floor(sk.base/2),
+    val: parseInt(document.getElementById('sk-val-'+i)?.value, 10) || sk.base,
+    half: parseInt(document.getElementById('sk-half-'+i)?.value, 10) || Math.floor((parseInt(document.getElementById('sk-val-'+i)?.value, 10) || sk.base)/2),
+    fifth: parseInt(document.getElementById('sk-fifth-'+i)?.value, 10) || Math.floor((parseInt(document.getElementById('sk-val-'+i)?.value, 10) || sk.base)/5),
   }));
 
   data.unarmed_skill = document.getElementById('sh-unarmed-skill')?.value || '';
