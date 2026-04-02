@@ -131,3 +131,12 @@ styles/all.css          — 통합 CSS
 - _pendingRoomJoin grace 처리 제거
 - players 부모 transaction 제거, players/$uid 직접 쓰기 기반으로 단순화
 - 현재 구조는 기존 rules와의 호환성을 우선함
+
+[2026-04-02] PHASE 5 — 토큰 코어 안정화 추가 진행
+- map-status-panel 전체 innerHTML 재생성 제거
+- 상태 카드별 signature 기반 증분 갱신 추가
+- addOrUpdateSingleToken(): 위치/상태/구조 변경 분기 분리
+- 위치만 바뀌면 토큰 DOM/상태 패널 전체 재생성 없이 style만 갱신
+- 상태만 바뀌면 해당 status card만 교체/재정렬
+- 구조 변경일 때만 토큰 DOM 재생성 유지
+- 토큰 삭제/편집창 삭제/컨텍스트 삭제도 status card 개별 제거로 정리

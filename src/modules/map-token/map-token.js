@@ -329,12 +329,122 @@ function shouldShowTokenInStatusPanel(token) {
   return false;
 }
 
+function getMapStatusSortedTokens(tokens = St.tokens) {
+  return Object.values(tokens || {})
+    .filter((token) => shouldShowTokenInStatusPanel(token))
+    .sort((a, b) => {
+      const diff = Number(b?.initiative || 0) - Number(a?.initiative || 0);
+      if (diff) return diff;
+      return String(a?.id || '').localeCompare(String(b?.id || ''));
+    });
+}
+
+function getTokenStatusPanelSignature(token) {
+  return JSON.stringify({
+    id: String(token?.id || ''),
+    name: String(token?.name || ''),
+    hideList: !!token?.hideList,
+    hideStatus: !!token?.hideStatus,
+    initiative: hasVisibleTokenInitiative(token) ? Number(token?.initiative || 0) : null,
+    image: String(getTokenStatusPanelImage(token) || ''),
+    statuses: getRenderableStatuses(token).map((item) => ({
+      label: String(item?.label || '').trim(),
+      cur: item?.cur ?? '',
+      max: item?.max ?? '',
+    })),
+  });
+}
+
+function buildMapStatusCard(token) {
+  const card = document.createElement('div');
+  const privateMode = !!token.hideStatus;
+  const image = getTokenStatusPanelImage(token);
+  const statuses = getRenderableStatuses(token);
+  const showInitiative = hasVisibleTokenInitiative(token);
+  const initiativeText = showInitiative ? String(token.initiative) : '';
+  const imageHtml = image
+    ? `<img src="${esc(image)}" alt="">`
+    : `<div class="map-status-avatar-fallback">${esc((token.name || '?').slice(0, 1))}</div>`;
+  const statusHtml = statuses.map((item) => {
+    const label = privateMode ? '??' : esc(String(item.label || '').trim());
+    const cur = privateMode ? '??' : esc(item.cur != null ? String(item.cur) : '');
+    const max = privateMode ? '??' : esc(item.max != null ? String(item.max) : '');
+    const valueText = max !== '' ? `${cur}/${max}` : `${cur}`;
+    return `<div class="map-status-stat-box"><div class="map-status-stat-label">${label}</div><div class="map-status-stat-value">${valueText}</div></div>`;
+  }).join('');
+  const cardClass = statuses.length ? 'map-status-card' : 'map-status-card no-stats';
+  const initiativeHtml = showInitiative
+    ? `<div class="map-status-initiative-badge">${esc(initiativeText)}</div>`
+    : '';
+  const statsGridHtml = statuses.length
+    ? `<div class="map-status-stats-grid">${statusHtml}</div>`
+    : '';
+  card.className = cardClass;
+  card.dataset.tokenId = String(token.id || '');
+  card.dataset.statusSignature = getTokenStatusPanelSignature(token);
+  card.innerHTML = `
+    <div class="map-status-headbox">
+      <div class="map-status-avatar-wrap">
+        <div class="map-status-avatar">${imageHtml}</div>
+        ${initiativeHtml}
+      </div>
+    </div>
+    ${statsGridHtml}
+  `;
+  return card;
+}
+
+function syncMapStatusPanelVisibility() {
+  const panel = document.getElementById('map-status-panel');
+  if (!panel) return;
+  panel.style.display = panel.children.length ? 'grid' : 'none';
+  if (!panel.children.length) panel.innerHTML = '';
+}
+
+function syncMapStatusPanelOrder(tokens = St.tokens) {
+  const panel = document.getElementById('map-status-panel');
+  if (!panel) return;
+  const orderedIds = getMapStatusSortedTokens(tokens).map((token) => String(token.id || ''));
+  orderedIds.forEach((id) => {
+    const card = panel.querySelector(`[data-token-id="${CSS.escape(id)}"]`);
+    if (card) panel.appendChild(card);
+  });
+  syncMapStatusPanelVisibility();
+}
+
+function syncMapStatusCard(token, tokens = St.tokens) {
+  const panel = document.getElementById('map-status-panel');
+  if (!panel || !token) return;
+  const tokenId = String(token.id || '');
+  const existing = panel.querySelector(`[data-token-id="${CSS.escape(tokenId)}"]`);
+  if (!shouldShowTokenInStatusPanel(token)) {
+    if (existing) existing.remove();
+    syncMapStatusPanelOrder(tokens);
+    return;
+  }
+  const nextSignature = getTokenStatusPanelSignature(token);
+  if (existing && existing.dataset.statusSignature === nextSignature) {
+    syncMapStatusPanelOrder(tokens);
+    return;
+  }
+  const nextCard = buildMapStatusCard(token);
+  if (existing) existing.replaceWith(nextCard);
+  else panel.appendChild(nextCard);
+  syncMapStatusPanelOrder(tokens);
+}
+
+function removeMapStatusCard(tokenId, tokens = St.tokens) {
+  const panel = document.getElementById('map-status-panel');
+  if (!panel) return;
+  const existing = panel.querySelector(`[data-token-id="${CSS.escape(String(tokenId || ''))}"]`);
+  if (existing) existing.remove();
+  syncMapStatusPanelOrder(tokens);
+}
+
 function renderMapStatusPanel(tokens = St.tokens) {
   const panel = document.getElementById('map-status-panel');
   if (!panel) return;
-  const items = Object.values(tokens || {})
-    .filter((token) => shouldShowTokenInStatusPanel(token))
-    .sort((a, b) => Number(b?.initiative || 0) - Number(a?.initiative || 0));
+  const items = getMapStatusSortedTokens(tokens);
 
   if (!items.length) {
     panel.innerHTML = '';
@@ -342,41 +452,11 @@ function renderMapStatusPanel(tokens = St.tokens) {
     return;
   }
 
+  panel.innerHTML = '';
+  items.forEach((token) => {
+    panel.appendChild(buildMapStatusCard(token));
+  });
   panel.style.display = 'grid';
-  panel.innerHTML = items.map((token) => {
-    const privateMode = !!token.hideStatus;
-    const image = getTokenStatusPanelImage(token);
-    const statuses = getRenderableStatuses(token);
-    const showInitiative = hasVisibleTokenInitiative(token);
-    const initiativeText = showInitiative ? String(token.initiative) : '';
-    const imageHtml = image
-      ? `<img src="${esc(image)}" alt="">`
-      : `<div class="map-status-avatar-fallback">${esc((token.name || '?').slice(0, 1))}</div>`;
-    const statusHtml = statuses.map((item) => {
-      const label = privateMode ? '??' : esc(String(item.label || '').trim());
-      const cur = privateMode ? '??' : esc(item.cur != null ? String(item.cur) : '');
-      const max = privateMode ? '??' : esc(item.max != null ? String(item.max) : '');
-      const valueText = max !== '' ? `${cur}/${max}` : `${cur}`;
-      return `<div class="map-status-stat-box"><div class="map-status-stat-label">${label}</div><div class="map-status-stat-value">${valueText}</div></div>`;
-    }).join('');
-    const cardClass = statuses.length ? 'map-status-card' : 'map-status-card no-stats';
-    const initiativeHtml = showInitiative
-      ? `<div class="map-status-initiative-badge">${esc(initiativeText)}</div>`
-      : '';
-    const statsGridHtml = statuses.length
-      ? `<div class="map-status-stats-grid">${statusHtml}</div>`
-      : '';
-    return `
-      <div class="${cardClass}" data-token-id="${esc(String(token.id || ''))}">
-        <div class="map-status-headbox">
-          <div class="map-status-avatar-wrap">
-            <div class="map-status-avatar">${imageHtml}</div>
-            ${initiativeHtml}
-          </div>
-        </div>
-        ${statsGridHtml}
-      </div>`;
-  }).join('');
 }
 
 function applyMapTransform() {
@@ -622,37 +702,83 @@ function renderAllTokens(tokens) {
 
 /* ── Firebase onChild* 용 개별 토큰 업데이트 ── */
 
+function getTokenRenderSignature(token) {
+  return JSON.stringify({
+    name: String(token?.name || ''),
+    tokenImg: String(token?.tokenImg || ''),
+    type: String(token?.type || ''),
+    tokenSize: Number(token?.tokenSize || 1),
+    rotation: Number(token?.rotation || 0),
+    memo: String(token?.memo || ''),
+    standingAsToken: !!token?.standingAsToken,
+    standingsKey: _standingsKey(token),
+  });
+}
+
+function getTokenStatusSignature(token) {
+  return JSON.stringify({
+    ownerId: String(token?.ownerId || ''),
+    ownerName: String(token?.ownerName || ''),
+    hideList: !!token?.hideList,
+    hideStatus: !!token?.hideStatus,
+    initiative: token?.initiative ?? '',
+    statuses: getRenderableStatuses(token).map((item) => ({
+      label: String(item?.label || '').trim(),
+      cur: item?.cur ?? '',
+      max: item?.max ?? '',
+    })),
+    image: String(getTokenStatusPanelImage(token) || ''),
+    name: String(token?.name || ''),
+  });
+}
+
+function refreshTokenLiveSnapshot(el, token) {
+  if (!el) return;
+  el._tokenSnapshot = {
+    renderSignature: getTokenRenderSignature(token),
+    statusSignature: getTokenStatusSignature(token),
+  };
+}
+
+function syncExistingTokenPosition(el, data) {
+  if (!el || !data) return;
+  el.style.left = storedTokenPercentToDisplay(data.x, 'x') + '%';
+  el.style.top = storedTokenPercentToDisplay(data.y, 'y') + '%';
+  if (data.rotation) el.style.transform = `translate(-50%,-50%) rotate(${data.rotation}deg)`;
+  else el.style.transform = '';
+}
+
 function addOrUpdateSingleToken(id, data) {
   if (_activeDragSession && _activeDragSession.targetIds.includes(id)) return;
 
   const existing = getTokenEl(id);
 
-  /* ── fast path: 기존 요소가 있고 위치만 바뀐 경우 DOM 재생성 없이 처리 ── */
   if (existing && data) {
-    const prev = existing._tokenSnapshot;
-    if (prev
-      && prev.name === (data.name || '')
-      && prev.tokenImg === (data.tokenImg || '')
-      && prev.type === (data.type || '')
-      && prev.tokenSize === (data.tokenSize || 1)
-      && prev.rotation === (data.rotation || 0)
-      && prev.memo === (data.memo || '')
-      && prev.standingAsToken === (!!data.standingAsToken)
-      && prev.standingsKey === _standingsKey(data)
-    ) {
-      /* 위치만 갱신 */
-      existing.style.left = storedTokenPercentToDisplay(data.x, 'x') + '%';
-      existing.style.top = storedTokenPercentToDisplay(data.y, 'y') + '%';
+    const prev = existing._tokenSnapshot || {};
+    const nextRenderSignature = getTokenRenderSignature(data);
+    const nextStatusSignature = getTokenStatusSignature(data);
+
+    if (prev.renderSignature === nextRenderSignature) {
+      syncExistingTokenPosition(existing, data);
+      if (prev.statusSignature !== nextStatusSignature) {
+        syncMapStatusCard(data, St.tokens);
+      }
+      refreshTokenLiveSnapshot(existing, data);
+      if (_teTokenId === id) refreshTokenOwnerBar(data);
       return;
     }
   }
 
-  /* ── safe path: 구조 변경 → 완전 재생성 ── */
   if (existing) existing.remove();
-  if (data) createTokenEl(data);
+  if (data) {
+    createTokenEl(data);
+    syncMapStatusCard(data, St.tokens);
+    if (_teTokenId === id) refreshTokenOwnerBar(data);
+  } else {
+    removeMapStatusCard(id, St.tokens);
+  }
   syncMultiTokenSelectionWithTokens(St.tokens);
   updateMultiTokenSelectionUI();
-  renderMapStatusPanel(St.tokens);
 }
 
 /* 스탠딩 배열의 fingerprint (변경 감지용) */
@@ -665,7 +791,7 @@ function removeSingleToken(id) {
   const el = getTokenEl(id);
   if (el) el.remove();
   setMultiTokenSelection(_multiSelectedTokenIds.filter(x => x !== id));
-  renderMapStatusPanel(St.tokens);
+  removeMapStatusCard(id, St.tokens);
 }
 
 function createTokenEl(t) {
@@ -715,12 +841,7 @@ function createTokenEl(t) {
   el.addEventListener('dblclick', e => { e.preventDefault(); e.stopPropagation(); hideTokenMemoBubble(); if (typeof openTokenEdit === 'function') openTokenEdit(t.id); });
   el.addEventListener('contextmenu', e => { e.preventDefault(); e.stopPropagation(); hideTokenMemoBubble(); showTokenCtx(e, t.id); });
   makeDraggable(el, t.id);
-  /* fast path 비교용 스냅샷 저장 */
-  el._tokenSnapshot = {
-    name: t.name || '', tokenImg: t.tokenImg || '', type: t.type || '',
-    tokenSize: t.tokenSize || 1, rotation: t.rotation || 0, memo: t.memo || '',
-    standingAsToken: !!t.standingAsToken, standingsKey: _standingsKey(t),
-  };
+  refreshTokenLiveSnapshot(el, t);
   inner.appendChild(el);
 }
 
@@ -780,7 +901,7 @@ function removeToken(tokenId) {
   if (el) el.remove();
   delete St.tokens[tokenId];
   syncMultiTokenSelectionWithTokens(St.tokens);
-  renderMapStatusPanel(St.tokens);
+  removeMapStatusCard(tokenId, St.tokens);
   if (window._FB?.CONFIGURED) {
     const { db, ref, remove } = window._FB;
     remove(ref(db, `rooms/${St.roomCode}/tokens/${tokenId}`));
@@ -870,7 +991,7 @@ function tokCtxAction(action) {
       if (delEl) delEl.remove();
       delete St.tokens[id];
       syncMultiTokenSelectionWithTokens(St.tokens);
-      renderMapStatusPanel(St.tokens);
+      removeMapStatusCard(id, St.tokens);
       if (window._FB?.CONFIGURED) {
         const { db, ref, remove } = window._FB;
         remove(ref(db, `rooms/${St.roomCode}/tokens/${id}`));
@@ -1158,7 +1279,7 @@ function deleteTokenFromEdit() {
   if (el) el.remove();
   delete St.tokens[delId];
   syncMultiTokenSelectionWithTokens(St.tokens);
-  renderMapStatusPanel(St.tokens);
+  removeMapStatusCard(delId, St.tokens);
   if (window._FB?.CONFIGURED) {
     const { db, ref, remove } = window._FB;
     remove(ref(db, `rooms/${St.roomCode}/tokens/${delId}`));
