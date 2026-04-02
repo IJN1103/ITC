@@ -1443,6 +1443,43 @@ function clampQuickSheetRect(x, y, width, height) {
   };
 }
 
+function getDefaultQuickSheetRect() {
+  const pad = 16;
+  const gap = 24;
+  const chatPanel = document.getElementById('panel-right');
+  const chatRect = chatPanel?.getBoundingClientRect();
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+  const baseHeight = Math.round((chatRect?.height || viewportHeight) * 0.6);
+  const targetHeight = Math.max(320, Math.min(baseHeight, viewportHeight - pad * 2));
+  let targetWidth = Math.round(targetHeight * 1.18);
+
+  if (chatRect && chatRect.left > pad + 280) {
+    const availableWidth = Math.max(420, chatRect.left - gap - pad * 2);
+    targetWidth = Math.min(targetWidth, availableWidth);
+  } else {
+    targetWidth = Math.min(targetWidth, viewportWidth - pad * 2);
+  }
+
+  targetWidth = Math.max(420, Math.min(targetWidth, 760, viewportWidth - pad * 2));
+
+  let x;
+  if (chatRect && chatRect.left > pad + 280) {
+    x = chatRect.left - targetWidth - gap;
+  } else {
+    x = viewportWidth - targetWidth - pad;
+  }
+
+  let y;
+  if (chatRect) {
+    y = chatRect.top + Math.max(16, Math.round((chatRect.height - targetHeight) / 2));
+  } else {
+    y = Math.max(pad, Math.round((viewportHeight - targetHeight) / 2));
+  }
+
+  return clampQuickSheetRect(x, y, targetWidth, targetHeight);
+}
+
 function applyQuickSheetState() {
   const overlay = document.getElementById('sheet-overlay');
   const modal = getQuickSheetModalEl();
@@ -1477,6 +1514,17 @@ function resetQuickSheetStateFromLayout() {
   modal.style.bottom = '';
   modal.style.width = '';
   modal.style.height = '';
+
+  if (_sheetQuickViewMode) {
+    const preferred = getDefaultQuickSheetRect();
+    _quickSheetState.x = preferred.x;
+    _quickSheetState.y = preferred.y;
+    _quickSheetState.width = preferred.width;
+    _quickSheetState.height = preferred.height;
+    applyQuickSheetState();
+    return;
+  }
+
   const rect = modal.getBoundingClientRect();
   _quickSheetState.x = rect.left;
   _quickSheetState.y = rect.top;
