@@ -40,29 +40,45 @@ function saGetAvatar(journalId) {
   return null;
 }
 
-function saSendMessage(journal, text) {
+function saBuildMessageContext(journal, text = '') {
+  if (!journal?.id) return null;
   const avatar = saGetAvatar(journal.id);
-  resolveStandingImage(journal, text); // 발신자 로컬 상태 업데이트용
-  const msg = {
+  resolveStandingImage(journal, text);
+  const payload = {
     name: journal.title || '무제',
-    text,
-    type: 'speak-as',
-    uid: St.myId,
-    time: Date.now(),
     speakAsAvatar: avatar,
     speakAsJournalId: journal.id,
     nameColor: journal.nameColor || '',
   };
-  // base64 대신 토큰ID + 스탠딩 라벨만 전송 (수 바이트)
   if (journal.assignedTokenId) {
-    msg.tokenId = journal.assignedTokenId;
-    msg.standingLabel = _vnCurrentStanding[journal.id] || '';
+    payload.tokenId = journal.assignedTokenId;
+    payload.standingLabel = _vnCurrentStanding[journal.id] || '';
   }
+  return payload;
+}
+
+function saGetSelectedJournalContext(text = '') {
+  if (!St?.speakAsJournalId || typeof loadJournals !== 'function') return null;
+  const journal = loadJournals().find(x => x.id === St.speakAsJournalId);
+  if (!journal) return null;
+  return saBuildMessageContext(journal, text);
+}
+
+function saSendMessage(journal, text) {
+  const context = saBuildMessageContext(journal, text);
+  if (!context) return;
+  const msg = {
+    ...context,
+    text,
+    type: 'speak-as',
+    uid: St.myId,
+    time: Date.now(),
+  };
   if (window._FB?.CONFIGURED) {
     const { db, ref, push } = window._FB;
     push(ref(db, `rooms/${St.roomCode}/chat`), { ...msg, time: getSpeakAsServerTimestamp() });
   } else {
-    appendChatMsg(msg.name, text, 'speak-as', St.myId, msg.time, msg.speakAsAvatar, msg.speakAsJournalId, null, null, msg.nameColor, null, 'chat', null, msg.tokenId, msg.standingLabel);
+    appendChatMsg({ ...msg, timestamp: msg.time, channel: 'chat' });
   }
 }
 
@@ -501,3 +517,7 @@ function refreshWhisperBtn() {
   }
 }
 
+
+
+window.saBuildMessageContext = saBuildMessageContext;
+window.saGetSelectedJournalContext = saGetSelectedJournalContext;

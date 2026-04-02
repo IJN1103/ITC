@@ -98,18 +98,22 @@ function renderSkillCheckResult(name, val, r, outcome) {
   if (judgmentEl) judgmentEl.innerHTML = `<div class="roll-judgment ${outcome.className}">${outcome.label}</div>`;
 }
 
-function getSkillCheckSenderName() {
-  const selectedJournalId = St?.speakAsJournalId;
-  if (selectedJournalId && typeof loadJournals === 'function') {
-    const journal = loadJournals().find(j => j.id === selectedJournalId);
-    const journalTitle = (journal?.title || '').trim();
-    if (journalTitle) return journalTitle;
-  }
-  return St.myName;
-}
-
 function sendSkillCheckMessage(name, val, r, outcome) {
-  sendMessage(getSkillCheckSenderName(), `🎲 ${name} 판정 → ${r} (목표치 ${val}||${outcome.label})`, 'dice');
+  const text = `🎲 ${name} 판정 → ${r} (목표치 ${val}||${outcome.label})`;
+  const speakAsContext = (typeof window.saGetSelectedJournalContext === 'function')
+    ? window.saGetSelectedJournalContext(text)
+    : null;
+  const senderName = speakAsContext?.name || St.myName;
+  const extra = speakAsContext
+    ? {
+        speakAsAvatar: speakAsContext.speakAsAvatar || null,
+        speakAsJournalId: speakAsContext.speakAsJournalId || null,
+        nameColor: speakAsContext.nameColor || '',
+        tokenId: speakAsContext.tokenId || null,
+        standingLabel: speakAsContext.standingLabel || '',
+      }
+    : null;
+  sendMessage(senderName, text, 'dice', extra);
 }
 
 function rollSkillCheck(name, val) {

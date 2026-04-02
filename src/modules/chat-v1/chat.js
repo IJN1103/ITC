@@ -1807,7 +1807,7 @@ function buildChatMsgElement(msg = {}) {
     return div;
   }
 
-  const avatarHtml = getAvatarHtml(name, uid || (name === St.myName ? St.myId : null));
+  const defaultAvatarHtml = getAvatarHtml(name, uid || (name === St.myName ? St.myId : null));
 
   if (type === 'image') {
     const div = document.createElement('div');
@@ -1835,12 +1835,23 @@ function buildChatMsgElement(msg = {}) {
       const judgmentMeta = getDiceJudgmentMeta(rollParts[1] || rawRolls);
       const judgmentHtml = judgmentMeta ? `<div class="dice-card-judgment roll-judgment ${judgmentMeta.className}">${esc(judgmentMeta.label)}</div>` : '';
       const skillCheckClass = formula.endsWith('판정') ? ' dice-card-skill-check' : '';
-      div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name"${nameStyle}>${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-text">${fmtText(text)}</div><div class="dice-card${skillCheckClass}"><div class="dice-card-formula">${esc(formula)}</div><div class="dice-card-result">${esc(result)}</div>${judgmentHtml}<div class="dice-card-rolls">${esc(rolls)}</div></div></div>`;
+      const isSpeakAsDice = !!speakAsJournalId;
+      const r = St.avatarShape === 'circle' ? '50%' : '6px';
+      const sc = St.avatarShape === 'circle' ? 'shape-circle' : 'shape-rounded';
+      const finalAvatar = speakAsAvatar || (speakAsJournalId ? saGetAvatar(speakAsJournalId) : null);
+      const diceAvatarHtml = isSpeakAsDice
+        ? (finalAvatar
+            ? `<div class="msg-avatar ${sc} sa-avatar"><img src="${esc(finalAvatar)}" alt="" style="width:38px;height:38px;object-fit:cover;border-radius:${r};display:block"></div>`
+            : `<div class="msg-avatar ${sc} sa-avatar"><div class="msg-avatar-inner" style="border-radius:${r}">${esc((name || '?')[0].toUpperCase())}</div></div>`)
+        : defaultAvatarHtml;
+      const diceNameColor = isSpeakAsDice ? (nameColor || (_allJournals.find(x => x.id === speakAsJournalId)?.nameColor || '')) : nameColor;
+      const diceNameStyle = diceNameColor ? ` style="color:${diceNameColor}"` : '';
+      div.innerHTML = `${diceAvatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name${isSpeakAsDice ? ' sa-msg-name' : ''}"${diceNameStyle}>${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-text">${fmtText(text)}</div><div class="dice-card${skillCheckClass}"><div class="dice-card-formula">${esc(formula)}</div><div class="dice-card-result">${esc(result)}</div>${judgmentHtml}<div class="dice-card-rolls">${esc(rolls)}</div></div></div>`;
     } else {
-      div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name"${nameStyle}>${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-text">${fmtText(text)}</div></div>`;
+      div.innerHTML = `${defaultAvatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name"${nameStyle}>${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-text">${fmtText(text)}</div></div>`;
     }
   } else {
-    div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name"${nameStyle}>${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-text">${fmtText(text)}</div></div>`;
+    div.innerHTML = `${defaultAvatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name"${nameStyle}>${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-text">${fmtText(text)}</div></div>`;
   }
   addMsgActions(div, uid, msgKey, channel || 'chat', text, type);
   return div;
@@ -1858,6 +1869,17 @@ function getDiceJudgmentMeta(text = '') {
   return null;
 }
 
+function formatDiceDialogueText(text = '') {
+  const match = String(text || '').match(/🎲\s*(.+?)\s*→\s*(\d+)\s*\(([^)]+)\)/);
+  if (!match) return String(text || '').trim();
+  const formula = match[1].trim();
+  const result = match[2].trim();
+  const rawRolls = match[3].trim();
+  const parts = rawRolls.split('||').map(part => part.trim()).filter(Boolean);
+  const judgment = parts[1] || '';
+  return `${formula} ${result}${judgment ? ` (${judgment})` : ''}`.trim();
+}
+
 function appendChatMsg(msg = {}) {
   const actualChannel = msg.channel || 'chat';
   const safeKey = upsertStoredMessage(actualChannel, msg.msgKey, {
@@ -1871,8 +1893,9 @@ function appendChatMsg(msg = {}) {
   bindMessageViewport(actualChannel);
   const div = buildChatMsgElement({ ...msg, msgKey: safeKey, channel: actualChannel });
   queueMessageRender(actualChannel, div, safeKey, true);
-  if (msg.type === 'speak-as' && (!msg.timestamp || Date.now() - msg.timestamp < 5000)) {
-    showDialogueBoxFromMsg(msg.name, msg.text, msg.speakAsJournalId, msg.standingImg, msg.tokenId, msg.standingLabel);
+  if ((msg.type === 'speak-as' || (msg.type === 'dice' && msg.speakAsJournalId)) && (!msg.timestamp || Date.now() - msg.timestamp < 5000)) {
+    const dialogueText = msg.type === 'dice' ? formatDiceDialogueText(msg.text) : msg.text;
+    showDialogueBoxFromMsg(msg.name, dialogueText, msg.speakAsJournalId, msg.standingImg, msg.tokenId, msg.standingLabel);
   }
 }
 
