@@ -74,6 +74,26 @@
     layer.style.backgroundSize = fit === 'fill' ? '100% 100%' : (fit === 'cover' ? 'cover' : 'contain');
   }
 
+  async function ensureLiveRoomContext() {
+    const roomCode = String(window.St?.roomCode || '').trim();
+    const myId = String(window.St?.myId || '').trim();
+    if (!window._FB?.CONFIGURED) {
+      throw new Error('Firebase가 연결된 실제 세션 방에서만 맵세팅을 적용할 수 있어요.');
+    }
+    if (!roomCode || roomCode === 'local') {
+      throw new Error('현재 local 상태입니다. 실제 세션 방에 입장한 뒤 다시 시도해 주세요.');
+    }
+    if (!myId) {
+      throw new Error('로그인 정보가 확인되지 않아요. 다시 로그인 후 시도해 주세요.');
+    }
+    const { db, ref, get } = window._FB;
+    const playerSnap = await get(ref(db, `rooms/${roomCode}/players/${myId}`));
+    if (!playerSnap.exists()) {
+      throw new Error('현재 계정이 이 방의 참가자로 확인되지 않아요. 방에 다시 입장한 뒤 시도해 주세요.');
+    }
+    return { roomCode, myId };
+  }
+
   async function uploadMapBackgroundBlob(blob, roomCode, fileName) {
     if (typeof _itcUploadToCloudinary !== 'function') throw new Error('이미지 업로드 유틸을 찾지 못했어요.');
     const result = await _itcUploadToCloudinary({
@@ -220,12 +240,12 @@
     }
     IMPORT_STATE.isBusy = true;
     try {
-      setHint('배경 이미지를 업로드하고 맵에 적용하는 중이에요…');
+      setHint('세션 상태를 확인한 뒤 배경 이미지를 업로드하는 중이에요…');
+      const { roomCode } = await ensureLiveRoomContext();
       const zip = await window.JSZip.loadAsync(pendingFile);
       const backgroundEntry = zip.file(backgroundName);
       if (!backgroundEntry) throw new Error('ZIP 안에서 배경 이미지 파일을 찾지 못했어요.');
       const blob = await backgroundEntry.async('blob');
-      const roomCode = window.St?.roomCode || 'local';
       const ext = backgroundName.split('.').pop() || 'png';
       const uploadedUrl = await uploadMapBackgroundBlob(blob, roomCode, `map-bg-${Date.now()}.${ext}`);
       if (!uploadedUrl) throw new Error('배경 이미지 업로드에 실패했어요.');
@@ -237,18 +257,13 @@
           importedAt: Date.now(),
         },
       };
-      if (window._FB?.CONFIGURED) {
-        const { db, ref, update } = window._FB;
-        await update(ref(db, `rooms/${roomCode}/bgm`), {
-          mapBackground: nextMapState.background.url,
-          mapBackgroundFit: nextMapState.background.fit,
-          mapBackgroundSourceName: nextMapState.background.sourceName || '',
-          mapBackgroundImportedAt: nextMapState.background.importedAt || Date.now(),
-        });
-      } else {
-        window.St.mapState = nextMapState;
-        applyImportedMapState(nextMapState);
-      }
+      const { db, ref, update } = window._FB;
+      await update(ref(db, `rooms/${roomCode}/bgm`), {
+        mapBackground: nextMapState.background.url,
+        mapBackgroundFit: nextMapState.background.fit,
+        mapBackgroundSourceName: nextMapState.background.sourceName || '',
+        mapBackgroundImportedAt: nextMapState.background.importedAt || Date.now(),
+      });
       setSummary(buildValidationSummary(pendingFile, validated.parsed) + `<br><br><b>배경 적용 완료</b>`);
       if (typeof showToast === 'function') showToast('맵 배경 적용 완료');
     } catch (err) {
