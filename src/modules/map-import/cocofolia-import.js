@@ -35,7 +35,7 @@
     }
     if (hint) {
       hint.style.display = '';
-      hint.textContent = '지원 항목: 배경 이미지 + 전경 이미지. item 오브젝트는 다음 단계에서 연결됩니다.';
+      hint.textContent = '지원 항목: 배경 + 전경 + image item 오브젝트 일부 import';
     }
     if (fileInput) fileInput.value = '';
     IMPORT_STATE.lastValidated = null;
@@ -64,11 +64,17 @@
     return document.getElementById('map-fg-layer');
   }
 
+  function getMapObjectLayer() {
+    return document.getElementById('map-obj-layer');
+  }
+
   function applyImportedMapState(mapState) {
     const bgLayer = getMapBackgroundLayer();
     const fgLayer = getMapForegroundLayer();
+    const objLayer = getMapObjectLayer();
     const background = mapState?.background || null;
     const foreground = mapState?.foreground || null;
+    const objects = Array.isArray(mapState?.objects) ? mapState.objects : [];
     if (bgLayer) {
       if (!background?.url) {
         bgLayer.style.backgroundImage = '';
@@ -88,6 +94,21 @@
         fgLayer.style.backgroundImage = `url("${String(foreground.url).replace(/"/g, '%22')}")`;
         fgLayer.style.backgroundSize = fit === 'fill' ? '100% 100%' : (fit === 'cover' ? 'cover' : 'contain');
       }
+    }
+    if (objLayer) {
+      objLayer.innerHTML = '';
+      objects.forEach((item) => {
+        if (!item?.url) return;
+        const el = document.createElement('div');
+        el.className = 'map-import-object';
+        el.style.left = `${Number(item.xPct || 0)}%`;
+        el.style.top = `${Number(item.yPct || 0)}%`;
+        el.style.width = `${Number(item.wPct || 0)}%`;
+        el.style.height = `${Number(item.hPct || 0)}%`;
+        el.style.backgroundImage = `url("${String(item.url).replace(/"/g, '%22')}")`;
+        el.style.transform = `translate(-50%, -50%) rotate(${Number(item.angle || 0)}deg)`;
+        objLayer.appendChild(el);
+      });
     }
   }
 
@@ -196,7 +217,7 @@
       `item 수: ${Object.keys(items).length}개`,
       `리소스 수: ${Object.keys(resources).length}개`,
       `그리드: ${gridLabel} / 크기 ${Number(room.gridSize || 0) || 0}`,
-      `배경 + 전경 이미지는 이번 단계에서 실제 맵에 적용할 수 있습니다.`,
+      `배경 + 전경 + image item 오브젝트 일부를 실제 맵에 적용할 수 있습니다.`,
     ].join('<br>') + buildApplyActions();
   }
 
@@ -224,6 +245,50 @@
     }
     validateParsedCocofoliaData(parsed);
     return parsed;
+  }
+
+  function buildImportedMapObjects(itemsMap = {}) {
+    const rawItems = Object.entries(itemsMap)
+      .map(([id, item]) => ({ id, ...(item || {}) }))
+      .filter((item) => item.type === 'object' && item.visible !== false && String(item.imageUrl || '').trim());
+
+    if (!rawItems.length) return [];
+
+    const bounds = rawItems.reduce((acc, item) => {
+      const x = Number(item.x || 0);
+      const y = Number(item.y || 0);
+      const w = Math.max(1, Number(item.width || 1));
+      const h = Math.max(1, Number(item.height || 1));
+      acc.left = Math.min(acc.left, x - w / 2);
+      acc.right = Math.max(acc.right, x + w / 2);
+      acc.top = Math.min(acc.top, y - h / 2);
+      acc.bottom = Math.max(acc.bottom, y + h / 2);
+      return acc;
+    }, { left: Infinity, right: -Infinity, top: Infinity, bottom: -Infinity });
+
+    const pad = 2;
+    const spanW = Math.max(1, (bounds.right - bounds.left) + pad * 2);
+    const spanH = Math.max(1, (bounds.bottom - bounds.top) + pad * 2);
+    const baseLeft = bounds.left - pad;
+    const baseTop = bounds.top - pad;
+
+    return rawItems
+      .sort((a, b) => Number(a.order || 0) - Number(b.order || 0))
+      .map((item) => {
+        const x = Number(item.x || 0);
+        const y = Number(item.y || 0);
+        const w = Math.max(1, Number(item.width || 1));
+        const h = Math.max(1, Number(item.height || 1));
+        return {
+          id: String(item.id || ''),
+          imageName: String(item.imageUrl || '').trim(),
+          angle: Number(item.angle || 0),
+          xPct: ((x - baseLeft) / spanW) * 100,
+          yPct: ((y - baseTop) / spanH) * 100,
+          wPct: (w / spanW) * 100,
+          hPct: (h / spanH) * 100,
+        };
+      });
   }
 
   async function handleMapImportFile(input) {
@@ -302,6 +367,19 @@
         };
       }
 
+      const objectBlueprints = buildImportedMapObjects(validated.parsed?.entities?.items || {});
+      const importedObjects = [];
+      for (let i = 0; i < objectBlueprints.length; i++) {
+        const blueprint = objectBlueprints[i];
+        const entry = zip.file(blueprint.imageName);
+        if (!entry) continue;
+        const objectBlob = await entry.async('blob');
+        const objExt = blueprint.imageName.split('.').pop() || 'png';
+        const objectUrl = await uploadMapLayerBlob(objectBlob, roomCode, `map-obj-${i + 1}-${Date.now()}.${objExt}`);
+        if (!objectUrl) continue;
+        importedObjects.push({ ...blueprint, url: objectUrl });
+      }
+
       const nextMapState = {
         background: {
           url: uploadedUrl,
@@ -310,6 +388,7 @@
           importedAt: Date.now(),
         },
         foreground: foregroundState,
+        objects: importedObjects,
       };
       const { db, ref, update } = window._FB;
       await update(ref(db, `rooms/${roomCode}/bgm`), {
@@ -321,9 +400,10 @@
         mapForegroundFit: nextMapState.foreground?.fit || '',
         mapForegroundSourceName: nextMapState.foreground?.sourceName || '',
         mapForegroundImportedAt: nextMapState.foreground?.importedAt || 0,
+        mapObjects: nextMapState.objects || [],
       });
-      setSummary(buildValidationSummary(pendingFile, validated.parsed) + `<br><br><b>맵 이미지 적용 완료</b>`);
-      if (typeof showToast === 'function') showToast('맵 이미지 적용 완료');
+      setSummary(buildValidationSummary(pendingFile, validated.parsed) + `<br><br><b>맵 이미지 적용 완료</b><br>image item 오브젝트 ${importedObjects.length}개 반영`);
+      if (typeof showToast === 'function') showToast('맵 이미지 + 오브젝트 적용 완료');
     } catch (err) {
       console.error('map background apply failed', err);
       setError(err?.message || '맵 이미지 적용 중 오류가 발생했어요.');

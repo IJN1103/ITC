@@ -278,6 +278,7 @@ function setupFirebaseListeners() {
         fit: bgm.mapForegroundFit || 'contain',
         sourceName: bgm.mapForegroundSourceName || '',
       } : null,
+      objects: Array.isArray(bgm.mapObjects) ? bgm.mapObjects : [],
     };
     if (typeof applyImportedMapState === 'function') applyImportedMapState(St.mapState);
   }));
