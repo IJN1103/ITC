@@ -1,7 +1,99 @@
 /**
- * ITC TRPG — Map Token
- * 토큰 CRUD, 렌더, 드래그, 선택, 상태패널, 메모, 컨텍스트메뉴
+ * ITC TRPG — Map + Token 모듈
+ * 맵 줌/팬, 토큰 CRUD/드래그/편집
  */
+
+let _mapScale = 1;
+let _mapPanX = 0, _mapPanY = 0;
+
+const MAP_LOGICAL_WIDTH = 1600;
+const MAP_LOGICAL_HEIGHT = 900;
+
+let _mapBaseWidth = MAP_LOGICAL_WIDTH;
+let _mapBaseHeight = MAP_LOGICAL_HEIGHT;
+
+/* ── 드래그 보호 상태 ── */
+let _activeDragSession = null;
+let _pendingTokenRender = false;
+
+function refreshMapBaseSize() {
+  /*
+    토큰 좌표/거리 기준은 모든 플레이어에게 동일해야 하므로
+    viewport 크기가 아니라 고정 논리 캔버스를 기준으로 유지한다.
+    이전처럼 각 클라이언트 map-area 크기를 기준으로 삼으면
+    화면 크기가 다른 플레이어끼리 같은 x/y 값이 서로 다른 픽셀 위치로 보일 수 있다.
+  */
+  _mapBaseWidth = MAP_LOGICAL_WIDTH;
+  _mapBaseHeight = MAP_LOGICAL_HEIGHT;
+  return { width: _mapBaseWidth, height: _mapBaseHeight };
+}
+
+function getMapBaseSize() {
+  return refreshMapBaseSize();
+}
+
+function getMapExpansion() {
+  const { width: baseW, height: baseH } = getMapBaseSize();
+  return { x: 1, y: 1, baseW, baseH };
+}
+
+function storedTokenPercentToDisplay(value, axis = 'x') {
+  return Number(value) || 0;
+}
+
+function displayTokenPercentToStored(value, axis = 'x') {
+  return Number(value) || 0;
+}
+
+function getTokenStoredPercentMax(axis = 'x') {
+  return 100;
+}
+
+function clampTokenStoredPercent(value, axis = 'x') {
+  return Math.max(0, Math.min(getTokenStoredPercentMax(axis), Number(value) || 0));
+}
+
+function syncRenderedTokenPositions() {
+  if (!window.St?.tokens) return;
+  const draggingIds = _activeDragSession ? new Set(_activeDragSession.targetIds) : null;
+  Object.entries(St.tokens).forEach(([id, token]) => {
+    if (draggingIds && draggingIds.has(id)) return; // 드래그 중인 토큰은 건너뜀
+    const el = getTokenEl(id);
+    if (!el || !token) return;
+    if (typeof token.x === 'number') el.style.left = storedTokenPercentToDisplay(token.x, 'x') + '%';
+    if (typeof token.y === 'number') el.style.top = storedTokenPercentToDisplay(token.y, 'y') + '%';
+  });
+}
+
+
+let _teTokenImgBlob = null;
+
+function getCloudinaryConfigForToken() { return _itcGetCloudinaryConfig(); }
+function mapTokenWithTimeout(promise, ms) { return _itcWithTimeout(promise, ms); }
+function mapTokenCanvasToBlob(canvas, type, quality) { return _itcCanvasToBlob(canvas, type, quality); }
+function makeTokenImageBlob(file, max) { return _itcMakeImageBlob(file, max || 800); }
+
+async function uploadTokenBlobToCloudinary(blob, folder = 'itc/tokens') {
+  const result = await _itcUploadToCloudinary({ blob, folder });
+  return result.url;
+}
+
+function revokeTokenPreviewUrl(url) { _itcRevokePreview(url); }
+
+function cleanupTokenEditPendingAssets() {
+  revokeTokenPreviewUrl(_teTokenImgData);
+  _teTokenImgBlob = null;
+  const list = document.getElementById('te-standing-list');
+  if (list) {
+    list.querySelectorAll('.te-standing-row').forEach((row) => {
+      if (row._pendingPreviewUrl) revokeTokenPreviewUrl(row._pendingPreviewUrl);
+      row._pendingPreviewUrl = '';
+      row._pendingBlob = null;
+    });
+  }
+}
+
+
 
 let _multiSelectedTokenIds = [];
 let _tokenSelectionState = {
@@ -367,7 +459,112 @@ function renderMapStatusPanel(tokens = St.tokens) {
   panel.style.display = 'grid';
 }
 
+function applyMapTransform() {
+  const inner = document.getElementById('map-inner');
+  const map = document.getElementById('map-area');
+  if (!inner || !map) return;
+  const { width: baseW, height: baseH } = refreshMapBaseSize();
+  inner.style.width = baseW + 'px';
+  inner.style.height = baseH + 'px';
+  inner.style.transformOrigin = '0 0';
+  inner.style.transform = `translate(${_mapPanX}px,${_mapPanY}px) scale(${_mapScale})`;
+  syncRenderedTokenPositions();
+  if (_tokenMemoBubbleTokenId) {
+    const tokenEl = getTokenEl(_tokenMemoBubbleTokenId);
+    if (tokenEl) positionTokenMemoBubble(tokenEl);
+    else hideTokenMemoBubble();
+  }
+}
 
+function mapZoom(dir, cx, cy) {
+  const map = document.getElementById('map-area');
+  if (!map) return;
+  hideTokenMemoBubble();
+  const rect = map.getBoundingClientRect();
+  if (cx === undefined) { cx = rect.width / 2; cy = rect.height / 2; }
+  const prevScale = _mapScale;
+  _mapScale = Math.max(0.2, Math.min(4, _mapScale + dir * 0.15));
+  const ratio = _mapScale / prevScale;
+  _mapPanX = cx - ratio * (cx - _mapPanX);
+  _mapPanY = cy - ratio * (cy - _mapPanY);
+  applyMapTransform();
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const mapEl = document.getElementById('map-area');
+  if (!mapEl) return;
+
+  refreshMapBaseSize();
+  applyMapTransform();
+  window.addEventListener('resize', () => {
+    applyMapTransform();
+  });
+
+  mapEl.addEventListener('wheel', e => {
+    e.preventDefault();
+    const rect = mapEl.getBoundingClientRect();
+    mapZoom(e.deltaY < 0 ? 1 : -1, e.clientX - rect.left, e.clientY - rect.top);
+  }, { passive: false });
+
+  let isPanning = false, panStartX, panStartY, panOriginX, panOriginY;
+
+  mapEl.addEventListener('mousedown', e => {
+    if (e.target.closest('.map-zoom') || e.target.closest('.map-add-token') || e.target.closest('.vn-dialog')) return;
+
+    if (e.button === 1 && !e.target.closest('.map-token')) {
+      const rect = mapEl.getBoundingClientRect();
+      _tokenSelectionState.active = true;
+      _tokenSelectionState.startX = e.clientX - rect.left;
+      _tokenSelectionState.startY = e.clientY - rect.top;
+      _tokenSelectionState.currentX = _tokenSelectionState.startX;
+      _tokenSelectionState.currentY = _tokenSelectionState.startY;
+      updateTokenSelectionBox();
+      e.preventDefault();
+      return;
+    }
+
+    if (e.target.closest('.map-token')) return;
+    if (e.button !== 0) return;
+
+    hideTokenMemoBubble();
+    clearMultiTokenSelection();
+    isPanning = true;
+    panStartX = e.clientX; panStartY = e.clientY;
+    panOriginX = _mapPanX; panOriginY = _mapPanY;
+    mapEl.classList.add('panning');
+    e.preventDefault();
+  });
+
+  document.addEventListener('mousemove', e => {
+    if (_tokenSelectionState.active) {
+      const rect = mapEl.getBoundingClientRect();
+      _tokenSelectionState.currentX = e.clientX - rect.left;
+      _tokenSelectionState.currentY = e.clientY - rect.top;
+      updateTokenSelectionBox();
+      return;
+    }
+    if (!isPanning) return;
+    _mapPanX = panOriginX + (e.clientX - panStartX);
+    _mapPanY = panOriginY + (e.clientY - panStartY);
+    applyMapTransform();
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (_tokenSelectionState.active) finishTokenSelection();
+    if (isPanning) { isPanning = false; mapEl.classList.remove('panning'); }
+  });
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && _tokenSelectionState.active) {
+      _tokenSelectionState.active = false;
+      hideTokenSelectionBox();
+    }
+  });
+
+  mapEl.addEventListener('auxclick', e => {
+    if (e.button === 1) e.preventDefault();
+  });
+});
 
 let _tokenMemoBubbleEl = null;
 let _tokenMemoBubbleTokenId = null;
@@ -806,3 +1003,297 @@ function tokCtxAction(action) {
   }
 }
 
+let _teTokenId = null;
+let _teTokenImgData = null;
+
+function openTokenEdit(tokenId) {
+  _teTokenId = tokenId;
+  const t = St.tokens[tokenId];
+  if (!t) return;
+
+  refreshTokenOwnerBar(t);
+
+  document.getElementById('te-name').value = t.name || '';
+  document.getElementById('te-initiative').value = t.initiative || 0;
+  document.getElementById('te-memo').value = t.memo || '';
+  document.getElementById('te-size').value = t.tokenSize || 1;
+  document.getElementById('te-x').value = Math.round((t.x || 0) * 10) / 10;
+  document.getElementById('te-y').value = Math.round((t.y || 0) * 10) / 10;
+  document.getElementById('te-url').value = t.refUrl || '';
+  document.getElementById('te-chatpal').value = t.chatPalette || '';
+  document.getElementById('te-hide-status').checked = t.hideStatus || false;
+  document.getElementById('te-hide-chat').checked = t.hideChat || false;
+  document.getElementById('te-hide-list').checked = t.hideList || false;
+  document.getElementById('te-standing-as-token').checked = t.standingAsToken || false;
+
+  _teTokenImgData = t.tokenImg || null;
+  teRefreshTokenImgPreview();
+
+  const sl = document.getElementById('te-standing-list');
+  sl.innerHTML = '';
+  (t.standings || []).forEach((s, i) => teAddStanding(s.label, s.img));
+
+  const stl = document.getElementById('te-status-list');
+  stl.innerHTML = '';
+  (t.statuses || []).forEach(s => teAddStatus(s.label, s.cur, s.max));
+
+  const pl = document.getElementById('te-param-list');
+  pl.innerHTML = '';
+  (t.params || []).forEach(p => teAddParam(p.label, p.value));
+
+  document.getElementById('te-hint').textContent = '';
+  document.getElementById('te-overlay').classList.add('open');
+}
+
+function closeTokenEdit() {
+  cleanupTokenEditPendingAssets();
+  document.getElementById('te-overlay').classList.remove('open');
+  refreshTokenOwnerBar(null);
+  _teTokenId = null;
+  _teTokenImgData = null;
+}
+
+function teRefreshTokenImgPreview() {
+  const wrap = document.getElementById('te-token-img');
+  const txt = document.getElementById('te-token-img-text');
+  const clearBtn = document.getElementById('te-img-clear');
+  if (_teTokenImgData) {
+    wrap.innerHTML = `<img src="${_teTokenImgData}" alt="token">`;
+    if (clearBtn) clearBtn.style.display = '';
+  } else {
+    wrap.innerHTML = '<span id="te-token-img-text">📷</span>';
+    if (clearBtn) clearBtn.style.display = 'none';
+  }
+}
+
+async function teHandleTokenImg(input) {
+  const file = input.files[0]; if (!file) return;
+  if (file.size > 3*1024*1024) { showToast('이미지는 3MB 이하만 가능해요.'); return; }
+  try {
+    const blob = await makeTokenImageBlob(file, 800);
+    revokeTokenPreviewUrl(_teTokenImgData);
+    _teTokenImgBlob = blob;
+    _teTokenImgData = URL.createObjectURL(blob);
+    teRefreshTokenImgPreview();
+  } catch (err) {
+    console.error('token image prepare failed', err);
+    showToast('토큰 이미지를 준비하지 못했어요. 다시 시도해 주세요.');
+  } finally {
+    input.value = '';
+  }
+}
+
+
+function teClearTokenImg() {
+  revokeTokenPreviewUrl(_teTokenImgData);
+  _teTokenImgBlob = null;
+  _teTokenImgData = null;
+  teRefreshTokenImgPreview();
+}
+
+function teAddStanding(label, img) {
+  const list = document.getElementById('te-standing-list');
+  const idx = list.children.length;
+  const row = document.createElement('div');
+  row.className = 'te-standing-row' + (img ? ' has-img' : '');
+  if (img) row.dataset.img = img;
+  const thumbContent = img
+    ? `<img src="${img}" alt="">`
+    : `<span class="st-placeholder">📷</span>`;
+  row.innerHTML = `
+    <div class="te-st-thumb" onclick="this.querySelector('input[type=file]').click()" title="이미지 업로드">
+      ${thumbContent}
+      <input type="file" accept="image/*" style="display:none" onchange="teHandleStandingImg(this,${idx})">
+    </div>
+    <div class="te-st-fields">
+      <label>라벨</label>
+      <input placeholder="@미소" value="${esc(label||'')}">
+    </div>
+    <div class="te-st-actions">
+      <button class="te-st-del" onclick="teRemoveStandingAt(${idx})" title="삭제">🗑</button>
+      <span class="te-st-check">✓</span>
+    </div>`;
+  list.appendChild(row);
+}
+function teRemoveStanding() {
+  const list = document.getElementById('te-standing-list');
+  if (list.lastChild) list.removeChild(list.lastChild);
+}
+function teRemoveStandingAt(idx) {
+  const list = document.getElementById('te-standing-list');
+  const row = list.children[idx];
+  if (row && confirm('이 스탠딩을 삭제할까요?')) {
+    row.remove();
+    Array.from(list.children).forEach((r, i) => {
+      const fileInput = r.querySelector('input[type=file]');
+      if (fileInput) fileInput.setAttribute('onchange', `teHandleStandingImg(this,${i})`);
+      const delBtn = r.querySelector('.te-st-del');
+      if (delBtn) delBtn.setAttribute('onclick', `teRemoveStandingAt(${i})`);
+    });
+  }
+}
+async function teHandleStandingImg(input, idx) {
+  const file = input.files[0]; if (!file) return;
+  if (file.size > 3*1024*1024) { showToast('이미지는 3MB 이하만 가능해요.'); return; }
+  try {
+    const blob = await makeTokenImageBlob(file, 800);
+    const list = document.getElementById('te-standing-list');
+    const row = list.children[idx];
+    if (!row) return;
+    if (row._pendingPreviewUrl) revokeTokenPreviewUrl(row._pendingPreviewUrl);
+    const previewUrl = URL.createObjectURL(blob);
+    row._pendingBlob = blob;
+    row._pendingPreviewUrl = previewUrl;
+    row.dataset.img = previewUrl;
+    row.classList.add('has-img');
+    const thumb = row.querySelector('.te-st-thumb');
+    if (thumb) thumb.innerHTML = `<img src="${previewUrl}" alt=""><input type="file" accept="image/*" style="display:none" onchange="teHandleStandingImg(this,${idx})">`;
+  } catch (err) {
+    console.error('standing image prepare failed', err);
+    showToast('스탠딩 이미지를 준비하지 못했어요. 다시 시도해 주세요.');
+  } finally {
+    input.value = '';
+  }
+}
+
+
+function teAddStatus(label, cur, max) {
+  const list = document.getElementById('te-status-list');
+  const row = document.createElement('div');
+  row.className = 'te-status-row';
+  row.innerHTML = `
+    <input style="flex:1" placeholder="라벨" value="${esc(label||'')}">
+    <input style="width:55px" type="number" placeholder="현재값" value="${cur!=null?cur:''}">
+    <input style="width:55px" type="number" placeholder="최대값" value="${max!=null?max:''}">`;
+  list.appendChild(row);
+}
+function teRemoveStatus() {
+  const list = document.getElementById('te-status-list');
+  if (list.lastChild) list.removeChild(list.lastChild);
+}
+
+function teAddParam(label, value) {
+  const list = document.getElementById('te-param-list');
+  const row = document.createElement('div');
+  row.className = 'te-param-row';
+  row.innerHTML = `
+    <input style="flex:1" placeholder="라벨" value="${esc(label||'')}">
+    <input style="flex:1" placeholder="값" value="${esc(value||'')}">`;
+  list.appendChild(row);
+}
+function teRemoveParam() {
+  const list = document.getElementById('te-param-list');
+  if (list.lastChild) list.removeChild(list.lastChild);
+}
+
+async function saveTokenEdit() {
+  if (!_teTokenId) return;
+  const t = St.tokens[_teTokenId];
+  if (!t) return;
+
+  t.name = document.getElementById('te-name').value.trim() || '?';
+  t.initiative = parseFloat(document.getElementById('te-initiative').value) || 0;
+  t.memo = document.getElementById('te-memo').value;
+  t.tokenSize = parseInt(document.getElementById('te-size').value) || 1;
+  t.x = parseFloat(document.getElementById('te-x').value) || t.x;
+  t.y = parseFloat(document.getElementById('te-y').value) || t.y;
+  t.refUrl = document.getElementById('te-url').value.trim();
+  t.chatPalette = document.getElementById('te-chatpal').value;
+  t.hideStatus = document.getElementById('te-hide-status').checked;
+  t.hideChat = document.getElementById('te-hide-chat').checked;
+  t.hideList = document.getElementById('te-hide-list').checked;
+  t.standingAsToken = document.getElementById('te-standing-as-token').checked;
+
+  const hint = document.getElementById('te-hint');
+  if (hint) hint.textContent = '이미지를 업로드하는 중이에요…';
+
+  if (_teTokenImgBlob) {
+    try {
+      t.tokenImg = await uploadTokenBlobToCloudinary(_teTokenImgBlob, `itc/tokens/${St.roomCode}`);
+    } catch (err) {
+      console.error('token image upload failed', err);
+      if (hint) hint.textContent = '토큰 이미지 업로드에 실패했어요.';
+      return;
+    }
+  } else if (_teTokenImgData && !_teTokenImgData.startsWith('blob:')) {
+    t.tokenImg = _teTokenImgData;
+  } else if (!_teTokenImgData) {
+    t.tokenImg = null;
+  }
+
+  t.standings = [];
+  const standingRows = Array.from(document.getElementById('te-standing-list').querySelectorAll('.te-standing-row'));
+  for (const row of standingRows) {
+    const inputs = row.querySelectorAll('input[type="text"],input:not([type])');
+    const label = inputs[0]?.value?.trim() || '';
+    let img = row.dataset.img || '';
+    if (row._pendingBlob) {
+      try {
+        img = await uploadTokenBlobToCloudinary(row._pendingBlob, `itc/standings/${St.roomCode}`);
+      } catch (err) {
+        console.error('standing image upload failed', err);
+        if (hint) hint.textContent = '스탠딩 이미지 업로드에 실패했어요.';
+        return;
+      }
+    } else if (img.startsWith('blob:')) {
+      img = '';
+    }
+    if (label || img) t.standings.push({ label, img });
+  }
+
+  t.statuses = [];
+  document.getElementById('te-status-list').querySelectorAll('.te-status-row').forEach(row => {
+    const inputs = row.querySelectorAll('input');
+    const label = inputs[0]?.value?.trim() || '';
+    const cur = parseFloat(inputs[1]?.value) || 0;
+    const max = parseFloat(inputs[2]?.value) || 0;
+    if (label) t.statuses.push({ label, cur, max });
+  });
+
+  t.params = [];
+  document.getElementById('te-param-list').querySelectorAll('.te-param-row').forEach(row => {
+    const inputs = row.querySelectorAll('input');
+    const label = inputs[0]?.value?.trim() || '';
+    const value = inputs[1]?.value?.trim() || '';
+    if (label) t.params.push({ label, value });
+  });
+
+  if (window._FB?.CONFIGURED) {
+    const { db, ref, set } = window._FB;
+    set(ref(db, `rooms/${St.roomCode}/tokens/${_teTokenId}`), t);
+  } else {
+    renderAllTokens(St.tokens);
+  }
+
+  if (hint) { hint.textContent = '저장됐어요 ✓'; setTimeout(() => { if(hint) hint.textContent=''; }, 2000); }
+  cleanupTokenEditPendingAssets();
+  _teTokenImgData = t.tokenImg || null;
+  _teTokenImgBlob = null;
+}
+
+function deleteTokenFromEdit() {
+  if (!_teTokenId || !confirm('이 토큰을 삭제할까요?')) return;
+  const delId = _teTokenId;
+  closeTokenEdit();
+  const el = document.getElementById('tok-' + delId);
+  if (el) el.remove();
+  delete St.tokens[delId];
+  syncMultiTokenSelectionWithTokens(St.tokens);
+  removeMapStatusCard(delId, St.tokens);
+  if (window._FB?.CONFIGURED) {
+    const { db, ref, remove } = window._FB;
+    remove(ref(db, `rooms/${St.roomCode}/tokens/${delId}`));
+  }
+}
+
+function setTool(t) {
+  if (t === 'erase' && !hasPerm('editToken')) { showToast('토큰 편집 권한이 없어요.'); return; }
+  St.tool = t;
+  document.getElementById('tool-select').classList.toggle('on', t === 'select');
+  const eraseBtn = document.getElementById('tool-erase');
+  if (eraseBtn) eraseBtn.classList.toggle('on', t === 'erase');
+}
+
+
+
+window.addEventListener('scroll', () => hideTokenMemoBubble(), true);

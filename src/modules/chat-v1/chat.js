@@ -70,8 +70,1250 @@ async function clearAllChatHistory() {
   }
 }
 
+const _renderState = {
+  chat: {
+    containerId: 'chat-messages',
+    raf: 0,
+    queue: [],
+    map: new Map(),
+    max: 120,
+    maxMemory: 360,
+    loadStep: 28,
+    storeOrder: [],
+    storeMap: new Map(),
+    scrollBound: false,
+    scrollTick: 0,
+    stickyToBottom: true,
+    pendingBottomNotice: 0,
+    virtualEnabled: false,
+    virtualRaf: 0,
+    virtualDirty: false,
+    virtualForceStickBottom: false,
+    topSpacer: null,
+    bottomSpacer: null,
+    renderedStart: 0,
+    renderedEnd: 0,
+    avgItemHeight: 76,
+    itemHeights: new Map(),
+    overscan: 10,
+    minWindow: 26,
+    historyLoader: null,
+    historyLoading: false,
+    historyExhausted: true,
+  },
+  casual: {
+    containerId: 'casual-messages',
+    raf: 0,
+    queue: [],
+    map: new Map(),
+    max: 140,
+    maxMemory: 260,
+    loadStep: 36,
+    storeOrder: [],
+    storeMap: new Map(),
+    scrollBound: false,
+    scrollTick: 0,
+    stickyToBottom: true,
+    pendingBottomNotice: 0,
+    virtualEnabled: false,
+    virtualRaf: 0,
+    virtualDirty: false,
+    virtualForceStickBottom: false,
+    topSpacer: null,
+    bottomSpacer: null,
+    renderedStart: 0,
+    renderedEnd: 0,
+    avgItemHeight: 76,
+    itemHeights: new Map(),
+    overscan: 10,
+    minWindow: 26,
+    historyLoader: null,
+    historyLoading: false,
+    historyExhausted: true,
+  },
+};
 
-/* ── 메시지 송수신 / 빌드 / 타이핑 / 잡담 ── */
+function getRenderState(channel = 'chat') {
+  return _renderState[channel] || _renderState.chat;
+}
+
+function getRenderContainer(channel = 'chat') {
+  const state = getRenderState(channel);
+  return document.getElementById(state.containerId);
+}
+
+function isNearBottom(el, threshold = 56) {
+  if (!el) return true;
+  return (el.scrollHeight - el.scrollTop - el.clientHeight) <= threshold;
+}
+
+function isNearTop(el, threshold = 56) {
+  if (!el) return true;
+  return el.scrollTop <= threshold;
+}
+
+function scrollToBottom(el) {
+  if (!el) return;
+  el.scrollTop = el.scrollHeight;
+}
+
+function makeStoredMessageKey(channel = 'chat', key = '') {
+  return key || `__local_${channel}_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function getRenderedKeyList(channel = 'chat') {
+  const el = getRenderContainer(channel);
+  if (!el) return [];
+  return Array.from(el.children)
+    .map(node => node?.dataset?.msgKey || '')
+    .filter(Boolean);
+}
+
+function syncStickyState(channel = 'chat', el = null) {
+  const target = el || getRenderContainer(channel);
+  const state = getRenderState(channel);
+  state.stickyToBottom = isNearBottom(target);
+  const notice = target ? target.querySelector('.chat-history-notice') : null;
+  if (notice) {
+    notice.style.display = state.pendingBottomNotice > 0 ? '' : 'none';
+    if (state.pendingBottomNotice > 0) {
+      notice.textContent = `새 메시지 ${state.pendingBottomNotice}개 · 아래로 이동`;
+    }
+  }
+}
+
+
+function isVirtualChannel(channel = 'chat') {
+  return !!getRenderState(channel).virtualEnabled;
+}
+
+function ensureVirtualElements(channel = 'chat') {
+  const state = getRenderState(channel);
+  const el = getRenderContainer(channel);
+  if (!el || !state.virtualEnabled) return null;
+
+  ensureHistoryNotice(channel);
+
+  let topSpacer = el.querySelector('.chat-virtual-spacer-top');
+  let bottomSpacer = el.querySelector('.chat-virtual-spacer-bottom');
+
+  if (!topSpacer) {
+    topSpacer = document.createElement('div');
+    topSpacer.className = 'chat-virtual-spacer chat-virtual-spacer-top';
+    topSpacer.style.cssText = 'height:0;pointer-events:none;flex:0 0 auto;';
+    const notice = el.querySelector('.chat-history-notice');
+    if (notice && notice.parentNode === el) el.insertBefore(topSpacer, notice.nextSibling);
+    else el.prepend(topSpacer);
+  }
+
+  if (!bottomSpacer) {
+    bottomSpacer = document.createElement('div');
+    bottomSpacer.className = 'chat-virtual-spacer chat-virtual-spacer-bottom';
+    bottomSpacer.style.cssText = 'height:0;pointer-events:none;flex:0 0 auto;';
+    el.appendChild(bottomSpacer);
+  }
+
+  state.topSpacer = topSpacer;
+  state.bottomSpacer = bottomSpacer;
+  return { el, topSpacer, bottomSpacer };
+}
+
+function getVirtualRenderedNodes(channel = 'chat') {
+  const state = getRenderState(channel);
+  const el = getRenderContainer(channel);
+  if (!el) return [];
+  return Array.from(el.children).filter(node => {
+    if (!(node instanceof HTMLElement)) return false;
+    if (node === state.topSpacer || node === state.bottomSpacer) return false;
+    if (node.classList.contains('chat-history-notice')) return false;
+    return node.classList.contains('chat-msg');
+  });
+}
+
+function estimateItemHeight(channel = 'chat', key = '') {
+  const state = getRenderState(channel);
+  return state.itemHeights.get(key) || state.avgItemHeight || 76;
+}
+
+function sumEstimatedHeights(channel = 'chat', start = 0, end = 0) {
+  const state = getRenderState(channel);
+  if (start >= end) return 0;
+  let total = 0;
+  for (let i = start; i < end; i += 1) {
+    total += estimateItemHeight(channel, state.storeOrder[i]);
+  }
+  return total;
+}
+
+function updateMeasuredHeights(channel = 'chat') {
+  const state = getRenderState(channel);
+  const nodes = getVirtualRenderedNodes(channel);
+  if (!nodes.length) return;
+  let total = 0;
+  let count = 0;
+  nodes.forEach((node) => {
+    const key = node?.dataset?.msgKey || '';
+    if (!key) return;
+    const h = Math.max(24, Math.round(node.getBoundingClientRect().height || node.offsetHeight || 0));
+    if (!h) return;
+    state.itemHeights.set(key, h);
+    total += h;
+    count += 1;
+  });
+  if (count > 0) {
+    state.avgItemHeight = Math.max(44, Math.round(total / count));
+  }
+}
+
+function renderVirtualWindow(channel = 'chat', options = {}) {
+  const state = getRenderState(channel);
+  if (!state.virtualEnabled) return false;
+  const shell = ensureVirtualElements(channel);
+  if (!shell) return false;
+
+  const { el, topSpacer, bottomSpacer } = shell;
+  const total = state.storeOrder.length;
+  const prevScrollTop = el.scrollTop;
+  const oldNodes = getVirtualRenderedNodes(channel);
+  const anchorNode = oldNodes[0] || null;
+  const anchorKey = anchorNode?.dataset?.msgKey || '';
+  const anchorOffset = anchorNode ? (prevScrollTop - anchorNode.offsetTop) : 0;
+
+  if (!total) {
+    oldNodes.forEach(node => node.remove());
+    state.map.clear();
+    state.renderedStart = 0;
+    state.renderedEnd = 0;
+    topSpacer.style.height = '0px';
+    bottomSpacer.style.height = '0px';
+    syncStickyState(channel, el);
+    return true;
+  }
+
+  const approxHeight = Math.max(44, state.avgItemHeight || 76);
+  const viewportCount = Math.max(state.minWindow, Math.ceil((el.clientHeight || 640) / approxHeight) + (state.overscan * 2));
+  let start = 0;
+  let end = total;
+
+  if (options.forceStickBottom || state.stickyToBottom) {
+    end = total;
+    start = Math.max(0, end - viewportCount);
+  } else {
+    const approxIndex = Math.max(0, Math.floor(prevScrollTop / approxHeight));
+    start = Math.max(0, approxIndex - state.overscan);
+    end = Math.min(total, start + viewportCount);
+    start = Math.max(0, end - viewportCount);
+  }
+
+  const nextKeys = state.storeOrder.slice(start, end);
+  oldNodes.forEach(node => node.remove());
+  state.map.clear();
+
+  const frag = document.createDocumentFragment();
+  nextKeys.forEach((key) => {
+    const record = getStoredRecord(channel, key);
+    const node = buildMessageNodeFromRecord(channel, record);
+    if (!node) return;
+    node.dataset.msgKey = key;
+    state.map.set(key, node);
+    frag.appendChild(node);
+  });
+
+  bottomSpacer.parentNode.insertBefore(frag, bottomSpacer);
+  state.renderedStart = start;
+  state.renderedEnd = end;
+
+  updateMeasuredHeights(channel);
+
+  topSpacer.style.height = `${sumEstimatedHeights(channel, 0, start)}px`;
+  bottomSpacer.style.height = `${sumEstimatedHeights(channel, end, total)}px`;
+  primeDeferredChatImages(el);
+
+  if (options.forceStickBottom || state.stickyToBottom) {
+    scrollToBottom(el);
+    state.pendingBottomNotice = 0;
+  } else if (anchorKey && nextKeys.includes(anchorKey)) {
+    const restored = state.map.get(anchorKey);
+    if (restored) {
+      el.scrollTop = restored.offsetTop + anchorOffset;
+    }
+  }
+
+  syncStickyState(channel, el);
+  return true;
+}
+
+function scheduleVirtualRender(channel = 'chat', options = {}) {
+  const state = getRenderState(channel);
+  if (!state.virtualEnabled) return;
+  state.virtualDirty = true;
+  if (options.forceStickBottom) state.virtualForceStickBottom = true;
+  if (state.virtualRaf) return;
+  state.virtualRaf = requestAnimationFrame(() => {
+    state.virtualRaf = 0;
+    if (!state.virtualDirty) return;
+    state.virtualDirty = false;
+    const forceStickBottom = !!state.virtualForceStickBottom;
+    state.virtualForceStickBottom = false;
+    renderVirtualWindow(channel, { forceStickBottom });
+  });
+}
+
+function upsertStoredMessage(channel = 'chat', key, record, options = {}) {
+  const state = getRenderState(channel);
+  const safeKey = makeStoredMessageKey(channel, key);
+  const existing = state.storeMap.has(safeKey);
+  const position = options?.position === 'prepend' ? 'prepend' : 'append';
+
+  if (!existing) {
+    if (position === 'prepend') state.storeOrder.unshift(safeKey);
+    else state.storeOrder.push(safeKey);
+  }
+  state.storeMap.set(safeKey, { ...(record || {}), _key: safeKey });
+
+  while (state.storeOrder.length > state.maxMemory) {
+    const dropKey = state.storeOrder.shift();
+    if (!dropKey) break;
+    state.storeMap.delete(dropKey);
+    state.itemHeights.delete(dropKey);
+    const dropNode = state.map.get(dropKey);
+    if (dropNode && dropNode.parentNode) dropNode.remove();
+    state.map.delete(dropKey);
+  }
+  return safeKey;
+}
+
+function storeMessageRecord(channel = 'chat', record = {}, key = '', options = {}) {
+  if (channel === 'casual') {
+    return upsertStoredMessage(channel, key, {
+      name: record.name,
+      text: record.text,
+      uid: record.uid,
+      timestamp: record.timestamp,
+      nameColor: record.nameColor,
+    }, options);
+  }
+  return upsertStoredMessage(channel, key, {
+    name: record.name,
+    text: record.text,
+    type: record.type,
+    uid: record.uid,
+    timestamp: record.timestamp,
+    speakAsAvatar: record.speakAsAvatar,
+    speakAsJournalId: record.speakAsJournalId,
+    whisperTo: record.whisperTo,
+    whisperToName: record.whisperToName,
+    nameColor: record.nameColor,
+    standingImg: record.standingImg,
+    tokenId: record.tokenId,
+    standingLabel: record.standingLabel,
+    imageWide: record.imageWide,
+    hideImageMeta: record.hideImageMeta,
+    imageMeta: normalizeChatImageMeta(record.imageMeta),
+  }, options);
+}
+
+
+function removeStoredMessage(channel = 'chat', key) {
+  const state = getRenderState(channel);
+  if (!key) return;
+  const idx = state.storeOrder.indexOf(key);
+  if (idx >= 0) state.storeOrder.splice(idx, 1);
+  state.storeMap.delete(key);
+}
+
+function getStoredRecord(channel = 'chat', key) {
+  const state = getRenderState(channel);
+  return state.storeMap.get(key) || null;
+}
+
+function buildMessageNodeFromRecord(channel = 'chat', record) {
+  if (!record) return null;
+  if (channel === 'casual') {
+    return buildCasualMsgElement(record.name, record.text, record.uid, record.timestamp, record._key);
+  }
+  return buildChatMsgElement({ ...record, msgKey: record._key, channel });
+}
+
+function trimRenderedMessages(channel = 'chat') {
+  const state = getRenderState(channel);
+  const el = getRenderContainer(channel);
+  if (!el) return;
+  if (state.virtualEnabled) return;
+  while (el.children.length > state.max) {
+    let removable = el.firstElementChild;
+    if (removable && removable.classList.contains('chat-history-notice')) {
+      removable = removable.nextElementSibling;
+    }
+    if (!removable) break;
+    const key = removable.dataset.msgKey || '';
+    if (key) state.map.delete(key);
+    removable.remove();
+  }
+}
+
+function ensureHistoryNotice(channel = 'chat') {
+  const el = getRenderContainer(channel);
+  if (!el) return null;
+  let notice = el.querySelector('.chat-history-notice');
+  if (!notice) {
+    notice = document.createElement('button');
+    notice.type = 'button';
+    notice.className = 'chat-history-notice';
+    notice.style.cssText = 'display:none;width:100%;margin:0 0 8px;padding:8px 10px;border:1px solid rgba(255,255,255,.08);border-radius:10px;background:rgba(255,255,255,.04);color:#cfd3dc;font-size:12px;cursor:pointer;';
+    notice.addEventListener('click', () => {
+      const target = getRenderContainer(channel);
+      if (!target) return;
+      scrollToBottom(target);
+      const state = getRenderState(channel);
+      state.pendingBottomNotice = 0;
+      syncStickyState(channel, target);
+    });
+    el.prepend(notice);
+  }
+  return notice;
+}
+
+function prependStoredWindow(channel = 'chat', count = 0) {
+  const state = getRenderState(channel);
+  if (state.virtualEnabled) return false;
+  const el = getRenderContainer(channel);
+  if (!el || !state.storeOrder.length) return false;
+
+  const renderedKeys = getRenderedKeyList(channel);
+  const firstRenderedKey = renderedKeys[0] || '';
+  const firstIndex = firstRenderedKey ? state.storeOrder.indexOf(firstRenderedKey) : state.storeOrder.length;
+  if (firstIndex <= 0) return false;
+
+  const step = Math.max(1, count || state.loadStep);
+  const start = Math.max(0, firstIndex - step);
+  const keysToAdd = state.storeOrder.slice(start, firstIndex);
+  if (!keysToAdd.length) return false;
+
+  const prevHeight = el.scrollHeight;
+  const prevTop = el.scrollTop;
+  const frag = document.createDocumentFragment();
+
+  keysToAdd.forEach(key => {
+    const record = getStoredRecord(channel, key);
+    const node = buildMessageNodeFromRecord(channel, record);
+    if (!node) return;
+    node.dataset.msgKey = key;
+    state.map.set(key, node);
+    frag.appendChild(node);
+  });
+
+  const notice = ensureHistoryNotice(channel);
+  if (notice && notice.parentNode === el) {
+    el.insertBefore(frag, notice.nextSibling);
+  } else {
+    el.prepend(frag);
+  }
+
+  trimRenderedMessages(channel);
+  primeDeferredChatImages(el);
+  const nextHeight = el.scrollHeight;
+  el.scrollTop = prevTop + (nextHeight - prevHeight);
+  return true;
+}
+
+function appendStoredWindow(channel = 'chat', count = 0) {
+  const state = getRenderState(channel);
+  if (state.virtualEnabled) return false;
+  const el = getRenderContainer(channel);
+  if (!el || !state.storeOrder.length) return false;
+
+  const renderedKeys = getRenderedKeyList(channel);
+  const lastRenderedKey = renderedKeys[renderedKeys.length - 1] || '';
+  const lastIndex = lastRenderedKey ? state.storeOrder.indexOf(lastRenderedKey) : -1;
+  if (lastIndex >= state.storeOrder.length - 1) return false;
+
+  const step = Math.max(1, count || state.loadStep);
+  const end = Math.min(state.storeOrder.length, lastIndex + 1 + step);
+  const keysToAdd = state.storeOrder.slice(lastIndex + 1, end);
+  if (!keysToAdd.length) return false;
+
+  const keepBottom = isNearBottom(el);
+  const frag = document.createDocumentFragment();
+  keysToAdd.forEach(key => {
+    const record = getStoredRecord(channel, key);
+    const node = buildMessageNodeFromRecord(channel, record);
+    if (!node) return;
+    node.dataset.msgKey = key;
+    state.map.set(key, node);
+    frag.appendChild(node);
+  });
+  el.appendChild(frag);
+  trimRenderedMessages(channel);
+  primeDeferredChatImages(el);
+  if (keepBottom) requestAnimationFrame(() => scrollToBottom(el));
+  return true;
+}
+
+function flushMessageRender(channel = 'chat') {
+  const state = getRenderState(channel);
+  state.raf = 0;
+  const el = getRenderContainer(channel);
+  if (!el || state.queue.length === 0) return;
+  if (state.virtualEnabled) {
+    const items = state.queue.splice(0, state.queue.length);
+    if (!state.stickyToBottom) state.pendingBottomNotice += items.length;
+    scheduleVirtualRender(channel, { forceStickBottom: state.stickyToBottom });
+    syncStickyState(channel, el);
+    return;
+  }
+
+  ensureHistoryNotice(channel);
+  const keepBottom = isNearBottom(el);
+  const items = state.queue.splice(0, state.queue.length);
+
+  items.forEach((item) => {
+    const { node, key } = item;
+    if (!node || !key) return;
+    const current = state.map.get(key);
+    if (current && current.parentNode === el) {
+      el.replaceChild(node, current);
+      state.map.set(key, node);
+      return;
+    }
+    state.map.set(key, node);
+    el.appendChild(node);
+  });
+
+  trimRenderedMessages(channel);
+  primeDeferredChatImages(el);
+
+  if (keepBottom || state.stickyToBottom) {
+    state.pendingBottomNotice = 0;
+    requestAnimationFrame(() => {
+      scrollToBottom(el);
+      syncStickyState(channel, el);
+    });
+  } else {
+    state.pendingBottomNotice += items.length;
+    syncStickyState(channel, el);
+  }
+}
+
+function queueMessageRender(channel = 'chat', node, key = '', autoscroll = true) {
+  const state = getRenderState(channel);
+  const el = getRenderContainer(channel);
+  if (!el || !node) return;
+  if (state.virtualEnabled) {
+    if (autoscroll) syncStickyState(channel, el);
+    state.queue.push({ node, key });
+    if (state.raf) return;
+    state.raf = requestAnimationFrame(() => flushMessageRender(channel));
+    return;
+  }
+  if (key) node.dataset.msgKey = key;
+  if (autoscroll) syncStickyState(channel, el);
+  state.queue.push({ node, key });
+  if (state.raf) return;
+  state.raf = requestAnimationFrame(() => flushMessageRender(channel));
+}
+
+function replaceRenderedMessage(channel = 'chat', key, node) {
+  const state = getRenderState(channel);
+  const el = getRenderContainer(channel);
+  if (!el || !key || !node) return;
+  if (state.virtualEnabled) {
+    scheduleVirtualRender(channel, { forceStickBottom: state.stickyToBottom });
+    return;
+  }
+  const current = state.map.get(key) || el.querySelector(`.chat-msg[data-msg-key="${CSS.escape(key)}"]`);
+  node.dataset.msgKey = key;
+  if (current && current.parentNode === el) {
+    const keepBottom = isNearBottom(el);
+    el.replaceChild(node, current);
+    state.map.set(key, node);
+    primeDeferredChatImages(el);
+    if (keepBottom) requestAnimationFrame(() => scrollToBottom(el));
+  } else {
+    const safeKey = upsertStoredMessage(channel, key, getStoredRecord(channel, key) || {});
+    queueMessageRender(channel, node, safeKey, true);
+  }
+}
+
+function removeRenderedMessage(channel = 'chat', key) {
+  const state = getRenderState(channel);
+  const el = getRenderContainer(channel);
+  if (!el || !key) return;
+  if (state.virtualEnabled) {
+    state.itemHeights.delete(key);
+    removeStoredMessage(channel, key);
+    scheduleVirtualRender(channel, { forceStickBottom: state.stickyToBottom });
+    return;
+  }
+  const current = state.map.get(key) || el.querySelector(`.chat-msg[data-msg-key="${CSS.escape(key)}"]`);
+  if (current) current.remove();
+  state.map.delete(key);
+  removeStoredMessage(channel, key);
+  syncStickyState(channel, el);
+}
+
+
+function configureHistoryPaging(channel = 'chat', options = {}) {
+  const state = getRenderState(channel);
+  state.historyLoader = typeof options.loadOlder === 'function' ? options.loadOlder : null;
+  state.historyLoading = false;
+  state.historyExhausted = !!options.exhausted || !state.historyLoader;
+}
+
+async function requestOlderHistory(channel = 'chat') {
+  const state = getRenderState(channel);
+  if (!state.historyLoader || state.historyLoading || state.historyExhausted) return 0;
+  state.historyLoading = true;
+  try {
+    const result = await state.historyLoader();
+    const count = Number(typeof result === 'number' ? result : (result?.count || 0)) || 0;
+    if (typeof result === 'object' && result && Object.prototype.hasOwnProperty.call(result, 'exhausted')) {
+      state.historyExhausted = !!result.exhausted;
+    } else if (count <= 0) {
+      state.historyExhausted = true;
+    }
+    return count;
+  } catch (err) {
+    console.error(`requestOlderHistory(${channel}) failed`, err);
+    return 0;
+  } finally {
+    state.historyLoading = false;
+  }
+}
+
+function bindMessageViewport(channel = 'chat') {
+  const state = getRenderState(channel);
+  const el = getRenderContainer(channel);
+  if (!el || state.scrollBound) return;
+  state.scrollBound = true;
+  ensureHistoryNotice(channel);
+  if (state.virtualEnabled) ensureVirtualElements(channel);
+  el.addEventListener('scroll', () => {
+    if (state.scrollTick) cancelAnimationFrame(state.scrollTick);
+    state.scrollTick = requestAnimationFrame(() => {
+      state.scrollTick = 0;
+      const wasSticky = state.stickyToBottom;
+      syncStickyState(channel, el);
+
+      if (state.virtualEnabled) {
+        if (state.stickyToBottom) {
+          state.pendingBottomNotice = 0;
+        }
+        const approxHeight = Math.max(44, state.avgItemHeight || 76);
+        const bufferPx = approxHeight * Math.max(4, state.overscan - 2);
+        const currentTop = sumEstimatedHeights(channel, 0, state.renderedStart);
+        const currentBottom = sumEstimatedHeights(channel, state.renderedEnd, state.storeOrder.length);
+        const shouldShiftUp = el.scrollTop < Math.max(0, currentTop - bufferPx);
+        const visibleBottom = el.scrollTop + el.clientHeight;
+        const currentWindowBottom = currentTop + currentBottom + sumEstimatedHeights(channel, state.renderedStart, state.renderedEnd);
+        const shouldShiftDown = visibleBottom > Math.max(0, currentWindowBottom - currentBottom - bufferPx);
+        if (!wasSticky || !state.stickyToBottom || state.storeOrder.length !== (state.renderedEnd - state.renderedStart)) {
+          if (shouldShiftUp || shouldShiftDown || state.stickyToBottom) {
+            scheduleVirtualRender(channel, { forceStickBottom: state.stickyToBottom });
+          }
+        }
+        return;
+      }
+
+      if (isNearTop(el, 28)) {
+        if (!prependStoredWindow(channel)) {
+          requestOlderHistory(channel).then((loadedCount) => {
+            if (loadedCount > 0) {
+              if (state.virtualEnabled) scheduleVirtualRender(channel, { forceStickBottom: false });
+              else prependStoredWindow(channel, loadedCount);
+            }
+            syncStickyState(channel, el);
+          });
+        }
+      } else if (isNearBottom(el, 28)) {
+        if (appendStoredWindow(channel)) {
+          requestAnimationFrame(() => syncStickyState(channel, el));
+        } else {
+          state.pendingBottomNotice = 0;
+          syncStickyState(channel, el);
+        }
+      }
+    });
+  }, { passive: true });
+}
+
+function resetRenderedMessages(channel = 'chat') {
+  const state = getRenderState(channel);
+  const el = getRenderContainer(channel);
+  if (state.raf) {
+    cancelAnimationFrame(state.raf);
+    state.raf = 0;
+  }
+  if (state.scrollTick) {
+    cancelAnimationFrame(state.scrollTick);
+    state.scrollTick = 0;
+  }
+  if (state.virtualRaf) {
+    cancelAnimationFrame(state.virtualRaf);
+    state.virtualRaf = 0;
+  }
+  state.queue = [];
+  state.map.clear();
+  state.storeOrder = [];
+  state.storeMap.clear();
+  state.itemHeights.clear();
+  state.pendingBottomNotice = 0;
+  state.stickyToBottom = true;
+  state.virtualDirty = false;
+  state.virtualForceStickBottom = false;
+  state.renderedStart = 0;
+  state.renderedEnd = 0;
+  state.topSpacer = null;
+  state.bottomSpacer = null;
+  state.historyLoading = false;
+  state.historyExhausted = !state.historyLoader;
+  if (!el) return;
+  el.innerHTML = '';
+  if (state.virtualEnabled) ensureVirtualElements(channel);
+  ensureHistoryNotice(channel);
+  syncStickyState(channel, el);
+}
+
+function getChatImageClassName(imageWide = false) {
+  return imageWide ? 'msg-image is-wide' : 'msg-image';
+}
+
+function getChatImageInlineStyle(imageWide = false) {
+  return imageWide ? 'width:100%;max-width:none;height:auto;object-fit:contain;' : '';
+}
+
+const CHAT_IMAGE_PLACEHOLDER = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==';
+let _deferredChatImageObserver = null;
+
+function normalizeChatImageMeta(imageMeta = null) {
+  if (!imageMeta || typeof imageMeta !== 'object') return null;
+  const width = Number(imageMeta.width || imageMeta.w || 0);
+  const height = Number(imageMeta.height || imageMeta.h || 0);
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return null;
+  return { width: Math.round(width), height: Math.round(height) };
+}
+
+function getChatImageShellStyle(imageWide = false, imageMeta = null) {
+  const meta = normalizeChatImageMeta(imageMeta);
+  const ratio = meta ? `${meta.width} / ${meta.height}` : (imageWide ? '16 / 9' : '4 / 3');
+  return `aspect-ratio:${ratio};`;
+}
+
+function activateDeferredChatImage(img, force = false) {
+  if (!(img instanceof HTMLImageElement)) return;
+  if (img.dataset.chatLoaded === '1' && !force) return;
+  const actualSrc = img.dataset.chatSrc || img.currentSrc || img.src || '';
+  if (!actualSrc) return;
+  const shell = img.closest('.msg-image-shell');
+  const finalize = () => {
+    if (shell) shell.classList.remove('is-loading');
+    img.classList.add('is-ready');
+  };
+  if (shell) shell.classList.add('is-loading');
+  img.dataset.chatLoaded = '1';
+  img.addEventListener('load', finalize, { once: true });
+  img.addEventListener('error', finalize, { once: true });
+  img.src = actualSrc;
+  if (img.complete) requestAnimationFrame(finalize);
+}
+
+function ensureDeferredChatImageObserver() {
+  if (_deferredChatImageObserver || typeof IntersectionObserver === 'undefined') return _deferredChatImageObserver;
+  _deferredChatImageObserver = new IntersectionObserver((entries) => {
+    entries.forEach((entry) => {
+      if (!entry.isIntersecting) return;
+      const img = entry.target;
+      if (!(img instanceof HTMLImageElement)) return;
+      activateDeferredChatImage(img);
+      try { _deferredChatImageObserver.unobserve(img); } catch (e) {}
+    });
+  }, {
+    root: null,
+    rootMargin: '700px 0px',
+    threshold: 0.01,
+  });
+  return _deferredChatImageObserver;
+}
+
+function primeDeferredChatImages(root = document) {
+  const nodes = root instanceof HTMLElement
+    ? root.querySelectorAll('img[data-chat-src]')
+    : document.querySelectorAll('img[data-chat-src]');
+  if (!nodes.length) return;
+  const observer = ensureDeferredChatImageObserver();
+  nodes.forEach((img) => {
+    if (!(img instanceof HTMLImageElement)) return;
+    if (!img.dataset.chatSrc) return;
+    if (!observer) {
+      activateDeferredChatImage(img, true);
+      return;
+    }
+    observer.observe(img);
+  });
+}
+
+function buildChatImageHtml(src, imageWide = false, imageMeta = null) {
+  const meta = normalizeChatImageMeta(imageMeta);
+  const extraSizeAttrs = meta ? ` width="${meta.width}" height="${meta.height}"` : '';
+  const shellClass = imageWide ? 'msg-image-shell is-wide' : 'msg-image-shell';
+  return `<div class="${shellClass}" style="${getChatImageShellStyle(imageWide, meta)}"><img class="${getChatImageClassName(imageWide)}" src="${CHAT_IMAGE_PLACEHOLDER}" data-chat-src="${esc(src)}" data-chat-loaded="0" alt="첨부 이미지" loading="lazy" decoding="async" fetchpriority="low"${extraSizeAttrs} style="${getChatImageInlineStyle(imageWide)}" onclick="openLightbox(this.dataset.chatSrc || this.currentSrc || this.src)"></div>`;
+}
+
+const _pendingChatImages = [];
+let _pendingChatImageWide = false;
+let _pendingChatImageHideMeta = false;
+let _chatUploadStatusDepth = 0;
+
+function ensureChatUploadStatusEl() {
+  const composer = document.querySelector('.chat-composer-stack');
+  if (!composer) return null;
+  let statusEl = document.getElementById('chat-upload-status');
+  if (!statusEl) {
+    statusEl = document.createElement('div');
+    statusEl.id = 'chat-upload-status';
+    statusEl.className = 'chat-upload-status';
+    statusEl.style.display = 'none';
+    statusEl.setAttribute('aria-live', 'polite');
+    statusEl.innerHTML = '<span class="chat-upload-status-spinner" aria-hidden="true"></span><span class="chat-upload-status-text">사진을 보내는 중입니다.</span>';
+    composer.insertBefore(statusEl, composer.firstChild);
+  } else if (statusEl.parentElement !== composer) {
+    composer.insertBefore(statusEl, composer.firstChild);
+  }
+  return statusEl;
+}
+
+function showChatUploadStatus() {
+  const statusEl = ensureChatUploadStatusEl();
+  if (!statusEl) return;
+  _chatUploadStatusDepth += 1;
+  statusEl.style.display = 'flex';
+  statusEl.classList.add('is-visible');
+}
+
+function hideChatUploadStatus(force = false) {
+  const statusEl = document.getElementById('chat-upload-status');
+  if (force) {
+    _chatUploadStatusDepth = 0;
+  } else if (_chatUploadStatusDepth > 0) {
+    _chatUploadStatusDepth -= 1;
+  }
+  if (!statusEl) return;
+  if (_chatUploadStatusDepth > 0) return;
+  statusEl.classList.remove('is-visible');
+  statusEl.style.display = 'none';
+}
+let _dragChatImageId = null;
+
+function makePendingChatImageId() {
+  return `pci_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function getChatImageQueueEls() {
+  return {
+    wrap: document.getElementById('chat-image-queue'),
+    list: document.getElementById('chat-image-preview-list'),
+    wideToggle: document.getElementById('chat-image-wide-toggle'),
+    hideMetaToggle: document.getElementById('chat-image-hide-meta-toggle'),
+  };
+}
+
+function renderPendingChatImages() {
+  const { wrap, list, wideToggle, hideMetaToggle } = getChatImageQueueEls();
+  if (!wrap || !list) return;
+  list.innerHTML = '';
+  if (_pendingChatImages.length === 0) {
+    wrap.style.display = 'none';
+    if (wideToggle) wideToggle.checked = !!_pendingChatImageWide;
+  if (hideMetaToggle) hideMetaToggle.checked = !!_pendingChatImageHideMeta;
+    if (hideMetaToggle) hideMetaToggle.checked = !!_pendingChatImageHideMeta;
+    return;
+  }
+
+  wrap.style.display = '';
+  if (wideToggle) wideToggle.checked = !!_pendingChatImageWide;
+  if (hideMetaToggle) hideMetaToggle.checked = !!_pendingChatImageHideMeta;
+
+  _pendingChatImages.forEach((item, idx) => {
+    const btn = document.createElement('div');
+    btn.className = 'chat-image-preview-item';
+    btn.draggable = true;
+    btn.dataset.imageId = item.id;
+    btn.innerHTML = `
+      <img src="${esc(item.previewUrl)}" alt="첨부 이미지 ${idx + 1}">
+      <span class="chat-image-preview-grab">↕</span>
+      <span class="chat-image-preview-order">${idx + 1}</span>
+      <button type="button" class="chat-image-preview-remove" title="첨부 취소">✕</button>
+    `;
+    const removeBtn = btn.querySelector('.chat-image-preview-remove');
+    if (removeBtn) {
+      removeBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        removePendingChatImage(item.id);
+      });
+    }
+    btn.addEventListener('dragstart', () => {
+      _dragChatImageId = item.id;
+      btn.classList.add('dragging');
+    });
+    btn.addEventListener('dragend', () => {
+      _dragChatImageId = null;
+      btn.classList.remove('dragging');
+      renderPendingChatImages();
+    });
+    btn.addEventListener('dragover', (e) => {
+      e.preventDefault();
+    });
+    btn.addEventListener('drop', (e) => {
+      e.preventDefault();
+      movePendingChatImage(_dragChatImageId, item.id);
+    });
+    list.appendChild(btn);
+  });
+}
+
+
+function revokePreparedChatImagePreview(item) {
+  if (!item || !item.previewUrl) return;
+  if (item.previewKind === 'object-url') {
+    try { URL.revokeObjectURL(item.previewUrl); } catch (e) {}
+  }
+}
+
+function removePendingChatImage(imageId) {
+  const idx = _pendingChatImages.findIndex(item => item.id === imageId);
+  if (idx < 0) return;
+  const [removed] = _pendingChatImages.splice(idx, 1);
+  revokePreparedChatImagePreview(removed);
+  renderPendingChatImages();
+}
+
+function movePendingChatImage(fromId, toId) {
+  if (!fromId || !toId || fromId === toId) return;
+  const fromIdx = _pendingChatImages.findIndex(item => item.id === fromId);
+  const toIdx = _pendingChatImages.findIndex(item => item.id === toId);
+  if (fromIdx < 0 || toIdx < 0) return;
+  const [moved] = _pendingChatImages.splice(fromIdx, 1);
+  _pendingChatImages.splice(toIdx, 0, moved);
+  renderPendingChatImages();
+}
+
+function clearPendingChatImages() {
+  _pendingChatImages.splice(0, _pendingChatImages.length).forEach(revokePreparedChatImagePreview);
+  _pendingChatImageWide = false;
+  _pendingChatImageHideMeta = false;
+  renderPendingChatImages();
+}
+
+function togglePendingChatImageWide(checked) {
+  _pendingChatImageWide = !!checked;
+}
+
+function togglePendingChatImageHideMeta(checked) {
+  _pendingChatImageHideMeta = !!checked;
+}
+
+function getCloudinaryRuntimeConfig() { return _itcGetCloudinaryConfig(); }
+
+async function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = ev => resolve(ev.target.result);
+    reader.onerror = () => reject(new Error('이미지를 읽지 못했어요.'));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function canvasToJpegBlob(canvas, quality = 0.84) {
+  return _itcCanvasToBlob(canvas, 'image/jpeg', quality);
+}
+
+function makePreparedChatImageBase(meta = {}) {
+  return {
+    id: makePendingChatImageId(),
+    previewUrl: meta.previewUrl || '',
+    previewKind: meta.previewKind || 'data-url',
+    dataUrl: meta.dataUrl || '',
+    uploadBlob: meta.uploadBlob || null,
+    uploadMime: meta.uploadMime || '',
+    uploadFileName: meta.uploadFileName || '',
+    isGif: !!meta.isGif,
+    width: meta.width || 0,
+    height: meta.height || 0,
+  };
+}
+
+async function fileToPreparedChatImage(file) {
+  const isGif = file.type === 'image/gif';
+  const maxSize = isGif ? 5 * 1024 * 1024 : 3 * 1024 * 1024;
+  if (file.size > maxSize) {
+    throw new Error(isGif ? 'GIF는 5MB 이하만 가능해요.' : '이미지는 3MB 이하만 가능해요.');
+  }
+
+  const objectUrl = URL.createObjectURL(file);
+  const rawMeta = await new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      resolve({ width: img.width || 0, height: img.height || 0 });
+      try { URL.revokeObjectURL(objectUrl); } catch (e) {}
+    };
+    img.onerror = () => {
+      try { URL.revokeObjectURL(objectUrl); } catch (e) {}
+      reject(new Error('이미지 처리에 실패했어요.'));
+    };
+    img.src = objectUrl;
+  });
+
+  if (isGif) {
+    return makePreparedChatImageBase({
+      previewUrl: URL.createObjectURL(file),
+      previewKind: 'object-url',
+      uploadBlob: file,
+      uploadMime: file.type || 'image/gif',
+      uploadFileName: file.name || `chat_${Date.now()}.gif`,
+      isGif: true,
+      width: rawMeta.width,
+      height: rawMeta.height,
+    });
+  }
+
+  const maxEdge = 1280;
+  const needsResize = rawMeta.width > maxEdge || rawMeta.height > maxEdge;
+  const needsCompress = file.type !== 'image/jpeg' || file.size > 900 * 1024 || needsResize;
+
+  if (!needsCompress) {
+    return makePreparedChatImageBase({
+      previewUrl: URL.createObjectURL(file),
+      previewKind: 'object-url',
+      uploadBlob: file,
+      uploadMime: file.type || 'image/jpeg',
+      uploadFileName: file.name || `chat_${Date.now()}.jpg`,
+      isGif: false,
+      width: rawMeta.width,
+      height: rawMeta.height,
+    });
+  }
+
+  const dataUrl = await fileToDataUrl(file);
+  const compressed = await new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = async () => {
+      try {
+        let w = img.width;
+        let h = img.height;
+        if (w > maxEdge || h > maxEdge) {
+          const ratio = Math.min(maxEdge / w, maxEdge / h);
+          w = Math.max(1, Math.round(w * ratio));
+          h = Math.max(1, Math.round(h * ratio));
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          reject(new Error('이미지 처리에 실패했어요.'));
+          return;
+        }
+        ctx.drawImage(img, 0, 0, w, h);
+        const blob = await canvasToJpegBlob(canvas, 0.84);
+        resolve({
+          blob,
+          width: w,
+          height: h,
+          previewUrl: URL.createObjectURL(blob),
+        });
+      } catch (err) {
+        reject(err);
+      }
+    };
+    img.onerror = () => reject(new Error('이미지 처리에 실패했어요.'));
+    img.src = dataUrl;
+  });
+
+  return makePreparedChatImageBase({
+    previewUrl: compressed.previewUrl,
+    previewKind: 'object-url',
+    dataUrl,
+    uploadBlob: compressed.blob,
+    uploadMime: 'image/jpeg',
+    uploadFileName: `chat_${Date.now()}.jpg`,
+    isGif: false,
+    width: compressed.width || rawMeta.width || 0,
+    height: compressed.height || rawMeta.height || 0,
+  });
+}
+
+async function queuePendingChatImages(files) {
+  const incoming = Array.from(files || []).filter(Boolean);
+  if (!incoming.length) return;
+  const roomLeft = Math.max(0, 4 - _pendingChatImages.length);
+  if (roomLeft <= 0) {
+    showToast('이미지는 한 번에 최대 4장까지 첨부할 수 있어요.');
+    return;
+  }
+
+  const picked = incoming.slice(0, roomLeft);
+  if (incoming.length > roomLeft) {
+    showToast('이미지는 한 번에 최대 4장까지 첨부할 수 있어요.');
+  }
+
+  for (const file of picked) {
+    try {
+      const prepared = await fileToPreparedChatImage(file);
+      _pendingChatImages.push(prepared);
+    } catch (err) {
+      console.error('queuePendingChatImages failed', err);
+      showToast(err?.message || '이미지를 첨부하지 못했어요.');
+    }
+  }
+  renderPendingChatImages();
+}
+
+function withTimeout(promise, ms = 3500) { return _itcWithTimeout(promise, ms); }
+
+async function getStorageApiQuick() {
+  const fb = window._FB;
+  if (!fb?.CONFIGURED || typeof fb.ensureStorage !== 'function') return null;
+  try {
+    return await withTimeout(fb.ensureStorage(), 2200);
+  } catch (err) {
+    console.warn('storage api unavailable', err);
+    return null;
+  }
+}
+
+function inferStorageContentTypeFromDataUrl(dataUrl) {
+  const m = String(dataUrl || '').match(/^data:([^;,]+)[;,]/i);
+  return m ? m[1].toLowerCase() : 'image/jpeg';
+}
+
+function blobFromDataUrl(dataUrl) {
+  const parts = String(dataUrl || '').split(',');
+  if (parts.length < 2) throw new Error('이미지 데이터 형식이 올바르지 않아요.');
+  const contentType = inferStorageContentTypeFromDataUrl(dataUrl);
+  const binary = atob(parts[1]);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return { blob: new Blob([bytes], { type: contentType }), contentType };
+}
+
+async function uploadChatImageBlobToCloudinary(blob, fileName = 'chat.jpg') {
+  if (!_itcGetCloudinaryConfig() || !blob) return null;
+  const result = await _itcUploadToCloudinary({ blob, fileName, timeout: 20000 });
+  return { url: result.url, path: result.publicId, contentType: result.contentType };
+}
+
+async function uploadChatImageDataUrl(dataUrl, roomCode, preparedItem = null) {
+  const uploadBlob = preparedItem?.uploadBlob || null;
+  const uploadFileName = preparedItem?.uploadFileName || '';
+  const blobInfo = uploadBlob
+    ? { blob: uploadBlob, contentType: preparedItem?.uploadMime || uploadBlob.type || 'image/jpeg' }
+    : blobFromDataUrl(dataUrl);
+
+  const uploadedCloudinary = await uploadChatImageBlobToCloudinary(blobInfo.blob, uploadFileName || `chat_${Date.now()}.jpg`);
+  if (!uploadedCloudinary?.url) return null;
+
+  return {
+    url: uploadedCloudinary.url,
+    path: uploadedCloudinary.path || '',
+    contentType: uploadedCloudinary.contentType || blobInfo.contentType || 'image/jpeg',
+  };
+}
+
+async function sendPreparedChatImage(preparedOrDataUrl, imageWide = false, imageMeta = null, hideImageMeta = false) {
+  const saJId = St.speakAsJournalId;
+  const saJournal = saJId ? loadJournals().find(x => x.id === saJId) : null;
+  const saName = saJournal ? (saJournal.title || '무제') : null;
+  const saAvatar = saJId ? saGetAvatar(saJId) : null;
+  const normalizedMeta = normalizeChatImageMeta(imageMeta);
+
+  const prepared = (preparedOrDataUrl && typeof preparedOrDataUrl === 'object' && ('dataUrl' in preparedOrDataUrl || 'uploadBlob' in preparedOrDataUrl))
+    ? preparedOrDataUrl
+    : { dataUrl: String(preparedOrDataUrl || '') };
+  const dataUrl = prepared.dataUrl || '';
+  let finalSrc = '';
+  let storageMeta = null;
+
+  if (!St.roomCode) {
+    throw new Error('이미지 업로드를 위한 방 정보가 없어요.');
+  }
+
+  const uploaded = await uploadChatImageDataUrl(dataUrl, St.roomCode, prepared);
+  if (!uploaded?.url) {
+    throw new Error('이미지 업로드에 실패했어요. 다시 시도해 주세요.');
+  }
+  finalSrc = uploaded.url;
+  storageMeta = uploaded;
+
+  if (saJournal) {
+    const msg = {
+      name: saName,
+      text: finalSrc,
+      type: 'speak-as-image',
+      uid: St.myId,
+      time: Date.now(),
+      speakAsAvatar: saAvatar,
+      speakAsJournalId: saJId,
+      imageWide: !!imageWide,
+      hideImageMeta: !!hideImageMeta,
+      imageMeta: normalizedMeta,
+      imageStoragePath: storageMeta?.path || '',
+      imageContentType: storageMeta?.contentType || inferStorageContentTypeFromDataUrl(dataUrl),
+    };
+    if (window._FB?.CONFIGURED) {
+      const { db, ref, push } = window._FB;
+      if (!St.roomCode) throw new Error('roomCode missing');
+      return push(ref(db, `rooms/${St.roomCode}/chat`), { ...msg, time: getChatServerTimestamp() });
+    }
+    appendChatMsg({ name: msg.name, text: finalSrc, type: 'speak-as-image', uid: St.myId, timestamp: msg.time, speakAsAvatar: saAvatar, speakAsJournalId: saJId, channel: 'chat', imageWide: !!imageWide, imageMeta: normalizedMeta, hideImageMeta: !!hideImageMeta });
+    return Promise.resolve();
+  }
+
+  return sendMessage(St.myName, finalSrc, 'image', {
+    imageWide: !!imageWide,
+    hideImageMeta: !!hideImageMeta,
+    imageMeta: normalizedMeta,
+    imageStoragePath: storageMeta?.path || '',
+    imageContentType: storageMeta?.contentType || inferStorageContentTypeFromDataUrl(dataUrl),
+  });
+}
+
+async function sendPendingChatImages() {
+  if (_activeRightTab === 'casual') {
+    showToast('이미지 첨부는 메인 채팅에서만 보낼 수 있어요.');
+    return false;
+  }
+  if (!_pendingChatImages.length) return true;
+  const items = _pendingChatImages.splice(0, _pendingChatImages.length);
+  renderPendingChatImages();
+  showChatUploadStatus();
+  try {
+    for (const item of items) {
+      await sendPreparedChatImage(item, _pendingChatImageWide, { width: item.width, height: item.height }, _pendingChatImageHideMeta);
+      revokePreparedChatImagePreview(item);
+    }
+    _pendingChatImageWide = false;
+    _pendingChatImageHideMeta = false;
+    renderPendingChatImages();
+    return true;
+  } catch (err) {
+    console.error('sendPendingChatImages failed', err);
+    items.reverse().forEach(item => _pendingChatImages.unshift(item));
+    renderPendingChatImages();
+    showToast(err?.message || '이미지 업로드에 실패했어요. 잠시 후 다시 시도해 주세요.');
+    throw err;
+  } finally {
+    hideChatUploadStatus();
+  }
+}
+
+function initChatImageComposer() {
+  ensureChatUploadStatusEl();
+  renderPendingChatImages();
+  bindMessageViewport('chat');
+  bindMessageViewport('casual');
+}
+
 
 async function sendChat() {
   const inp = document.getElementById('chat-input');
