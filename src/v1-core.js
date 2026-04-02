@@ -12,6 +12,7 @@ const St = {
   casualNameColor: localStorage.getItem('itc_casual_name_color') || '',
   players: {},
   avatarShape: localStorage.getItem('itc_avatar_shape') || 'rounded',
+  mapState: { background: null },
 };
 
 /* 권한 체크 헬퍼 */

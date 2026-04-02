@@ -233,6 +233,13 @@ function setupFirebaseListeners() {
     if (typeof removeSingleToken === 'function') removeSingleToken(id);
   }));
 
+  /* ── 맵 상태: 배경 이미지 등 ── */
+  const mapStateRef = ref(db, `rooms/${code}/mapState`);
+  trackFirebaseListener(onValue(mapStateRef, snap => {
+    St.mapState = snap.val() || { background: null };
+    if (typeof applyImportedMapState === 'function') applyImportedMapState(St.mapState);
+  }));
+
   /* ── 저널: 개별 변경 감지 ── */
   _allJournals = [];
   const journalsRef = ref(db, `rooms/${code}/journals`);

@@ -1,6 +1,7 @@
 (function () {
   const IMPORT_STATE = {
     lastValidated: null,
+    pendingFile: null,
     isBusy: false,
   };
 
@@ -37,12 +38,55 @@
       hint.textContent = '지원 예정 항목: 배경 이미지, 전경 이미지, item 오브젝트. 현재는 유효성 검사까지만 활성화됩니다.';
     }
     if (fileInput) fileInput.value = '';
+    IMPORT_STATE.lastValidated = null;
+    IMPORT_STATE.pendingFile = null;
   }
 
   function openMapImportModal() {
     if (!requireMapImportGM()) return;
     resetMapImportUi();
     if (typeof openModal === 'function') openModal('modal-map-import');
+  }
+
+  function setHint(message) {
+    const { hint } = getModalElements();
+    if (hint) {
+      hint.style.display = '';
+      hint.textContent = message;
+    }
+  }
+
+  function getMapBackgroundLayer() {
+    return document.getElementById('map-bg-layer');
+  }
+
+  function applyImportedMapState(mapState) {
+    const layer = getMapBackgroundLayer();
+    const background = mapState?.background || null;
+    if (!layer) return;
+    if (!background?.url) {
+      layer.style.backgroundImage = '';
+      layer.style.backgroundSize = 'contain';
+      return;
+    }
+    const fit = String(background.fit || 'contain').trim() || 'contain';
+    layer.style.backgroundImage = `url("${String(background.url).replace(/"/g, '%22')}")`;
+    layer.style.backgroundSize = fit === 'fill' ? '100% 100%' : (fit === 'cover' ? 'cover' : 'contain');
+  }
+
+  async function uploadMapBackgroundBlob(blob, roomCode, fileName) {
+    if (typeof _itcUploadToCloudinary !== 'function') throw new Error('이미지 업로드 유틸을 찾지 못했어요.');
+    const result = await _itcUploadToCloudinary({
+      blob,
+      folder: `itc/map-backgrounds/${roomCode || 'local'}`,
+      fileName: fileName || `map-background-${Date.now()}.png`,
+      timeout: 30000,
+    });
+    return result?.url || '';
+  }
+
+  function buildApplyActions() {
+    return `<div style="display:flex;gap:8px;margin-top:10px"><button class="btn-primary" onclick="applyValidatedMapBackground()" style="flex:1">배경 이미지 적용</button></div>`;
   }
 
   function setError(message) {
@@ -97,8 +141,8 @@
       `item 수: ${Object.keys(items).length}개`,
       `리소스 수: ${Object.keys(resources).length}개`,
       `그리드: ${gridLabel} / 크기 ${Number(room.gridSize || 0) || 0}`,
-      `다음 단계에서 실제 맵 적용 기능을 연결할 수 있는 상태입니다.`,
-    ].join('<br>');
+      `배경 이미지는 이번 단계에서 실제 맵에 적용할 수 있습니다.`,
+    ].join('<br>') + buildApplyActions();
   }
 
   function validateParsedCocofoliaData(data) {
@@ -145,11 +189,13 @@
       }
       const parsed = await parseCocofoliaZip(file);
       IMPORT_STATE.lastValidated = { fileName: file.name, parsed };
+      IMPORT_STATE.pendingFile = file;
       setSummary(buildValidationSummary(file, parsed));
       if (typeof showToast === 'function') showToast('맵세팅 ZIP 검사 완료');
     } catch (err) {
       console.error('map import validation failed', err);
       IMPORT_STATE.lastValidated = null;
+      IMPORT_STATE.pendingFile = null;
       setError(err?.message || '맵세팅 ZIP 검사 중 오류가 발생했어요.');
     } finally {
       IMPORT_STATE.isBusy = false;
@@ -157,6 +203,59 @@
     }
   }
 
+  async function applyValidatedMapBackground() {
+    if (!requireMapImportGM()) return;
+    if (IMPORT_STATE.isBusy) return;
+    const pendingFile = IMPORT_STATE.pendingFile;
+    const validated = IMPORT_STATE.lastValidated;
+    if (!pendingFile || !validated?.parsed) {
+      setError('먼저 검사 완료된 맵세팅 ZIP을 선택해 주세요.');
+      return;
+    }
+    const room = validated.parsed?.entities?.room || {};
+    const backgroundName = String(room.backgroundUrl || '').trim();
+    if (!backgroundName) {
+      setError('이 맵세팅에는 배경 이미지가 없습니다.');
+      return;
+    }
+    IMPORT_STATE.isBusy = true;
+    try {
+      setHint('배경 이미지를 업로드하고 맵에 적용하는 중이에요…');
+      const zip = await window.JSZip.loadAsync(pendingFile);
+      const backgroundEntry = zip.file(backgroundName);
+      if (!backgroundEntry) throw new Error('ZIP 안에서 배경 이미지 파일을 찾지 못했어요.');
+      const blob = await backgroundEntry.async('blob');
+      const roomCode = window.St?.roomCode || 'local';
+      const ext = backgroundName.split('.').pop() || 'png';
+      const uploadedUrl = await uploadMapBackgroundBlob(blob, roomCode, `map-bg-${Date.now()}.${ext}`);
+      if (!uploadedUrl) throw new Error('배경 이미지 업로드에 실패했어요.');
+      const nextMapState = {
+        background: {
+          url: uploadedUrl,
+          sourceName: backgroundName,
+          fit: String(room.fieldObjectFit || 'contain').trim() || 'contain',
+          importedAt: Date.now(),
+        },
+      };
+      if (window._FB?.CONFIGURED) {
+        const { db, ref, set } = window._FB;
+        await set(ref(db, `rooms/${roomCode}/mapState`), nextMapState);
+      } else {
+        window.St.mapState = nextMapState;
+        applyImportedMapState(nextMapState);
+      }
+      setSummary(buildValidationSummary(pendingFile, validated.parsed) + `<br><br><b>배경 적용 완료</b>`);
+      if (typeof showToast === 'function') showToast('맵 배경 적용 완료');
+    } catch (err) {
+      console.error('map background apply failed', err);
+      setError(err?.message || '배경 이미지 적용 중 오류가 발생했어요.');
+    } finally {
+      IMPORT_STATE.isBusy = false;
+    }
+  }
+
+  window.applyImportedMapState = applyImportedMapState;
+  window.applyValidatedMapBackground = applyValidatedMapBackground;
   window.openMapImportModal = openMapImportModal;
   window.handleMapImportFile = handleMapImportFile;
 })();
