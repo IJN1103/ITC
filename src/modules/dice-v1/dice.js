@@ -72,18 +72,51 @@ function rollDice(ci) {
   }
 }
 
-function rollSkillCheck(name, val) {
-  const r = Math.ceil(Math.random()*100);
-  let j = '', jc = '';
-  if (r <= 5 || r <= Math.floor(val/5)) { j='극성공!'; jc='j-exs'; }
-  else if (r <= Math.floor(val/2))       { j='어려운 성공'; jc='j-succ'; }
-  else if (r <= val)                     { j='성공'; jc='j-succ'; }
-  else if (r >= 96)                      { j='치명적 실패!'; jc='j-fumb'; }
-  else                                   { j='실패'; jc='j-fail'; }
+function getSkillCheckOutcome(val, r) {
+  const target = Math.max(0, Number(val) || 0);
+  if (r <= 5 || (target > 0 && r <= Math.floor(target / 5))) {
+    return { label: '극단적 성공', className: 'j-exs', success: true };
+  }
+  if (target > 0 && r <= Math.floor(target / 2)) {
+    return { label: '어려운 성공', className: 'j-succ', success: true };
+  }
+  if (target > 0 && r <= target) {
+    return { label: '보통 성공', className: 'j-succ', success: true };
+  }
+  if (r >= 96) {
+    return { label: '치명적 실패', className: 'j-fumb', success: false };
+  }
+  return { label: '실패', className: 'j-fail', success: false };
+}
 
-  showRollResult({ total:r, detail:`${name}(${val}%): ${r}`, rolls:[r] });
-  document.getElementById('roll-judgment').innerHTML = `<div class="roll-judgment ${jc}">${j}</div>`;
-  sendMessage(St.myName, `🎲 ${name}(${val}%) → ${r} — ${j}`, 'dice');
+function renderSkillCheckResult(name, val, r, outcome) {
+  showRollResult({ total: r, detail: `${name} 판정(${val}%): ${r}`, rolls: [r] });
+  const judgmentEl = document.getElementById('roll-judgment');
+  if (judgmentEl) judgmentEl.innerHTML = `<div class="roll-judgment ${outcome.className}">${outcome.label}</div>`;
+}
+
+function sendSkillCheckMessage(name, val, r, outcome) {
+  sendMessage(St.myName, `🎲 ${name} 판정 → ${r} (기준 ${val} / ${outcome.label})`, 'dice');
+}
+
+function rollSkillCheck(name, val) {
+  const target = Math.max(0, Number(val) || 0);
+  const r = Math.ceil(Math.random() * 100);
+  const outcome = getSkillCheckOutcome(target, r);
+  renderSkillCheckResult(name, target, r, outcome);
+  sendSkillCheckMessage(name, target, r, outcome);
+}
+
+function rollJournalSheetSkillCheck(name, val) {
+  const target = Math.max(0, Number(val) || 0);
+  if (!target) {
+    showToast('판정할 기능치 값이 없어요.');
+    return;
+  }
+  const r = Math.ceil(Math.random() * 100);
+  const outcome = getSkillCheckOutcome(target, r);
+  renderSkillCheckResult(name, target, r, outcome);
+  sendSkillCheckMessage(name, target, r, outcome);
 }
 
 function showRollResult(roll) {

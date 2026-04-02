@@ -1342,6 +1342,24 @@ const COC_SKILLS = [
 
 let _sheetJournalId = null;
 
+function bindSheetSkillRollInteractions(wrap) {
+  if (!wrap || wrap.dataset.rollBound === '1') return;
+  wrap.dataset.rollBound = '1';
+  wrap.addEventListener('click', (event) => {
+    const trigger = event.target.closest('.skill-roll-trigger');
+    if (!trigger || !wrap.contains(trigger)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const index = trigger.dataset.skillIndex;
+    const name = trigger.dataset.skillName || trigger.textContent || '기능치';
+    const input = index !== undefined ? document.getElementById(`sk-val-${index}`) : null;
+    const value = input ? parseInt(input.value, 10) || 0 : 0;
+    if (typeof window.rollJournalSheetSkillCheck === 'function') {
+      window.rollJournalSheetSkillCheck(name, value);
+    }
+  });
+}
+
 function initSheetUI() {
   const grid = document.getElementById('sh-stats-grid');
   if (grid && !grid.children.length) {
@@ -1358,6 +1376,7 @@ function initSheetUI() {
   const wrap = document.getElementById('sh-skills-wrap');
   if (!wrap) return;
   wrap.innerHTML = '';
+  bindSheetSkillRollInteractions(wrap);
 
   const colHead = () => {
     const h = document.createElement('div');
@@ -1377,7 +1396,7 @@ function initSheetUI() {
       row.className = 'skill-row';
       row.innerHTML = `
         <input type="checkbox" class="skill-check" id="sk-check-${i}">
-        <span class="skill-name" title="${sk.name}">${sk.name}</span>
+        <button type="button" class="skill-name skill-roll-trigger" title="${sk.name} 판정" data-skill-index="${i}" data-skill-name="${sk.name}">${sk.name}</button>
         <span class="skill-base">${sk.base}</span>
         <input class="skill-input" id="sk-val-${i}" type="number" min="0" max="99" value="${sk.base}">
         <input class="skill-input half-val" id="sk-half-${i}" type="number" min="0" max="99" value="${Math.floor(sk.base / 2)}">`;
