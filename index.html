@@ -354,6 +354,7 @@ window._FB = {
         <div class="map-inner" id="map-inner"></div>
         <div class="map-status-panel" id="map-status-panel" style="display:none"></div>
         <button class="map-add-token gm-only" id="map-add-token" onclick="openModal('modal-token')" style="display:none">+ 토큰</button>
+        <button class="map-add-token gm-only" id="map-import-trigger" onclick="openMapImportModal()" style="display:none;top:46px">+ 맵세팅</button>
         <!-- 줌 컨트롤 -->
         <div class="map-zoom" id="map-zoom">
           <button class="map-zoom-btn" onclick="mapZoom(1)" title="확대">
@@ -928,6 +929,28 @@ window._FB = {
   </div>
 </div>
 
+<div class="overlay" id="modal-map-import">
+  <div class="modal" style="width:min(460px,94vw)">
+    <div class="modal-row">
+      <div class="modal-title">🗺 맵세팅 가져오기</div>
+      <button class="modal-close" onclick="closeModal('modal-map-import')">✕</button>
+    </div>
+    <div class="modal-info" style="line-height:1.9">
+      코코포리아 맵세팅용 ZIP 파일을 업로드해 형식을 검사합니다.<br>
+      이번 단계에서는 <b>실제 맵 적용은 하지 않고</b>,<br>
+      파일이 정상적인 코코포리아 ZIP인지 먼저 확인합니다.
+    </div>
+    <div id="map-import-summary" style="display:none;margin:12px 0 14px;padding:12px;border:1px solid var(--border);border-radius:var(--r);background:var(--s2);font-size:12px;line-height:1.8;color:var(--dim)"></div>
+    <div id="map-import-error" style="display:none;margin:12px 0 14px;padding:12px;border:1px solid rgba(200,92,92,.3);border-radius:var(--r);background:rgba(200,92,92,.08);font-size:12px;line-height:1.7;color:var(--red)"></div>
+    <div id="map-import-hint" style="font-size:11px;color:var(--muted);margin-bottom:12px">지원 예정 항목: 배경 이미지, 전경 이미지, item 오브젝트. 현재는 유효성 검사까지만 활성화됩니다.</div>
+    <input type="file" id="map-import-file" accept=".zip,application/zip" style="display:none" onchange="handleMapImportFile(this)">
+    <div style="display:flex;gap:8px">
+      <button class="btn-primary" onclick="document.getElementById('map-import-file').click()" style="flex:1">ZIP 파일 선택</button>
+      <button class="btn-primary" onclick="closeModal('modal-map-import')" style="flex:0 0 auto;background:var(--s3);color:var(--text);border:1px solid var(--border2)">닫기</button>
+    </div>
+  </div>
+</div>
+
 <!-- 토큰 컨텍스트 메뉴 -->
 <div class="tok-ctx" id="tok-ctx">
   <div class="tok-ctx-item" onclick="tokCtxAction('edit')">편집</div>
@@ -1224,6 +1247,8 @@ window._FB = {
 <script src="src/modules/game/game.js"></script>
 <script src="src/modules/dice-v1/dice.js"></script>
 <script src="src/modules/chat-v1/chat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="src/modules/map-import/cocofolia-import.js"></script>
 <script src="src/modules/map-token/map-token.js"></script>
 <script src="src/modules/bgm-v1/bgm.js"></script>
 <script src="src/modules/ui/ui.js"></script>
