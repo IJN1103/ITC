@@ -554,8 +554,8 @@ window._FB = {
     </div>
     <div class="sheet-body">
 
-      <!-- 탐사자 정보 + 특성치 -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <!-- 탐사자 정보 + 특성치/현재 상태 -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start">
         <!-- 탐사자 정보 -->
         <div class="sh-sec">
           <div class="sh-sec-title">탐사자 정보</div>
@@ -592,14 +592,29 @@ window._FB = {
             </div>
           </div>
         </div>
-        <!-- 특성치 -->
-        <div class="sh-sec">
-          <div class="sh-sec-title">특성치</div>
-          <div class="sh-grid sh-grid-4" id="sh-stats-grid"></div>
+        <div style="display:flex;flex-direction:column;gap:16px">
+          <!-- 특성치 -->
+          <div class="sh-sec">
+            <div class="sh-sec-title">특성치</div>
+            <div class="sh-grid sh-grid-4" id="sh-stats-grid"></div>
+          </div>
+          <div class="sh-sec sh-current-status-sec">
+            <div class="sh-sec-title">현재 상태</div>
+            <div class="current-status-compact">
+              <div class="current-status-side">광기</div>
+              <label class="current-status-check"><span>일시적 광기</span><input type="checkbox" id="sh-status-temp-insane"></label>
+              <label class="current-status-check"><span>장기적 광기</span><input type="checkbox" id="sh-status-indefinite"></label>
+              <div class="current-status-input current-status-bout"><span>광기의 발작</span><input class="sh-input" id="sh-status-bout" placeholder="내용 입력"></div>
+              <div class="current-status-input current-status-time"><span>남은 시간</span><input class="sh-input" id="sh-status-time-left" placeholder="내용 입력"></div>
+              <div class="current-status-side">부상</div>
+              <label class="current-status-check"><span>중상</span><input type="checkbox" id="sh-status-major-wound"></label>
+              <label class="current-status-check"><span>빈사</span><input type="checkbox" id="sh-status-dying"></label>
+            </div>
+          </div>
         </div>
       </div>
 
-      <!-- 기본 스테이더스 + 현재 상태 -->
+      <!-- 기본 스테이더스 -->
       <div style="display:flex;flex-direction:column;gap:16px">
         <div class="sh-sec">
           <div class="sh-sec-title">기본 스테이더스</div>
@@ -646,19 +661,6 @@ window._FB = {
                 <input class="resource-input" id="sh-build" placeholder="0" type="number">
               </div>
             </div>
-          </div>
-        </div>
-        <div class="sh-sec">
-          <div class="sh-sec-title">현재 상태</div>
-          <div class="sh-grid sh-grid-2 current-status-grid">
-            <div class="sh-field"><div class="sh-label">광기</div><input class="sh-input" id="sh-status-insane" placeholder=""></div>
-            <div class="sh-field"><div class="sh-label">일시적 광기</div><input class="sh-input" id="sh-status-temp-insane" placeholder=""></div>
-            <div class="sh-field"><div class="sh-label">광기의 발작</div><input class="sh-input" id="sh-status-bout" placeholder=""></div>
-            <div class="sh-field"><div class="sh-label">장기적 광기</div><input class="sh-input" id="sh-status-indefinite" placeholder=""></div>
-            <div class="sh-field"><div class="sh-label">남은 시간</div><input class="sh-input" id="sh-status-time-left" placeholder=""></div>
-            <div class="sh-field"><div class="sh-label">부상</div><input class="sh-input" id="sh-status-injury" placeholder=""></div>
-            <div class="sh-field"><div class="sh-label">중상</div><input class="sh-input" id="sh-status-major-wound" placeholder=""></div>
-            <div class="sh-field"><div class="sh-label">빈사</div><input class="sh-input" id="sh-status-dying" placeholder=""></div>
           </div>
         </div>
       </div>

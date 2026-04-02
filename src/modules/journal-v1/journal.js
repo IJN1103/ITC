@@ -1383,7 +1383,7 @@ function buildEmptyImportedCocSheet() {
     name: '', player: '', job: '', age: '', height: '', sex: '', nationality: '', residence: '', birthplace: '', first_language: '',
     str: 0, con: 0, siz: 0, dex: 0, app: 0, int: 0, pow: 0, edu: 0,
     hp: '', hp_max: '', san: '', san_max: '', mp: '', mp_max: '', luck: '', db: '', build: '',
-    status_insane: '', status_temp_insane: '', status_bout: '', status_indefinite: '', status_time_left: '', status_injury: '', status_major_wound: '', status_dying: '',
+    status_temp_insane: false, status_bout: '', status_indefinite: false, status_time_left: '', status_major_wound: false, status_dying: false,
     skills: COC_SKILLS.map(sk => ({ checked: false, val: sk.base, half: Math.floor(sk.base / 2) })),
     unarmed_skill: '근접전(격투)',
     unarmed_dmg: '1d3+db',
@@ -1911,7 +1911,12 @@ function openSheet(journalId) {
     if (el) el.value = data[k.replace('-','_')] || '';
   });
 
-  ['status-insane','status-temp-insane','status-bout','status-indefinite','status-time-left','status-injury','status-major-wound','status-dying'].forEach(k => {
+  ['status-temp-insane','status-indefinite','status-major-wound','status-dying'].forEach(k => {
+    const el = document.getElementById('sh-'+k);
+    if (el) el.checked = !!data[k.replace(/-/g, '_')];
+  });
+
+  ['status-bout','status-time-left'].forEach(k => {
     const el = document.getElementById('sh-'+k);
     if (el) el.value = data[k.replace(/-/g, '_')] || '';
   });
@@ -2125,7 +2130,11 @@ async function saveSheet() {
     data[key] = document.getElementById('sh-'+k)?.value || '';
   });
 
-  ['status-insane','status-temp-insane','status-bout','status-indefinite','status-time-left','status-injury','status-major-wound','status-dying'].forEach(k => {
+  ['status-temp-insane','status-indefinite','status-major-wound','status-dying'].forEach(k => {
+    data[k.replace(/-/g, '_')] = !!document.getElementById('sh-'+k)?.checked;
+  });
+
+  ['status-bout','status-time-left'].forEach(k => {
     data[k.replace(/-/g, '_')] = document.getElementById('sh-'+k)?.value || '';
   });
 
