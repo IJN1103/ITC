@@ -74,15 +74,27 @@
     layer.style.backgroundSize = fit === 'fill' ? '100% 100%' : (fit === 'cover' ? 'cover' : 'contain');
   }
 
+  function pickLiveRoomCode() {
+    const candidates = [
+      String(window.St?.roomCode || '').trim(),
+      String(sessionStorage.getItem('itc_session_code') || '').trim(),
+      String(document.getElementById('topbar-code')?.textContent || '').trim(),
+      String(document.getElementById('room-code-disp')?.textContent || '').trim(),
+    ].filter(Boolean);
+
+    return candidates.find((code) => code && code !== 'local' && /^[A-Z0-9]{4,10}$/i.test(code)) || '';
+  }
+
   async function ensureLiveRoomContext() {
-    const roomCode = String(window.St?.roomCode || '').trim();
+    const roomCode = pickLiveRoomCode();
     const myId = String(window.St?.myId || '').trim();
     if (!window._FB?.CONFIGURED) {
       throw new Error('Firebase가 연결된 실제 세션 방에서만 맵세팅을 적용할 수 있어요.');
     }
-    if (!roomCode || roomCode === 'local') {
+    if (!roomCode) {
       throw new Error('현재 local 상태입니다. 실제 세션 방에 입장한 뒤 다시 시도해 주세요.');
     }
+    if (window.St) window.St.roomCode = roomCode;
     if (!myId) {
       throw new Error('로그인 정보가 확인되지 않아요. 다시 로그인 후 시도해 주세요.');
     }
