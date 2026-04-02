@@ -1383,7 +1383,7 @@ function buildEmptyImportedCocSheet() {
     name: '', player: '', job: '', age: '', height: '', sex: '', nationality: '', residence: '', birthplace: '', first_language: '',
     str: 0, con: 0, siz: 0, dex: 0, app: 0, int: 0, pow: 0, edu: 0,
     hp: '', hp_max: '', san: '', san_max: '', mp: '', mp_max: '', luck: '', db: '', build: '',
-    status_temp_insane: false, status_bout: '', status_indefinite: false, status_time_left: '', status_major_wound: false, status_dying: false,
+    status_temp_insane: false, status_indefinite: false, status_major_wound: false, status_dying: false,
     skills: COC_SKILLS.map(sk => ({ checked: false, val: sk.base, half: Math.floor(sk.base / 2) })),
     unarmed_skill: '근접전(격투)',
     unarmed_dmg: '1d3+db',
@@ -1916,11 +1916,6 @@ function openSheet(journalId) {
     if (el) el.checked = !!data[k.replace(/-/g, '_')];
   });
 
-  ['status-bout','status-time-left'].forEach(k => {
-    const el = document.getElementById('sh-'+k);
-    if (el) el.value = data[k.replace(/-/g, '_')] || '';
-  });
-
   COC_SKILLS.forEach((sk, i) => {
     const ck  = document.getElementById('sk-check-'+i);
     const val = document.getElementById('sk-val-'+i);
@@ -2132,10 +2127,6 @@ async function saveSheet() {
 
   ['status-temp-insane','status-indefinite','status-major-wound','status-dying'].forEach(k => {
     data[k.replace(/-/g, '_')] = !!document.getElementById('sh-'+k)?.checked;
-  });
-
-  ['status-bout','status-time-left'].forEach(k => {
-    data[k.replace(/-/g, '_')] = document.getElementById('sh-'+k)?.value || '';
   });
 
   data.skills = COC_SKILLS.map((sk, i) => ({
