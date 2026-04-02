@@ -242,8 +242,8 @@ function setupFirebaseListeners() {
     j.id = id;
     const idx = _allJournals.findIndex(x => x.id === id);
     if (idx >= 0) _allJournals[idx] = j; else _allJournals.push(j);
-    renderJournalList();
-    saRefreshToolbar();
+    if (typeof syncJournalListItem === 'function') syncJournalListItem(id);
+    else { renderJournalList(); saRefreshToolbar(); }
   }));
   trackFirebaseListener(onChildChanged(journalsRef, snap => {
     const id = snap.key;
@@ -251,13 +251,13 @@ function setupFirebaseListeners() {
     j.id = id;
     const idx = _allJournals.findIndex(x => x.id === id);
     if (idx >= 0) _allJournals[idx] = j; else _allJournals.push(j);
-    renderJournalList();
-    saRefreshToolbar();
+    if (typeof syncJournalListItem === 'function') syncJournalListItem(id);
+    else { renderJournalList(); saRefreshToolbar(); }
   }));
   trackFirebaseListener(onChildRemoved(journalsRef, snap => {
     _allJournals = _allJournals.filter(x => x.id !== snap.key);
-    renderJournalList();
-    saRefreshToolbar();
+    if (typeof removeJournalListItem === 'function') removeJournalListItem(snap.key);
+    else { renderJournalList(); saRefreshToolbar(); }
   }));
 
   trackFirebaseListener(onValue(ref(db, `rooms/${code}/bgm`), snap => {
