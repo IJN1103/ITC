@@ -107,24 +107,21 @@ styles/all.css          — 통합 CSS
 - 드래그 보호 (_activeDragSession)
 - image-utils.js 공통 함수 의존성
 
-8) 다음 작업 후보
------------------
+8) 최근 진행 상태 / 다음 작업 후보
+-----------------------------
 - PHASE 4-1: 저널 목록 전체 재렌더 제거 완료
 - PHASE 4-2: 채팅 히스토리 구조 개선 완료
-- 장시간 안정성: 타이머 누수 점검, objectURL revoke 재점검
-- Firebase 보안 규칙 적용 (database.rules.json 제공 완료)
-- Cloudinary unsigned preset 용량/횟수 제한 설정
-- 실사용 중 예외 버그 보정
+- map-status-panel: 전체 innerHTML 재생성 → 개별 카드 증분 갱신으로 전환 완료
+- 다음 우선 후보:
+  - 토큰 좌표 동기화 재검증 (서로 다른 화면 크기에서 동일 위치 보장 확인)
+  - 토큰 드래그/줌 장시간 안정성 재점검
+  - 장시간 안정성: 타이머 누수 점검, objectURL revoke 재점검
+  - Firebase 보안 규칙 적용 (database.rules.json 제공 완료)
+  - Cloudinary unsigned preset 용량/횟수 제한 설정
+  - 실사용 중 예외 버그 보정
 
 9) 참고 설정
 -----------
 - Cloudinary cloudName: dnr5jzdnp
 - Cloudinary unsignedPreset: itc_unsigned_upload
 - Firebase projectId: project-itc-2d34d
-
-
-[2026-04-02 patch]
-- 토큰 좌표 기준을 각 클라이언트 map-area 크기 종속에서 고정 논리 캔버스(1600x900) 기준으로 변경.
-- 목적: 화면 크기가 다른 플레이어 사이에서도 같은 token x/y가 동일한 상대 위치로 보이도록 안정화.
-- 수정 파일: src/modules/map-token/map-token.js
-- 주의: 이번 수정은 토큰 위치 기준만 고정화한 것이며, 드래그/줌 로직 구조 자체는 유지함.
