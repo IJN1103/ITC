@@ -273,6 +273,11 @@ function setupFirebaseListeners() {
         fit: bgm.mapBackgroundFit || 'contain',
         sourceName: bgm.mapBackgroundSourceName || '',
       } : null,
+      foreground: bgm.mapForeground ? {
+        url: bgm.mapForeground,
+        fit: bgm.mapForegroundFit || 'contain',
+        sourceName: bgm.mapForegroundSourceName || '',
+      } : null,
     };
     if (typeof applyImportedMapState === 'function') applyImportedMapState(St.mapState);
   }));

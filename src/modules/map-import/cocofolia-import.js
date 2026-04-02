@@ -35,7 +35,7 @@
     }
     if (hint) {
       hint.style.display = '';
-      hint.textContent = '지원 예정 항목: 배경 이미지, 전경 이미지, item 오브젝트. 현재는 유효성 검사까지만 활성화됩니다.';
+      hint.textContent = '지원 항목: 배경 이미지 + 전경 이미지. item 오브젝트는 다음 단계에서 연결됩니다.';
     }
     if (fileInput) fileInput.value = '';
     IMPORT_STATE.lastValidated = null;
@@ -60,18 +60,35 @@
     return document.getElementById('map-bg-layer');
   }
 
+  function getMapForegroundLayer() {
+    return document.getElementById('map-fg-layer');
+  }
+
   function applyImportedMapState(mapState) {
-    const layer = getMapBackgroundLayer();
+    const bgLayer = getMapBackgroundLayer();
+    const fgLayer = getMapForegroundLayer();
     const background = mapState?.background || null;
-    if (!layer) return;
-    if (!background?.url) {
-      layer.style.backgroundImage = '';
-      layer.style.backgroundSize = 'contain';
-      return;
+    const foreground = mapState?.foreground || null;
+    if (bgLayer) {
+      if (!background?.url) {
+        bgLayer.style.backgroundImage = '';
+        bgLayer.style.backgroundSize = 'contain';
+      } else {
+        const fit = String(background.fit || 'contain').trim() || 'contain';
+        bgLayer.style.backgroundImage = `url("${String(background.url).replace(/"/g, '%22')}")`;
+        bgLayer.style.backgroundSize = fit === 'fill' ? '100% 100%' : (fit === 'cover' ? 'cover' : 'contain');
+      }
     }
-    const fit = String(background.fit || 'contain').trim() || 'contain';
-    layer.style.backgroundImage = `url("${String(background.url).replace(/"/g, '%22')}")`;
-    layer.style.backgroundSize = fit === 'fill' ? '100% 100%' : (fit === 'cover' ? 'cover' : 'contain');
+    if (fgLayer) {
+      if (!foreground?.url) {
+        fgLayer.style.backgroundImage = '';
+        fgLayer.style.backgroundSize = 'contain';
+      } else {
+        const fit = String(foreground.fit || 'contain').trim() || 'contain';
+        fgLayer.style.backgroundImage = `url("${String(foreground.url).replace(/"/g, '%22')}")`;
+        fgLayer.style.backgroundSize = fit === 'fill' ? '100% 100%' : (fit === 'cover' ? 'cover' : 'contain');
+      }
+    }
   }
 
   function pickLiveRoomCode() {
@@ -112,7 +129,7 @@
     return { roomCode, myId };
   }
 
-  async function uploadMapBackgroundBlob(blob, roomCode, fileName) {
+  async function uploadMapLayerBlob(blob, roomCode, fileName) {
     if (typeof _itcUploadToCloudinary !== 'function') throw new Error('이미지 업로드 유틸을 찾지 못했어요.');
     const result = await _itcUploadToCloudinary({
       blob,
@@ -124,7 +141,7 @@
   }
 
   function buildApplyActions() {
-    return `<div style="display:flex;gap:8px;margin-top:10px"><button class="btn-primary" onclick="applyValidatedMapBackground()" style="flex:1">배경 이미지 적용</button></div>`;
+    return `<div style="display:flex;gap:8px;margin-top:10px"><button class="btn-primary" onclick="applyValidatedMapBackground()" style="flex:1">맵 이미지 적용</button></div>`;
   }
 
   function setError(message) {
@@ -179,7 +196,7 @@
       `item 수: ${Object.keys(items).length}개`,
       `리소스 수: ${Object.keys(resources).length}개`,
       `그리드: ${gridLabel} / 크기 ${Number(room.gridSize || 0) || 0}`,
-      `배경 이미지는 이번 단계에서 실제 맵에 적용할 수 있습니다.`,
+      `배경 + 전경 이미지는 이번 단계에서 실제 맵에 적용할 수 있습니다.`,
     ].join('<br>') + buildApplyActions();
   }
 
@@ -265,8 +282,26 @@
       if (!backgroundEntry) throw new Error('ZIP 안에서 배경 이미지 파일을 찾지 못했어요.');
       const blob = await backgroundEntry.async('blob');
       const ext = backgroundName.split('.').pop() || 'png';
-      const uploadedUrl = await uploadMapBackgroundBlob(blob, roomCode, `map-bg-${Date.now()}.${ext}`);
+      const uploadedUrl = await uploadMapLayerBlob(blob, roomCode, `map-bg-${Date.now()}.${ext}`);
       if (!uploadedUrl) throw new Error('배경 이미지 업로드에 실패했어요.');
+
+      let foregroundState = null;
+      const foregroundName = String(room.foregroundUrl || '').trim();
+      if (foregroundName) {
+        const foregroundEntry = zip.file(foregroundName);
+        if (!foregroundEntry) throw new Error('ZIP 안에서 전경 이미지 파일을 찾지 못했어요.');
+        const foregroundBlob = await foregroundEntry.async('blob');
+        const fgExt = foregroundName.split('.').pop() || 'png';
+        const uploadedForegroundUrl = await uploadMapLayerBlob(foregroundBlob, roomCode, `map-fg-${Date.now()}.${fgExt}`);
+        if (!uploadedForegroundUrl) throw new Error('전경 이미지 업로드에 실패했어요.');
+        foregroundState = {
+          url: uploadedForegroundUrl,
+          sourceName: foregroundName,
+          fit: String(room.fieldObjectFit || 'contain').trim() || 'contain',
+          importedAt: Date.now(),
+        };
+      }
+
       const nextMapState = {
         background: {
           url: uploadedUrl,
@@ -274,6 +309,7 @@
           fit: String(room.fieldObjectFit || 'contain').trim() || 'contain',
           importedAt: Date.now(),
         },
+        foreground: foregroundState,
       };
       const { db, ref, update } = window._FB;
       await update(ref(db, `rooms/${roomCode}/bgm`), {
@@ -281,12 +317,16 @@
         mapBackgroundFit: nextMapState.background.fit,
         mapBackgroundSourceName: nextMapState.background.sourceName || '',
         mapBackgroundImportedAt: nextMapState.background.importedAt || Date.now(),
+        mapForeground: nextMapState.foreground?.url || '',
+        mapForegroundFit: nextMapState.foreground?.fit || '',
+        mapForegroundSourceName: nextMapState.foreground?.sourceName || '',
+        mapForegroundImportedAt: nextMapState.foreground?.importedAt || 0,
       });
-      setSummary(buildValidationSummary(pendingFile, validated.parsed) + `<br><br><b>배경 적용 완료</b>`);
-      if (typeof showToast === 'function') showToast('맵 배경 적용 완료');
+      setSummary(buildValidationSummary(pendingFile, validated.parsed) + `<br><br><b>맵 이미지 적용 완료</b>`);
+      if (typeof showToast === 'function') showToast('맵 이미지 적용 완료');
     } catch (err) {
       console.error('map background apply failed', err);
-      setError(err?.message || '배경 이미지 적용 중 오류가 발생했어요.');
+      setError(err?.message || '맵 이미지 적용 중 오류가 발생했어요.');
     } finally {
       IMPORT_STATE.isBusy = false;
     }
