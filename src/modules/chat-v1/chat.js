@@ -1358,14 +1358,6 @@ async function sendChat() {
       return;
     }
 
-    if (_activeRightTab !== 'casual' && !hasImages && typeof window.importCcfoliaApiToJournal === 'function') {
-      const imported = await window.importCcfoliaApiToJournal(raw);
-      if (imported?.handled) {
-        if (imported.created) inp.value = '';
-        return;
-      }
-    }
-
     const wm = raw.match(/^\/w\s+(\S+)\s+([\s\S]+)$/i);
     if (wm) {
       if (hasImages) {

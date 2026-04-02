@@ -507,7 +507,10 @@ window._FB = {
           <section class="docs-section">
             <div class="docs-section-head">
               <div class="docs-section-title">저널</div>
-              <button class="doc-add-square" onclick="createNewJournal()" title="새 저널 만들기">+</button>
+              <div class="docs-section-actions">
+                <button class="doc-api-btn" onclick="openJournalApiImportModal()" title="CCFOLIA API 코드로 저널 가져오기">API</button>
+                <button class="doc-add-square" onclick="createNewJournal()" title="새 저널 만들기">+</button>
+              </div>
             </div>
             <div class="journal-list docs-list" id="journal-list-container">
               <div class="journal-empty" id="journal-empty">저널이 없어요.<br>위 + 버튼으로 새 저널을 만들어보세요.</div>
@@ -768,6 +771,22 @@ window._FB = {
 </div>
 
 <!-- ═══════ MODALS ═══════ -->
+
+<!-- 저널 API 가져오기 -->
+<div class="journal-api-overlay" id="journal-api-overlay" onclick="closeJournalApiImportModal()">
+  <div class="journal-api-modal" onclick="event.stopPropagation()">
+    <div class="journal-api-head">
+      <div>CCFOLIA API 가져오기</div>
+      <button type="button" class="journal-api-close" onclick="closeJournalApiImportModal()" title="닫기">×</button>
+    </div>
+    <div class="journal-api-desc">시트에서 복사한 CCFOLIA character API 코드를 그대로 붙여넣으면 현재 웹사이트 형식의 캐릭터 저널을 생성합니다.</div>
+    <textarea id="journal-api-input" class="journal-api-input" placeholder='예: { "kind": "character", "data": { ... } }'></textarea>
+    <div class="journal-api-actions">
+      <button type="button" class="jd-btn secondary" onclick="closeJournalApiImportModal()">취소</button>
+      <button type="button" class="jd-btn primary" onclick="submitJournalApiImport()">가져오기</button>
+    </div>
+  </div>
+</div>
 
 <!-- 저널 드로어 -->
 <div id="journal-drawer">

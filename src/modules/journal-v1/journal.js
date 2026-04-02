@@ -1316,6 +1316,39 @@ const COC_STATS = [
   { key:'siz', name:'체격(SIZ)' }, { key:'int', name:'지능(INT)' },
 ];
 
+const COC_STAT_LABEL_MAP = {
+  '근력': 'str',
+  '건강': 'con',
+  '크기': 'siz',
+  '민첩성': 'dex',
+  '외모': 'app',
+  '지능': 'int',
+  '지능(아이디어)': 'int',
+  '정신력': 'pow',
+  '교육': 'edu',
+  '이성': 'san',
+  '행운': 'luck',
+};
+
+const COC_SKILL_IMPORT_ALIAS = {
+  '근접전:격투': '근접전(격투)',
+  '사격(라/산)': '사격(라이플/산탄)',
+  '매혹': '마호',
+  '일본어': '언어(모국어)',
+};
+
+const COC_RESOURCE_LABEL_MAP = {
+  'HP': ['hp', 'hp_max'],
+  'MP': ['mp', 'mp_max'],
+  '이성': ['san', 'san_max'],
+  '행운': ['luck', null],
+};
+
+const COC_PARAM_LABEL_MAP = {
+  'DB': 'db',
+  '체구': 'build',
+};
+
 const COC_SKILLS = [
   { name:'감정', base:5 },    { name:'고고학', base:1 },
   { name:'관찰력', base:25 }, { name:'근접전(격투)', base:25 },
@@ -1339,6 +1372,146 @@ const COC_SKILLS = [
   { name:'항법', base:10 },   { name:'회계', base:5 },
   { name:'회피', base:0 },    { name:'언어(다른언어)', base:1 },
 ];
+
+function normalizeImportedCocSkillName(name = '') {
+  const raw = String(name || '').trim();
+  return COC_SKILL_IMPORT_ALIAS[raw] || raw;
+}
+
+function buildEmptyImportedCocSheet() {
+  return {
+    name: '', player: '', job: '', age: '', residence: '', birthplace: '',
+    str: 0, con: 0, siz: 0, dex: 0, app: 0, int: 0, pow: 0, edu: 0,
+    hp: '', hp_max: '', san: '', san_max: '', mp: '', mp_max: '', luck: '', db: '', build: '',
+    skills: COC_SKILLS.map(sk => ({ checked: false, val: sk.base, half: Math.floor(sk.base / 2) })),
+    unarmed_skill: '근접전(격투)',
+    unarmed_dmg: '1d3+db',
+    combat_rows: [],
+    equipment: '', spending: '', cash: '', assets: '', notes: '',
+    bs_appearance: '', bs_personality: '', bs_ideology: '', bs_wounds: '', bs_people: '',
+    bs_phobias: '', bs_places: '', bs_tomes: '', bs_treasures: '', bs_encounters: '',
+  };
+}
+
+function extractCcfoliaCharacterPayload(rawText = '') {
+  const raw = String(rawText || '').trim();
+  if (!raw) return null;
+  const start = raw.indexOf('{');
+  const end = raw.lastIndexOf('}');
+  if (start < 0 || end <= start) return null;
+  const candidate = raw.slice(start, end + 1).replace(/[“”]/g, '"');
+  try {
+    const parsed = JSON.parse(candidate);
+    if (parsed?.kind === 'character' && parsed?.data && typeof parsed.data === 'object') return parsed;
+  } catch (e) {}
+  return null;
+}
+
+function buildJournalFromCcfoliaCharacter(parsed) {
+  const data = parsed?.data;
+  if (!data || typeof data !== 'object') return null;
+
+  const sheet = buildEmptyImportedCocSheet();
+  const skillIndexMap = new Map(COC_SKILLS.map((sk, i) => [normalizeImportedCocSkillName(sk.name), i]));
+  const unmappedCommands = [];
+
+  sheet.name = String(data.name || '').trim();
+  sheet.player = String(data.memo || '').trim();
+
+  (Array.isArray(data.status) ? data.status : []).forEach((entry) => {
+    const label = String(entry?.label || '').trim();
+    const mapped = COC_RESOURCE_LABEL_MAP[label];
+    if (!mapped) return;
+    const [curKey, maxKey] = mapped;
+    if (curKey) sheet[curKey] = entry?.value ?? '';
+    if (maxKey) sheet[maxKey] = entry?.max ?? entry?.value ?? '';
+  });
+
+  (Array.isArray(data.params) ? data.params : []).forEach((entry) => {
+    const label = String(entry?.label || '').trim();
+    const mapped = COC_PARAM_LABEL_MAP[label];
+    if (mapped) sheet[mapped] = String(entry?.value ?? '').trim();
+  });
+
+  const commands = String(data.commands || '').replace(/\r/g, '');
+  commands.split('\n').map(line => line.trim()).filter(Boolean).forEach((line) => {
+    const check = line.match(/^CC<=\{?([^}\s]+)\}?\s+(.+)$/i);
+    if (check) {
+      const targetToken = String(check[1] || '').trim();
+      const label = String(check[2] || '').trim();
+      const numericTarget = /^\d+$/.test(targetToken) ? parseInt(targetToken, 10) : null;
+      const statKey = COC_STAT_LABEL_MAP[label];
+      if (statKey && numericTarget !== null) {
+        sheet[statKey] = numericTarget;
+        if (statKey === 'san' && !sheet.san_max) sheet.san_max = numericTarget;
+        if (statKey === 'luck' && !sheet.luck) sheet.luck = numericTarget;
+        return;
+      }
+      const normalizedSkillName = normalizeImportedCocSkillName(label);
+      const skillIndex = skillIndexMap.get(normalizedSkillName);
+      if (skillIndex !== undefined && numericTarget !== null) {
+        sheet.skills[skillIndex] = {
+          checked: sheet.skills[skillIndex]?.checked || false,
+          val: numericTarget,
+          half: Math.floor(numericTarget / 2),
+        };
+        return;
+      }
+      if (label && numericTarget !== null) unmappedCommands.push(`${label}=${numericTarget}`);
+      return;
+    }
+
+    const weapon = line.match(/^(.+?)\s+(.+)$/);
+    if (weapon && /\d+d\d+/i.test(weapon[1])) {
+      const dmg = weapon[1].trim();
+      const name = weapon[2].trim();
+      if (/비무장/.test(name)) {
+        sheet.unarmed_dmg = dmg;
+      } else {
+        sheet.combat_rows.push({ name, skill: '', dmg, range: '', atk: '', ammo: '', mal: '' });
+      }
+    }
+  });
+
+  if (!sheet.san && sheet.san_max) sheet.san = sheet.san_max;
+  if (!sheet.hp && sheet.hp_max) sheet.hp = sheet.hp_max;
+  if (!sheet.mp && sheet.mp_max) sheet.mp = sheet.mp_max;
+
+  if (unmappedCommands.length) {
+    sheet.notes = `가져오지 못한 판정 항목: ${unmappedCommands.join(', ')}`;
+  }
+
+  const titleBase = sheet.name || String(data.name || '가져온 저널').trim() || '가져온 저널';
+  const id = `j_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+  return {
+    id,
+    title: titleBase,
+    body: '',
+    ownerId: St.myId,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    assignedTo: [],
+    assignedTokenId: null,
+    nameColor: '',
+    sheet,
+  };
+}
+
+async function importCcfoliaApiToJournal(rawText = '') {
+  const parsed = extractCcfoliaCharacterPayload(rawText);
+  if (!parsed) return { handled: false, created: false };
+  const journal = buildJournalFromCcfoliaCharacter(parsed);
+  if (!journal) {
+    showToast('CCFOLIA API 데이터를 해석하지 못했어요.');
+    return { handled: true, created: false };
+  }
+  saveJournalFB(journal);
+  try { await loadJournalsFB(); } catch (e) {}
+  if (typeof renderJournalList === 'function') renderJournalList();
+  if (typeof saRefreshToolbar === 'function') saRefreshToolbar();
+  showToast(`저널 '${journal.title}'을(를) 가져왔어요.`);
+  return { handled: true, created: true, journalId: journal.id, title: journal.title };
+}
 
 let _sheetJournalId = null;
 
@@ -2038,3 +2211,40 @@ async function saveSheet() {
   closeSheet();
 }
 
+
+window.importCcfoliaApiToJournal = importCcfoliaApiToJournal;
+
+function openJournalApiImportModal() {
+  if (!St.roomCode) { showToast('방에 입장한 상태에서만 가져올 수 있어요.'); return; }
+  const overlay = document.getElementById('journal-api-overlay');
+  const input = document.getElementById('journal-api-input');
+  if (!overlay || !input) return;
+  overlay.classList.add('open');
+  setTimeout(() => { if (input && input.isConnected) input.focus(); }, 20);
+}
+
+function closeJournalApiImportModal() {
+  const overlay = document.getElementById('journal-api-overlay');
+  const input = document.getElementById('journal-api-input');
+  if (overlay) overlay.classList.remove('open');
+  if (input) input.value = '';
+}
+
+async function submitJournalApiImport() {
+  const input = document.getElementById('journal-api-input');
+  if (!input) return;
+  const raw = input.value.trim();
+  if (!raw) { showToast('API 코드를 붙여넣어 주세요.'); input.focus(); return; }
+  const result = await importCcfoliaApiToJournal(raw);
+  if (!result?.handled) {
+    showToast('올바른 CCFOLIA character API 코드가 아니에요.');
+    input.focus();
+    return;
+  }
+  if (!result?.created) return;
+  closeJournalApiImportModal();
+}
+
+window.openJournalApiImportModal = openJournalApiImportModal;
+window.closeJournalApiImportModal = closeJournalApiImportModal;
+window.submitJournalApiImport = submitJournalApiImport;
