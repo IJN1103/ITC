@@ -233,10 +233,17 @@ function setupFirebaseListeners() {
     if (typeof removeSingleToken === 'function') removeSingleToken(id);
   }));
 
-  /* ── 맵 상태: 배경 이미지 등 ── */
-  const mapStateRef = ref(db, `rooms/${code}/mapState`);
-  trackFirebaseListener(onValue(mapStateRef, snap => {
-    St.mapState = snap.val() || { background: null };
+  /* ── 방 메타: 맵 배경 이미지 등 ── */
+  const metaRef = ref(db, `rooms/${code}/meta`);
+  trackFirebaseListener(onValue(metaRef, snap => {
+    const meta = snap.val() || {};
+    St.mapState = {
+      background: meta.mapBackground ? {
+        url: meta.mapBackground,
+        fit: meta.mapBackgroundFit || 'contain',
+        sourceName: meta.mapBackgroundSourceName || '',
+      } : null,
+    };
     if (typeof applyImportedMapState === 'function') applyImportedMapState(St.mapState);
   }));
 

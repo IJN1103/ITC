@@ -238,8 +238,13 @@
         },
       };
       if (window._FB?.CONFIGURED) {
-        const { db, ref, set } = window._FB;
-        await set(ref(db, `rooms/${roomCode}/mapState`), nextMapState);
+        const { db, ref, update } = window._FB;
+        await update(ref(db, `rooms/${roomCode}/meta`), {
+          mapBackground: nextMapState.background.url,
+          mapBackgroundFit: nextMapState.background.fit,
+          mapBackgroundSourceName: nextMapState.background.sourceName || '',
+          mapBackgroundImportedAt: nextMapState.background.importedAt || Date.now(),
+        });
       } else {
         window.St.mapState = nextMapState;
         applyImportedMapState(nextMapState);
