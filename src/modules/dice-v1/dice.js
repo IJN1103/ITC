@@ -75,13 +75,13 @@ function rollDice(ci) {
 function getSkillCheckOutcome(val, r) {
   const target = Math.max(0, Number(val) || 0);
   if (r === 1) {
-    return { label: '크리티컬', className: 'j-exs', success: true };
+    return { label: '크리티컬', className: 'j-crit', success: true };
   }
   if (r === 100) {
     return { label: '펌블', className: 'j-fumb', success: false };
   }
   if (target > 0 && r <= Math.floor(target / 5)) {
-    return { label: '극단적 성공', className: 'j-exs', success: true };
+    return { label: '극단적 성공', className: 'j-succ', success: true };
   }
   if (target > 0 && r <= Math.floor(target / 2)) {
     return { label: '어려운 성공', className: 'j-succ', success: true };

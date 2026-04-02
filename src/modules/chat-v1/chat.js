@@ -1849,9 +1849,9 @@ function buildChatMsgElement(msg = {}) {
 function getDiceJudgmentMeta(text = '') {
   const normalized = String(text || '').trim();
   if (!normalized) return null;
-  if (normalized.includes('크리티컬')) return { label: '크리티컬', className: 'j-exs' };
+  if (normalized.includes('크리티컬')) return { label: '크리티컬', className: 'j-crit' };
   if (normalized.includes('펌블')) return { label: '펌블', className: 'j-fumb' };
-  if (normalized.includes('극단적 성공')) return { label: '극단적 성공', className: 'j-exs' };
+  if (normalized.includes('극단적 성공')) return { label: '극단적 성공', className: 'j-succ' };
   if (normalized.includes('어려운 성공')) return { label: '어려운 성공', className: 'j-succ' };
   if (normalized.includes('보통 성공')) return { label: '보통 성공', className: 'j-succ' };
   if (normalized.includes('실패')) return { label: '실패', className: 'j-fail' };

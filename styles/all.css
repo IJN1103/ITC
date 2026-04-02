@@ -356,7 +356,8 @@ to{opacity:1}
 .roll-detail-col{display:flex;flex-direction:column;gap:4px;}
 .roll-dice-str{font-family:var(--font-mono);font-size:11px;color:var(--muted);}
 .roll-judgment{font-size:11px;font-weight:500;letter-spacing:.1em;text-transform:uppercase;padding:3px 8px;border-radius:3px;display:inline-block;width:fit-content;}
-.j-exs{background:rgba(184,154,96,.2);color:var(--accent);}
+.j-crit{background:rgba(78,122,214,.22);color:#7ea5ff;}
+.j-exs{background:rgba(90,158,114,.2);color:var(--green);}
 .j-succ{background:rgba(90,158,114,.2);color:var(--green);}
 .j-fail{background:rgba(200,92,92,.2);color:var(--red);}
 .j-fumb{background:rgba(200,92,92,.35);color:var(--red);}
