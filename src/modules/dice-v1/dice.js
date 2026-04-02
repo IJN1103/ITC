@@ -98,8 +98,18 @@ function renderSkillCheckResult(name, val, r, outcome) {
   if (judgmentEl) judgmentEl.innerHTML = `<div class="roll-judgment ${outcome.className}">${outcome.label}</div>`;
 }
 
+function getSkillCheckSenderName() {
+  const selectedJournalId = St?.speakAsJournalId;
+  if (selectedJournalId && typeof loadJournals === 'function') {
+    const journal = loadJournals().find(j => j.id === selectedJournalId);
+    const journalTitle = (journal?.title || '').trim();
+    if (journalTitle) return journalTitle;
+  }
+  return St.myName;
+}
+
 function sendSkillCheckMessage(name, val, r, outcome) {
-  sendMessage(St.myName, `🎲 ${name} 판정 → ${r} (목표치 ${val}||${outcome.label})`, 'dice');
+  sendMessage(getSkillCheckSenderName(), `🎲 ${name} 판정 → ${r} (목표치 ${val}||${outcome.label})`, 'dice');
 }
 
 function rollSkillCheck(name, val) {

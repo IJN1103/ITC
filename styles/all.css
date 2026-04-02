@@ -388,7 +388,7 @@ to{opacity:1}
 .msg-dice .msg-text{display:none;}
 .msg-dice .dice-card{background:var(--a-dim);border:1px solid rgba(184,154,96,.2);border-radius:8px;padding:10px 14px;text-align:center;margin-top:4px;max-width:70%;}
 .dice-card-formula{font-size:10px;color:var(--muted);font-family:var(--font-mono);letter-spacing:.08em;text-transform:uppercase;margin-bottom:4px;}
-.dice-card-skill-check .dice-card-formula{font-size:32px;line-height:1.15;font-weight:700;letter-spacing:-.02em;text-transform:none;color:var(--text);font-family:var(--font-sans);margin-bottom:10px;}
+.dice-card-skill-check .dice-card-formula{font-size:14px;line-height:1.4;font-weight:400;letter-spacing:0;text-transform:none;color:var(--dim);font-family:var(--font-mono);margin-bottom:6px;}
 .dice-card-result{font-size:34px;font-weight:800;color:var(--accent);font-family:var(--font-mono);line-height:1.2;}
 .dice-card-judgment{margin:8px auto 0;}
 .dice-card-rolls{font-size:14px;color:var(--dim);font-family:var(--font-mono);margin-top:6px;}
