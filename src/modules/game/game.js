@@ -233,20 +233,6 @@ function setupFirebaseListeners() {
     if (typeof removeSingleToken === 'function') removeSingleToken(id);
   }));
 
-  /* ── 방 메타: 맵 배경 이미지 등 ── */
-  const metaRef = ref(db, `rooms/${code}/meta`);
-  trackFirebaseListener(onValue(metaRef, snap => {
-    const meta = snap.val() || {};
-    St.mapState = {
-      background: meta.mapBackground ? {
-        url: meta.mapBackground,
-        fit: meta.mapBackgroundFit || 'contain',
-        sourceName: meta.mapBackgroundSourceName || '',
-      } : null,
-    };
-    if (typeof applyImportedMapState === 'function') applyImportedMapState(St.mapState);
-  }));
-
   /* ── 저널: 개별 변경 감지 ── */
   _allJournals = [];
   const journalsRef = ref(db, `rooms/${code}/journals`);
@@ -275,13 +261,20 @@ function setupFirebaseListeners() {
   }));
 
   trackFirebaseListener(onValue(ref(db, `rooms/${code}/bgm`), snap => {
-    const bgm = snap.val();
-    if (!bgm) return;
+    const bgm = snap.val() || {};
     if (bgm.playlist) { St.playlist = bgm.playlist; renderPlaylist(); }
     if (bgm.currentTrack !== undefined && bgm.currentTrack !== St.currentTrack) {
       St.currentTrack = bgm.currentTrack;
       playTrack(St.currentTrack);
     }
+    St.mapState = {
+      background: bgm.mapBackground ? {
+        url: bgm.mapBackground,
+        fit: bgm.mapBackgroundFit || 'contain',
+        sourceName: bgm.mapBackgroundSourceName || '',
+      } : null,
+    };
+    if (typeof applyImportedMapState === 'function') applyImportedMapState(St.mapState);
   }));
 
   trackFirebaseListener(onValue(ref(db, `rooms/${code}/lastRoll`), snap => {

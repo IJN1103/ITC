@@ -239,7 +239,7 @@
       };
       if (window._FB?.CONFIGURED) {
         const { db, ref, update } = window._FB;
-        await update(ref(db, `rooms/${roomCode}/meta`), {
+        await update(ref(db, `rooms/${roomCode}/bgm`), {
           mapBackground: nextMapState.background.url,
           mapBackgroundFit: nextMapState.background.fit,
           mapBackgroundSourceName: nextMapState.background.sourceName || '',
