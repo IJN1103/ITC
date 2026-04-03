@@ -1573,3 +1573,18 @@ async function togglePanelTokenFace(tokenId) {
     renderAllTokens(St.tokens);
   }
 }
+
+
+function clearPanelTokenFrontImg() {
+  revokeTokenPreviewUrl(_pteFrontImgData);
+  _pteFrontImgBlob = null;
+  _pteFrontImgData = null;
+  refreshPanelTokenFrontPreview();
+}
+
+function clearPanelTokenBackImg() {
+  revokeTokenPreviewUrl(_pteBackImgData);
+  _pteBackImgBlob = null;
+  _pteBackImgData = null;
+  refreshPanelTokenBackPreview();
+}
