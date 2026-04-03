@@ -1185,6 +1185,32 @@ function readPanelTokenActionForm() {
   };
 }
 
+function validatePanelTokenActionForm(actionForm) {
+  const panelActionType = String(actionForm?.panelActionType || 'none');
+  const panelActionText = String(actionForm?.panelActionText || '');
+  const trimmed = panelActionText.trim();
+  if (panelActionType === 'none') return { ok: true, panelActionText: '' };
+  if (!trimmed) {
+    showToast(panelActionType === 'chat' ? '채팅 보내기 내용이 비어 있어요.' : '매크로 내용이 비어 있어요.');
+    return { ok: false };
+  }
+  if (panelActionType === 'chat') {
+    if (trimmed.startsWith('/')) {
+      showToast('채팅 보내기에는 /로 시작하는 문장을 사용할 수 없어요.');
+      return { ok: false };
+    }
+    return { ok: true, panelActionText: panelActionText };
+  }
+  if (panelActionType === 'macro') {
+    if (!trimmed.startsWith('/')) {
+      showToast('매크로에는 /로 시작하는 명령어만 사용할 수 있어요.');
+      return { ok: false };
+    }
+    return { ok: true, panelActionText: panelActionText };
+  }
+  return { ok: true, panelActionText: '' };
+}
+
 function buildPanelTokenSavePayload(current) {
   const base = normalizePanelToken(current);
   return {
@@ -1580,6 +1606,12 @@ async function savePanelTokenEdit() {
   const current = St.tokens[_pteTokenId];
   if (!current) return;
   const next = buildPanelTokenSavePayload(current);
+  const actionValidation = validatePanelTokenActionForm({
+    panelActionType: next.panelActionType,
+    panelActionText: next.panelActionText,
+  });
+  if (!actionValidation.ok) return;
+  next.panelActionText = String(actionValidation.panelActionText || '');
   if (_pteFrontImgCleared) {
     next.panelImage = null;
   } else if (_pteFrontImgBlob) {
