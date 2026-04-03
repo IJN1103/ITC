@@ -744,6 +744,7 @@ function getTokenRenderSignature(token) {
     panelWidth: Number(token?.panelWidth || 0),
     panelHeight: Number(token?.panelHeight || 0),
     panelPriority: Number(token?.panelPriority || 0),
+    panelImage: String(token?.panelImage || ''),
     tokenSize: Number(token?.tokenSize || 1),
     rotation: Number(token?.rotation || 0),
     memo: String(token?.memo || ''),
@@ -1426,6 +1427,8 @@ async function savePanelTokenEdit() {
   if (window._FB?.CONFIGURED) {
     const { db, ref, set } = window._FB;
     await set(ref(db, `rooms/${St.roomCode}/tokens/${_pteTokenId}`), next);
+    St.tokens[_pteTokenId] = next;
+    if (typeof addOrUpdateSingleToken === 'function') addOrUpdateSingleToken(_pteTokenId, next);
   } else {
     St.tokens[_pteTokenId] = next;
     renderAllTokens(St.tokens);
