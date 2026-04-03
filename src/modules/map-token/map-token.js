@@ -696,6 +696,7 @@ function addPanelToken() {
     panelWidth: 4,
     panelHeight: 2,
     panelPriority: 1,
+    panelFace: 'front',
     x: 48 + Math.random() * 12,
     y: 48 + Math.random() * 12,
     ownerId: St.myId || '',
@@ -745,6 +746,8 @@ function getTokenRenderSignature(token) {
     panelHeight: Number(token?.panelHeight || 0),
     panelPriority: Number(token?.panelPriority || 0),
     panelImage: String(token?.panelImage || ''),
+    panelBackImage: String(token?.panelBackImage || ''),
+    panelFace: String(token?.panelFace || 'front'),
     tokenSize: Number(token?.tokenSize || 1),
     rotation: Number(token?.rotation || 0),
     memo: String(token?.memo || ''),
@@ -851,9 +854,12 @@ function createTokenEl(t) {
     el.style.minHeight = baseH + 'px';
     el.style.fontSize = Math.max(11, 12 * sz) + 'px';
     el.style.zIndex = String(Math.max(1, Number(t.panelPriority || 1)));
-    if (t.panelImage) {
+    const activePanelImg = (String(t.panelFace || 'front') === 'back' && t.panelBackImage)
+      ? t.panelBackImage
+      : (t.panelImage || t.panelBackImage || null);
+    if (activePanelImg) {
       const img = document.createElement('img');
-      img.src = t.panelImage;
+      img.src = activePanelImg;
       img.style.cssText = 'width:100%;height:100%;object-fit:cover;pointer-events:none;border-radius:inherit;';
       el.appendChild(img);
       const nameLabel = document.createElement('span');
@@ -901,7 +907,16 @@ function createTokenEl(t) {
       if (_tokenMemoBubbleTokenId === t.id) hideTokenMemoBubble();
     });
   }
-  el.addEventListener('dblclick', e => { e.preventDefault(); e.stopPropagation(); hideTokenMemoBubble(); if (typeof openTokenEdit === 'function') openTokenEdit(t.id); });
+  el.addEventListener('dblclick', e => {
+    e.preventDefault();
+    e.stopPropagation();
+    hideTokenMemoBubble();
+    if (tokenCategory === 'panel') {
+      togglePanelTokenFace(t.id);
+      return;
+    }
+    if (typeof openTokenEdit === 'function') openTokenEdit(t.id);
+  });
   el.addEventListener('contextmenu', e => { e.preventDefault(); e.stopPropagation(); hideTokenMemoBubble(); showTokenCtx(e, t.id); });
   makeDraggable(el, t.id);
   refreshTokenLiveSnapshot(el, t);
@@ -1425,6 +1440,7 @@ async function savePanelTokenEdit() {
     panelTerrain: !!document.getElementById('pte-terrain')?.checked,
     panelImage: current.panelImage || null,
     panelBackImage: current.panelBackImage || null,
+    panelFace: String(current.panelFace || 'front'),
   };
   if (_pteFrontImgBlob) {
     next.panelImage = await uploadTokenBlobToCloudinary(_pteFrontImgBlob, `itc/panel-tokens/${St.roomCode}`);
@@ -1535,4 +1551,25 @@ async function deletePanelTokenFromEdit() {
     renderAllTokens(St.tokens);
   }
   showToast('패널 토큰이 삭제됐어요.');
+}
+
+
+async function togglePanelTokenFace(tokenId) {
+  const current = St.tokens[tokenId];
+  if (!current) return;
+  if (!current.panelImage || !current.panelBackImage) {
+    showToast('앞면과 뒷면 이미지가 모두 있어야 전환할 수 있어요.');
+    return;
+  }
+  const nextFace = String(current.panelFace || 'front') === 'back' ? 'front' : 'back';
+  const next = { ...current, panelFace: nextFace };
+  if (window._FB?.CONFIGURED) {
+    const { db, ref, update } = window._FB;
+    await update(ref(db, `rooms/${St.roomCode}/tokens/${tokenId}`), { panelFace: nextFace });
+    St.tokens[tokenId] = next;
+    if (typeof addOrUpdateSingleToken === 'function') addOrUpdateSingleToken(tokenId, next);
+  } else {
+    St.tokens[tokenId] = next;
+    renderAllTokens(St.tokens);
+  }
 }
