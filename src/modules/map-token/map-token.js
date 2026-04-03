@@ -817,6 +817,34 @@ function removeSingleToken(id) {
   removeMapStatusCard(id, St.tokens);
 }
 
+
+function cancelPendingPanelTokenClickAction() {
+  if (_panelTokenClickTimer) {
+    clearTimeout(_panelTokenClickTimer);
+    _panelTokenClickTimer = null;
+  }
+  _panelTokenClickTokenId = null;
+}
+
+function schedulePanelTokenClickAction(tokenId) {
+  cancelPendingPanelTokenClickAction();
+  _panelTokenClickTokenId = String(tokenId || '');
+  _panelTokenClickTimer = setTimeout(() => {
+    const pendingId = _panelTokenClickTokenId;
+    _panelTokenClickTimer = null;
+    _panelTokenClickTokenId = null;
+    if (!pendingId) return;
+    dispatchPanelTokenClickAction(pendingId);
+  }, PANEL_TOKEN_CLICK_DELAY);
+}
+
+function dispatchPanelTokenClickAction(tokenId) {
+  const token = normalizePanelToken(St.tokens?.[tokenId] || {});
+  if (!token?.id) return;
+  if (token.panelActionType === 'none') return;
+  // 실제 채팅/매크로 실행은 다음 단계에서 연결합니다.
+}
+
 function createTokenEl(t) {
   const inner = document.getElementById('map-inner');
   const el = document.createElement('div');
@@ -895,17 +923,23 @@ function createTokenEl(t) {
       if (_tokenMemoBubbleTokenId === t.id) hideTokenMemoBubble();
     });
   }
+  el.addEventListener('click', e => {
+    if (tokenCategory !== 'panel') return;
+    if (e.defaultPrevented) return;
+    schedulePanelTokenClickAction(t.id);
+  });
   el.addEventListener('dblclick', e => {
     e.preventDefault();
     e.stopPropagation();
     hideTokenMemoBubble();
     if (tokenCategory === 'panel') {
+      cancelPendingPanelTokenClickAction();
       togglePanelTokenFace(t.id);
       return;
     }
     if (typeof openTokenEdit === 'function') openTokenEdit(t.id);
   });
-  el.addEventListener('contextmenu', e => { e.preventDefault(); e.stopPropagation(); hideTokenMemoBubble(); showTokenCtx(e, t.id); });
+  el.addEventListener('contextmenu', e => { e.preventDefault(); e.stopPropagation(); hideTokenMemoBubble(); if (tokenCategory === 'panel') cancelPendingPanelTokenClickAction(); showTokenCtx(e, t.id); });
   makeDraggable(el, t.id);
   refreshTokenLiveSnapshot(el, t);
   inner.appendChild(el);
@@ -1078,6 +1112,9 @@ let _pteFrontImgCleared = false;
 let _pteBackImgData = null;
 let _pteBackImgBlob = null;
 let _pteBackImgCleared = false;
+let _panelTokenClickTimer = null;
+let _panelTokenClickTokenId = null;
+const PANEL_TOKEN_CLICK_DELAY = 230;
 
 const PANEL_TOKEN_DEFAULTS = Object.freeze({
   panelWidth: 4,
@@ -1578,7 +1615,7 @@ function openPanelTokenEdit(tokenId) {
   _pteBackImgCleared = false;
   refreshPanelTokenFrontPreview();
   refreshPanelTokenBackPreview();
-  togglePanelTokenAdvanced(false);
+  togglePanelTokenAdvanced(true);
   hydratePanelTokenEditModal(t);
   openModal('modal-panel-token-edit');
 }
