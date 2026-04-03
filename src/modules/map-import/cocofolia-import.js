@@ -310,15 +310,12 @@
     const roomFieldHeight = Number(roomMeta?.fieldHeight || 0);
     const normalizedSceneAspect = Math.max(0.1, Number(sceneAspect || 1) || 1);
 
-    let spanW = roomFieldWidth > 0 ? roomFieldWidth : 0;
-    let spanH = roomFieldHeight > 0 ? roomFieldHeight : 0;
-
-    if (!(spanW > 0) || !(spanH > 0)) {
-      const halfW = Math.max(Math.abs(bounds.left), Math.abs(bounds.right)) + pad;
-      const halfH = Math.max(Math.abs(bounds.top), Math.abs(bounds.bottom)) + pad;
-      spanW = Math.max(1, halfW * 2);
-      spanH = Math.max(1, halfH * 2);
-    }
+    const rawSpanW = Math.max(1, (bounds.right - bounds.left) + pad * 2);
+    const rawSpanH = Math.max(1, (bounds.bottom - bounds.top) + pad * 2);
+    let spanW = roomFieldWidth > 0 ? roomFieldWidth : rawSpanW;
+    let spanH = roomFieldHeight > 0 ? roomFieldHeight : rawSpanH;
+    const centerX = (bounds.left + bounds.right) / 2;
+    const centerY = (bounds.top + bounds.bottom) / 2;
 
     const currentAspect = spanW / spanH;
     if (currentAspect < normalizedSceneAspect) {
@@ -327,8 +324,8 @@
       spanH = spanW / normalizedSceneAspect;
     }
 
-    const baseLeft = -spanW / 2;
-    const baseTop = -spanH / 2;
+    const baseLeft = centerX - spanW / 2;
+    const baseTop = centerY - spanH / 2;
 
     return rawItems
       .sort((a, b) => Number(a.order || 0) - Number(b.order || 0))
