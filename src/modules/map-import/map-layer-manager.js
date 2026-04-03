@@ -16,7 +16,7 @@
     const state = getStateRoot().mapState || {};
     const entries = [];
     if (state.background?.url) {
-      entries.push({ id: 'background', name: '배경 이미지', sub: 'backgroundUrl', target: 'map-bg-layer' });
+      entries.push({ id: 'background', name: '배경 이미지', sub: 'backgroundUrl', target: 'map-bg-layer', previewUrl: state.background.url });
     }
     const objects = Array.isArray(state.objects) ? state.objects : [];
     objects.forEach((item, index) => {
@@ -27,10 +27,11 @@
         name: label,
         sub: `object ${index + 1}`,
         target: `[data-map-layer-id="${layerId.replace(/"/g, '\"')}"]`,
+        previewUrl: String(item?.url || '').trim(),
       });
     });
     if (state.foreground?.url) {
-      entries.push({ id: 'foreground', name: '전경 이미지', sub: 'foregroundUrl', target: 'map-fg-layer' });
+      entries.push({ id: 'foreground', name: '전경 이미지', sub: 'foregroundUrl', target: 'map-fg-layer', previewUrl: state.foreground.url });
     }
     return entries;
   }
@@ -138,8 +139,12 @@
       item.className = 'map-layer-item';
       item.draggable = true;
       item.dataset.layerId = id;
+      const previewStyle = entry.previewUrl
+        ? `background-image:url("${String(entry.previewUrl).replace(/"/g, '%22')}")`
+        : '';
       item.innerHTML = `
         <div class="map-layer-handle">☰</div>
+        <div class="map-layer-preview ${entry.previewUrl ? 'has-image' : ''}" style="${previewStyle}" aria-hidden="true"></div>
         <div class="map-layer-name"><span class="map-layer-label">${entry.name}</span><span class="map-layer-sub">${entry.sub}</span></div>
         <button class="map-layer-eye ${normalized.visible[id] === false ? 'off' : ''}" type="button">${createEyeIcon(normalized.visible[id] !== false)}</button>
       `;
