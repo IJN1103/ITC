@@ -1474,8 +1474,10 @@ function refreshPanelTokenFrontPreview() {
   const wrap = document.getElementById('pte-front-preview');
   if (!wrap) return;
   if (_pteFrontImgData) {
-    wrap.innerHTML = `<img src="${_pteFrontImgData}" alt="panel image">`;
+    wrap.classList.add('has-image');
+    wrap.innerHTML = `<img src="${_pteFrontImgData}" alt="panel image"><button class="panel-token-preview-delete" type="button" onclick="clearPanelTokenFrontImg()">🗑</button>`;
   } else {
+    wrap.classList.remove('has-image');
     wrap.textContent = '이미지 없음';
   }
 }
@@ -1507,8 +1509,10 @@ function refreshPanelTokenBackPreview() {
   const wrap = document.getElementById('pte-back-preview');
   if (!wrap) return;
   if (_pteBackImgData) {
-    wrap.innerHTML = `<img src="${_pteBackImgData}" alt="panel back image">`;
+    wrap.classList.add('has-image');
+    wrap.innerHTML = `<img src="${_pteBackImgData}" alt="panel back image"><button class="panel-token-preview-delete" type="button" onclick="clearPanelTokenBackImg()">🗑</button>`;
   } else {
+    wrap.classList.remove('has-image');
     wrap.textContent = '뒷면 이미지 없음';
   }
 }

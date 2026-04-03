@@ -963,18 +963,18 @@ window._FB = {
     <div class="panel-token-edit-toggle"><div><div class="panel-token-edit-toggle-title">지형 패널로 다루기</div><div class="panel-token-edit-toggle-sub">단축키 조작을 무효화합니다</div></div><label class="switch"><input id="pte-terrain" type="checkbox"><span class="slider"></span></label></div>
     <input id="pte-front-file" type="file" accept="image/*" style="display:none" onchange="handlePanelTokenFrontImg(this)">
     <input id="pte-back-file" type="file" accept="image/*" style="display:none" onchange="handlePanelTokenBackImg(this)">
-    <div class="panel-token-image-row">
-      <div class="panel-token-image-preview" id="pte-front-preview">이미지 없음</div>
-      <div class="panel-token-image-actions">
-        <button class="btn-primary panel-token-ghost-btn" type="button" onclick="document.getElementById('pte-front-file').click()">앞면 이미지 선택</button>
-        <button class="btn-primary panel-token-clear-btn" type="button" onclick="clearPanelTokenFrontImg()">앞면 이미지 삭제</button>
+    <div class="panel-token-image-group">
+      <div class="panel-token-image-label">앞면 이미지</div>
+      <div class="panel-token-image-row">
+        <div class="panel-token-image-preview" id="pte-front-preview">이미지 없음</div>
+        <button class="btn-primary panel-token-plus-btn" type="button" onclick="document.getElementById('pte-front-file').click()">+</button>
       </div>
     </div>
-    <div class="panel-token-image-row">
-      <div class="panel-token-image-preview" id="pte-back-preview">뒷면 이미지 없음</div>
-      <div class="panel-token-image-actions">
-        <button class="btn-primary panel-token-ghost-btn" type="button" onclick="document.getElementById('pte-back-file').click()">뒷면 이미지 선택</button>
-        <button class="btn-primary panel-token-clear-btn" type="button" onclick="clearPanelTokenBackImg()">뒷면 이미지 삭제</button>
+    <div class="panel-token-image-group">
+      <div class="panel-token-image-label">뒷면 이미지</div>
+      <div class="panel-token-image-row">
+        <div class="panel-token-image-preview" id="pte-back-preview">뒷면 이미지 없음</div>
+        <button class="btn-primary panel-token-plus-btn" type="button" onclick="document.getElementById('pte-back-file').click()">+</button>
       </div>
     </div>
     <div class="panel-token-edit-advanced" onclick="panelTokenEditPendingToast()">고급 설정 <span>▾</span></div>
