@@ -811,12 +811,37 @@ function _standingsKey(t) {
 }
 
 function removeSingleToken(id) {
+  clearPanelTokenActionState(id);
   const el = getTokenEl(id);
   if (el) el.remove();
   setMultiTokenSelection(_multiSelectedTokenIds.filter(x => x !== id));
   removeMapStatusCard(id, St.tokens);
 }
 
+
+
+function clearPanelTokenActionState(tokenId = null) {
+  const id = tokenId == null ? null : String(tokenId);
+  if (id && _panelTokenClickTokenId === id) cancelPendingPanelTokenClickAction();
+  if (id) {
+    _panelTokenActionLocks.delete(id);
+    _panelTokenActionLastRun.delete(id);
+    return;
+  }
+  cancelPendingPanelTokenClickAction();
+  _panelTokenActionLocks.clear();
+  _panelTokenActionLastRun.clear();
+}
+
+function canRunPanelTokenClickAction(tokenId) {
+  const id = String(tokenId || '');
+  if (!id) return false;
+  if (!St.tokens?.[id]) return false;
+  if (_panelTokenActionLocks.has(id)) return false;
+  const lastRun = Number(_panelTokenActionLastRun.get(id) || 0);
+  if (lastRun && Date.now() - lastRun < PANEL_TOKEN_ACTION_COOLDOWN) return false;
+  return true;
+}
 
 function cancelPendingPanelTokenClickAction() {
   if (_panelTokenClickTimer) {
@@ -827,13 +852,15 @@ function cancelPendingPanelTokenClickAction() {
 }
 
 function schedulePanelTokenClickAction(tokenId) {
+  const id = String(tokenId || '');
+  if (!id || !St.tokens?.[id]) return;
   cancelPendingPanelTokenClickAction();
-  _panelTokenClickTokenId = String(tokenId || '');
+  _panelTokenClickTokenId = id;
   _panelTokenClickTimer = setTimeout(() => {
     const pendingId = _panelTokenClickTokenId;
     _panelTokenClickTimer = null;
     _panelTokenClickTokenId = null;
-    if (!pendingId) return;
+    if (!pendingId || !canRunPanelTokenClickAction(pendingId)) return;
     dispatchPanelTokenClickAction(pendingId);
   }, PANEL_TOKEN_CLICK_DELAY);
 }
@@ -950,9 +977,14 @@ async function rollPanelTokenFormulaAsCurrentProfile(formula) {
 }
 
 async function dispatchPanelTokenClickAction(tokenId) {
-  const token = normalizePanelToken(St.tokens?.[tokenId] || {});
+  const id = String(tokenId || '');
+  if (!canRunPanelTokenClickAction(id)) return;
+  const token = normalizePanelToken(St.tokens?.[id] || {});
   if (!token?.id) return;
   if (token.panelActionType === 'none') return;
+  _panelTokenActionLocks.add(id);
+  _panelTokenActionLastRun.set(id, Date.now());
+  try {
   if (token.panelActionType === 'chat') {
     const text = String(token.panelActionText || '');
     if (!text.trim()) return;
@@ -994,6 +1026,9 @@ async function dispatchPanelTokenClickAction(tokenId) {
     }
     showToast('현재는 /choice와 다이스 매크로만 지원해요.');
     return;
+  }
+  } finally {
+    _panelTokenActionLocks.delete(id);
   }
 }
 
@@ -1267,6 +1302,9 @@ let _pteBackImgCleared = false;
 let _panelTokenClickTimer = null;
 let _panelTokenClickTokenId = null;
 const PANEL_TOKEN_CLICK_DELAY = 230;
+const PANEL_TOKEN_ACTION_COOLDOWN = 260;
+const _panelTokenActionLocks = new Set();
+const _panelTokenActionLastRun = new Map();
 
 const PANEL_TOKEN_DEFAULTS = Object.freeze({
   panelWidth: 4,
