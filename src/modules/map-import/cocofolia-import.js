@@ -113,7 +113,7 @@
       el.style.width = `${Number(item.wPct || 0)}%`;
       el.style.height = `${Number(item.hPct || 0)}%`;
       el.style.backgroundImage = `url("${String(item.url).replace(/"/g, '%22')}")`;
-      el.style.transform = `translate(-50%, -50%) rotate(${Number(item.angle || 0)}deg)`;
+      el.style.transform = `rotate(${Number(item.angle || 0)}deg)`;
       mapInner.appendChild(el);
     });
   }
@@ -298,10 +298,10 @@
       const y = Number(item.y || 0);
       const w = Math.max(1, Number(item.width || 1));
       const h = Math.max(1, Number(item.height || 1));
-      acc.left = Math.min(acc.left, x - w / 2);
-      acc.right = Math.max(acc.right, x + w / 2);
-      acc.top = Math.min(acc.top, y - h / 2);
-      acc.bottom = Math.max(acc.bottom, y + h / 2);
+      acc.left = Math.min(acc.left, x);
+      acc.right = Math.max(acc.right, x + w);
+      acc.top = Math.min(acc.top, y);
+      acc.bottom = Math.max(acc.bottom, y + h);
       return acc;
     }, { left: Infinity, right: -Infinity, top: Infinity, bottom: -Infinity });
 
