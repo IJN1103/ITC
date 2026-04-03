@@ -1164,6 +1164,15 @@ function buildPanelTokenSavePayload(current) {
   };
 }
 
+
+function normalizeIncomingMapToken(token = {}, tokenId = '') {
+  const base = { ...token };
+  if (!base.id && tokenId) base.id = tokenId;
+  if (getTokenCategory(base) === 'panel') return normalizePanelToken(base);
+  if (!base.tokenCategory) base.tokenCategory = 'character';
+  return base;
+}
+
 function openTokenEdit(tokenId) {
   _teTokenId = tokenId;
   const t = St.tokens[tokenId];
@@ -1660,3 +1669,5 @@ function clearPanelTokenBackImg() {
   _pteBackImgCleared = true;
   refreshPanelTokenBackPreview();
 }
+
+window.normalizeIncomingMapToken = normalizeIncomingMapToken;

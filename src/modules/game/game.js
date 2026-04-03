@@ -215,15 +215,15 @@ function setupFirebaseListeners() {
   const tokensRef = ref(db, `rooms/${code}/tokens`);
   trackFirebaseListener(onChildAdded(tokensRef, snap => {
     const id = snap.key;
-    const data = snap.val() || {};
-    data.id = id;
+    const raw = snap.val() || {};
+    const data = typeof normalizeIncomingMapToken === 'function' ? normalizeIncomingMapToken(raw, id) : { ...raw, id };
     St.tokens[id] = data;
     if (typeof addOrUpdateSingleToken === 'function') addOrUpdateSingleToken(id, data);
   }));
   trackFirebaseListener(onChildChanged(tokensRef, snap => {
     const id = snap.key;
-    const data = snap.val() || {};
-    data.id = id;
+    const raw = snap.val() || {};
+    const data = typeof normalizeIncomingMapToken === 'function' ? normalizeIncomingMapToken(raw, id) : { ...raw, id };
     St.tokens[id] = data;
     if (typeof addOrUpdateSingleToken === 'function') addOrUpdateSingleToken(id, data);
   }));
