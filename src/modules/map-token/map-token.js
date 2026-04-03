@@ -838,6 +838,117 @@ function schedulePanelTokenClickAction(tokenId) {
   }, PANEL_TOKEN_CLICK_DELAY);
 }
 
+
+function getCurrentSpeakAsJournalForPanelAction() {
+  if (!St.speakAsJournalId || typeof loadJournals !== 'function') return null;
+  return loadJournals().find(x => x.id === St.speakAsJournalId) || null;
+}
+
+async function sendPanelTokenChatAsCurrentProfile(text) {
+  const message = String(text || '');
+  if (!message.trim()) return;
+  const journal = getCurrentSpeakAsJournalForPanelAction();
+  if (journal && typeof saSendMessage === 'function') {
+    await saSendMessage(journal, message);
+    return;
+  }
+  await sendMessage(St.myName, message, 'normal');
+}
+
+async function sendPanelTokenChoiceAsCurrentProfile(options) {
+  const picked = options[Math.floor(Math.random() * options.length)];
+  const message = `🎯 Choice [${options.join(', ')}] → ${picked}`;
+  const journal = getCurrentSpeakAsJournalForPanelAction();
+  if (journal && typeof saSendMessage === 'function') {
+    await saSendMessage(journal, message);
+    return;
+  }
+  await sendMessage(St.myName, message, 'normal');
+}
+
+async function rollPanelTokenFormulaAsCurrentProfile(formula) {
+  const normalized = String(formula || '').replace(/\s/g, '').toLowerCase();
+  const tokens = [];
+  let buf = '';
+  for (let i = 0; i < normalized.length; i++) {
+    const ch = normalized[i];
+    if ((ch === '+' || ch === '-') && i > 0) {
+      tokens.push(buf);
+      buf = ch;
+    } else {
+      buf += ch;
+    }
+  }
+  if (buf) tokens.push(buf);
+  if (tokens.length === 0) {
+    showToast('올바른 수식이 아니에요. 예: /1d100, /2d6+3');
+    return;
+  }
+  let grandTotal = 0;
+  const allDetails = [];
+  const allRolls = [];
+  let labelParts = [];
+  let valid = true;
+  for (const token of tokens) {
+    let sign = 1;
+    let expr = token;
+    if (expr.startsWith('+')) expr = expr.slice(1);
+    else if (expr.startsWith('-')) { sign = -1; expr = expr.slice(1); }
+    const diceMatch = expr.match(/^(\d+)?d(\d+)$/);
+    if (diceMatch) {
+      const count = parseInt(diceMatch[1] || '1', 10);
+      const sides = parseInt(diceMatch[2], 10);
+      if (count < 1 || count > 100 || sides < 1 || sides > 10000) { valid = false; break; }
+      const rolls = [];
+      for (let i = 0; i < count; i++) rolls.push(Math.ceil(Math.random() * sides));
+      const sum = rolls.reduce((a, b) => a + b, 0);
+      grandTotal += sign * sum;
+      allRolls.push(...rolls);
+      allDetails.push((sign < 0 ? '-' : (allDetails.length > 0 ? '+' : '')) + `${count}d${sides}[${rolls.join(',')}]`);
+      labelParts.push((sign < 0 ? '-' : (labelParts.length > 0 ? '+' : '')) + `${count}d${sides}`);
+      continue;
+    }
+    const num = parseInt(expr, 10);
+    if (!isNaN(num)) {
+      grandTotal += sign * num;
+      allDetails.push((sign < 0 ? '-' : (allDetails.length > 0 ? '+' : '')) + String(num));
+      labelParts.push((sign < 0 ? '-' : (labelParts.length > 0 ? '+' : '')) + String(num));
+      continue;
+    }
+    valid = false;
+    break;
+  }
+  if (!valid) {
+    showToast('올바른 수식이 아니에요. 예: /1d100, /2d6+3, /1d100+2d20');
+    return;
+  }
+  const label = labelParts.join('');
+  const detail = allDetails.join(' ') + ' = ' + grandTotal;
+  const text = `🎲 ${label} → ${grandTotal}  (${detail})`;
+  const speakAsContext = (typeof window.saGetSelectedJournalContext === 'function')
+    ? window.saGetSelectedJournalContext(text)
+    : null;
+  const senderName = speakAsContext?.name || St.myName;
+  const extra = speakAsContext
+    ? {
+        speakAsAvatar: speakAsContext.speakAsAvatar || null,
+        speakAsJournalId: speakAsContext.speakAsJournalId || null,
+        nameColor: speakAsContext.nameColor || '',
+        tokenId: speakAsContext.tokenId || null,
+        standingLabel: speakAsContext.standingLabel || '',
+      }
+    : null;
+  const rollObj = { playerId: St.myId, player: senderName, dice: label, total: grandTotal, rolls: allRolls, detail, time: Date.now() };
+  showRollResult(rollObj);
+  await sendMessage(senderName, text, 'dice', extra);
+  if (window._FB?.CONFIGURED) {
+    const { db, ref, set } = window._FB;
+    set(ref(db, `rooms/${St.roomCode}/lastRoll`), { ...rollObj, time: getDiceServerTimestamp() });
+  } else {
+    window._LAST_ROLL = rollObj;
+  }
+}
+
 async function dispatchPanelTokenClickAction(tokenId) {
   const token = normalizePanelToken(St.tokens?.[tokenId] || {});
   if (!token?.id) return;
@@ -846,14 +957,7 @@ async function dispatchPanelTokenClickAction(tokenId) {
     const text = String(token.panelActionText || '');
     if (!text.trim()) return;
     try {
-      if (St.speakAsJournalId && typeof loadJournals === 'function') {
-        const journal = loadJournals().find(x => x.id === St.speakAsJournalId);
-        if (journal && typeof saSendMessage === 'function') {
-          await saSendMessage(journal, text);
-          return;
-        }
-      }
-      await sendMessage(St.myName, text, 'normal');
+      await sendPanelTokenChatAsCurrentProfile(text);
     } catch (err) {
       console.error('dispatchPanelTokenClickAction chat failed', err);
       showToast('패널 토큰 채팅 전송에 실패했어요. 다시 시도해 주세요.');
@@ -870,10 +974,8 @@ async function dispatchPanelTokenClickAction(tokenId) {
         showToast('선택지를 2개 이상 입력해주세요.');
         return;
       }
-      const picked = options[Math.floor(Math.random() * options.length)];
-      const senderName = St.speakAsJournalId ? (typeof loadJournals === 'function' ? (loadJournals().find(x => x.id === St.speakAsJournalId)?.title || St.myName) : St.myName) : St.myName;
       try {
-        await sendMessage(senderName, `🎯 Choice [${options.join(', ')}] → ${picked}`, 'normal');
+        await sendPanelTokenChoiceAsCurrentProfile(options);
       } catch (err) {
         console.error('dispatchPanelTokenClickAction choice failed', err);
         showToast('패널 토큰 매크로 실행에 실패했어요. 다시 시도해 주세요.');
@@ -883,7 +985,7 @@ async function dispatchPanelTokenClickAction(tokenId) {
     const dm = raw.match(/^\/(\d*d\d+.*)$/i);
     if (dm) {
       try {
-        rollFromFormula(dm[1].trim());
+        await rollPanelTokenFormulaAsCurrentProfile(dm[1].trim());
       } catch (err) {
         console.error('dispatchPanelTokenClickAction dice failed', err);
         showToast('패널 토큰 다이스 실행에 실패했어요. 다시 시도해 주세요.');
