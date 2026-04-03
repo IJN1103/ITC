@@ -838,11 +838,24 @@ function schedulePanelTokenClickAction(tokenId) {
   }, PANEL_TOKEN_CLICK_DELAY);
 }
 
-function dispatchPanelTokenClickAction(tokenId) {
+async function dispatchPanelTokenClickAction(tokenId) {
   const token = normalizePanelToken(St.tokens?.[tokenId] || {});
   if (!token?.id) return;
   if (token.panelActionType === 'none') return;
-  // 실제 채팅/매크로 실행은 다음 단계에서 연결합니다.
+  if (token.panelActionType === 'chat') {
+    const text = String(token.panelActionText || '');
+    if (!text.trim()) return;
+    try {
+      await sendMessage(St.myName, text, 'normal');
+    } catch (err) {
+      console.error('dispatchPanelTokenClickAction chat failed', err);
+      showToast('패널 토큰 채팅 전송에 실패했어요. 다시 시도해 주세요.');
+    }
+    return;
+  }
+  if (token.panelActionType === 'macro') {
+    return;
+  }
 }
 
 function createTokenEl(t) {
