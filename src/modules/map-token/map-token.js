@@ -1881,6 +1881,40 @@ function endPanelTokenEditSaving() {
   _panelTokenEditSaving = false;
 }
 
+function isSamePanelTokenEditSession(tokenId, session) {
+  return !!tokenId && tokenId === _pteTokenId && session === _panelTokenEditSession;
+}
+
+function applyPanelTokenEditImageDraft(side, nextData, nextBlob, cleared) {
+  const isFront = side === 'front';
+  const currentData = isFront ? _pteFrontImgData : _pteBackImgData;
+  revokeTokenPreviewUrl(currentData);
+  if (isFront) {
+    _pteFrontImgBlob = nextBlob || null;
+    _pteFrontImgData = nextData || null;
+    _pteFrontImgCleared = !!cleared;
+    refreshPanelTokenFrontPreview();
+    return;
+  }
+  _pteBackImgBlob = nextBlob || null;
+  _pteBackImgData = nextData || null;
+  _pteBackImgCleared = !!cleared;
+  refreshPanelTokenBackPreview();
+}
+
+async function resolvePanelTokenEditImageValue(options = {}) {
+  const currentValue = options.currentValue || null;
+  const draftData = options.draftData || null;
+  const draftBlob = options.draftBlob || null;
+  const cleared = !!options.cleared;
+  const uploadPath = String(options.uploadPath || '');
+  if (cleared) return null;
+  if (draftBlob) return await uploadTokenBlobToCloudinary(draftBlob, uploadPath);
+  if (!draftData) return currentValue || null;
+  if (/^blob:/.test(String(draftData))) return currentValue || null;
+  return draftData;
+}
+
 function openPanelTokenEdit(tokenId) {
   if (_panelTokenEditSaving) {
     showToast('패널 토큰 저장이 진행 중이에요. 저장이 끝난 뒤 다시 시도해 주세요.');
@@ -1935,24 +1969,20 @@ async function savePanelTokenEdit() {
     });
     if (!actionValidation.ok) return;
     next.panelActionText = String(actionValidation.panelActionText || '');
-    if (_pteFrontImgCleared) {
-      next.panelImage = null;
-    } else if (_pteFrontImgBlob) {
-      next.panelImage = await uploadTokenBlobToCloudinary(_pteFrontImgBlob, `itc/panel-tokens/${St.roomCode}`);
-    } else if (_pteFrontImgData && /^blob:/.test(String(_pteFrontImgData))) {
-      next.panelImage = current.panelImage || null;
-    } else if (_pteFrontImgData) {
-      next.panelImage = _pteFrontImgData;
-    }
-    if (_pteBackImgCleared) {
-      next.panelBackImage = null;
-    } else if (_pteBackImgBlob) {
-      next.panelBackImage = await uploadTokenBlobToCloudinary(_pteBackImgBlob, `itc/panel-tokens-back/${St.roomCode}`);
-    } else if (_pteBackImgData && /^blob:/.test(String(_pteBackImgData))) {
-      next.panelBackImage = current.panelBackImage || null;
-    } else if (_pteBackImgData) {
-      next.panelBackImage = _pteBackImgData;
-    }
+    next.panelImage = await resolvePanelTokenEditImageValue({
+      currentValue: current.panelImage || null,
+      draftData: _pteFrontImgData,
+      draftBlob: _pteFrontImgBlob,
+      cleared: _pteFrontImgCleared,
+      uploadPath: `itc/panel-tokens/${St.roomCode}`,
+    });
+    next.panelBackImage = await resolvePanelTokenEditImageValue({
+      currentValue: current.panelBackImage || null,
+      draftData: _pteBackImgData,
+      draftBlob: _pteBackImgBlob,
+      cleared: _pteBackImgCleared,
+      uploadPath: `itc/panel-tokens-back/${St.roomCode}`,
+    });
     if (editSession !== _panelTokenEditSession || editTokenId !== _pteTokenId) {
       showToast('패널 토큰 편집 상태가 변경되어 저장을 중단했어요. 다시 열어서 저장해 주세요.');
       return;
@@ -1988,7 +2018,14 @@ function refreshPanelTokenFrontPreview() {
 
 async function handlePanelTokenFrontImg(input) {
   const file = input.files?.[0];
-  if (!file) return;
+  const editTokenId = _pteTokenId;
+  const editSession = _panelTokenEditSession;
+  if (!file || !editTokenId) return;
+  if (_panelTokenEditSaving) {
+    showToast('패널 토큰 저장 중에는 이미지를 변경할 수 없어요.');
+    input.value = '';
+    return;
+  }
   if (file.size > 3 * 1024 * 1024) {
     showToast('이미지는 3MB 이하만 가능해요.');
     input.value = '';
@@ -1996,11 +2033,12 @@ async function handlePanelTokenFrontImg(input) {
   }
   try {
     const blob = await makeTokenImageBlob(file, 1200);
-    revokeTokenPreviewUrl(_pteFrontImgData);
-    _pteFrontImgBlob = blob;
-    _pteFrontImgData = URL.createObjectURL(blob);
-    _pteFrontImgCleared = false;
-    refreshPanelTokenFrontPreview();
+    const nextData = URL.createObjectURL(blob);
+    if (!isSamePanelTokenEditSession(editTokenId, editSession)) {
+      revokeTokenPreviewUrl(nextData);
+      return;
+    }
+    applyPanelTokenEditImageDraft('front', nextData, blob, false);
   } catch (err) {
     console.error('panel token image prepare failed', err);
     showToast('패널 이미지를 준비하지 못했어요. 다시 시도해 주세요.');
@@ -2024,7 +2062,14 @@ function refreshPanelTokenBackPreview() {
 
 async function handlePanelTokenBackImg(input) {
   const file = input.files?.[0];
-  if (!file) return;
+  const editTokenId = _pteTokenId;
+  const editSession = _panelTokenEditSession;
+  if (!file || !editTokenId) return;
+  if (_panelTokenEditSaving) {
+    showToast('패널 토큰 저장 중에는 이미지를 변경할 수 없어요.');
+    input.value = '';
+    return;
+  }
   if (file.size > 3 * 1024 * 1024) {
     showToast('이미지는 3MB 이하만 가능해요.');
     input.value = '';
@@ -2032,11 +2077,12 @@ async function handlePanelTokenBackImg(input) {
   }
   try {
     const blob = await makeTokenImageBlob(file, 1200);
-    revokeTokenPreviewUrl(_pteBackImgData);
-    _pteBackImgBlob = blob;
-    _pteBackImgData = URL.createObjectURL(blob);
-    _pteBackImgCleared = false;
-    refreshPanelTokenBackPreview();
+    const nextData = URL.createObjectURL(blob);
+    if (!isSamePanelTokenEditSession(editTokenId, editSession)) {
+      revokeTokenPreviewUrl(nextData);
+      return;
+    }
+    applyPanelTokenEditImageDraft('back', nextData, blob, false);
   } catch (err) {
     console.error('panel token back image prepare failed', err);
     showToast('뒷면 이미지를 준비하지 못했어요. 다시 시도해 주세요.');
@@ -2095,19 +2141,11 @@ async function togglePanelTokenFace(tokenId) {
 
 
 function clearPanelTokenFrontImg() {
-  revokeTokenPreviewUrl(_pteFrontImgData);
-  _pteFrontImgBlob = null;
-  _pteFrontImgData = null;
-  _pteFrontImgCleared = true;
-  refreshPanelTokenFrontPreview();
+  applyPanelTokenEditImageDraft('front', null, null, true);
 }
 
 function clearPanelTokenBackImg() {
-  revokeTokenPreviewUrl(_pteBackImgData);
-  _pteBackImgBlob = null;
-  _pteBackImgData = null;
-  _pteBackImgCleared = true;
-  refreshPanelTokenBackPreview();
+  applyPanelTokenEditImageDraft('back', null, null, true);
 }
 
 window.normalizeIncomingMapToken = normalizeIncomingMapToken;
