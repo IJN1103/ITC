@@ -6,6 +6,12 @@
 
   let _dragLayerId = null;
 
+  function getDropInsertIndex(order, targetId, position) {
+    const targetIndex = order.indexOf(targetId);
+    if (targetIndex < 0) return order.length;
+    return position === 'after' ? targetIndex + 1 : targetIndex;
+  }
+
   function getStateRoot() {
     const root = (typeof window !== 'undefined' ? window : globalThis);
     if (root.St && typeof root.St === 'object') return root.St;
@@ -118,17 +124,39 @@
         await saveMapLayerState(next);
         renderMapLayerList();
       });
-      item.addEventListener('dragstart', () => { _dragLayerId = id; item.classList.add('dragging'); });
-      item.addEventListener('dragend', () => { _dragLayerId = null; item.classList.remove('dragging'); });
-      item.addEventListener('dragover', (e) => { e.preventDefault(); });
+      item.addEventListener('dragstart', (e) => {
+        _dragLayerId = id;
+        item.classList.add('dragging');
+        if (e.dataTransfer) {
+          e.dataTransfer.effectAllowed = 'move';
+          e.dataTransfer.setData('text/plain', id);
+        }
+      });
+      item.addEventListener('dragend', () => {
+        _dragLayerId = null;
+        item.classList.remove('dragging');
+        delete item.dataset.dropPosition;
+      });
+      item.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        const rect = item.getBoundingClientRect();
+        const offsetY = e.clientY - rect.top;
+        item.dataset.dropPosition = offsetY >= rect.height / 2 ? 'after' : 'before';
+      });
+      item.addEventListener('dragleave', () => {
+        delete item.dataset.dropPosition;
+      });
       item.addEventListener('drop', async (e) => {
         e.preventDefault();
         const targetId = item.dataset.layerId;
+        const dropPosition = item.dataset.dropPosition === 'after' ? 'after' : 'before';
+        delete item.dataset.dropPosition;
         if (!_dragLayerId || !targetId || _dragLayerId === targetId) return;
         const next = normalizeLayerState(getStateRoot().mapLayerState || null);
         const order = next.order.filter((layerId) => layerId !== _dragLayerId);
-        const targetIndex = order.indexOf(targetId);
-        order.splice(targetIndex, 0, _dragLayerId);
+        const insertIndex = getDropInsertIndex(order, targetId, dropPosition);
+        order.splice(insertIndex, 0, _dragLayerId);
+        if (order.join('|') === next.order.join('|')) return;
         next.order = order;
         await saveMapLayerState(next);
         renderMapLayerList();
