@@ -930,3 +930,6 @@ to{transform:translateX(0);opacity:1;}
 .panel-token-advanced-text-wrap{margin-top:12px}
 .panel-token-advanced-text-label{font-size:12px;color:var(--text);margin-bottom:6px}
 .panel-token-advanced-text-wrap textarea{width:100%;min-height:84px;resize:vertical}
+
+
+.panel-token-edit-grid input:disabled{opacity:.55;cursor:not-allowed}

@@ -204,8 +204,18 @@ function getTokenStartPosition(tokenId) {
   };
 }
 
+
+function isPanelTokenPositionLocked(tokenId) {
+  const token = St.tokens?.[tokenId];
+  return getTokenCategory(token) === 'panel' && !!token?.panelLockPosition;
+}
+
+function getMovableDragTargetIds(tokenId) {
+  return getDragTargetIds(tokenId).filter((id) => !isPanelTokenPositionLocked(id));
+}
+
 function buildTokenDragSession(tokenId, startEvent) {
-  const targetIds = getDragTargetIds(tokenId);
+  const targetIds = getMovableDragTargetIds(tokenId);
   const { width: natW, height: natH } = getMapBaseSize();
   const scale = _mapScale || 1;
   const startPos = {};
@@ -1144,6 +1154,7 @@ function makeDraggable(el, tokenId) {
     if (e.button !== 0) return;
     if (!hasPerm('moveToken')) { showToast('토큰 이동 권한이 없어요.'); return; }
     if (St.tool === 'erase') { removeToken(tokenId); return; }
+    if (isPanelTokenPositionLocked(tokenId)) { showToast('위치 고정이 켜져 있어 이동할 수 없어요.'); return; }
 
     e.preventDefault();
     e.stopPropagation();
@@ -1153,6 +1164,7 @@ function makeDraggable(el, tokenId) {
     if (!map) return;
 
     const dragSession = buildTokenDragSession(tokenId, e);
+    if (!dragSession || !dragSession.targetIds?.length) return;
     _activeDragSession = dragSession; // ← 드래그 시작 표시
 
     const onMove = ev => {
@@ -1315,7 +1327,6 @@ const PANEL_TOKEN_DEFAULTS = Object.freeze({
   panelBackImage: null,
   panelLockPosition: false,
   panelLockSize: false,
-  panelTerrain: false,
   panelActionType: 'none',
   panelActionText: '',
 });
@@ -1339,7 +1350,6 @@ function normalizePanelToken(token = {}) {
     panelBackImage: token.panelBackImage || null,
     panelLockPosition: !!token.panelLockPosition,
     panelLockSize: !!token.panelLockSize,
-    panelTerrain: !!token.panelTerrain,
     panelActionType: normalizedActionType,
     panelActionText: String(token.panelActionText || ''),
   };
@@ -1381,12 +1391,21 @@ function hydratePanelTokenEditModal(token) {
   document.getElementById('pte-memo').value = String(t.memo || '');
   document.getElementById('pte-lock-pos').checked = !!t.panelLockPosition;
   document.getElementById('pte-lock-size').checked = !!t.panelLockSize;
-  document.getElementById('pte-terrain').checked = !!t.panelTerrain;
+  syncPanelTokenLockUi();
   const actionTypeEl = document.getElementById('pte-action-type');
   const actionTextEl = document.getElementById('pte-action-text');
   if (actionTypeEl) actionTypeEl.value = String(t.panelActionType || PANEL_TOKEN_DEFAULTS.panelActionType);
   if (actionTextEl) actionTextEl.value = String(t.panelActionText || '');
   syncPanelTokenActionUi();
+}
+
+
+function syncPanelTokenLockUi() {
+  const lockSize = !!document.getElementById('pte-lock-size')?.checked;
+  const widthEl = document.getElementById('pte-width');
+  const heightEl = document.getElementById('pte-height');
+  if (widthEl) widthEl.disabled = lockSize;
+  if (heightEl) heightEl.disabled = lockSize;
 }
 
 function readPanelTokenEditForm() {
@@ -1398,7 +1417,6 @@ function readPanelTokenEditForm() {
     memo: String(document.getElementById('pte-memo')?.value || '').trim(),
     panelLockPosition: !!document.getElementById('pte-lock-pos')?.checked,
     panelLockSize: !!document.getElementById('pte-lock-size')?.checked,
-    panelTerrain: !!document.getElementById('pte-terrain')?.checked,
   };
 }
 
@@ -1440,14 +1458,20 @@ function validatePanelTokenActionForm(actionForm) {
 
 function buildPanelTokenSavePayload(current) {
   const base = normalizePanelToken(current);
-  return {
+  const form = readPanelTokenEditForm();
+  const next = {
     ...base,
-    ...readPanelTokenEditForm(),
+    ...form,
     ...readPanelTokenActionForm(),
     panelImage: base.panelImage || null,
     panelBackImage: base.panelBackImage || null,
     panelFace: String(base.panelFace || PANEL_TOKEN_DEFAULTS.panelFace),
   };
+  if (next.panelLockSize) {
+    next.panelWidth = base.panelWidth;
+    next.panelHeight = base.panelHeight;
+  }
+  return next;
 }
 
 
