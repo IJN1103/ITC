@@ -897,26 +897,40 @@ function getCurrentSpeakAsJournalForPanelAction() {
   return loadJournals().find(x => x.id === St.speakAsJournalId) || null;
 }
 
-async function sendPanelTokenChatAsCurrentProfile(text) {
+function getPanelTokenSpeakAsDispatchContext(text = '') {
+  const message = String(text || '');
+  const journal = getCurrentSpeakAsJournalForPanelAction();
+  const speakAsContext = (typeof window.saGetSelectedJournalContext === 'function')
+    ? window.saGetSelectedJournalContext(message)
+    : null;
+  const senderName = speakAsContext?.name || St.myName;
+  const extra = speakAsContext
+    ? {
+        speakAsAvatar: speakAsContext.speakAsAvatar || null,
+        speakAsJournalId: speakAsContext.speakAsJournalId || null,
+        nameColor: speakAsContext.nameColor || '',
+        tokenId: speakAsContext.tokenId || null,
+        standingLabel: speakAsContext.standingLabel || '',
+      }
+    : null;
+  return { journal, speakAsContext, senderName, extra };
+}
+
+async function sendPanelTokenTextAsCurrentProfile(text) {
   const message = String(text || '');
   if (!message.trim()) return;
-  const journal = getCurrentSpeakAsJournalForPanelAction();
-  if (journal && typeof saSendMessage === 'function') {
-    await saSendMessage(journal, message);
+  const dispatch = getPanelTokenSpeakAsDispatchContext(message);
+  if (dispatch.journal && typeof saSendMessage === 'function') {
+    await saSendMessage(dispatch.journal, message);
     return;
   }
-  await sendMessage(St.myName, message, 'normal');
+  await sendMessage(dispatch.senderName, message, 'normal', dispatch.extra);
 }
 
 async function sendPanelTokenChoiceAsCurrentProfile(options) {
   const picked = options[Math.floor(Math.random() * options.length)];
   const message = `🎯 Choice [${options.join(', ')}] → ${picked}`;
-  const journal = getCurrentSpeakAsJournalForPanelAction();
-  if (journal && typeof saSendMessage === 'function') {
-    await saSendMessage(journal, message);
-    return;
-  }
-  await sendMessage(St.myName, message, 'normal');
+  await sendPanelTokenTextAsCurrentProfile(message);
 }
 
 async function rollPanelTokenFormulaAsCurrentProfile(formula) {
@@ -978,22 +992,10 @@ async function rollPanelTokenFormulaAsCurrentProfile(formula) {
   const label = labelParts.join('');
   const detail = allDetails.join(' ') + ' = ' + grandTotal;
   const text = `🎲 ${label} → ${grandTotal}  (${detail})`;
-  const speakAsContext = (typeof window.saGetSelectedJournalContext === 'function')
-    ? window.saGetSelectedJournalContext(text)
-    : null;
-  const senderName = speakAsContext?.name || St.myName;
-  const extra = speakAsContext
-    ? {
-        speakAsAvatar: speakAsContext.speakAsAvatar || null,
-        speakAsJournalId: speakAsContext.speakAsJournalId || null,
-        nameColor: speakAsContext.nameColor || '',
-        tokenId: speakAsContext.tokenId || null,
-        standingLabel: speakAsContext.standingLabel || '',
-      }
-    : null;
-  const rollObj = { playerId: St.myId, player: senderName, dice: label, total: grandTotal, rolls: allRolls, detail, time: Date.now() };
+  const dispatch = getPanelTokenSpeakAsDispatchContext(text);
+  const rollObj = { playerId: St.myId, player: dispatch.senderName, dice: label, total: grandTotal, rolls: allRolls, detail, time: Date.now() };
   showRollResult(rollObj);
-  await sendMessage(senderName, text, 'dice', extra);
+  await sendMessage(dispatch.senderName, text, 'dice', dispatch.extra);
   if (window._FB?.CONFIGURED) {
     const { db, ref, set } = window._FB;
     set(ref(db, `rooms/${St.roomCode}/lastRoll`), { ...rollObj, time: getDiceServerTimestamp() });
@@ -1015,7 +1017,7 @@ async function dispatchPanelTokenClickAction(tokenId) {
     const text = String(token.panelActionText || '');
     if (!text.trim()) return;
     try {
-      await sendPanelTokenChatAsCurrentProfile(text);
+      await sendPanelTokenTextAsCurrentProfile(text);
     } catch (err) {
       console.error('dispatchPanelTokenClickAction chat failed', err);
       showToast('패널 토큰 채팅 전송에 실패했어요. 다시 시도해 주세요.');
