@@ -1086,8 +1086,10 @@ let _teTokenImgData = null;
 let _pteTokenId = null;
 let _pteFrontImgData = null;
 let _pteFrontImgBlob = null;
+let _pteFrontImgCleared = false;
 let _pteBackImgData = null;
 let _pteBackImgBlob = null;
+let _pteBackImgCleared = false;
 
 function openTokenEdit(tokenId) {
   _teTokenId = tokenId;
@@ -1394,8 +1396,10 @@ function openPanelTokenEdit(tokenId) {
   document.getElementById('pte-name').value = String(t.name || '');
   _pteFrontImgBlob = null;
   _pteFrontImgData = t.panelImage || null;
+  _pteFrontImgCleared = false;
   _pteBackImgBlob = null;
   _pteBackImgData = t.panelBackImage || null;
+  _pteBackImgCleared = false;
   refreshPanelTokenFrontPreview();
   refreshPanelTokenBackPreview();
   document.getElementById('pte-width').value = Math.max(1, Math.round((t.panelWidth || 4)));
@@ -1413,8 +1417,10 @@ function closePanelTokenEdit() {
   revokeTokenPreviewUrl(_pteBackImgData);
   _pteFrontImgBlob = null;
   _pteFrontImgData = null;
+  _pteFrontImgCleared = false;
   _pteBackImgBlob = null;
   _pteBackImgData = null;
+  _pteBackImgCleared = false;
   closeModal('modal-panel-token-edit');
   _pteTokenId = null;
 }
@@ -1442,14 +1448,18 @@ async function savePanelTokenEdit() {
     panelBackImage: current.panelBackImage || null,
     panelFace: String(current.panelFace || 'front'),
   };
-  if (_pteFrontImgBlob) {
+  if (_pteFrontImgCleared) {
+    next.panelImage = null;
+  } else if (_pteFrontImgBlob) {
     next.panelImage = await uploadTokenBlobToCloudinary(_pteFrontImgBlob, `itc/panel-tokens/${St.roomCode}`);
   } else if (_pteFrontImgData && /^blob:/.test(String(_pteFrontImgData))) {
     next.panelImage = current.panelImage || null;
   } else if (_pteFrontImgData) {
     next.panelImage = _pteFrontImgData;
   }
-  if (_pteBackImgBlob) {
+  if (_pteBackImgCleared) {
+    next.panelBackImage = null;
+  } else if (_pteBackImgBlob) {
     next.panelBackImage = await uploadTokenBlobToCloudinary(_pteBackImgBlob, `itc/panel-tokens-back/${St.roomCode}`);
   } else if (_pteBackImgData && /^blob:/.test(String(_pteBackImgData))) {
     next.panelBackImage = current.panelBackImage || null;
@@ -1474,10 +1484,8 @@ function refreshPanelTokenFrontPreview() {
   const wrap = document.getElementById('pte-front-preview');
   if (!wrap) return;
   if (_pteFrontImgData) {
-    wrap.classList.add('has-image');
-    wrap.innerHTML = `<img src="${_pteFrontImgData}" alt="panel image"><button class="panel-token-preview-delete" type="button" onclick="clearPanelTokenFrontImg()">🗑</button>`;
+    wrap.innerHTML = `<img src="${_pteFrontImgData}" alt="panel image">`;
   } else {
-    wrap.classList.remove('has-image');
     wrap.textContent = '이미지 없음';
   }
 }
@@ -1495,6 +1503,7 @@ async function handlePanelTokenFrontImg(input) {
     revokeTokenPreviewUrl(_pteFrontImgData);
     _pteFrontImgBlob = blob;
     _pteFrontImgData = URL.createObjectURL(blob);
+    _pteFrontImgCleared = false;
     refreshPanelTokenFrontPreview();
   } catch (err) {
     console.error('panel token image prepare failed', err);
@@ -1509,10 +1518,8 @@ function refreshPanelTokenBackPreview() {
   const wrap = document.getElementById('pte-back-preview');
   if (!wrap) return;
   if (_pteBackImgData) {
-    wrap.classList.add('has-image');
-    wrap.innerHTML = `<img src="${_pteBackImgData}" alt="panel back image"><button class="panel-token-preview-delete" type="button" onclick="clearPanelTokenBackImg()">🗑</button>`;
+    wrap.innerHTML = `<img src="${_pteBackImgData}" alt="panel back image">`;
   } else {
-    wrap.classList.remove('has-image');
     wrap.textContent = '뒷면 이미지 없음';
   }
 }
@@ -1530,6 +1537,7 @@ async function handlePanelTokenBackImg(input) {
     revokeTokenPreviewUrl(_pteBackImgData);
     _pteBackImgBlob = blob;
     _pteBackImgData = URL.createObjectURL(blob);
+    _pteBackImgCleared = false;
     refreshPanelTokenBackPreview();
   } catch (err) {
     console.error('panel token back image prepare failed', err);
@@ -1583,6 +1591,7 @@ function clearPanelTokenFrontImg() {
   revokeTokenPreviewUrl(_pteFrontImgData);
   _pteFrontImgBlob = null;
   _pteFrontImgData = null;
+  _pteFrontImgCleared = true;
   refreshPanelTokenFrontPreview();
 }
 
@@ -1590,5 +1599,6 @@ function clearPanelTokenBackImg() {
   revokeTokenPreviewUrl(_pteBackImgData);
   _pteBackImgBlob = null;
   _pteBackImgData = null;
+  _pteBackImgCleared = true;
   refreshPanelTokenBackPreview();
 }
