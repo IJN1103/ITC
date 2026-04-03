@@ -139,12 +139,12 @@
       item.className = 'map-layer-item';
       item.draggable = true;
       item.dataset.layerId = id;
-      const previewStyle = entry.previewUrl
-        ? `background-image:url("${String(entry.previewUrl).replace(/"/g, '%22')}")`
+      const previewHtml = entry.previewUrl
+        ? `<img class="map-layer-preview-img" src="${String(entry.previewUrl).replace(/"/g, '&quot;')}" alt="" loading="lazy" decoding="async">`
         : '';
       item.innerHTML = `
         <div class="map-layer-handle">☰</div>
-        <div class="map-layer-preview ${entry.previewUrl ? 'has-image' : ''}" style="${previewStyle}" aria-hidden="true"></div>
+        <div class="map-layer-preview ${entry.previewUrl ? 'has-image' : ''}" aria-hidden="true">${previewHtml}</div>
         <div class="map-layer-name"><span class="map-layer-label">${entry.name}</span><span class="map-layer-sub">${entry.sub}</span></div>
         <button class="map-layer-eye ${normalized.visible[id] === false ? 'off' : ''}" type="button">${createEyeIcon(normalized.visible[id] !== false)}</button>
       `;
