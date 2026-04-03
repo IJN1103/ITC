@@ -693,6 +693,9 @@ function addPanelToken() {
     name,
     type: 'panel',
     tokenCategory: 'panel',
+    panelWidth: 4,
+    panelHeight: 2,
+    panelPriority: 1,
     x: 48 + Math.random() * 12,
     y: 48 + Math.random() * 12,
     ownerId: St.myId || '',
@@ -738,6 +741,9 @@ function getTokenRenderSignature(token) {
     tokenImg: String(token?.tokenImg || ''),
     type: String(token?.type || ''),
     tokenCategory: String(token?.tokenCategory || 'character'),
+    panelWidth: Number(token?.panelWidth || 0),
+    panelHeight: Number(token?.panelHeight || 0),
+    panelPriority: Number(token?.panelPriority || 0),
     tokenSize: Number(token?.tokenSize || 1),
     rotation: Number(token?.rotation || 0),
     memo: String(token?.memo || ''),
@@ -836,11 +842,14 @@ function createTokenEl(t) {
   const sz = (t.tokenSize || 1);
   if (tokenCategory === 'panel') {
     el.textContent = t.name || '패널';
-    const baseW = Math.max(96, Math.round(96 * sz));
-    const baseH = Math.max(42, Math.round(42 * sz));
+    const panelWidth = Math.max(1, Number(t.panelWidth || 4));
+    const panelHeight = Math.max(1, Number(t.panelHeight || 2));
+    const baseW = Math.max(96, Math.round(panelWidth * 24));
+    const baseH = Math.max(42, Math.round(panelHeight * 21));
     el.style.width = baseW + 'px';
     el.style.minHeight = baseH + 'px';
     el.style.fontSize = Math.max(11, 12 * sz) + 'px';
+    el.style.zIndex = String(Math.max(1, Number(t.panelPriority || 1)));
   } else {
     let tokenImgSrc = null;
     if (t.standingAsToken && t.standings && t.standings.length > 0) {
@@ -1350,6 +1359,7 @@ function openPanelTokenEdit(tokenId) {
   const t = St.tokens[tokenId];
   if (!t) return;
   _pteTokenId = tokenId;
+  document.getElementById('pte-name').value = String(t.name || '');
   document.getElementById('pte-width').value = Math.max(1, Math.round((t.panelWidth || 4)));
   document.getElementById('pte-height').value = Math.max(1, Math.round((t.panelHeight || 2)));
   document.getElementById('pte-priority').value = Number(t.panelPriority || 0);
@@ -1367,4 +1377,31 @@ function closePanelTokenEdit() {
 
 function panelTokenEditPendingToast() {
   showToast('패널 토큰 상세 저장 연결은 다음 단계에서 진행할 예정이에요.');
+}
+
+
+async function savePanelTokenEdit() {
+  if (!_pteTokenId) return;
+  const current = St.tokens[_pteTokenId];
+  if (!current) return;
+  const next = {
+    ...current,
+    name: String(document.getElementById('pte-name')?.value || '').trim() || '패널',
+    panelWidth: Math.max(1, Number(document.getElementById('pte-width')?.value || 4) || 4),
+    panelHeight: Math.max(1, Number(document.getElementById('pte-height')?.value || 2) || 2),
+    panelPriority: Math.max(1, Number(document.getElementById('pte-priority')?.value || 1) || 1),
+    memo: String(document.getElementById('pte-memo')?.value || '').trim(),
+    panelLockPosition: !!document.getElementById('pte-lock-pos')?.checked,
+    panelLockSize: !!document.getElementById('pte-lock-size')?.checked,
+    panelTerrain: !!document.getElementById('pte-terrain')?.checked,
+  };
+  if (window._FB?.CONFIGURED) {
+    const { db, ref, set } = window._FB;
+    await set(ref(db, `rooms/${St.roomCode}/tokens/${_pteTokenId}`), next);
+  } else {
+    St.tokens[_pteTokenId] = next;
+    renderAllTokens(St.tokens);
+  }
+  closePanelTokenEdit();
+  showToast('패널 토큰 설정이 저장됐어요.');
 }
