@@ -328,7 +328,13 @@
     const baseTop = centerY - spanH / 2;
 
     return rawItems
-      .sort((a, b) => Number(a.order || 0) - Number(b.order || 0))
+      .sort((a, b) => {
+        const zDiff = Number(a.z || 0) - Number(b.z || 0);
+        if (zDiff !== 0) return zDiff;
+        const orderDiff = Number(a.order || 0) - Number(b.order || 0);
+        if (orderDiff !== 0) return orderDiff;
+        return String(a.id || '').localeCompare(String(b.id || ''));
+      })
       .map((item) => {
         const x = Number(item.x || 0);
         const y = Number(item.y || 0);
@@ -343,6 +349,8 @@
           name: displayName,
           imageName,
           angle: Number(item.angle || 0),
+          sourceZ: Number(item.z || 0),
+          sourceOrder: Number(item.order || 0),
           order: Number(item.order || 0),
           xPct: ((x - baseLeft) / spanW) * 100,
           yPct: ((y - baseTop) / spanH) * 100,
