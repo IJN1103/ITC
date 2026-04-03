@@ -1046,14 +1046,15 @@ function tokCtxAction(action) {
 
 let _teTokenId = null;
 let _teTokenImgData = null;
+let _pteTokenId = null;
 
 function openTokenEdit(tokenId) {
   _teTokenId = tokenId;
   const t = St.tokens[tokenId];
   if (!t) return;
   if (String(t?.tokenCategory || (t?.type === 'panel' ? 'panel' : 'character')) === 'panel') {
-    showToast('패널 토큰 편집은 다음 단계에서 연결할 예정이에요.');
     _teTokenId = null;
+    openPanelTokenEdit(tokenId);
     return;
   }
 
@@ -1343,3 +1344,27 @@ function setTool(t) {
 
 
 window.addEventListener('scroll', () => hideTokenMemoBubble(), true);
+
+
+function openPanelTokenEdit(tokenId) {
+  const t = St.tokens[tokenId];
+  if (!t) return;
+  _pteTokenId = tokenId;
+  document.getElementById('pte-width').value = Math.max(1, Math.round((t.panelWidth || 4)));
+  document.getElementById('pte-height').value = Math.max(1, Math.round((t.panelHeight || 2)));
+  document.getElementById('pte-priority').value = Number(t.panelPriority || 0);
+  document.getElementById('pte-memo').value = String(t.memo || '');
+  document.getElementById('pte-lock-pos').checked = !!t.panelLockPosition;
+  document.getElementById('pte-lock-size').checked = !!t.panelLockSize;
+  document.getElementById('pte-terrain').checked = !!t.panelTerrain;
+  openModal('modal-panel-token-edit');
+}
+
+function closePanelTokenEdit() {
+  closeModal('modal-panel-token-edit');
+  _pteTokenId = null;
+}
+
+function panelTokenEditPendingToast() {
+  showToast('패널 토큰 상세 저장 연결은 다음 단계에서 진행할 예정이에요.');
+}

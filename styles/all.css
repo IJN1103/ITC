@@ -884,3 +884,14 @@ to{transform:translateX(0);opacity:1;}
 .current-status-input .sh-input{background:none;border:none;padding:0;min-height:auto;}
 .current-status-bout{grid-column:2 / 4;}
 .current-status-time{grid-column:2 / 4;}
+
+.panel-token-edit-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:8px}
+.panel-token-edit-grid .modal-field{margin:0}
+.panel-token-edit-grid input,.panel-token-edit-modal textarea{background:var(--s2);border:1px solid var(--border);color:var(--text)}
+.panel-token-edit-toggle{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid rgba(255,255,255,.05)}
+.panel-token-edit-toggle-title{font-size:14px;color:var(--text);font-weight:600}
+.panel-token-edit-toggle-sub{font-size:12px;color:var(--muted);margin-top:4px}
+.panel-token-ghost-btn{background:transparent;color:var(--text);border:1px solid var(--border)}
+.panel-token-edit-advanced{display:flex;align-items:center;justify-content:space-between;padding:14px 2px 0;color:var(--dim);cursor:pointer;font-weight:600}
+.panel-token-edit-actions{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:18px}
+.panel-token-delete-btn{background:transparent;color:var(--red);border:1px solid rgba(200,92,92,.28)}

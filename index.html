@@ -944,6 +944,34 @@ window._FB = {
   </div>
 </div>
 
+
+<div class="overlay" id="modal-panel-token-edit">
+  <div class="modal panel-token-edit-modal" style="width:min(460px,94vw)">
+    <div class="modal-row">
+      <div class="modal-title">스크린 패널 설정</div>
+      <button class="modal-close" onclick="closePanelTokenEdit()">✕</button>
+    </div>
+    <div class="panel-token-edit-grid">
+      <div class="modal-field"><label>폭</label><input id="pte-width" type="number" min="1" step="1"></div>
+      <div class="modal-field"><label>높이</label><input id="pte-height" type="number" min="1" step="1"></div>
+      <div class="modal-field"><label>겹침 우선도</label><input id="pte-priority" type="number" step="1"></div>
+    </div>
+    <div class="modal-field"><label>메모</label><textarea id="pte-memo" rows="6" placeholder="패널 메모"></textarea></div>
+    <div class="panel-token-edit-toggle"><div><div class="panel-token-edit-toggle-title">위치 고정</div><div class="panel-token-edit-toggle-sub">현재 위치와 크기로 오브젝트를 고정</div></div><label class="switch"><input id="pte-lock-pos" type="checkbox"><span class="slider"></span></label></div>
+    <div class="panel-token-edit-toggle"><div><div class="panel-token-edit-toggle-title">사이즈 고정</div><div class="panel-token-edit-toggle-sub">현재 크기만 고정합니다</div></div><label class="switch"><input id="pte-lock-size" type="checkbox"><span class="slider"></span></label></div>
+    <div class="panel-token-edit-toggle"><div><div class="panel-token-edit-toggle-title">지형 패널로 다루기</div><div class="panel-token-edit-toggle-sub">단축키 조작을 무효화합니다</div></div><label class="switch"><input id="pte-terrain" type="checkbox"><span class="slider"></span></label></div>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">
+      <button class="btn-primary panel-token-ghost-btn" type="button" onclick="panelTokenEditPendingToast()">이미지 선택</button>
+      <button class="btn-primary panel-token-ghost-btn" type="button" onclick="panelTokenEditPendingToast()">뒷면 이미지 선택</button>
+    </div>
+    <div class="panel-token-edit-advanced" onclick="panelTokenEditPendingToast()">고급 설정 <span>▾</span></div>
+    <div class="panel-token-edit-actions">
+      <button class="btn-primary panel-token-delete-btn" type="button" onclick="panelTokenEditPendingToast()">삭제</button>
+      <button class="btn-primary" type="button" onclick="panelTokenEditPendingToast()">저장</button>
+    </div>
+  </div>
+</div>
+
 <div class="overlay" id="modal-map-import">
   <div class="modal" style="width:min(460px,94vw)">
     <div class="modal-row">
