@@ -140,7 +140,7 @@
       item.dataset.layerId = id;
       item.innerHTML = `
         <div class="map-layer-handle">☰</div>
-        <div class="map-layer-name">${entry.name}<span class="map-layer-sub">${entry.sub}</span></div>
+        <div class="map-layer-name"><span class="map-layer-label">${entry.name}</span><span class="map-layer-sub">${entry.sub}</span></div>
         <button class="map-layer-eye ${normalized.visible[id] === false ? 'off' : ''}" type="button">${createEyeIcon(normalized.visible[id] !== false)}</button>
       `;
       const eye = item.querySelector('.map-layer-eye');
