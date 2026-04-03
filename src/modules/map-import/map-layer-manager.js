@@ -6,8 +6,19 @@
 
   let _dragLayerId = null;
 
+  function getStateRoot() {
+    const root = (typeof window !== 'undefined' ? window : globalThis);
+    if (root.St && typeof root.St === 'object') return root.St;
+    if (typeof St !== 'undefined' && St && typeof St === 'object') {
+      root.St = St;
+      return root.St;
+    }
+    root.St = { roomCode: '', mapState: {}, mapLayerState: null, isGM: false };
+    return root.St;
+  }
+
   function getAvailableLayerIds() {
-    const state = window.St?.mapState || {};
+    const state = getStateRoot().mapState || {};
     return Object.keys(LAYER_META).filter((id) => !!state[id]?.url);
   }
 
@@ -37,7 +48,7 @@
 
   function getLiveRoomCode() {
     return String(
-      window.St?.roomCode ||
+      getStateRoot().roomCode ||
       sessionStorage.getItem('itc_session_code') ||
       document.getElementById('topbar-code')?.textContent ||
       ''
@@ -45,8 +56,9 @@
   }
 
   function applyMapLayerState() {
-    const normalized = normalizeLayerState(window.St?.mapLayerState || null);
-    window.St.mapLayerState = normalized;
+    const stateRoot = getStateRoot();
+    const normalized = normalizeLayerState(stateRoot.mapLayerState || null);
+    stateRoot.mapLayerState = normalized;
     normalized.order.forEach((id, index) => {
       const meta = LAYER_META[id];
       const el = document.getElementById(meta.domId);
@@ -58,7 +70,7 @@
 
   async function saveMapLayerState(nextState) {
     const normalized = normalizeLayerState(nextState);
-    window.St.mapLayerState = normalized;
+    getStateRoot().mapLayerState = normalized;
     applyMapLayerState();
     if (!window._FB?.CONFIGURED) return;
     const roomCode = getLiveRoomCode();
@@ -78,8 +90,9 @@
     const empty = document.getElementById('map-layer-empty');
     if (!list || !empty) return;
     const ids = getAvailableLayerIds();
-    const normalized = normalizeLayerState(window.St?.mapLayerState || null);
-    window.St.mapLayerState = normalized;
+    const stateRoot = getStateRoot();
+    const normalized = normalizeLayerState(stateRoot.mapLayerState || null);
+    stateRoot.mapLayerState = normalized;
     list.innerHTML = '';
     empty.style.display = ids.length ? 'none' : '';
     if (!ids.length) return;
@@ -100,7 +113,7 @@
       eye?.addEventListener('click', async (e) => {
         e.preventDefault();
         e.stopPropagation();
-        const next = normalizeLayerState(window.St?.mapLayerState || null);
+        const next = normalizeLayerState(getStateRoot().mapLayerState || null);
         next.visible[id] = !(next.visible[id] !== false);
         await saveMapLayerState(next);
         renderMapLayerList();
@@ -112,7 +125,7 @@
         e.preventDefault();
         const targetId = item.dataset.layerId;
         if (!_dragLayerId || !targetId || _dragLayerId === targetId) return;
-        const next = normalizeLayerState(window.St?.mapLayerState || null);
+        const next = normalizeLayerState(getStateRoot().mapLayerState || null);
         const order = next.order.filter((layerId) => layerId !== _dragLayerId);
         const targetIndex = order.indexOf(targetId);
         order.splice(targetIndex, 0, _dragLayerId);
@@ -136,6 +149,7 @@
   }
 
   window.openMapLayerManager = openMapLayerManager;
+  window.openMapLayerManagerModal = openMapLayerManager;
   window.refreshMapLayerManager = refreshMapLayerManager;
   window.applyMapLayerState = applyMapLayerState;
 })();
