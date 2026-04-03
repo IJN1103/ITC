@@ -1523,7 +1523,7 @@ async function savePanelTokenEdit() {
     const { db, ref, set } = window._FB;
     await set(ref(db, `rooms/${St.roomCode}/tokens/${_pteTokenId}`), next);
     St.tokens[_pteTokenId] = next;
-    if (typeof addOrUpdateSingleToken === 'function') addOrUpdateSingleToken(_pteTokenId, next);
+    renderAllTokens(St.tokens);
   } else {
     St.tokens[_pteTokenId] = next;
     renderAllTokens(St.tokens);
@@ -1637,7 +1637,7 @@ async function togglePanelTokenFace(tokenId) {
     const { db, ref, update } = window._FB;
     await update(ref(db, `rooms/${St.roomCode}/tokens/${tokenId}`), { panelFace: nextFace });
     St.tokens[tokenId] = next;
-    if (typeof addOrUpdateSingleToken === 'function') addOrUpdateSingleToken(tokenId, next);
+    renderAllTokens(St.tokens);
   } else {
     St.tokens[tokenId] = next;
     renderAllTokens(St.tokens);
