@@ -1175,16 +1175,25 @@ function readPanelTokenEditForm() {
   };
 }
 
+function readPanelTokenActionForm() {
+  const rawType = String(document.getElementById('pte-action-type')?.value || PANEL_TOKEN_DEFAULTS.panelActionType);
+  const panelActionType = rawType === 'chat' || rawType === 'macro' ? rawType : 'none';
+  const rawText = String(document.getElementById('pte-action-text')?.value || '');
+  return {
+    panelActionType,
+    panelActionText: panelActionType === 'none' ? '' : rawText,
+  };
+}
+
 function buildPanelTokenSavePayload(current) {
   const base = normalizePanelToken(current);
   return {
     ...base,
     ...readPanelTokenEditForm(),
+    ...readPanelTokenActionForm(),
     panelImage: base.panelImage || null,
     panelBackImage: base.panelBackImage || null,
     panelFace: String(base.panelFace || PANEL_TOKEN_DEFAULTS.panelFace),
-    panelActionType: String(base.panelActionType || PANEL_TOKEN_DEFAULTS.panelActionType),
-    panelActionText: String(base.panelActionText || ''),
   };
 }
 
