@@ -686,25 +686,7 @@ function addToken() {
 function addPanelToken() {
   if (!hasPerm('createToken')) { showToast('토큰 생성 권한이 없어요.'); return; }
   const nameInput = document.getElementById('panel-token-name');
-  const name = nameInput?.value.trim() || '패널';
-  const id = genId();
-  const token = {
-    id,
-    name,
-    type: 'panel',
-    tokenCategory: 'panel',
-    panelWidth: 4,
-    panelHeight: 2,
-    panelPriority: 1,
-    panelFace: 'front',
-    x: 48 + Math.random() * 12,
-    y: 48 + Math.random() * 12,
-    ownerId: St.myId || '',
-    ownerName: St.myName || '',
-    createdBy: St.myId || '',
-    createdByName: St.myName || '',
-    tokenSize: 1,
-  };
+  const token = buildNewPanelToken(nameInput?.value || '');
   if (window._FB?.CONFIGURED) {
     const { db, ref, set } = window._FB;
     set(ref(db, `rooms/${St.roomCode}/tokens/${id}`), token);
@@ -838,7 +820,7 @@ function removeSingleToken(id) {
 function createTokenEl(t) {
   const inner = document.getElementById('map-inner');
   const el = document.createElement('div');
-  const tokenCategory = String(t?.tokenCategory || (t?.type === 'panel' ? 'panel' : 'character'));
+  const tokenCategory = getTokenCategory(t);
   el.className = `map-token ${tokenCategory === 'panel' ? 'panel-token' : (t.type==='enemy'?'enemy':t.type==='npc'?'npc':'')}`;
   el.id = 'tok-' + t.id;
   el.style.left = storedTokenPercentToDisplay(t.x, 'x') + '%'; el.style.top = storedTokenPercentToDisplay(t.y, 'y') + '%';
@@ -846,17 +828,12 @@ function createTokenEl(t) {
   const sz = (t.tokenSize || 1);
   if (tokenCategory === 'panel') {
     el.textContent = '';
-    const panelWidth = Math.max(1, Number(t.panelWidth || 4));
-    const panelHeight = Math.max(1, Number(t.panelHeight || 2));
-    const baseW = Math.max(96, Math.round(panelWidth * 24));
-    const baseH = Math.max(42, Math.round(panelHeight * 21));
-    el.style.width = baseW + 'px';
-    el.style.minHeight = baseH + 'px';
+    const panelSize = getPanelTokenPixelSize(t);
+    el.style.width = panelSize.width + 'px';
+    el.style.minHeight = panelSize.height + 'px';
     el.style.fontSize = Math.max(11, 12 * sz) + 'px';
-    el.style.zIndex = String(Math.max(1, Number(t.panelPriority || 1)));
-    const activePanelImg = (String(t.panelFace || 'front') === 'back' && t.panelBackImage)
-      ? t.panelBackImage
-      : (t.panelImage || t.panelBackImage || null);
+    el.style.zIndex = String(normalizePanelToken(t).panelPriority);
+    const activePanelImg = getPanelTokenDisplayImage(t);
     if (activePanelImg) {
       const img = document.createElement('img');
       img.src = activePanelImg;
@@ -1091,11 +1068,107 @@ let _pteBackImgData = null;
 let _pteBackImgBlob = null;
 let _pteBackImgCleared = false;
 
+const PANEL_TOKEN_DEFAULTS = Object.freeze({
+  panelWidth: 4,
+  panelHeight: 2,
+  panelPriority: 1,
+  panelFace: 'front',
+  panelImage: null,
+  panelBackImage: null,
+  panelLockPosition: false,
+  panelLockSize: false,
+  panelTerrain: false,
+});
+
+function getTokenCategory(token) {
+  return String(token?.tokenCategory || (token?.type === 'panel' ? 'panel' : 'character'));
+}
+
+function normalizePanelToken(token = {}) {
+  return {
+    ...token,
+    tokenCategory: 'panel',
+    type: 'panel',
+    panelWidth: Math.max(1, Number(token.panelWidth || PANEL_TOKEN_DEFAULTS.panelWidth) || PANEL_TOKEN_DEFAULTS.panelWidth),
+    panelHeight: Math.max(1, Number(token.panelHeight || PANEL_TOKEN_DEFAULTS.panelHeight) || PANEL_TOKEN_DEFAULTS.panelHeight),
+    panelPriority: Math.max(1, Number(token.panelPriority || PANEL_TOKEN_DEFAULTS.panelPriority) || PANEL_TOKEN_DEFAULTS.panelPriority),
+    panelFace: String(token.panelFace || PANEL_TOKEN_DEFAULTS.panelFace),
+    panelImage: token.panelImage || null,
+    panelBackImage: token.panelBackImage || null,
+    panelLockPosition: !!token.panelLockPosition,
+    panelLockSize: !!token.panelLockSize,
+    panelTerrain: !!token.panelTerrain,
+  };
+}
+
+function buildNewPanelToken(name) {
+  return normalizePanelToken({
+    id: genId(),
+    name: String(name || '').trim() || '패널',
+    x: 48 + Math.random() * 12,
+    y: 48 + Math.random() * 12,
+    ownerId: St.myId || '',
+    ownerName: St.myName || '',
+    createdBy: St.myId || '',
+    createdByName: St.myName || '',
+    tokenSize: 1,
+  });
+}
+
+function getPanelTokenPixelSize(token) {
+  const t = normalizePanelToken(token);
+  return {
+    width: Math.max(96, Math.round(t.panelWidth * 24)),
+    height: Math.max(42, Math.round(t.panelHeight * 21)),
+  };
+}
+
+function getPanelTokenDisplayImage(token) {
+  const t = normalizePanelToken(token);
+  return t.panelFace === 'back' && t.panelBackImage ? t.panelBackImage : (t.panelImage || t.panelBackImage || null);
+}
+
+function hydratePanelTokenEditModal(token) {
+  const t = normalizePanelToken(token);
+  document.getElementById('pte-name').value = String(t.name || '');
+  document.getElementById('pte-width').value = Math.max(1, Math.round(t.panelWidth));
+  document.getElementById('pte-height').value = Math.max(1, Math.round(t.panelHeight));
+  document.getElementById('pte-priority').value = Number(t.panelPriority || 0);
+  document.getElementById('pte-memo').value = String(t.memo || '');
+  document.getElementById('pte-lock-pos').checked = !!t.panelLockPosition;
+  document.getElementById('pte-lock-size').checked = !!t.panelLockSize;
+  document.getElementById('pte-terrain').checked = !!t.panelTerrain;
+}
+
+function readPanelTokenEditForm() {
+  return {
+    name: String(document.getElementById('pte-name')?.value || '').trim() || '패널',
+    panelWidth: Math.max(1, Number(document.getElementById('pte-width')?.value || PANEL_TOKEN_DEFAULTS.panelWidth) || PANEL_TOKEN_DEFAULTS.panelWidth),
+    panelHeight: Math.max(1, Number(document.getElementById('pte-height')?.value || PANEL_TOKEN_DEFAULTS.panelHeight) || PANEL_TOKEN_DEFAULTS.panelHeight),
+    panelPriority: Math.max(1, Number(document.getElementById('pte-priority')?.value || PANEL_TOKEN_DEFAULTS.panelPriority) || PANEL_TOKEN_DEFAULTS.panelPriority),
+    memo: String(document.getElementById('pte-memo')?.value || '').trim(),
+    panelLockPosition: !!document.getElementById('pte-lock-pos')?.checked,
+    panelLockSize: !!document.getElementById('pte-lock-size')?.checked,
+    panelTerrain: !!document.getElementById('pte-terrain')?.checked,
+  };
+}
+
+function buildPanelTokenSavePayload(current) {
+  const base = normalizePanelToken(current);
+  return {
+    ...base,
+    ...readPanelTokenEditForm(),
+    panelImage: base.panelImage || null,
+    panelBackImage: base.panelBackImage || null,
+    panelFace: String(base.panelFace || PANEL_TOKEN_DEFAULTS.panelFace),
+  };
+}
+
 function openTokenEdit(tokenId) {
   _teTokenId = tokenId;
   const t = St.tokens[tokenId];
   if (!t) return;
-  if (String(t?.tokenCategory || (t?.type === 'panel' ? 'panel' : 'character')) === 'panel') {
+  if (getTokenCategory(t) === 'panel') {
     _teTokenId = null;
     openPanelTokenEdit(tokenId);
     return;
@@ -1393,7 +1466,6 @@ function openPanelTokenEdit(tokenId) {
   const t = St.tokens[tokenId];
   if (!t) return;
   _pteTokenId = tokenId;
-  document.getElementById('pte-name').value = String(t.name || '');
   _pteFrontImgBlob = null;
   _pteFrontImgData = t.panelImage || null;
   _pteFrontImgCleared = false;
@@ -1402,13 +1474,7 @@ function openPanelTokenEdit(tokenId) {
   _pteBackImgCleared = false;
   refreshPanelTokenFrontPreview();
   refreshPanelTokenBackPreview();
-  document.getElementById('pte-width').value = Math.max(1, Math.round((t.panelWidth || 4)));
-  document.getElementById('pte-height').value = Math.max(1, Math.round((t.panelHeight || 2)));
-  document.getElementById('pte-priority').value = Number(t.panelPriority || 0);
-  document.getElementById('pte-memo').value = String(t.memo || '');
-  document.getElementById('pte-lock-pos').checked = !!t.panelLockPosition;
-  document.getElementById('pte-lock-size').checked = !!t.panelLockSize;
-  document.getElementById('pte-terrain').checked = !!t.panelTerrain;
+  hydratePanelTokenEditModal(t);
   openModal('modal-panel-token-edit');
 }
 
@@ -1434,20 +1500,7 @@ async function savePanelTokenEdit() {
   if (!_pteTokenId) return;
   const current = St.tokens[_pteTokenId];
   if (!current) return;
-  const next = {
-    ...current,
-    name: String(document.getElementById('pte-name')?.value || '').trim() || '패널',
-    panelWidth: Math.max(1, Number(document.getElementById('pte-width')?.value || 4) || 4),
-    panelHeight: Math.max(1, Number(document.getElementById('pte-height')?.value || 2) || 2),
-    panelPriority: Math.max(1, Number(document.getElementById('pte-priority')?.value || 1) || 1),
-    memo: String(document.getElementById('pte-memo')?.value || '').trim(),
-    panelLockPosition: !!document.getElementById('pte-lock-pos')?.checked,
-    panelLockSize: !!document.getElementById('pte-lock-size')?.checked,
-    panelTerrain: !!document.getElementById('pte-terrain')?.checked,
-    panelImage: current.panelImage || null,
-    panelBackImage: current.panelBackImage || null,
-    panelFace: String(current.panelFace || 'front'),
-  };
+  const next = buildPanelTokenSavePayload(current);
   if (_pteFrontImgCleared) {
     next.panelImage = null;
   } else if (_pteFrontImgBlob) {
@@ -1573,12 +1626,13 @@ async function deletePanelTokenFromEdit() {
 async function togglePanelTokenFace(tokenId) {
   const current = St.tokens[tokenId];
   if (!current) return;
-  if (!current.panelImage || !current.panelBackImage) {
+  const normalized = normalizePanelToken(current);
+  if (!normalized.panelImage || !normalized.panelBackImage) {
     showToast('앞면과 뒷면 이미지가 모두 있어야 전환할 수 있어요.');
     return;
   }
-  const nextFace = String(current.panelFace || 'front') === 'back' ? 'front' : 'back';
-  const next = { ...current, panelFace: nextFace };
+  const nextFace = normalized.panelFace === 'back' ? 'front' : 'back';
+  const next = { ...normalized, panelFace: nextFace };
   if (window._FB?.CONFIGURED) {
     const { db, ref, update } = window._FB;
     await update(ref(db, `rooms/${St.roomCode}/tokens/${tokenId}`), { panelFace: nextFace });
