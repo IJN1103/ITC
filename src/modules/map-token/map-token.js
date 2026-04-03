@@ -1078,6 +1078,7 @@ const PANEL_TOKEN_DEFAULTS = Object.freeze({
   panelLockPosition: false,
   panelLockSize: false,
   panelTerrain: false,
+  panelAdvanced: {},
 });
 
 function getTokenCategory(token) {
@@ -1098,6 +1099,7 @@ function normalizePanelToken(token = {}) {
     panelLockPosition: !!token.panelLockPosition,
     panelLockSize: !!token.panelLockSize,
     panelTerrain: !!token.panelTerrain,
+    panelAdvanced: token.panelAdvanced && typeof token.panelAdvanced === 'object' ? { ...token.panelAdvanced } : {},
   };
 }
 
@@ -1161,6 +1163,7 @@ function buildPanelTokenSavePayload(current) {
     panelImage: base.panelImage || null,
     panelBackImage: base.panelBackImage || null,
     panelFace: String(base.panelFace || PANEL_TOKEN_DEFAULTS.panelFace),
+    panelAdvanced: base.panelAdvanced && typeof base.panelAdvanced === 'object' ? { ...base.panelAdvanced } : {},
   };
 }
 
@@ -1671,3 +1674,13 @@ function clearPanelTokenBackImg() {
 }
 
 window.normalizeIncomingMapToken = normalizeIncomingMapToken;
+
+
+function togglePanelTokenAdvanced() {
+  const body = document.getElementById('panel-token-advanced-body');
+  const arrow = document.getElementById('panel-token-advanced-arrow');
+  if (!body || !arrow) return;
+  const willOpen = body.style.display === 'none';
+  body.style.display = willOpen ? '' : 'none';
+  arrow.textContent = willOpen ? '▴' : '▾';
+}

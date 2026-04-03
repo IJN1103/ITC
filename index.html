@@ -977,7 +977,10 @@ window._FB = {
         <button class="btn-primary panel-token-plus-btn" type="button" onclick="document.getElementById('pte-back-file').click()">+</button>
       </div>
     </div>
-    <div class="panel-token-edit-advanced" onclick="panelTokenEditPendingToast()">고급 설정 <span>▾</span></div>
+    <div class="panel-token-edit-advanced" id="panel-token-advanced-toggle" onclick="togglePanelTokenAdvanced()">고급 설정 <span id="panel-token-advanced-arrow">▾</span></div>
+    <div class="panel-token-advanced-body" id="panel-token-advanced-body" style="display:none">
+      <div class="panel-token-advanced-placeholder">고급 설정 항목은 다음 단계에서 구체 기획에 맞춰 연결할 예정입니다.</div>
+    </div>
     <div class="panel-token-edit-actions">
       <button class="btn-primary panel-token-delete-btn" type="button" onclick="deletePanelTokenFromEdit()">삭제</button>
       <button class="btn-primary" type="button" onclick="savePanelTokenEdit()">저장</button>
