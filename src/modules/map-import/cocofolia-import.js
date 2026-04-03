@@ -156,6 +156,39 @@
     return { roomCode, myId };
   }
 
+  async function getImageSizeFromBlob(blob) {
+    if (!blob) return null;
+    try {
+      if (typeof createImageBitmap === 'function') {
+        const bitmap = await createImageBitmap(blob);
+        const size = { width: Number(bitmap.width || 0), height: Number(bitmap.height || 0) };
+        if (typeof bitmap.close === 'function') bitmap.close();
+        if (size.width > 0 && size.height > 0) return size;
+      }
+    } catch (err) {
+      console.warn('image size detection via createImageBitmap failed', err);
+    }
+    return await new Promise((resolve) => {
+      try {
+        const objectUrl = URL.createObjectURL(blob);
+        const img = new Image();
+        img.onload = () => {
+          const size = { width: Number(img.naturalWidth || 0), height: Number(img.naturalHeight || 0) };
+          URL.revokeObjectURL(objectUrl);
+          resolve(size.width > 0 && size.height > 0 ? size : null);
+        };
+        img.onerror = () => {
+          URL.revokeObjectURL(objectUrl);
+          resolve(null);
+        };
+        img.src = objectUrl;
+      } catch (err) {
+        console.warn('image size detection via Image failed', err);
+        resolve(null);
+      }
+    });
+  }
+
   async function uploadMapLayerBlob(blob, roomCode, fileName) {
     if (typeof _itcUploadToCloudinary !== 'function') throw new Error('이미지 업로드 유틸을 찾지 못했어요.');
     const result = await _itcUploadToCloudinary({
@@ -253,7 +286,7 @@
     return parsed;
   }
 
-  function buildImportedMapObjects(itemsMap = {}) {
+  function buildImportedMapObjects(itemsMap = {}, sceneAspect = 1) {
     const rawItems = Object.entries(itemsMap)
       .map(([id, item]) => ({ id, ...(item || {}) }))
       .filter((item) => item.type === 'object' && item.visible !== false && String(item.imageUrl || '').trim());
@@ -273,10 +306,21 @@
     }, { left: Infinity, right: -Infinity, top: Infinity, bottom: -Infinity });
 
     const pad = 2;
-    const spanW = Math.max(1, (bounds.right - bounds.left) + pad * 2);
-    const spanH = Math.max(1, (bounds.bottom - bounds.top) + pad * 2);
-    const baseLeft = bounds.left - pad;
-    const baseTop = bounds.top - pad;
+    const rawSpanW = Math.max(1, (bounds.right - bounds.left) + pad * 2);
+    const rawSpanH = Math.max(1, (bounds.bottom - bounds.top) + pad * 2);
+    const normalizedSceneAspect = Math.max(0.1, Number(sceneAspect || 1) || 1);
+    let spanW = rawSpanW;
+    let spanH = rawSpanH;
+    const centerX = (bounds.left + bounds.right) / 2;
+    const centerY = (bounds.top + bounds.bottom) / 2;
+    const currentAspect = rawSpanW / rawSpanH;
+    if (currentAspect < normalizedSceneAspect) {
+      spanW = rawSpanH * normalizedSceneAspect;
+    } else if (currentAspect > normalizedSceneAspect) {
+      spanH = rawSpanW / normalizedSceneAspect;
+    }
+    const baseLeft = centerX - spanW / 2;
+    const baseTop = centerY - spanH / 2;
 
     return rawItems
       .sort((a, b) => Number(a.order || 0) - Number(b.order || 0))
@@ -358,16 +402,19 @@
       const backgroundEntry = zip.file(backgroundName);
       if (!backgroundEntry) throw new Error('ZIP 안에서 배경 이미지 파일을 찾지 못했어요.');
       const blob = await backgroundEntry.async('blob');
+      const backgroundSize = await getImageSizeFromBlob(blob);
       const ext = backgroundName.split('.').pop() || 'png';
       const uploadedUrl = await uploadMapLayerBlob(blob, roomCode, `map-bg-${Date.now()}.${ext}`);
       if (!uploadedUrl) throw new Error('배경 이미지 업로드에 실패했어요.');
 
       let foregroundState = null;
+      let foregroundSize = null;
       const foregroundName = String(room.foregroundUrl || '').trim();
       if (foregroundName) {
         const foregroundEntry = zip.file(foregroundName);
         if (!foregroundEntry) throw new Error('ZIP 안에서 전경 이미지 파일을 찾지 못했어요.');
         const foregroundBlob = await foregroundEntry.async('blob');
+        foregroundSize = await getImageSizeFromBlob(foregroundBlob);
         const fgExt = foregroundName.split('.').pop() || 'png';
         const uploadedForegroundUrl = await uploadMapLayerBlob(foregroundBlob, roomCode, `map-fg-${Date.now()}.${fgExt}`);
         if (!uploadedForegroundUrl) throw new Error('전경 이미지 업로드에 실패했어요.');
@@ -379,7 +426,11 @@
         };
       }
 
-      const objectBlueprints = buildImportedMapObjects(validated.parsed?.entities?.items || {});
+      const dominantSize = foregroundSize || backgroundSize || null;
+      const sceneAspect = dominantSize?.width && dominantSize?.height
+        ? (dominantSize.width / dominantSize.height)
+        : 1;
+      const objectBlueprints = buildImportedMapObjects(validated.parsed?.entities?.items || {}, sceneAspect);
       const importedObjects = [];
       for (let i = 0; i < objectBlueprints.length; i++) {
         const blueprint = objectBlueprints[i];
