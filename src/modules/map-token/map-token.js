@@ -841,7 +841,7 @@ function createTokenEl(t) {
   if (t.rotation) el.style.transform = `translate(-50%,-50%) rotate(${t.rotation}deg)`;
   const sz = (t.tokenSize || 1);
   if (tokenCategory === 'panel') {
-    el.textContent = t.name || '패널';
+    el.textContent = '';
     const panelWidth = Math.max(1, Number(t.panelWidth || 4));
     const panelHeight = Math.max(1, Number(t.panelHeight || 2));
     const baseW = Math.max(96, Math.round(panelWidth * 24));
@@ -850,6 +850,18 @@ function createTokenEl(t) {
     el.style.minHeight = baseH + 'px';
     el.style.fontSize = Math.max(11, 12 * sz) + 'px';
     el.style.zIndex = String(Math.max(1, Number(t.panelPriority || 1)));
+    if (t.panelImage) {
+      const img = document.createElement('img');
+      img.src = t.panelImage;
+      img.style.cssText = 'width:100%;height:100%;object-fit:cover;pointer-events:none;border-radius:inherit;';
+      el.appendChild(img);
+      const nameLabel = document.createElement('span');
+      nameLabel.className = 'token-name-label';
+      nameLabel.textContent = t.name || '';
+      el.appendChild(nameLabel);
+    } else {
+      el.textContent = t.name || '패널';
+    }
   } else {
     let tokenImgSrc = null;
     if (t.standingAsToken && t.standings && t.standings.length > 0) {
@@ -1056,6 +1068,8 @@ function tokCtxAction(action) {
 let _teTokenId = null;
 let _teTokenImgData = null;
 let _pteTokenId = null;
+let _pteFrontImgData = null;
+let _pteFrontImgBlob = null;
 
 function openTokenEdit(tokenId) {
   _teTokenId = tokenId;
@@ -1360,6 +1374,9 @@ function openPanelTokenEdit(tokenId) {
   if (!t) return;
   _pteTokenId = tokenId;
   document.getElementById('pte-name').value = String(t.name || '');
+  _pteFrontImgBlob = null;
+  _pteFrontImgData = t.panelImage || null;
+  refreshPanelTokenFrontPreview();
   document.getElementById('pte-width').value = Math.max(1, Math.round((t.panelWidth || 4)));
   document.getElementById('pte-height').value = Math.max(1, Math.round((t.panelHeight || 2)));
   document.getElementById('pte-priority').value = Number(t.panelPriority || 0);
@@ -1371,6 +1388,9 @@ function openPanelTokenEdit(tokenId) {
 }
 
 function closePanelTokenEdit() {
+  revokeTokenPreviewUrl(_pteFrontImgData);
+  _pteFrontImgBlob = null;
+  _pteFrontImgData = null;
   closeModal('modal-panel-token-edit');
   _pteTokenId = null;
 }
@@ -1394,7 +1414,15 @@ async function savePanelTokenEdit() {
     panelLockPosition: !!document.getElementById('pte-lock-pos')?.checked,
     panelLockSize: !!document.getElementById('pte-lock-size')?.checked,
     panelTerrain: !!document.getElementById('pte-terrain')?.checked,
+    panelImage: current.panelImage || null,
   };
+  if (_pteFrontImgBlob) {
+    next.panelImage = await uploadTokenBlobToCloudinary(_pteFrontImgBlob, `itc/panel-tokens/${St.roomCode}`);
+  } else if (_pteFrontImgData && /^blob:/.test(String(_pteFrontImgData))) {
+    next.panelImage = current.panelImage || null;
+  } else if (_pteFrontImgData) {
+    next.panelImage = _pteFrontImgData;
+  }
   if (window._FB?.CONFIGURED) {
     const { db, ref, set } = window._FB;
     await set(ref(db, `rooms/${St.roomCode}/tokens/${_pteTokenId}`), next);
@@ -1404,4 +1432,37 @@ async function savePanelTokenEdit() {
   }
   closePanelTokenEdit();
   showToast('패널 토큰 설정이 저장됐어요.');
+}
+
+
+function refreshPanelTokenFrontPreview() {
+  const wrap = document.getElementById('pte-front-preview');
+  if (!wrap) return;
+  if (_pteFrontImgData) {
+    wrap.innerHTML = `<img src="${_pteFrontImgData}" alt="panel image">`;
+  } else {
+    wrap.textContent = '이미지 없음';
+  }
+}
+
+async function handlePanelTokenFrontImg(input) {
+  const file = input.files?.[0];
+  if (!file) return;
+  if (file.size > 3 * 1024 * 1024) {
+    showToast('이미지는 3MB 이하만 가능해요.');
+    input.value = '';
+    return;
+  }
+  try {
+    const blob = await makeTokenImageBlob(file, 1200);
+    revokeTokenPreviewUrl(_pteFrontImgData);
+    _pteFrontImgBlob = blob;
+    _pteFrontImgData = URL.createObjectURL(blob);
+    refreshPanelTokenFrontPreview();
+  } catch (err) {
+    console.error('panel token image prepare failed', err);
+    showToast('패널 이미지를 준비하지 못했어요. 다시 시도해 주세요.');
+  } finally {
+    input.value = '';
+  }
 }

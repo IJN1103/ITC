@@ -895,3 +895,6 @@ to{transform:translateX(0);opacity:1;}
 .panel-token-edit-advanced{display:flex;align-items:center;justify-content:space-between;padding:14px 2px 0;color:var(--dim);cursor:pointer;font-weight:600}
 .panel-token-edit-actions{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:18px}
 .panel-token-delete-btn{background:transparent;color:var(--red);border:1px solid rgba(200,92,92,.28)}
+
+.panel-token-image-preview{margin-top:10px;height:140px;border:1px solid var(--border);border-radius:12px;background:var(--s2);display:flex;align-items:center;justify-content:center;color:var(--muted);overflow:hidden}
+.panel-token-image-preview img{width:100%;height:100%;object-fit:contain;display:block}
