@@ -836,18 +836,34 @@ function clearPanelTokenActionState(tokenId = null) {
   if (id) {
     _panelTokenActionLocks.delete(id);
     _panelTokenActionLastRun.delete(id);
+    _panelTokenActionSuppressUntil.delete(id);
     return;
   }
   cancelPendingPanelTokenClickAction();
   _panelTokenActionLocks.clear();
   _panelTokenActionLastRun.clear();
+  _panelTokenActionSuppressUntil.clear();
+}
+
+function suppressPanelTokenClickAction(tokenId, duration = 340) {
+  const id = String(tokenId || '');
+  if (!id) return;
+  const until = Date.now() + Math.max(0, Number(duration) || 0);
+  _panelTokenActionSuppressUntil.set(id, until);
+  if (_panelTokenClickTokenId === id) cancelPendingPanelTokenClickAction();
 }
 
 function canRunPanelTokenClickAction(tokenId) {
   const id = String(tokenId || '');
   if (!id) return false;
+  if (St.tool === 'erase') return false;
   if (!St.tokens?.[id]) return false;
   if (_panelTokenActionLocks.has(id)) return false;
+  const suppressedUntil = Number(_panelTokenActionSuppressUntil.get(id) || 0);
+  if (suppressedUntil) {
+    if (Date.now() < suppressedUntil) return false;
+    _panelTokenActionSuppressUntil.delete(id);
+  }
   const lastRun = Number(_panelTokenActionLastRun.get(id) || 0);
   if (lastRun && Date.now() - lastRun < PANEL_TOKEN_ACTION_COOLDOWN) return false;
   return true;
@@ -1130,13 +1146,14 @@ function createTokenEl(t) {
     e.stopPropagation();
     hideTokenMemoBubble();
     if (tokenCategory === 'panel') {
+      suppressPanelTokenClickAction(t.id);
       cancelPendingPanelTokenClickAction();
       togglePanelTokenFace(t.id);
       return;
     }
     if (typeof openTokenEdit === 'function') openTokenEdit(t.id);
   });
-  el.addEventListener('contextmenu', e => { e.preventDefault(); e.stopPropagation(); hideTokenMemoBubble(); if (tokenCategory === 'panel') cancelPendingPanelTokenClickAction(); showTokenCtx(e, t.id); });
+  el.addEventListener('contextmenu', e => { e.preventDefault(); e.stopPropagation(); hideTokenMemoBubble(); if (tokenCategory === 'panel') { suppressPanelTokenClickAction(t.id); cancelPendingPanelTokenClickAction(); } showTokenCtx(e, t.id); });
   makeDraggable(el, t.id);
   refreshTokenLiveSnapshot(el, t);
   inner.appendChild(el);
@@ -1153,7 +1170,11 @@ function makeDraggable(el, tokenId) {
 
     if (e.button !== 0) return;
     if (!hasPerm('moveToken')) { showToast('토큰 이동 권한이 없어요.'); return; }
-    if (St.tool === 'erase') { removeToken(tokenId); return; }
+    if (St.tool === 'erase') {
+      suppressPanelTokenClickAction(tokenId);
+      removeToken(tokenId);
+      return;
+    }
     if (isPanelTokenPositionLocked(tokenId)) { showToast('위치 고정이 켜져 있어 이동할 수 없어요.'); return; }
 
     e.preventDefault();
@@ -1166,8 +1187,14 @@ function makeDraggable(el, tokenId) {
     const dragSession = buildTokenDragSession(tokenId, e);
     if (!dragSession || !dragSession.targetIds?.length) return;
     _activeDragSession = dragSession; // ← 드래그 시작 표시
+    const startClientX = Number(e.clientX || 0);
+    const startClientY = Number(e.clientY || 0);
+    let moved = false;
 
     const onMove = ev => {
+      const dx = Number(ev.clientX || 0) - startClientX;
+      const dy = Number(ev.clientY || 0) - startClientY;
+      if (!moved && ((dx * dx) + (dy * dy) >= 16)) moved = true;
       applyTokenDragSession(dragSession, ev);
     };
 
@@ -1177,6 +1204,9 @@ function makeDraggable(el, tokenId) {
 
       const patch = collectDraggedTokenPositions(dragSession.targetIds);
       _activeDragSession = null; // ← 드래그 종료 표시 (saveTokenPositionPatch 전에 해제)
+      if (moved) {
+        dragSession.targetIds.forEach(id => suppressPanelTokenClickAction(id));
+      }
 
       saveTokenPositionPatch(patch);
       syncMultiTokenSelectionWithTokens(St.tokens);
@@ -1319,6 +1349,7 @@ const PANEL_TOKEN_CLICK_DELAY = 230;
 const PANEL_TOKEN_ACTION_COOLDOWN = 260;
 const _panelTokenActionLocks = new Set();
 const _panelTokenActionLastRun = new Map();
+const _panelTokenActionSuppressUntil = new Map();
 
 const PANEL_TOKEN_DEFAULTS = Object.freeze({
   panelWidth: 4,
