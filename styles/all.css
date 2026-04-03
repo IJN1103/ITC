@@ -303,6 +303,8 @@ to{opacity:1;transform:translateY(0);}
 .map-tb-btn.on{background:var(--accent);border-color:var(--accent);color:#080808;}
 .map-add-token{position:absolute;top:10px;right:10px;z-index:20;background:var(--s2);border:1px solid var(--border);border-radius:var(--r);color:var(--dim);cursor:pointer;font-size:11px;padding:4px 10px;transition:var(--t);font-family:inherit;}
 .map-add-token:hover{border-color:var(--accent);color:var(--accent);background:var(--a-dim);}
+.map-add-panel-token{right:128px;}
+.map-token.panel-token{min-width:96px;min-height:42px;width:auto;height:auto;padding:8px 12px;border-radius:10px;border:1px solid rgba(184,154,96,.42);background:rgba(24,24,24,.92);color:var(--text);font-size:12px;line-height:1.35;display:flex;align-items:center;justify-content:center;text-align:center;white-space:pre-wrap;word-break:break-word;box-shadow:0 4px 16px rgba(0,0,0,.28);}
 .map-layer-btn{position:absolute;top:10px;right:92px;z-index:20;width:42px;height:32px;display:flex;align-items:center;justify-content:center;background:var(--s2);border:1px solid var(--border);border-radius:10px;color:var(--dim);cursor:pointer;transition:var(--t);box-shadow:0 2px 8px rgba(0,0,0,.18);}
 .map-layer-btn:hover{border-color:var(--accent);color:var(--accent);background:var(--a-dim);}
 .map-layer-list{display:flex;flex-direction:column;gap:8px;margin-top:12px}

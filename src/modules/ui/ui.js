@@ -76,6 +76,8 @@ function refreshMyPerms() {
 function refreshPermUI() {
   const addToken = document.getElementById('map-add-token');
   if (addToken) addToken.style.display = hasPerm('createToken') ? '' : 'none';
+  const addPanelToken = document.getElementById('map-add-panel-token');
+  if (addPanelToken) addPanelToken.style.display = hasPerm('createToken') ? '' : 'none';
   const mapImportTrigger = document.getElementById('map-import-trigger');
   if (mapImportTrigger) mapImportTrigger.style.display = St.isGM ? '' : 'none';
   const mapLayerTrigger = document.getElementById('map-layer-trigger');

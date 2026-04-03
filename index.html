@@ -356,7 +356,8 @@ window._FB = {
         <button class="map-layer-btn gm-only" id="map-layer-trigger" onclick="openMapLayerManagerModal()" style="display:none" title="맵세팅 레이어">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 3 8l9 5 9-5-9-5Z"/><path d="m3 12 9 5 9-5"/><path d="m3 16 9 5 9-5"/></svg>
         </button>
-        <button class="map-add-token gm-only" id="map-add-token" onclick="openModal('modal-token')" style="display:none">+ 토큰</button>
+        <button class="map-add-token gm-only" id="map-add-token" onclick="openModal('modal-token')" style="display:none">+ 캐릭터 토큰</button>
+        <button class="map-add-token gm-only map-add-panel-token" id="map-add-panel-token" onclick="openModal('modal-panel-token')" style="display:none">+ 패널 토큰</button>
         <button class="map-add-token gm-only" id="map-import-trigger" onclick="openMapImportModal()" style="display:none;top:46px">+ 맵세팅</button>
         <!-- 줌 컨트롤 -->
         <div class="map-zoom" id="map-zoom">
@@ -929,6 +930,17 @@ window._FB = {
     <div class="modal-field"><label>이름 (30자 이내)</label><input type="text" id="token-name" maxlength="30" placeholder="이름"></div>
     <div class="modal-field"><label>종류</label><select id="token-type"><option value="pc">PC</option><option value="npc">NPC</option><option value="enemy">적</option></select></div>
     <button class="btn-primary" onclick="addToken()">맵에 추가</button>
+  </div>
+</div>
+
+<div class="overlay" id="modal-panel-token">
+  <div class="modal" style="width:min(360px,92vw)">
+    <div class="modal-row">
+      <div class="modal-title">패널 토큰 생성</div>
+      <button class="modal-close" onclick="closeModal('modal-panel-token')">✕</button>
+    </div>
+    <div class="modal-field"><label>이름</label><input id="panel-token-name" placeholder="패널 이름"></div>
+    <button class="btn-primary" onclick="addPanelToken()">생성</button>
   </div>
 </div>
 

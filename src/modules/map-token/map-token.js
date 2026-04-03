@@ -667,6 +667,7 @@ function addToken() {
     id,
     name,
     type,
+    tokenCategory: 'character',
     x: 48 + Math.random()*12,
     y: 48 + Math.random()*12,
     ownerId: St.myId || '',
@@ -680,6 +681,35 @@ function addToken() {
   } else { St.tokens[id] = token; renderAllTokens(St.tokens); }
   closeModal('modal-token');
   document.getElementById('token-name').value = '';
+}
+
+function addPanelToken() {
+  if (!hasPerm('createToken')) { showToast('토큰 생성 권한이 없어요.'); return; }
+  const nameInput = document.getElementById('panel-token-name');
+  const name = nameInput?.value.trim() || '패널';
+  const id = genId();
+  const token = {
+    id,
+    name,
+    type: 'panel',
+    tokenCategory: 'panel',
+    x: 48 + Math.random() * 12,
+    y: 48 + Math.random() * 12,
+    ownerId: St.myId || '',
+    ownerName: St.myName || '',
+    createdBy: St.myId || '',
+    createdByName: St.myName || '',
+    tokenSize: 1,
+  };
+  if (window._FB?.CONFIGURED) {
+    const { db, ref, set } = window._FB;
+    set(ref(db, `rooms/${St.roomCode}/tokens/${id}`), token);
+  } else {
+    St.tokens[id] = token;
+    renderAllTokens(St.tokens);
+  }
+  closeModal('modal-panel-token');
+  if (nameInput) nameInput.value = '';
 }
 
 function renderAllTokens(tokens) {
@@ -707,6 +737,7 @@ function getTokenRenderSignature(token) {
     name: String(token?.name || ''),
     tokenImg: String(token?.tokenImg || ''),
     type: String(token?.type || ''),
+    tokenCategory: String(token?.tokenCategory || 'character'),
     tokenSize: Number(token?.tokenSize || 1),
     rotation: Number(token?.rotation || 0),
     memo: String(token?.memo || ''),
@@ -797,35 +828,45 @@ function removeSingleToken(id) {
 function createTokenEl(t) {
   const inner = document.getElementById('map-inner');
   const el = document.createElement('div');
-  el.className = `map-token ${t.type==='enemy'?'enemy':t.type==='npc'?'npc':''}`;
+  const tokenCategory = String(t?.tokenCategory || (t?.type === 'panel' ? 'panel' : 'character'));
+  el.className = `map-token ${tokenCategory === 'panel' ? 'panel-token' : (t.type==='enemy'?'enemy':t.type==='npc'?'npc':'')}`;
   el.id = 'tok-' + t.id;
   el.style.left = storedTokenPercentToDisplay(t.x, 'x') + '%'; el.style.top = storedTokenPercentToDisplay(t.y, 'y') + '%';
   if (t.rotation) el.style.transform = `translate(-50%,-50%) rotate(${t.rotation}deg)`;
   const sz = (t.tokenSize || 1);
-  let tokenImgSrc = null;
-  if (t.standingAsToken && t.standings && t.standings.length > 0) {
-    const jForToken = _allJournals.find(j => j.assignedTokenId === t.id);
-    const curLabel = jForToken ? _vnCurrentStanding[jForToken.id] : null;
-    const curStanding = curLabel ? t.standings.find(s => s.label === curLabel && s.img) : null;
-    tokenImgSrc = curStanding ? curStanding.img : (t.standings.find(s => s.img)?.img || t.tokenImg || null);
+  if (tokenCategory === 'panel') {
+    el.textContent = t.name || '패널';
+    const baseW = Math.max(96, Math.round(96 * sz));
+    const baseH = Math.max(42, Math.round(42 * sz));
+    el.style.width = baseW + 'px';
+    el.style.minHeight = baseH + 'px';
+    el.style.fontSize = Math.max(11, 12 * sz) + 'px';
   } else {
-    tokenImgSrc = t.tokenImg || null;
-  }
-  if (tokenImgSrc) {
-    el.textContent = '';
-    const img = document.createElement('img');
-    img.src = tokenImgSrc;
-    img.style.cssText = 'width:100%;height:100%;object-fit:contain;pointer-events:none;';
-    el.appendChild(img);
-    el.classList.add('has-img');
-    const px = 36 * sz; el.style.width = px+'px'; el.style.height = 'auto'; el.style.minHeight = px+'px';
-    const nameLabel = document.createElement('span');
-    nameLabel.className = 'token-name-label';
-    nameLabel.textContent = t.name || '';
-    el.appendChild(nameLabel);
-  } else {
-    el.textContent = t.name;
-    if (sz > 1) { const px = 36 * sz; el.style.width = px+'px'; el.style.height = px+'px'; el.style.fontSize = Math.max(9, 11*sz)+'px'; }
+    let tokenImgSrc = null;
+    if (t.standingAsToken && t.standings && t.standings.length > 0) {
+      const jForToken = _allJournals.find(j => j.assignedTokenId === t.id);
+      const curLabel = jForToken ? _vnCurrentStanding[jForToken.id] : null;
+      const curStanding = curLabel ? t.standings.find(s => s.label === curLabel && s.img) : null;
+      tokenImgSrc = curStanding ? curStanding.img : (t.standings.find(s => s.img)?.img || t.tokenImg || null);
+    } else {
+      tokenImgSrc = t.tokenImg || null;
+    }
+    if (tokenImgSrc) {
+      el.textContent = '';
+      const img = document.createElement('img');
+      img.src = tokenImgSrc;
+      img.style.cssText = 'width:100%;height:100%;object-fit:contain;pointer-events:none;';
+      el.appendChild(img);
+      el.classList.add('has-img');
+      const px = 36 * sz; el.style.width = px+'px'; el.style.height = 'auto'; el.style.minHeight = px+'px';
+      const nameLabel = document.createElement('span');
+      nameLabel.className = 'token-name-label';
+      nameLabel.textContent = t.name || '';
+      el.appendChild(nameLabel);
+    } else {
+      el.textContent = t.name;
+      if (sz > 1) { const px = 36 * sz; el.style.width = px+'px'; el.style.height = px+'px'; el.style.fontSize = Math.max(9, 11*sz)+'px'; }
+    }
   }
   if (_multiSelectedTokenIds.includes(String(t.id))) el.classList.add('multi-selected');
   const memoText = String(t.memo || '').trim();
@@ -1010,6 +1051,11 @@ function openTokenEdit(tokenId) {
   _teTokenId = tokenId;
   const t = St.tokens[tokenId];
   if (!t) return;
+  if (String(t?.tokenCategory || (t?.type === 'panel' ? 'panel' : 'character')) === 'panel') {
+    showToast('패널 토큰 편집은 다음 단계에서 연결할 예정이에요.');
+    _teTokenId = null;
+    return;
+  }
 
   refreshTokenOwnerBar(t);
 
