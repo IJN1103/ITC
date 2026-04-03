@@ -1518,3 +1518,21 @@ async function handlePanelTokenBackImg(input) {
     input.value = '';
   }
 }
+
+
+async function deletePanelTokenFromEdit() {
+  if (!_pteTokenId) return;
+  const token = St.tokens[_pteTokenId];
+  if (!token) return;
+  if (!confirm(`패널 토큰 "${token.name || '패널'}"을(를) 삭제할까요?`)) return;
+  const deleteId = _pteTokenId;
+  closePanelTokenEdit();
+  if (window._FB?.CONFIGURED) {
+    const { db, ref, remove } = window._FB;
+    await remove(ref(db, `rooms/${St.roomCode}/tokens/${deleteId}`));
+  } else {
+    delete St.tokens[deleteId];
+    renderAllTokens(St.tokens);
+  }
+  showToast('패널 토큰이 삭제됐어요.');
+}
