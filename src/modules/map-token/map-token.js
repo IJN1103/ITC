@@ -1311,6 +1311,7 @@ let _pteFrontImgCleared = false;
 let _pteBackImgData = null;
 let _pteBackImgBlob = null;
 let _pteBackImgCleared = false;
+let _panelTokenEditSaving = false;
 let _panelTokenClickTimer = null;
 let _panelTokenClickTokenId = null;
 const PANEL_TOKEN_CLICK_DELAY = 230;
@@ -1817,24 +1818,13 @@ function syncPanelTokenActionUi() {
   }
 }
 
-function openPanelTokenEdit(tokenId) {
-  const t = St.tokens[tokenId];
-  if (!t) return;
-  _pteTokenId = tokenId;
-  _pteFrontImgBlob = null;
-  _pteFrontImgData = t.panelImage || null;
-  _pteFrontImgCleared = false;
-  _pteBackImgBlob = null;
-  _pteBackImgData = t.panelBackImage || null;
-  _pteBackImgCleared = false;
-  refreshPanelTokenFrontPreview();
-  refreshPanelTokenBackPreview();
-  togglePanelTokenAdvanced(true);
-  hydratePanelTokenEditModal(t);
-  openModal('modal-panel-token-edit');
+
+function getPanelTokenSnapshot(tokenId) {
+  const token = St.tokens?.[tokenId];
+  return token ? normalizePanelToken(token) : null;
 }
 
-function closePanelTokenEdit() {
+function resetPanelTokenEditDraft() {
   revokeTokenPreviewUrl(_pteFrontImgData);
   revokeTokenPreviewUrl(_pteBackImgData);
   _pteFrontImgBlob = null;
@@ -1843,8 +1833,41 @@ function closePanelTokenEdit() {
   _pteBackImgBlob = null;
   _pteBackImgData = null;
   _pteBackImgCleared = false;
+}
+
+function beginPanelTokenEditSaving() {
+  if (_panelTokenEditSaving) {
+    showToast('패널 토큰 저장이 진행 중이에요. 잠시만 기다려 주세요.');
+    return false;
+  }
+  _panelTokenEditSaving = true;
+  return true;
+}
+
+function endPanelTokenEditSaving() {
+  _panelTokenEditSaving = false;
+}
+
+function openPanelTokenEdit(tokenId) {
+  const t = getPanelTokenSnapshot(tokenId);
+  if (!t) return;
+  clearPanelTokenActionState(tokenId);
+  _pteTokenId = tokenId;
+  resetPanelTokenEditDraft();
+  _pteFrontImgData = t.panelImage || null;
+  _pteBackImgData = t.panelBackImage || null;
+  refreshPanelTokenFrontPreview();
+  refreshPanelTokenBackPreview();
+  togglePanelTokenAdvanced(true);
+  hydratePanelTokenEditModal(t);
+  openModal('modal-panel-token-edit');
+}
+
+function closePanelTokenEdit() {
+  resetPanelTokenEditDraft();
   closeModal('modal-panel-token-edit');
   _pteTokenId = null;
+  endPanelTokenEditSaving();
 }
 
 function panelTokenEditPendingToast() {
@@ -1854,44 +1877,46 @@ function panelTokenEditPendingToast() {
 
 async function savePanelTokenEdit() {
   if (!_pteTokenId) return;
-  const current = St.tokens[_pteTokenId];
-  if (!current) return;
-  const next = buildPanelTokenSavePayload(current);
-  const actionValidation = validatePanelTokenActionForm({
-    panelActionType: next.panelActionType,
-    panelActionText: next.panelActionText,
-  });
-  if (!actionValidation.ok) return;
-  next.panelActionText = String(actionValidation.panelActionText || '');
-  if (_pteFrontImgCleared) {
-    next.panelImage = null;
-  } else if (_pteFrontImgBlob) {
-    next.panelImage = await uploadTokenBlobToCloudinary(_pteFrontImgBlob, `itc/panel-tokens/${St.roomCode}`);
-  } else if (_pteFrontImgData && /^blob:/.test(String(_pteFrontImgData))) {
-    next.panelImage = current.panelImage || null;
-  } else if (_pteFrontImgData) {
-    next.panelImage = _pteFrontImgData;
-  }
-  if (_pteBackImgCleared) {
-    next.panelBackImage = null;
-  } else if (_pteBackImgBlob) {
-    next.panelBackImage = await uploadTokenBlobToCloudinary(_pteBackImgBlob, `itc/panel-tokens-back/${St.roomCode}`);
-  } else if (_pteBackImgData && /^blob:/.test(String(_pteBackImgData))) {
-    next.panelBackImage = current.panelBackImage || null;
-  } else if (_pteBackImgData) {
-    next.panelBackImage = _pteBackImgData;
-  }
-  if (window._FB?.CONFIGURED) {
-    const { db, ref, set } = window._FB;
-    await set(ref(db, `rooms/${St.roomCode}/tokens/${_pteTokenId}`), next);
+  if (!beginPanelTokenEditSaving()) return;
+  try {
+    const current = getPanelTokenSnapshot(_pteTokenId);
+    if (!current) return;
+    const next = buildPanelTokenSavePayload(current);
+    const actionValidation = validatePanelTokenActionForm({
+      panelActionType: next.panelActionType,
+      panelActionText: next.panelActionText,
+    });
+    if (!actionValidation.ok) return;
+    next.panelActionText = String(actionValidation.panelActionText || '');
+    if (_pteFrontImgCleared) {
+      next.panelImage = null;
+    } else if (_pteFrontImgBlob) {
+      next.panelImage = await uploadTokenBlobToCloudinary(_pteFrontImgBlob, `itc/panel-tokens/${St.roomCode}`);
+    } else if (_pteFrontImgData && /^blob:/.test(String(_pteFrontImgData))) {
+      next.panelImage = current.panelImage || null;
+    } else if (_pteFrontImgData) {
+      next.panelImage = _pteFrontImgData;
+    }
+    if (_pteBackImgCleared) {
+      next.panelBackImage = null;
+    } else if (_pteBackImgBlob) {
+      next.panelBackImage = await uploadTokenBlobToCloudinary(_pteBackImgBlob, `itc/panel-tokens-back/${St.roomCode}`);
+    } else if (_pteBackImgData && /^blob:/.test(String(_pteBackImgData))) {
+      next.panelBackImage = current.panelBackImage || null;
+    } else if (_pteBackImgData) {
+      next.panelBackImage = _pteBackImgData;
+    }
+    if (window._FB?.CONFIGURED) {
+      const { db, ref, set } = window._FB;
+      await set(ref(db, `rooms/${St.roomCode}/tokens/${_pteTokenId}`), next);
+    }
     St.tokens[_pteTokenId] = next;
     renderAllTokens(St.tokens);
-  } else {
-    St.tokens[_pteTokenId] = next;
-    renderAllTokens(St.tokens);
+    closePanelTokenEdit();
+    showToast('패널 토큰 설정이 저장됐어요.');
+  } finally {
+    endPanelTokenEditSaving();
   }
-  closePanelTokenEdit();
-  showToast('패널 토큰 설정이 저장됐어요.');
 }
 
 
