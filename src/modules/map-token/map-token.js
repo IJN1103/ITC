@@ -835,15 +835,26 @@ function createTokenEl(t) {
     el.style.zIndex = String(normalizePanelToken(t).panelPriority);
     const activePanelImg = getPanelTokenDisplayImage(t);
     if (activePanelImg) {
+      el.classList.add('panel-token-has-image');
+      el.style.minWidth = '0';
+      el.style.padding = '0';
+      el.style.border = '0';
+      el.style.background = 'transparent';
+      el.style.boxShadow = 'none';
+      el.style.borderRadius = '0';
       const img = document.createElement('img');
       img.src = activePanelImg;
-      img.style.cssText = 'width:100%;height:100%;object-fit:cover;pointer-events:none;border-radius:inherit;';
+      img.className = 'panel-token-display-img';
+      img.style.cssText = 'width:100%;height:100%;object-fit:contain;pointer-events:none;display:block;';
       el.appendChild(img);
-      const nameLabel = document.createElement('span');
-      nameLabel.className = 'token-name-label';
-      nameLabel.textContent = t.name || '';
-      el.appendChild(nameLabel);
     } else {
+      el.classList.remove('panel-token-has-image');
+      el.style.minWidth = '';
+      el.style.padding = '';
+      el.style.border = '';
+      el.style.background = '';
+      el.style.boxShadow = '';
+      el.style.borderRadius = '';
       el.textContent = t.name || '패널';
     }
   } else {
@@ -1078,7 +1089,6 @@ const PANEL_TOKEN_DEFAULTS = Object.freeze({
   panelLockPosition: false,
   panelLockSize: false,
   panelTerrain: false,
-  panelAdvanced: {},
 });
 
 function getTokenCategory(token) {
@@ -1099,7 +1109,6 @@ function normalizePanelToken(token = {}) {
     panelLockPosition: !!token.panelLockPosition,
     panelLockSize: !!token.panelLockSize,
     panelTerrain: !!token.panelTerrain,
-    panelAdvanced: token.panelAdvanced && typeof token.panelAdvanced === 'object' ? { ...token.panelAdvanced } : {},
   };
 }
 
@@ -1163,7 +1172,6 @@ function buildPanelTokenSavePayload(current) {
     panelImage: base.panelImage || null,
     panelBackImage: base.panelBackImage || null,
     panelFace: String(base.panelFace || PANEL_TOKEN_DEFAULTS.panelFace),
-    panelAdvanced: base.panelAdvanced && typeof base.panelAdvanced === 'object' ? { ...base.panelAdvanced } : {},
   };
 }
 
@@ -1674,13 +1682,3 @@ function clearPanelTokenBackImg() {
 }
 
 window.normalizeIncomingMapToken = normalizeIncomingMapToken;
-
-
-function togglePanelTokenAdvanced() {
-  const body = document.getElementById('panel-token-advanced-body');
-  const arrow = document.getElementById('panel-token-advanced-arrow');
-  if (!body || !arrow) return;
-  const willOpen = body.style.display === 'none';
-  body.style.display = willOpen ? '' : 'none';
-  arrow.textContent = willOpen ? '▴' : '▾';
-}

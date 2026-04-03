@@ -916,5 +916,6 @@ to{transform:translateX(0);opacity:1;}
 .panel-token-image-preview.has-image:hover .panel-token-preview-delete{opacity:1;pointer-events:auto}
 .panel-token-preview-delete:hover{border-color:var(--red);color:var(--red);background:rgba(0,0,0,.8)}
 
-.panel-token-advanced-body{margin-top:10px;padding:12px;border:1px solid rgba(255,255,255,.08);border-radius:14px;background:rgba(255,255,255,.02)}
-.panel-token-advanced-placeholder{font-size:12px;line-height:1.7;color:var(--muted)}
+
+.map-token.panel-token.panel-token-has-image{min-width:0;min-height:0;display:block;overflow:visible}
+.map-token.panel-token .panel-token-display-img{display:block}
