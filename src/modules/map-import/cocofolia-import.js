@@ -64,14 +64,18 @@
     return document.getElementById('map-fg-layer');
   }
 
-  function getMapObjectLayer() {
-    return document.getElementById('map-obj-layer');
+  function getMapInner() {
+    return document.getElementById('map-inner');
+  }
+
+  function clearImportedMapObjects() {
+    document.querySelectorAll('.map-import-object[data-map-layer-id]').forEach((el) => el.remove());
   }
 
   function applyImportedMapState(mapState) {
     const bgLayer = getMapBackgroundLayer();
     const fgLayer = getMapForegroundLayer();
-    const objLayer = getMapObjectLayer();
+    const mapInner = getMapInner();
     const background = mapState?.background || null;
     const foreground = mapState?.foreground || null;
     const objects = Array.isArray(mapState?.objects) ? mapState.objects : [];
@@ -95,21 +99,23 @@
         fgLayer.style.backgroundSize = fit === 'fill' ? '100% 100%' : (fit === 'cover' ? 'cover' : 'contain');
       }
     }
-    if (objLayer) {
-      objLayer.innerHTML = '';
-      objects.forEach((item) => {
-        if (!item?.url) return;
-        const el = document.createElement('div');
-        el.className = 'map-import-object';
-        el.style.left = `${Number(item.xPct || 0)}%`;
-        el.style.top = `${Number(item.yPct || 0)}%`;
-        el.style.width = `${Number(item.wPct || 0)}%`;
-        el.style.height = `${Number(item.hPct || 0)}%`;
-        el.style.backgroundImage = `url("${String(item.url).replace(/"/g, '%22')}")`;
-        el.style.transform = `translate(-50%, -50%) rotate(${Number(item.angle || 0)}deg)`;
-        objLayer.appendChild(el);
-      });
-    }
+    clearImportedMapObjects();
+    if (!mapInner) return;
+    objects.forEach((item, index) => {
+      if (!item?.url) return;
+      const el = document.createElement('div');
+      const layerId = String(item.layerId || `object:${item.id || index + 1}`);
+      el.className = 'map-import-object';
+      el.dataset.mapLayerId = layerId;
+      el.id = `map-layer-${layerId.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
+      el.style.left = `${Number(item.xPct || 0)}%`;
+      el.style.top = `${Number(item.yPct || 0)}%`;
+      el.style.width = `${Number(item.wPct || 0)}%`;
+      el.style.height = `${Number(item.hPct || 0)}%`;
+      el.style.backgroundImage = `url("${String(item.url).replace(/"/g, '%22')}")`;
+      el.style.transform = `translate(-50%, -50%) rotate(${Number(item.angle || 0)}deg)`;
+      mapInner.appendChild(el);
+    });
   }
 
   function pickLiveRoomCode() {
@@ -279,10 +285,16 @@
         const y = Number(item.y || 0);
         const w = Math.max(1, Number(item.width || 1));
         const h = Math.max(1, Number(item.height || 1));
+        const objectId = String(item.id || '');
+        const imageName = String(item.imageUrl || '').trim();
+        const displayName = String(item.name || '').trim() || imageName || `오브젝트 ${Number(item.order || 0) || 0}`;
         return {
-          id: String(item.id || ''),
-          imageName: String(item.imageUrl || '').trim(),
+          id: objectId,
+          layerId: `object:${objectId}`,
+          name: displayName,
+          imageName,
           angle: Number(item.angle || 0),
+          order: Number(item.order || 0),
           xPct: ((x - baseLeft) / spanW) * 100,
           yPct: ((y - baseTop) / spanH) * 100,
           wPct: (w / spanW) * 100,

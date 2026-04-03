@@ -1,17 +1,5 @@
 (function () {
-  const LAYER_META = {
-    background: { id: 'background', name: '배경 이미지', sub: 'backgroundUrl', domId: 'map-bg-layer' },
-    objects: { id: 'objects', name: '오브젝트', sub: 'entities.items', domId: 'map-obj-layer' },
-    foreground: { id: 'foreground', name: '전경 이미지', sub: 'foregroundUrl', domId: 'map-fg-layer' },
-  };
-
   let _dragLayerId = null;
-
-  function getDropInsertIndex(order, targetId, position) {
-    const targetIndex = order.indexOf(targetId);
-    if (targetIndex < 0) return order.length;
-    return position === 'after' ? targetIndex + 1 : targetIndex;
-  }
 
   function getStateRoot() {
     const root = (typeof window !== 'undefined' ? window : globalThis);
@@ -24,12 +12,31 @@
     return root.St;
   }
 
-  function getAvailableLayerIds() {
+  function getLayerEntries() {
     const state = getStateRoot().mapState || {};
-    return Object.keys(LAYER_META).filter((id) => {
-      if (id === 'objects') return Array.isArray(state.objects) && state.objects.length > 0;
-      return !!state[id]?.url;
+    const entries = [];
+    if (state.background?.url) {
+      entries.push({ id: 'background', name: '배경 이미지', sub: 'backgroundUrl', target: 'map-bg-layer' });
+    }
+    const objects = Array.isArray(state.objects) ? state.objects : [];
+    objects.forEach((item, index) => {
+      const layerId = String(item?.layerId || `object:${item?.id || index + 1}`);
+      const label = String(item?.name || '').trim() || String(item?.imageName || '').trim() || `오브젝트 ${index + 1}`;
+      entries.push({
+        id: layerId,
+        name: label,
+        sub: `object ${index + 1}`,
+        target: `[data-map-layer-id="${layerId.replace(/"/g, '\"')}"]`,
+      });
     });
+    if (state.foreground?.url) {
+      entries.push({ id: 'foreground', name: '전경 이미지', sub: 'foregroundUrl', target: 'map-fg-layer' });
+    }
+    return entries;
+  }
+
+  function getAvailableLayerIds() {
+    return getLayerEntries().map((entry) => entry.id);
   }
 
   function getDefaultLayerState() {
@@ -46,7 +53,9 @@
     if (!ids.length) return defaults;
     const rawOrder = Array.isArray(raw?.order) ? raw.order.map(String) : [];
     const order = rawOrder.filter((id) => ids.includes(id));
-    ids.forEach((id) => { if (!order.includes(id)) order.push(id); });
+    ids.forEach((id) => {
+      if (!order.includes(id)) order.push(id);
+    });
     const visible = { ...defaults.visible };
     if (raw?.visible && typeof raw.visible === 'object') {
       ids.forEach((id) => {
@@ -65,13 +74,27 @@
     ).trim();
   }
 
+  function getDropInsertIndex(order, targetId, position) {
+    const targetIndex = order.indexOf(targetId);
+    if (targetIndex < 0) return order.length;
+    return position === 'after' ? targetIndex + 1 : targetIndex;
+  }
+
+  function resolveLayerElement(entry) {
+    if (!entry?.target) return null;
+    if (entry.target.startsWith('[')) return document.querySelector(entry.target);
+    return document.getElementById(entry.target);
+  }
+
   function applyMapLayerState() {
+    const entries = getLayerEntries();
+    const entryMap = new Map(entries.map((entry) => [entry.id, entry]));
     const stateRoot = getStateRoot();
     const normalized = normalizeLayerState(stateRoot.mapLayerState || null);
     stateRoot.mapLayerState = normalized;
     normalized.order.forEach((id, index) => {
-      const meta = LAYER_META[id];
-      const el = document.getElementById(meta.domId);
+      const entry = entryMap.get(id);
+      const el = resolveLayerElement(entry);
       if (!el) return;
       el.style.display = normalized.visible[id] === false ? 'none' : '';
       el.style.zIndex = String(index);
@@ -99,24 +122,25 @@
     const list = document.getElementById('map-layer-list');
     const empty = document.getElementById('map-layer-empty');
     if (!list || !empty) return;
-    const ids = getAvailableLayerIds();
+    const entries = getLayerEntries();
     const stateRoot = getStateRoot();
     const normalized = normalizeLayerState(stateRoot.mapLayerState || null);
     stateRoot.mapLayerState = normalized;
     list.innerHTML = '';
-    empty.style.display = ids.length ? 'none' : '';
-    if (!ids.length) return;
+    empty.style.display = entries.length ? 'none' : '';
+    if (!entries.length) return;
 
+    const entryMap = new Map(entries.map((entry) => [entry.id, entry]));
     normalized.order.forEach((id) => {
-      const meta = LAYER_META[id];
-      if (!meta) return;
+      const entry = entryMap.get(id);
+      if (!entry) return;
       const item = document.createElement('div');
       item.className = 'map-layer-item';
       item.draggable = true;
       item.dataset.layerId = id;
       item.innerHTML = `
         <div class="map-layer-handle">☰</div>
-        <div class="map-layer-name">${meta.name}<span class="map-layer-sub">${meta.sub}</span></div>
+        <div class="map-layer-name">${entry.name}<span class="map-layer-sub">${entry.sub}</span></div>
         <button class="map-layer-eye ${normalized.visible[id] === false ? 'off' : ''}" type="button">${createEyeIcon(normalized.visible[id] !== false)}</button>
       `;
       const eye = item.querySelector('.map-layer-eye');
