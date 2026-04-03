@@ -919,3 +919,14 @@ to{transform:translateX(0);opacity:1;}
 
 .map-token.panel-token.panel-token-has-image{min-width:0;min-height:0;display:block;overflow:visible}
 .map-token.panel-token .panel-token-display-img{display:block}
+
+
+.panel-token-advanced-body{margin-top:8px;padding:0 0 4px}
+.panel-token-advanced-sub{font-size:12px;color:var(--muted);margin:0 0 12px}
+.panel-token-advanced-field{margin:0}
+.panel-token-advanced-field select,
+.panel-token-advanced-text-wrap textarea{background:var(--s2);border:1px solid var(--border);color:var(--text)}
+.panel-token-advanced-help{font-size:12px;color:var(--muted);margin-top:10px;line-height:1.45}
+.panel-token-advanced-text-wrap{margin-top:12px}
+.panel-token-advanced-text-label{font-size:12px;color:var(--text);margin-bottom:6px}
+.panel-token-advanced-text-wrap textarea{width:100%;min-height:84px;resize:vertical}

@@ -1155,6 +1155,11 @@ function hydratePanelTokenEditModal(token) {
   document.getElementById('pte-lock-pos').checked = !!t.panelLockPosition;
   document.getElementById('pte-lock-size').checked = !!t.panelLockSize;
   document.getElementById('pte-terrain').checked = !!t.panelTerrain;
+  const actionTypeEl = document.getElementById('pte-action-type');
+  const actionTextEl = document.getElementById('pte-action-text');
+  if (actionTypeEl) actionTypeEl.value = String(t.panelActionType || PANEL_TOKEN_DEFAULTS.panelActionType);
+  if (actionTextEl) actionTextEl.value = String(t.panelActionText || '');
+  syncPanelTokenActionUi();
 }
 
 function readPanelTokenEditForm() {
@@ -1490,6 +1495,42 @@ function setTool(t) {
 window.addEventListener('scroll', () => hideTokenMemoBubble(), true);
 
 
+
+function togglePanelTokenAdvanced(forceOpen = null) {
+  const body = document.getElementById('panel-token-advanced-body');
+  const arrow = document.getElementById('panel-token-advanced-arrow');
+  if (!body) return;
+  const nextOpen = forceOpen == null ? body.style.display === 'none' : !!forceOpen;
+  body.style.display = nextOpen ? '' : 'none';
+  if (arrow) arrow.textContent = nextOpen ? '▴' : '▾';
+}
+
+function syncPanelTokenActionUi() {
+  const typeEl = document.getElementById('pte-action-type');
+  const helpEl = document.getElementById('pte-action-help');
+  const textWrap = document.getElementById('pte-action-text-wrap');
+  const textLabel = document.getElementById('pte-action-text-label');
+  const textEl = document.getElementById('pte-action-text');
+  const type = String(typeEl?.value || 'none');
+  if (!helpEl || !textWrap || !textLabel || !textEl) return;
+  if (type === 'chat') {
+    helpEl.textContent = '패널을 클릭했을 때 설정된 텍스트를 채팅으로 전송합니다.';
+    textWrap.style.display = '';
+    textLabel.textContent = '보낼 텍스트';
+    textEl.placeholder = 'Text to be sent';
+  } else if (type === 'macro') {
+    helpEl.textContent = '패널을 클릭했을 때 설정된 매크로를 실행합니다.';
+    textWrap.style.display = '';
+    textLabel.textContent = '매크로';
+    textEl.placeholder = '/1d10 또는 /choice';
+  } else {
+    helpEl.textContent = '패널 클릭 시 별도 동작을 하지 않습니다.';
+    textWrap.style.display = 'none';
+    textLabel.textContent = 'Text to be sent';
+    textEl.placeholder = 'Text to be sent';
+  }
+}
+
 function openPanelTokenEdit(tokenId) {
   const t = St.tokens[tokenId];
   if (!t) return;
@@ -1502,6 +1543,7 @@ function openPanelTokenEdit(tokenId) {
   _pteBackImgCleared = false;
   refreshPanelTokenFrontPreview();
   refreshPanelTokenBackPreview();
+  togglePanelTokenAdvanced(false);
   hydratePanelTokenEditModal(t);
   openModal('modal-panel-token-edit');
 }
