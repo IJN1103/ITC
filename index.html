@@ -958,8 +958,9 @@ window._FB = {
       <div class="modal-field"><label>겹침 우선도</label><input id="pte-priority" type="number" step="1"></div>
     </div>
     <div class="modal-field"><label>메모</label><textarea id="pte-memo" rows="6" placeholder="패널 메모"></textarea></div>
-    <div class="panel-token-edit-toggle"><div><div class="panel-token-edit-toggle-title">위치 고정</div><div class="panel-token-edit-toggle-sub">체크 시 패널 토큰을 이동할 수 없습니다</div></div><label class="switch"><input id="pte-lock-pos" type="checkbox"><span class="slider"></span></label></div>
-    <div class="panel-token-edit-toggle"><div><div class="panel-token-edit-toggle-title">사이즈 고정</div><div class="panel-token-edit-toggle-sub">체크 시 폭/높이를 변경할 수 없습니다</div></div><label class="switch"><input id="pte-lock-size" type="checkbox" onchange="syncPanelTokenLockUi()"><span class="slider"></span></label></div>
+    <div class="panel-token-edit-toggle"><div><div class="panel-token-edit-toggle-title">위치 고정</div><div class="panel-token-edit-toggle-sub">현재 위치와 크기로 오브젝트를 고정</div></div><label class="switch"><input id="pte-lock-pos" type="checkbox"><span class="slider"></span></label></div>
+    <div class="panel-token-edit-toggle panel-token-edit-toggle-no-divider"><div><div class="panel-token-edit-toggle-title">사이즈 고정</div><div class="panel-token-edit-toggle-sub">체크 시 폭/높이를 변경할 수 없습니다</div></div><label class="switch"><input id="pte-lock-size" type="checkbox" onchange="syncPanelTokenLockUi()"><span class="slider"></span></label></div>
+    <div class="panel-token-edit-toggle"><div><div class="panel-token-edit-toggle-title">지형 패널로 다루기</div><div class="panel-token-edit-toggle-sub">단축키 조작을 무효화합니다</div></div><label class="switch"><input id="pte-terrain" type="checkbox"><span class="slider"></span></label></div>
     <input id="pte-front-file" type="file" accept="image/*" style="display:none" onchange="handlePanelTokenFrontImg(this)">
     <input id="pte-back-file" type="file" accept="image/*" style="display:none" onchange="handlePanelTokenBackImg(this)">
     <div class="panel-token-image-group">
