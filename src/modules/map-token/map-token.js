@@ -722,6 +722,7 @@ function renderAllTokens(tokens) {
   Object.values(tokens).forEach(t => createTokenEl(t));
   updateMultiTokenSelectionUI();
   renderMapStatusPanel(tokens);
+  syncPanelTokenEditLifecycleWithTokens(tokens);
   /* 게임 화면 진입 후 맵 크기가 정상 반영되도록 보장 */
   applyMapTransform();
 }
@@ -798,6 +799,7 @@ function addOrUpdateSingleToken(id, data) {
       }
       refreshTokenLiveSnapshot(existing, data);
       if (_teTokenId === id) refreshTokenOwnerBar(data);
+      syncPanelTokenEditLifecycleWithTokens(St.tokens);
       return;
     }
   }
@@ -812,6 +814,7 @@ function addOrUpdateSingleToken(id, data) {
   }
   syncMultiTokenSelectionWithTokens(St.tokens);
   updateMultiTokenSelectionUI();
+  syncPanelTokenEditLifecycleWithTokens(St.tokens);
 }
 
 /* 스탠딩 배열의 fingerprint (변경 감지용) */
@@ -826,6 +829,7 @@ function removeSingleToken(id) {
   if (el) el.remove();
   setMultiTokenSelection(_multiSelectedTokenIds.filter(x => x !== id));
   removeMapStatusCard(id, St.tokens);
+  syncPanelTokenEditLifecycleWithTokens(St.tokens);
 }
 
 
@@ -1856,6 +1860,60 @@ function syncPanelTokenActionUi() {
 function getPanelTokenSnapshot(tokenId) {
   const token = St.tokens?.[tokenId];
   return token ? normalizePanelToken(token) : null;
+}
+
+function isPanelTokenEditOpen() {
+  return !!_pteTokenId && !!document.getElementById('modal-panel-token-edit')?.classList.contains('open');
+}
+
+function buildPanelTokenEditDraftSnapshot(currentToken = null) {
+  const base = normalizePanelToken(currentToken || {});
+  const next = {
+    ...base,
+    ...readPanelTokenEditForm(),
+    ...readPanelTokenActionForm(),
+    panelImage: base.panelImage || null,
+    panelBackImage: base.panelBackImage || null,
+    panelFace: String(base.panelFace || PANEL_TOKEN_DEFAULTS.panelFace),
+  };
+  if (_pteFrontImgCleared) next.panelImage = null;
+  else if (_pteFrontImgBlob) next.panelImage = '__draft_front_blob__';
+  else if (_pteFrontImgData) next.panelImage = _pteFrontImgData;
+
+  if (_pteBackImgCleared) next.panelBackImage = null;
+  else if (_pteBackImgBlob) next.panelBackImage = '__draft_back_blob__';
+  else if (_pteBackImgData) next.panelBackImage = _pteBackImgData;
+
+  return next;
+}
+
+function isPanelTokenEditDirty(currentToken = null) {
+  if (!isPanelTokenEditOpen()) return false;
+  const current = normalizePanelToken(currentToken || {});
+  const draft = buildPanelTokenEditDraftSnapshot(current);
+  return JSON.stringify(draft) !== JSON.stringify(current);
+}
+
+function syncPanelTokenEditLifecycleWithTokens(tokens = St.tokens) {
+  if (!isPanelTokenEditOpen()) return;
+  const current = tokens?.[_pteTokenId] || null;
+  if (!current) {
+    closePanelTokenEdit(true);
+    showToast('편집 중이던 패널 토큰이 사라져 편집창을 닫았어요.');
+    return;
+  }
+  if (_panelTokenEditSaving) return;
+  if (isPanelTokenEditDirty(current)) return;
+  const normalized = normalizePanelToken(current);
+  _pteFrontImgBlob = null;
+  _pteBackImgBlob = null;
+  _pteFrontImgCleared = false;
+  _pteBackImgCleared = false;
+  _pteFrontImgData = normalized.panelImage || null;
+  _pteBackImgData = normalized.panelBackImage || null;
+  refreshPanelTokenFrontPreview();
+  refreshPanelTokenBackPreview();
+  hydratePanelTokenEditModal(normalized);
 }
 
 function clearPanelTokenEditForm() {
