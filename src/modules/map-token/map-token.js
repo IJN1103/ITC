@@ -846,6 +846,13 @@ async function dispatchPanelTokenClickAction(tokenId) {
     const text = String(token.panelActionText || '');
     if (!text.trim()) return;
     try {
+      if (St.speakAsJournalId && typeof loadJournals === 'function') {
+        const journal = loadJournals().find(x => x.id === St.speakAsJournalId);
+        if (journal && typeof saSendMessage === 'function') {
+          await saSendMessage(journal, text);
+          return;
+        }
+      }
       await sendMessage(St.myName, text, 'normal');
     } catch (err) {
       console.error('dispatchPanelTokenClickAction chat failed', err);
