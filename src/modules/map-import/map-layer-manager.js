@@ -1,6 +1,7 @@
 (function () {
   const LAYER_META = {
     background: { id: 'background', name: '배경 이미지', sub: 'backgroundUrl', domId: 'map-bg-layer' },
+    objects: { id: 'objects', name: '오브젝트', sub: 'entities.items', domId: 'map-obj-layer' },
     foreground: { id: 'foreground', name: '전경 이미지', sub: 'foregroundUrl', domId: 'map-fg-layer' },
   };
 
@@ -25,7 +26,10 @@
 
   function getAvailableLayerIds() {
     const state = getStateRoot().mapState || {};
-    return Object.keys(LAYER_META).filter((id) => !!state[id]?.url);
+    return Object.keys(LAYER_META).filter((id) => {
+      if (id === 'objects') return Array.isArray(state.objects) && state.objects.length > 0;
+      return !!state[id]?.url;
+    });
   }
 
   function getDefaultLayerState() {
