@@ -1071,6 +1071,8 @@ let _teTokenImgData = null;
 let _pteTokenId = null;
 let _pteFrontImgData = null;
 let _pteFrontImgBlob = null;
+let _pteBackImgData = null;
+let _pteBackImgBlob = null;
 
 function openTokenEdit(tokenId) {
   _teTokenId = tokenId;
@@ -1377,7 +1379,10 @@ function openPanelTokenEdit(tokenId) {
   document.getElementById('pte-name').value = String(t.name || '');
   _pteFrontImgBlob = null;
   _pteFrontImgData = t.panelImage || null;
+  _pteBackImgBlob = null;
+  _pteBackImgData = t.panelBackImage || null;
   refreshPanelTokenFrontPreview();
+  refreshPanelTokenBackPreview();
   document.getElementById('pte-width').value = Math.max(1, Math.round((t.panelWidth || 4)));
   document.getElementById('pte-height').value = Math.max(1, Math.round((t.panelHeight || 2)));
   document.getElementById('pte-priority').value = Number(t.panelPriority || 0);
@@ -1390,8 +1395,11 @@ function openPanelTokenEdit(tokenId) {
 
 function closePanelTokenEdit() {
   revokeTokenPreviewUrl(_pteFrontImgData);
+  revokeTokenPreviewUrl(_pteBackImgData);
   _pteFrontImgBlob = null;
   _pteFrontImgData = null;
+  _pteBackImgBlob = null;
+  _pteBackImgData = null;
   closeModal('modal-panel-token-edit');
   _pteTokenId = null;
 }
@@ -1416,6 +1424,7 @@ async function savePanelTokenEdit() {
     panelLockSize: !!document.getElementById('pte-lock-size')?.checked,
     panelTerrain: !!document.getElementById('pte-terrain')?.checked,
     panelImage: current.panelImage || null,
+    panelBackImage: current.panelBackImage || null,
   };
   if (_pteFrontImgBlob) {
     next.panelImage = await uploadTokenBlobToCloudinary(_pteFrontImgBlob, `itc/panel-tokens/${St.roomCode}`);
@@ -1423,6 +1432,13 @@ async function savePanelTokenEdit() {
     next.panelImage = current.panelImage || null;
   } else if (_pteFrontImgData) {
     next.panelImage = _pteFrontImgData;
+  }
+  if (_pteBackImgBlob) {
+    next.panelBackImage = await uploadTokenBlobToCloudinary(_pteBackImgBlob, `itc/panel-tokens-back/${St.roomCode}`);
+  } else if (_pteBackImgData && /^blob:/.test(String(_pteBackImgData))) {
+    next.panelBackImage = current.panelBackImage || null;
+  } else if (_pteBackImgData) {
+    next.panelBackImage = _pteBackImgData;
   }
   if (window._FB?.CONFIGURED) {
     const { db, ref, set } = window._FB;
@@ -1465,6 +1481,39 @@ async function handlePanelTokenFrontImg(input) {
   } catch (err) {
     console.error('panel token image prepare failed', err);
     showToast('패널 이미지를 준비하지 못했어요. 다시 시도해 주세요.');
+  } finally {
+    input.value = '';
+  }
+}
+
+
+function refreshPanelTokenBackPreview() {
+  const wrap = document.getElementById('pte-back-preview');
+  if (!wrap) return;
+  if (_pteBackImgData) {
+    wrap.innerHTML = `<img src="${_pteBackImgData}" alt="panel back image">`;
+  } else {
+    wrap.textContent = '뒷면 이미지 없음';
+  }
+}
+
+async function handlePanelTokenBackImg(input) {
+  const file = input.files?.[0];
+  if (!file) return;
+  if (file.size > 3 * 1024 * 1024) {
+    showToast('이미지는 3MB 이하만 가능해요.');
+    input.value = '';
+    return;
+  }
+  try {
+    const blob = await makeTokenImageBlob(file, 1200);
+    revokeTokenPreviewUrl(_pteBackImgData);
+    _pteBackImgBlob = blob;
+    _pteBackImgData = URL.createObjectURL(blob);
+    refreshPanelTokenBackPreview();
+  } catch (err) {
+    console.error('panel token back image prepare failed', err);
+    showToast('뒷면 이미지를 준비하지 못했어요. 다시 시도해 주세요.');
   } finally {
     input.value = '';
   }

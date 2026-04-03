@@ -965,7 +965,9 @@ window._FB = {
     <input id="pte-front-file" type="file" accept="image/*" style="display:none" onchange="handlePanelTokenFrontImg(this)">
     <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">
       <button class="btn-primary panel-token-ghost-btn" type="button" onclick="document.getElementById('pte-front-file').click()">이미지 선택</button>
-      <button class="btn-primary panel-token-ghost-btn" type="button" onclick="panelTokenEditPendingToast()">뒷면 이미지 선택</button>
+      <div class="panel-token-image-preview" id="pte-back-preview">뒷면 이미지 없음</div>
+      <input id="pte-back-file" type="file" accept="image/*" style="display:none" onchange="handlePanelTokenBackImg(this)">
+      <button class="btn-primary panel-token-ghost-btn" type="button" onclick="document.getElementById('pte-back-file').click()">뒷면 이미지 선택</button>
     </div>
     <div class="panel-token-edit-advanced" onclick="panelTokenEditPendingToast()">고급 설정 <span>▾</span></div>
     <div class="panel-token-edit-actions">
