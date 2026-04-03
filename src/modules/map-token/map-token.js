@@ -1089,6 +1089,8 @@ const PANEL_TOKEN_DEFAULTS = Object.freeze({
   panelLockPosition: false,
   panelLockSize: false,
   panelTerrain: false,
+  panelActionType: 'none',
+  panelActionText: '',
 });
 
 function getTokenCategory(token) {
@@ -1096,6 +1098,8 @@ function getTokenCategory(token) {
 }
 
 function normalizePanelToken(token = {}) {
+  const nextActionType = String(token.panelActionType || PANEL_TOKEN_DEFAULTS.panelActionType);
+  const normalizedActionType = nextActionType === 'chat' || nextActionType === 'macro' ? nextActionType : 'none';
   return {
     ...token,
     tokenCategory: 'panel',
@@ -1109,6 +1113,8 @@ function normalizePanelToken(token = {}) {
     panelLockPosition: !!token.panelLockPosition,
     panelLockSize: !!token.panelLockSize,
     panelTerrain: !!token.panelTerrain,
+    panelActionType: normalizedActionType,
+    panelActionText: String(token.panelActionText || ''),
   };
 }
 
@@ -1172,6 +1178,8 @@ function buildPanelTokenSavePayload(current) {
     panelImage: base.panelImage || null,
     panelBackImage: base.panelBackImage || null,
     panelFace: String(base.panelFace || PANEL_TOKEN_DEFAULTS.panelFace),
+    panelActionType: String(base.panelActionType || PANEL_TOKEN_DEFAULTS.panelActionType),
+    panelActionText: String(base.panelActionText || ''),
   };
 }
 
