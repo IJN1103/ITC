@@ -861,6 +861,36 @@ async function dispatchPanelTokenClickAction(tokenId) {
     return;
   }
   if (token.panelActionType === 'macro') {
+    const raw = String(token.panelActionText || '').trim();
+    if (!raw) return;
+    const cm = raw.match(/^\/choice\s*[\(\（](.+)[\)\）]$/i);
+    if (cm) {
+      const options = cm[1].split(',').map(s => s.trim()).filter(Boolean);
+      if (options.length < 2) {
+        showToast('선택지를 2개 이상 입력해주세요.');
+        return;
+      }
+      const picked = options[Math.floor(Math.random() * options.length)];
+      const senderName = St.speakAsJournalId ? (typeof loadJournals === 'function' ? (loadJournals().find(x => x.id === St.speakAsJournalId)?.title || St.myName) : St.myName) : St.myName;
+      try {
+        await sendMessage(senderName, `🎯 Choice [${options.join(', ')}] → ${picked}`, 'normal');
+      } catch (err) {
+        console.error('dispatchPanelTokenClickAction choice failed', err);
+        showToast('패널 토큰 매크로 실행에 실패했어요. 다시 시도해 주세요.');
+      }
+      return;
+    }
+    const dm = raw.match(/^\/(\d*d\d+.*)$/i);
+    if (dm) {
+      try {
+        rollFromFormula(dm[1].trim());
+      } catch (err) {
+        console.error('dispatchPanelTokenClickAction dice failed', err);
+        showToast('패널 토큰 다이스 실행에 실패했어요. 다시 시도해 주세요.');
+      }
+      return;
+    }
+    showToast('현재는 /choice와 다이스 매크로만 지원해요.');
     return;
   }
 }
