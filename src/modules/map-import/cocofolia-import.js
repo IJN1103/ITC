@@ -286,7 +286,7 @@
     return parsed;
   }
 
-  function buildImportedMapObjects(itemsMap = {}, sceneAspect = 1) {
+  function buildImportedMapObjects(itemsMap = {}, roomMeta = {}, sceneAspect = 1) {
     const rawItems = Object.entries(itemsMap)
       .map(([id, item]) => ({ id, ...(item || {}) }))
       .filter((item) => item.type === 'object' && item.visible !== false && String(item.imageUrl || '').trim());
@@ -306,21 +306,29 @@
     }, { left: Infinity, right: -Infinity, top: Infinity, bottom: -Infinity });
 
     const pad = 2;
-    const rawSpanW = Math.max(1, (bounds.right - bounds.left) + pad * 2);
-    const rawSpanH = Math.max(1, (bounds.bottom - bounds.top) + pad * 2);
+    const roomFieldWidth = Number(roomMeta?.fieldWidth || 0);
+    const roomFieldHeight = Number(roomMeta?.fieldHeight || 0);
     const normalizedSceneAspect = Math.max(0.1, Number(sceneAspect || 1) || 1);
-    let spanW = rawSpanW;
-    let spanH = rawSpanH;
-    const centerX = (bounds.left + bounds.right) / 2;
-    const centerY = (bounds.top + bounds.bottom) / 2;
-    const currentAspect = rawSpanW / rawSpanH;
-    if (currentAspect < normalizedSceneAspect) {
-      spanW = rawSpanH * normalizedSceneAspect;
-    } else if (currentAspect > normalizedSceneAspect) {
-      spanH = rawSpanW / normalizedSceneAspect;
+
+    let spanW = roomFieldWidth > 0 ? roomFieldWidth : 0;
+    let spanH = roomFieldHeight > 0 ? roomFieldHeight : 0;
+
+    if (!(spanW > 0) || !(spanH > 0)) {
+      const halfW = Math.max(Math.abs(bounds.left), Math.abs(bounds.right)) + pad;
+      const halfH = Math.max(Math.abs(bounds.top), Math.abs(bounds.bottom)) + pad;
+      spanW = Math.max(1, halfW * 2);
+      spanH = Math.max(1, halfH * 2);
     }
-    const baseLeft = centerX - spanW / 2;
-    const baseTop = centerY - spanH / 2;
+
+    const currentAspect = spanW / spanH;
+    if (currentAspect < normalizedSceneAspect) {
+      spanW = spanH * normalizedSceneAspect;
+    } else if (currentAspect > normalizedSceneAspect) {
+      spanH = spanW / normalizedSceneAspect;
+    }
+
+    const baseLeft = -spanW / 2;
+    const baseTop = -spanH / 2;
 
     return rawItems
       .sort((a, b) => Number(a.order || 0) - Number(b.order || 0))
@@ -430,7 +438,7 @@
       const sceneAspect = dominantSize?.width && dominantSize?.height
         ? (dominantSize.width / dominantSize.height)
         : 1;
-      const objectBlueprints = buildImportedMapObjects(validated.parsed?.entities?.items || {}, sceneAspect);
+      const objectBlueprints = buildImportedMapObjects(validated.parsed?.entities?.items || {}, room, sceneAspect);
       const importedObjects = [];
       for (let i = 0; i < objectBlueprints.length; i++) {
         const blueprint = objectBlueprints[i];
