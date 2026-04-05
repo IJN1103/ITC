@@ -715,6 +715,7 @@ function renderAllTokens(tokens) {
     return;
   }
   _pendingTokenRender = false;
+  clearPanelTokenActionState();
   hideTokenMemoBubble();
   const inner = document.getElementById('map-inner');
   if (inner) inner.querySelectorAll('.map-token').forEach(t => t.remove());
@@ -804,6 +805,9 @@ function addOrUpdateSingleToken(id, data) {
     }
   }
 
+  if (getTokenCategory(data || St.tokens?.[id] || {}) === 'panel') {
+    clearPanelTokenActionState(id);
+  }
   if (existing) existing.remove();
   if (data) {
     createTokenEl(data);
@@ -2078,6 +2082,7 @@ async function savePanelTokenEdit() {
       showToast('패널 토큰 편집 상태가 변경되어 저장을 중단했어요. 다시 열어서 저장해 주세요.');
       return;
     }
+    clearPanelTokenActionState(editTokenId);
     if (window._FB?.CONFIGURED) {
       const { db, ref, set } = window._FB;
       await set(ref(db, `rooms/${St.roomCode}/tokens/${editTokenId}`), next);
@@ -2210,6 +2215,7 @@ async function deletePanelTokenFromEdit() {
 
 
 async function togglePanelTokenFace(tokenId) {
+  clearPanelTokenActionState(tokenId);
   const current = St.tokens[tokenId];
   if (!current) return;
   const normalized = normalizePanelToken(current);
