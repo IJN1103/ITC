@@ -22,12 +22,14 @@
     objects.forEach((item, index) => {
       const layerId = String(item?.layerId || `object:${item?.id || index + 1}`);
       const label = String(item?.name || '').trim() || String(item?.imageName || '').trim() || `오브젝트 ${index + 1}`;
+      const panelTokenId = String(item?.panelTokenId || '').trim();
       entries.push({
         id: layerId,
         name: label,
         sub: `object ${index + 1}`,
-        target: `[data-map-layer-id="${layerId.replace(/"/g, '\"')}"]`,
-        previewUrl: String(item?.url || '').trim(),
+        target: panelTokenId ? `tok-${panelTokenId}` : `[data-map-layer-id="${layerId.replace(/"/g, '\"')}"]`,
+        previewUrl: String(item?.previewUrl || item?.url || '').trim(),
+        panelTokenId,
       });
     });
     if (state.foreground?.url) {
@@ -320,10 +322,13 @@
     if (!window._FB?.CONFIGURED) return;
     const roomCode = getLiveRoomCode();
     if (!roomCode || roomCode === 'local') return;
+    const payload = {
+      'bgm/mapLayerState': normalized,
+      ...getImportedPanelPriorityPayload(normalized.order),
+      ...getImportedPanelVisibilityPayload(normalized.visible),
+    };
     const { db, ref, update } = window._FB;
-    await update(ref(db, `rooms/${roomCode}/bgm`), { mapLayerState: normalized });
-    await syncImportedPanelLayerOrder(roomCode, normalized.order);
-    await syncImportedPanelVisibility(roomCode, normalized.visible);
+    await update(ref(db, `rooms/${roomCode}`), payload);
   }
 
   function createEyeIcon(isVisible) {
