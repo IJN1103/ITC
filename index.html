@@ -1006,19 +1006,14 @@ window._FB = {
       <div class="modal-title">🗺 맵세팅 가져오기</div>
       <button class="modal-close" onclick="closeModal('modal-map-import')">✕</button>
     </div>
-    <div class="modal-info" style="line-height:1.9">
-      코코포리아 맵세팅용 ZIP 파일을 업로드해 형식을 검사합니다.<br>
-      이번 단계에서는 <b>실제 맵 적용은 하지 않고</b>,<br>
-      파일이 정상적인 코코포리아 ZIP인지 먼저 확인합니다.
-    </div>
+    <div class="modal-info" style="line-height:1.8">맵세팅용 ZIP 파일을 업로드해주세요.</div>
     <div id="map-import-summary" style="display:none;margin:12px 0 14px;padding:12px;border:1px solid var(--border);border-radius:var(--r);background:var(--s2);font-size:12px;line-height:1.8;color:var(--dim)"></div>
     <div id="map-import-error" style="display:none;margin:12px 0 14px;padding:12px;border:1px solid rgba(200,92,92,.3);border-radius:var(--r);background:rgba(200,92,92,.08);font-size:12px;line-height:1.7;color:var(--red)"></div>
-    <div id="map-import-hint" style="font-size:11px;color:var(--muted);margin-bottom:12px">지원 예정 항목: 배경 이미지, 전경 이미지, item 오브젝트. 현재는 유효성 검사까지만 활성화됩니다.</div>
+    <div id="map-import-hint" style="font-size:11px;color:var(--muted);margin-bottom:12px">맵세팅용 ZIP 파일을 업로드해주세요.</div>
     <input type="file" id="map-import-file" accept=".zip,application/zip" style="display:none" onchange="handleMapImportFile(this)">
-    <div style="display:flex;gap:8px;align-items:center">
+    <div style="display:flex;gap:8px;align-items:center;justify-content:space-between">
       <button class="btn-primary" onclick="document.getElementById('map-import-file').click()" title="ZIP 파일 선택" aria-label="ZIP 파일 선택" style="flex:0 0 42px;width:42px;height:42px;padding:0;display:flex;align-items:center;justify-content:center;border-radius:12px;font-size:24px;line-height:1">+</button>
-      <div style="flex:1;min-height:42px;display:flex;align-items:center;padding:0 12px;border:1px solid var(--border);border-radius:12px;background:var(--s2);color:var(--muted);font-size:12px">ZIP 파일 선택</div>
-      <button class="btn-primary" onclick="closeModal('modal-map-import')" style="flex:0 0 auto;background:var(--s3);color:var(--text);border:1px solid var(--border2)">닫기</button>
+      <button class="btn-primary" onclick="closeModal('modal-map-import')" style="flex:0 0 auto;min-width:72px;height:42px;padding:0 14px;border-radius:12px;background:linear-gradient(180deg,rgba(255,255,255,.03),rgba(255,255,255,.01)),var(--s3);color:var(--text);border:1px solid var(--border2);box-shadow:0 6px 16px rgba(0,0,0,.18)">닫기</button>
     </div>
   </div>
 </div>
