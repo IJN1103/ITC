@@ -35,7 +35,7 @@
     }
     if (hint) {
       hint.style.display = '';
-      hint.textContent = '지원 항목: 배경 + 전경 + image item 오브젝트 일부 import';
+      hint.textContent = '지원 항목: 배경 이미지, 전경 이미지, item 오브젝트. 오브젝트는 맵세팅 레이어에 연결된 스크린 패널로 적용됩니다.';
     }
     if (fileInput) fileInput.value = '';
     IMPORT_STATE.lastValidated = null;
