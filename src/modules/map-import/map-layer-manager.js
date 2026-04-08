@@ -87,6 +87,81 @@
     return document.getElementById(entry.target);
   }
 
+  function getMapObjectByLayerId(layerId) {
+    const state = getStateRoot().mapState || {};
+    const objects = Array.isArray(state.objects) ? state.objects : [];
+    return objects.find((item, index) => String(item?.layerId || `object:${item?.id || index + 1}`) === String(layerId || '')) || null;
+  }
+
+  function canDeleteLayer(entry) {
+    if (!entry?.id) return false;
+    const item = getMapObjectByLayerId(entry.id);
+    return !!item;
+  }
+
+  async function deleteMapLayerEntry(layerId) {
+    const id = String(layerId || '').trim();
+    if (!id) return;
+    const stateRoot = getStateRoot();
+    const currentState = stateRoot.mapState || {};
+    const currentObjects = Array.isArray(currentState.objects) ? currentState.objects : [];
+    const removed = [];
+    const nextObjects = currentObjects.filter((item, index) => {
+      const itemLayerId = String(item?.layerId || `object:${item?.id || index + 1}`);
+      if (itemLayerId === id) {
+        removed.push(item);
+        return false;
+      }
+      return true;
+    });
+    if (!removed.length) return;
+
+    const nextLayerState = normalizeLayerState(stateRoot.mapLayerState || null);
+    nextLayerState.order = nextLayerState.order.filter((layerId) => layerId !== id);
+    if (nextLayerState.visible && typeof nextLayerState.visible === 'object') {
+      delete nextLayerState.visible[id];
+    }
+
+    stateRoot.mapState = { ...currentState, objects: nextObjects };
+    stateRoot.mapLayerState = nextLayerState;
+    if (typeof applyImportedMapState === 'function') applyImportedMapState(stateRoot.mapState);
+    applyMapLayerState();
+    renderMapLayerList();
+
+    if (!window._FB?.CONFIGURED) return;
+    const roomCode = getLiveRoomCode();
+    if (!roomCode || roomCode === 'local') return;
+
+    const tokenDeletes = {};
+    removed.forEach((item) => {
+      const panelTokenId = String(item?.panelTokenId || '').trim();
+      if (panelTokenId) tokenDeletes[panelTokenId] = null;
+    });
+
+    const { db, ref, update } = window._FB;
+    await update(ref(db, `rooms/${roomCode}/bgm`), {
+      mapObjects: nextObjects,
+      mapLayerState: nextLayerState,
+    });
+    if (Object.keys(tokenDeletes).length) {
+      await update(ref(db, `rooms/${roomCode}/tokens`), tokenDeletes);
+    }
+  }
+
+  function confirmDeleteLayer(entry) {
+    if (!entry?.id || !canDeleteLayer(entry)) return;
+    const label = String(entry?.name || '이 레이어').trim() || '이 레이어';
+    const ok = window.confirm(`'${label}' 레이어를 삭제할까요?
+연결된 맵세팅 패널도 함께 삭제됩니다.`);
+    if (!ok) return;
+    deleteMapLayerEntry(entry.id)
+      .then(() => { if (typeof showToast === 'function') showToast('맵세팅 레이어를 삭제했어요.'); })
+      .catch((err) => {
+        console.error('deleteMapLayerEntry failed', err);
+        if (typeof showToast === 'function') showToast('레이어 삭제 중 오류가 발생했어요.');
+        if (typeof refreshMapLayerManager === 'function') refreshMapLayerManager();
+      });
+  }
 
   function getImportedPanelPriorityPayload(order) {
     const state = getStateRoot().mapState || {};
@@ -191,11 +266,13 @@
       const previewHtml = entry.previewUrl
         ? `<img class="map-layer-preview-img" src="${String(entry.previewUrl).replace(/"/g, '&quot;')}" alt="" loading="lazy" decoding="async">`
         : '';
+      const canDelete = canDeleteLayer(entry);
       item.innerHTML = `
         <div class="map-layer-handle">☰</div>
         <div class="map-layer-preview ${entry.previewUrl ? 'has-image' : ''}" aria-hidden="true">${previewHtml}</div>
         <div class="map-layer-name"><span class="map-layer-label">${entry.name}</span><span class="map-layer-sub">${entry.sub}</span></div>
         <button class="map-layer-eye ${normalized.visible[id] === false ? 'off' : ''}" type="button">${createEyeIcon(normalized.visible[id] !== false)}</button>
+        ${canDelete ? '<button class="map-layer-delete" type="button" title="레이어 삭제" aria-label="레이어 삭제">✕</button>' : ''}
       `;
       const eye = item.querySelector('.map-layer-eye');
       eye?.addEventListener('click', async (e) => {
@@ -205,6 +282,12 @@
         next.visible[id] = !(next.visible[id] !== false);
         await saveMapLayerState(next);
         renderMapLayerList();
+      });
+      const del = item.querySelector('.map-layer-delete');
+      del?.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        confirmDeleteLayer(entry);
       });
       item.addEventListener('dragstart', (e) => {
         _dragLayerId = id;
