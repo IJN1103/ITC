@@ -205,6 +205,20 @@
     return `<div style="display:flex;gap:8px;margin-top:10px"><button class="btn-primary" onclick="applyValidatedMapBackground()" style="flex:1">맵 이미지 적용</button></div>`;
   }
 
+  function buildDefaultImportedMapLayerState(mapState) {
+    const ids = [];
+    if (mapState?.background?.url) ids.push('background');
+    const objects = Array.isArray(mapState?.objects) ? mapState.objects : [];
+    objects.forEach((item, index) => {
+      ids.push(String(item?.layerId || `object:${item?.id || index + 1}`));
+    });
+    if (mapState?.foreground?.url) ids.push('foreground');
+    return {
+      order: ids,
+      visible: Object.fromEntries(ids.map((id) => [id, true])),
+    };
+  }
+
   function setError(message) {
     const { error, hint } = getModalElements();
     if (error) {
@@ -647,6 +661,7 @@
         foreground: foregroundState,
         objects: importedObjects,
       };
+      const nextLayerState = buildDefaultImportedMapLayerState(nextMapState);
       const { db, ref, update } = window._FB;
       await update(ref(db, `rooms/${roomCode}/bgm`), {
         mapBackground: nextMapState.background.url,
@@ -658,7 +673,9 @@
         mapForegroundSourceName: nextMapState.foreground?.sourceName || '',
         mapForegroundImportedAt: nextMapState.foreground?.importedAt || 0,
         mapObjects: nextMapState.objects || [],
+        mapLayerState: nextLayerState,
       });
+      if (window.St) window.St.mapLayerState = nextLayerState;
       setSummary(buildValidationSummary(pendingFile, validated.parsed) + `<br><br><b>맵 이미지 적용 완료</b><br>스크린 패널 ${importedPanelTokens.length}개 생성 / 레이어 항목 유지`);
       if (typeof showToast === 'function') showToast('맵 이미지 + 스크린 패널 적용 완료');
     } catch (err) {
