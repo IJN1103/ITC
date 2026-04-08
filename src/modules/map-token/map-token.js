@@ -214,6 +214,12 @@ function isPanelTokenPositionLocked(tokenId) {
   return getTokenCategory(token) === 'panel' && !!token?.panelLockPosition;
 }
 
+
+function getTokenIdFromElement(el) {
+  const rawId = String(el?.id || '');
+  return rawId.startsWith('tok-') ? rawId.slice(4) : '';
+}
+
 function getMovableDragTargetIds(tokenId) {
   return getDragTargetIds(tokenId).filter((id) => !isPanelTokenPositionLocked(id));
 }
@@ -537,7 +543,11 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    if (e.target.closest('.map-token')) return;
+    const tokenEl = e.target.closest('.map-token');
+    if (tokenEl) {
+      const tokenId = getTokenIdFromElement(tokenEl);
+      if (!isPanelTokenPositionLocked(tokenId)) return;
+    }
     if (e.button !== 0) return;
 
     hideTokenMemoBubble();
@@ -1140,10 +1150,12 @@ function createTokenEl(t) {
   }
   el.addEventListener('click', e => {
     if (tokenCategory !== 'panel') return;
+    if (isPanelTokenPositionLocked(t.id)) return;
     if (e.defaultPrevented) return;
     schedulePanelTokenClickAction(t.id);
   });
   el.addEventListener('dblclick', e => {
+    if (tokenCategory === 'panel' && isPanelTokenPositionLocked(t.id)) return;
     e.preventDefault();
     e.stopPropagation();
     hideTokenMemoBubble();
@@ -1172,7 +1184,7 @@ function makeDraggable(el, tokenId) {
     if (e.button !== 0) return;
     if (!hasPerm('moveToken')) { showToast('토큰 이동 권한이 없어요.'); return; }
     if (St.tool === 'erase') { removeToken(tokenId); return; }
-    if (isPanelTokenPositionLocked(tokenId)) { showToast('위치 고정이 켜져 있어 이동할 수 없어요.'); return; }
+    if (isPanelTokenPositionLocked(tokenId)) return;
 
     e.preventDefault();
     e.stopPropagation();
