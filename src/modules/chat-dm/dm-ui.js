@@ -15,6 +15,48 @@
   function getDmListWrap() { return document.getElementById('dm-channel-list'); }
   function isChatTabActive() { return typeof _activeRightTab !== 'undefined' ? _activeRightTab === 'chat' : true; }
 
+  function getAliasStorageKey() {
+    const state = getStateRoot();
+    const roomCode = String(state.roomCode || state.roomId || '').trim();
+    const gmUid = String(state.myId || '').trim();
+    return `itc_dm_aliases::${gmUid}::${roomCode}`;
+  }
+
+  function loadAliases() {
+    try {
+      const raw = localStorage.getItem(getAliasStorageKey());
+      const parsed = raw ? JSON.parse(raw) : {};
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch (e) {
+      return {};
+    }
+  }
+
+  function saveAliases(next) {
+    try {
+      localStorage.setItem(getAliasStorageKey(), JSON.stringify(next && typeof next === 'object' ? next : {}));
+    } catch (e) {}
+  }
+
+  function sanitizeAlias(value) {
+    return String(value || '').trim().replace(/\s+/g, ' ').slice(0, 8);
+  }
+
+  function getAliasForUid(uid) {
+    const map = loadAliases();
+    return sanitizeAlias(map?.[String(uid || '').trim()] || '');
+  }
+
+  function setAliasForUid(uid, alias) {
+    const safeUid = String(uid || '').trim();
+    if (!safeUid) return;
+    const map = loadAliases();
+    const safeAlias = sanitizeAlias(alias);
+    if (safeAlias) map[safeUid] = safeAlias;
+    else delete map[safeUid];
+    saveAliases(map);
+  }
+
   function getOtherPlayerEntries() {
     const state = getStateRoot();
     const players = state.players || {};
@@ -47,7 +89,8 @@
     items.push(`<button type="button" class="dm-channel-btn ${isGlobal ? 'is-active' : ''}" data-dm-role="global"><span class="dm-channel-label">전체</span><span class="dm-channel-dot" style="display:none"></span></button>`);
     others.forEach((player) => {
       const active = !isGlobal && selected.has(player.uid);
-      items.push(`<button type="button" class="dm-channel-btn ${active ? 'is-active' : ''}" data-dm-role="player" data-uid="${player.uid.replace(/"/g, '&quot;')}"><span class="dm-channel-label">${player.name.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</span><span class="dm-channel-dot" style="display:none"></span></button>`);
+      const label = (getAliasForUid(player.uid) || player.name).replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      items.push(`<button type="button" class="dm-channel-btn ${active ? 'is-active' : ''}" data-dm-role="player" data-uid="${player.uid.replace(/"/g, '&quot;')}"><span class="dm-channel-label">${label}</span><span class="dm-channel-dot" style="display:none"></span></button>`);
     });
     list.innerHTML = items.join('');
     list.querySelector('[data-dm-role="global"]')?.addEventListener('click', () => {
@@ -61,6 +104,16 @@
         const next = new Set(getSelectedParticipantIds());
         if (next.has(uid)) next.delete(uid); else next.add(uid);
         if (typeof ROOT.selectDmParticipants === 'function') ROOT.selectDmParticipants(Array.from(next));
+        renderDmChannelButtons();
+      });
+      btn.addEventListener('contextmenu', (ev) => {
+        ev.preventDefault();
+        const uid = String(btn.dataset.uid || '').trim();
+        if (!uid) return;
+        const current = getAliasForUid(uid);
+        const input = window.prompt('표시 이름을 입력해주세요. (최대 8글자, 빈칸 입력 시 초기화)', current);
+        if (input === null) return;
+        setAliasForUid(uid, input);
         renderDmChannelButtons();
       });
     });
@@ -115,6 +168,7 @@
 
   ROOT.renderDmChannelButtons = renderDmChannelButtons;
   ROOT.refreshDmChannelButtons = renderDmChannelButtons;
+  ROOT.getDmButtonAlias = getAliasForUid;
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', scheduleBootRender, { once: true });
   } else {
