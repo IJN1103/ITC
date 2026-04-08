@@ -380,21 +380,13 @@
     const pad = 2;
     const roomFieldWidth = Number(roomMeta?.fieldWidth || 0);
     const roomFieldHeight = Number(roomMeta?.fieldHeight || 0);
-    const normalizedSceneAspect = Math.max(0.1, Number(sceneAspect || 1) || 1);
 
     const rawSpanW = Math.max(1, (bounds.right - bounds.left) + pad * 2);
     const rawSpanH = Math.max(1, (bounds.bottom - bounds.top) + pad * 2);
-    let spanW = roomFieldWidth > 0 ? roomFieldWidth : rawSpanW;
-    let spanH = roomFieldHeight > 0 ? roomFieldHeight : rawSpanH;
+    const spanW = roomFieldWidth > 0 ? roomFieldWidth : rawSpanW;
+    const spanH = roomFieldHeight > 0 ? roomFieldHeight : rawSpanH;
     const centerX = (bounds.left + bounds.right) / 2;
     const centerY = (bounds.top + bounds.bottom) / 2;
-
-    const currentAspect = spanW / spanH;
-    if (currentAspect < normalizedSceneAspect) {
-      spanW = spanH * normalizedSceneAspect;
-    } else if (currentAspect > normalizedSceneAspect) {
-      spanH = spanW / normalizedSceneAspect;
-    }
 
     const baseLeft = centerX - spanW / 2;
     const baseTop = centerY - spanH / 2;
