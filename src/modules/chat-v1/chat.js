@@ -1348,7 +1348,7 @@ async function sendPreparedChatImage(preparedOrDataUrl, imageWide = false, image
       if (!St.roomCode) throw new Error('roomCode missing');
       return push(ref(db, messagesPath), { ...msg, time: getChatServerTimestamp() });
     }
-    appendChatMsg({ name: msg.name, text: finalSrc, type: 'speak-as-image', uid: St.myId, timestamp: msg.time, speakAsAvatar: saAvatar, speakAsJournalId: saJId, channel: currentChannelKey, imageWide: !!imageWide, imageMeta: normalizedMeta, hideImageMeta: !!hideImageMeta });
+    appendChatMsg({ name: msg.name, text: finalSrc, type: 'speak-as-image', uid: St.myId, timestamp: msg.time, speakAsAvatar: saAvatar, speakAsJournalId: saJId, channel: 'chat', imageWide: !!imageWide, imageMeta: normalizedMeta, hideImageMeta: !!hideImageMeta });
     return Promise.resolve();
   }
 
@@ -1557,7 +1557,7 @@ function sendMessage(name, text, type = 'normal', extra = null) {
     if (!St.roomCode) return Promise.reject(new Error('roomCode missing'));
     return push(ref(db, messagesPath), { ...msg, time: getChatServerTimestamp() });
   }
-  appendChatMsg({ name, text, type, uid: St.myId, timestamp: msg.time, nameColor: msg.nameColor || null, channel: currentChannelKey, imageWide: !!msg.imageWide, imageMeta: msg.imageMeta || null, hideImageMeta: !!msg.hideImageMeta });
+  appendChatMsg({ name, text, type, uid: St.myId, timestamp: msg.time, nameColor: msg.nameColor || null, channel: 'chat', imageWide: !!msg.imageWide, imageMeta: msg.imageMeta || null, hideImageMeta: !!msg.hideImageMeta });
   return Promise.resolve();
 }
 

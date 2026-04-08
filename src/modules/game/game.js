@@ -148,7 +148,7 @@ function switchActiveChatChannel(channelKey = 'global') {
   const { db, ref, onChildAdded, onChildChanged, onChildRemoved, onValue, query, limitToLast } = window._FB;
   cleanupActiveChatChannelListeners();
   _activeChatChannelKey = safeChannelKey;
-  if (typeof activateChatRenderChannel === 'function') activateChatRenderChannel(safeChannelKey);
+  if (typeof resetRenderedMessages === 'function') resetRenderedMessages('chat');
 
   const processed = getProcessedChatKeySet(safeChannelKey);
   const messagesPath = typeof getDmMessagesPath === 'function'
@@ -166,24 +166,24 @@ function switchActiveChatChannel(channelKey = 'global') {
 
   const addChatRecord = (key, m) => {
     if (!shouldShowChatMessage(m) || processed.has(key)) return;
-    appendChatMsg({ name: m.name, text: m.text, type: m.type || 'normal', uid: m.uid, timestamp: m.time, speakAsAvatar: m.speakAsAvatar, speakAsJournalId: m.speakAsJournalId, whisperTo: m.whisperTo, whisperToName: m.whisperToName, nameColor: m.nameColor, msgKey: key, channel: safeChannelKey, standingImg: m.standingImg, tokenId: m.tokenId, standingLabel: m.standingLabel, imageWide: !!m.imageWide, imageMeta: m.imageMeta, hideImageMeta: !!m.hideImageMeta });
+    appendChatMsg({ name: m.name, text: m.text, type: m.type || 'normal', uid: m.uid, timestamp: m.time, speakAsAvatar: m.speakAsAvatar, speakAsJournalId: m.speakAsJournalId, whisperTo: m.whisperTo, whisperToName: m.whisperToName, nameColor: m.nameColor, msgKey: key, channel: 'chat', standingImg: m.standingImg, tokenId: m.tokenId, standingLabel: m.standingLabel, imageWide: !!m.imageWide, imageMeta: m.imageMeta, hideImageMeta: !!m.hideImageMeta });
     processed.add(key);
   };
 
   const changeChatRecord = (key, m) => {
     if (!shouldShowChatMessage(m)) {
       if (processed.has(key)) {
-        removeChatMsg(key, safeChannelKey);
+        removeChatMsg(key, 'chat');
         processed.delete(key);
       }
       return;
     }
-    replaceChatMsg({ name: m.name, text: m.text, type: m.type || 'normal', uid: m.uid, timestamp: m.time, speakAsAvatar: m.speakAsAvatar, speakAsJournalId: m.speakAsJournalId, whisperTo: m.whisperTo, whisperToName: m.whisperToName, nameColor: m.nameColor, msgKey: key, channel: safeChannelKey, standingImg: m.standingImg, tokenId: m.tokenId, standingLabel: m.standingLabel, imageWide: !!m.imageWide, imageMeta: m.imageMeta, hideImageMeta: !!m.hideImageMeta });
+    replaceChatMsg({ name: m.name, text: m.text, type: m.type || 'normal', uid: m.uid, timestamp: m.time, speakAsAvatar: m.speakAsAvatar, speakAsJournalId: m.speakAsJournalId, whisperTo: m.whisperTo, whisperToName: m.whisperToName, nameColor: m.nameColor, msgKey: key, channel: 'chat', standingImg: m.standingImg, tokenId: m.tokenId, standingLabel: m.standingLabel, imageWide: !!m.imageWide, imageMeta: m.imageMeta, hideImageMeta: !!m.hideImageMeta });
     processed.add(key);
   };
 
   const removeChatRecord = (key) => {
-    removeChatMsg(key, safeChannelKey);
+    removeChatMsg(key, 'chat');
     processed.delete(key);
   };
 
@@ -194,14 +194,13 @@ function switchActiveChatChannel(channelKey = 'global') {
   } else {
     trackActiveChatChannelListener(onValue(listenRef, snap => {
       const msgs = snap.val() || {};
-      if (typeof resetRenderedMessages === 'function') resetRenderedMessages(safeChannelKey);
+      if (typeof resetRenderedMessages === 'function') resetRenderedMessages('chat');
       processed.clear();
       Object.entries(msgs)
         .map(([k, m]) => ({ ...m, _key: k }))
         .sort((a, b) => (a.time || 0) - (b.time || 0))
         .forEach(m => addChatRecord(m._key, m));
-      if (typeof activateChatRenderChannel === 'function') activateChatRenderChannel(safeChannelKey);
-    }));
+          }));
   }
 }
 
