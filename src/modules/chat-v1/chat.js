@@ -1342,11 +1342,10 @@ async function sendPreparedChatImage(preparedOrDataUrl, imageWide = false, image
       imageContentType: storageMeta?.contentType || inferStorageContentTypeFromDataUrl(dataUrl),
     };
     const currentChannelKey = typeof getCurrentDmChannelKey === 'function' ? getCurrentDmChannelKey() : 'global';
-    const messagesPath = typeof getDmMessagesPath === 'function' ? getDmMessagesPath(St.roomCode, currentChannelKey) : `rooms/${St.roomCode}/chat`;
     if (window._FB?.CONFIGURED) {
       const { db, ref, push } = window._FB;
       if (!St.roomCode) throw new Error('roomCode missing');
-      return push(ref(db, messagesPath), { ...msg, time: getChatServerTimestamp() });
+      return push(ref(db, `rooms/${St.roomCode}/chat`), { ...msg, dmChannelKey: currentChannelKey || 'global', time: getChatServerTimestamp() });
     }
     appendChatMsg({ name: msg.name, text: finalSrc, type: 'speak-as-image', uid: St.myId, timestamp: msg.time, speakAsAvatar: saAvatar, speakAsJournalId: saJId, channel: 'chat', imageWide: !!imageWide, imageMeta: normalizedMeta, hideImageMeta: !!hideImageMeta });
     return Promise.resolve();
@@ -1551,11 +1550,10 @@ function sendMessage(name, text, type = 'normal', extra = null) {
   if ((type === 'normal' || type === 'desc') && St.myNameColor) msg.nameColor = St.myNameColor;
   if (extra && typeof extra === 'object') Object.assign(msg, extra);
   const currentChannelKey = typeof getCurrentDmChannelKey === 'function' ? getCurrentDmChannelKey() : 'global';
-  const messagesPath = typeof getDmMessagesPath === 'function' ? getDmMessagesPath(St.roomCode, currentChannelKey) : `rooms/${St.roomCode}/chat`;
   if (window._FB?.CONFIGURED) {
     const { db, ref, push } = window._FB;
     if (!St.roomCode) return Promise.reject(new Error('roomCode missing'));
-    return push(ref(db, messagesPath), { ...msg, time: getChatServerTimestamp() });
+    return push(ref(db, `rooms/${St.roomCode}/chat`), { ...msg, dmChannelKey: currentChannelKey || 'global', time: getChatServerTimestamp() });
   }
   appendChatMsg({ name, text, type, uid: St.myId, timestamp: msg.time, nameColor: msg.nameColor || null, channel: 'chat', imageWide: !!msg.imageWide, imageMeta: msg.imageMeta || null, hideImageMeta: !!msg.hideImageMeta });
   return Promise.resolve();

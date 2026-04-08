@@ -151,15 +151,14 @@ function switchActiveChatChannel(channelKey = 'global') {
   if (typeof resetRenderedMessages === 'function') resetRenderedMessages('chat');
 
   const processed = getProcessedChatKeySet(safeChannelKey);
-  const messagesPath = typeof getDmMessagesPath === 'function'
-    ? getDmMessagesPath(St.roomCode, safeChannelKey)
-    : (safeChannelKey === 'global' ? `rooms/${St.roomCode}/chat` : `rooms/${St.roomCode}/dmChats/${safeChannelKey}/messages`);
-  if (!messagesPath) return;
-  const baseRef = ref(db, messagesPath);
-  const listenRef = (query && limitToLast) ? query(baseRef, limitToLast(100)) : baseRef;
+  const listenRef = (query && limitToLast)
+    ? query(ref(db, `rooms/${St.roomCode}/chat`), limitToLast(300))
+    : ref(db, `rooms/${St.roomCode}/chat`);
 
+  const resolveMessageChannelKey = (m) => String(m?.dmChannelKey || 'global').trim() || 'global';
   const shouldShowChatMessage = (m) => {
     if (!m) return false;
+    if (resolveMessageChannelKey(m) !== safeChannelKey) return false;
     if (m.type === 'whisper') return safeChannelKey === 'global' && (m.uid === St.myId || m.whisperTo === St.myId);
     return true;
   };
@@ -176,6 +175,7 @@ function switchActiveChatChannel(channelKey = 'global') {
     processed.clear();
     Object.entries(msgs)
       .map(([k, m]) => ({ ...m, _key: k }))
+      .filter((m) => shouldShowChatMessage(m))
       .sort((a, b) => (a.time || 0) - (b.time || 0))
       .forEach(m => addChatRecord(m._key, m));
   }));
