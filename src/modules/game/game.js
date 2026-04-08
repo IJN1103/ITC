@@ -145,7 +145,7 @@ function syncAvailableDmChannels(raw = {}) {
 function switchActiveChatChannel(channelKey = 'global') {
   if (!window._FB?.CONFIGURED || !St.roomCode) return;
   const safeChannelKey = String(channelKey || 'global').trim() || 'global';
-  const { db, ref, onChildAdded, onChildChanged, onChildRemoved, onValue, query, limitToLast } = window._FB;
+  const { db, ref, onValue, query, limitToLast } = window._FB;
   cleanupActiveChatChannelListeners();
   _activeChatChannelKey = safeChannelKey;
   if (typeof resetRenderedMessages === 'function') resetRenderedMessages('chat');
@@ -165,43 +165,20 @@ function switchActiveChatChannel(channelKey = 'global') {
   };
 
   const addChatRecord = (key, m) => {
-    if (!shouldShowChatMessage(m) || processed.has(key)) return;
+    if (!shouldShowChatMessage(m)) return;
     appendChatMsg({ name: m.name, text: m.text, type: m.type || 'normal', uid: m.uid, timestamp: m.time, speakAsAvatar: m.speakAsAvatar, speakAsJournalId: m.speakAsJournalId, whisperTo: m.whisperTo, whisperToName: m.whisperToName, nameColor: m.nameColor, msgKey: key, channel: 'chat', standingImg: m.standingImg, tokenId: m.tokenId, standingLabel: m.standingLabel, imageWide: !!m.imageWide, imageMeta: m.imageMeta, hideImageMeta: !!m.hideImageMeta });
     processed.add(key);
   };
 
-  const changeChatRecord = (key, m) => {
-    if (!shouldShowChatMessage(m)) {
-      if (processed.has(key)) {
-        removeChatMsg(key, 'chat');
-        processed.delete(key);
-      }
-      return;
-    }
-    replaceChatMsg({ name: m.name, text: m.text, type: m.type || 'normal', uid: m.uid, timestamp: m.time, speakAsAvatar: m.speakAsAvatar, speakAsJournalId: m.speakAsJournalId, whisperTo: m.whisperTo, whisperToName: m.whisperToName, nameColor: m.nameColor, msgKey: key, channel: 'chat', standingImg: m.standingImg, tokenId: m.tokenId, standingLabel: m.standingLabel, imageWide: !!m.imageWide, imageMeta: m.imageMeta, hideImageMeta: !!m.hideImageMeta });
-    processed.add(key);
-  };
-
-  const removeChatRecord = (key) => {
-    removeChatMsg(key, 'chat');
-    processed.delete(key);
-  };
-
-  if (onChildAdded && onChildChanged && onChildRemoved) {
-    trackActiveChatChannelListener(onChildAdded(listenRef, snap => addChatRecord(snap.key, snap.val() || {})));
-    trackActiveChatChannelListener(onChildChanged(listenRef, snap => changeChatRecord(snap.key, snap.val() || {})));
-    trackActiveChatChannelListener(onChildRemoved(listenRef, snap => removeChatRecord(snap.key)));
-  } else {
-    trackActiveChatChannelListener(onValue(listenRef, snap => {
-      const msgs = snap.val() || {};
-      if (typeof resetRenderedMessages === 'function') resetRenderedMessages('chat');
-      processed.clear();
-      Object.entries(msgs)
-        .map(([k, m]) => ({ ...m, _key: k }))
-        .sort((a, b) => (a.time || 0) - (b.time || 0))
-        .forEach(m => addChatRecord(m._key, m));
-          }));
-  }
+  trackActiveChatChannelListener(onValue(listenRef, snap => {
+    const msgs = snap.val() || {};
+    if (typeof resetRenderedMessages === 'function') resetRenderedMessages('chat');
+    processed.clear();
+    Object.entries(msgs)
+      .map(([k, m]) => ({ ...m, _key: k }))
+      .sort((a, b) => (a.time || 0) - (b.time || 0))
+      .forEach(m => addChatRecord(m._key, m));
+  }));
 }
 
 function handleDmChannelChange(ev) {
