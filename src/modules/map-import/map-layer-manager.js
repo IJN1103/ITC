@@ -22,12 +22,14 @@
     objects.forEach((item, index) => {
       const layerId = String(item?.layerId || `object:${item?.id || index + 1}`);
       const label = String(item?.name || '').trim() || String(item?.imageName || '').trim() || `오브젝트 ${index + 1}`;
+      const panelTokenId = String(item?.panelTokenId || '').trim();
       entries.push({
         id: layerId,
         name: label,
         sub: `object ${index + 1}`,
-        target: `[data-map-layer-id="${layerId.replace(/"/g, '\"')}"]`,
-        previewUrl: String(item?.url || '').trim(),
+        target: panelTokenId ? `tok-${panelTokenId}` : `[data-map-layer-id="${layerId.replace(/"/g, '\"')}"]`,
+        previewUrl: String(item?.previewUrl || item?.url || '').trim(),
+        panelTokenId,
       });
     });
     if (state.foreground?.url) {
