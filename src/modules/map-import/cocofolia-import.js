@@ -294,8 +294,46 @@
     return `mapimp_${safeRoom}_${safeSource}_${Date.now()}_${index + 1}`;
   }
 
+
+  function parseImportedPanelClickAction(rawAction) {
+    if (rawAction == null) return { panelActionType: 'none', panelActionText: '', raw: null };
+
+    if (typeof rawAction === 'string') {
+      const text = rawAction.trim();
+      if (!text) return { panelActionType: 'none', panelActionText: '', raw: rawAction };
+      return {
+        panelActionType: text.startsWith('/') ? 'macro' : 'chat',
+        panelActionText: text,
+        raw: rawAction,
+      };
+    }
+
+    if (typeof rawAction === 'object') {
+      const type = String(rawAction.type || rawAction.actionType || '').trim().toLowerCase();
+      const candidates = [rawAction.text, rawAction.message, rawAction.content, rawAction.command, rawAction.value]
+        .map((value) => typeof value === 'string' ? value.trim() : '')
+        .filter(Boolean);
+      const text = candidates[0] || '';
+      if (!text) return { panelActionType: 'none', panelActionText: '', raw: rawAction };
+      if (type === 'macro' || type === 'command' || text.startsWith('/')) {
+        return { panelActionType: 'macro', panelActionText: text, raw: rawAction };
+      }
+      if (type === 'chat' || type === 'message' || type === 'text') {
+        return { panelActionType: 'chat', panelActionText: text, raw: rawAction };
+      }
+      return {
+        panelActionType: text.startsWith('/') ? 'macro' : 'chat',
+        panelActionText: text,
+        raw: rawAction,
+      };
+    }
+
+    return { panelActionType: 'none', panelActionText: '', raw: rawAction };
+  }
+
   function buildImportedPanelToken(blueprint, roomCode, index) {
     const seed = blueprint?.panelTokenSeed || {};
+    const importedClickAction = parseImportedPanelClickAction(seed.clickAction);
     const tokenId = buildImportedPanelTokenId(roomCode, seed.sourceItemId || blueprint?.id || '', index);
     return {
       id: tokenId,
@@ -314,8 +352,8 @@
       panelFace: (blueprint?.coverUrl && seed?.sourceMeta?.closed === true) ? 'back' : 'front',
       panelLockPosition: !!seed.panelLockPosition,
       panelLockSize: !!seed.panelLockSize,
-      panelActionType: 'none',
-      panelActionText: '',
+      panelActionType: importedClickAction.panelActionType,
+      panelActionText: importedClickAction.panelActionText,
       mapLayerId: String(blueprint?.layerId || `object:${blueprint?.id || index + 1}`),
       importedMapObject: true,
       importedMapObjectMeta: {
@@ -323,7 +361,7 @@
         sourceLayerId: String(seed.sourceLayerId || blueprint?.layerId || ''),
         sourceImageName: String(seed.sourceImageName || blueprint?.imageName || ''),
         sourceCoverImageName: String(seed.sourceCoverImageName || blueprint?.coverImageName || ''),
-        clickAction: seed.clickAction || null,
+        clickAction: importedClickAction.raw,
         visible: seed.visible !== false,
         sourceMeta: seed.sourceMeta || null,
         layoutPct: {
