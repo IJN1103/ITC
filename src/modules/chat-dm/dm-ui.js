@@ -13,105 +13,7 @@
 
   function getDmBar() { return document.getElementById('dm-channel-bar'); }
   function getDmListWrap() { return document.getElementById('dm-channel-list'); }
-  function getAliasStorageKey(roomCode, gmUid) {
-    return `itc_dm_aliases_${String(roomCode || '').trim()}_${String(gmUid || '').trim()}`;
-  }
-
-  function getAliasMap() {
-    const state = ROOT.__DM_CHANNEL_STATE || (ROOT.__DM_CHANNEL_STATE = {});
-    if (!state.gmAliasOverrides || typeof state.gmAliasOverrides !== 'object') state.gmAliasOverrides = {};
-    return state.gmAliasOverrides;
-  }
-
-  function normalizeAlias(value) {
-    return String(value || '').trim().slice(0, 8);
-  }
-
-  function getAliasLabel(uid, fallbackName = '플레이어') {
-    const alias = normalizeAlias(getAliasMap()[String(uid || '').trim()] || '');
-    return alias || String(fallbackName || '플레이어').trim() || '플레이어';
-  }
-
-  function persistAliasMapLocal(roomCode, gmUid, aliasMap) {
-    try { localStorage.setItem(getAliasStorageKey(roomCode, gmUid), JSON.stringify(aliasMap || {})); } catch (e) {}
-  }
-
-  function loadAliasMapLocal(roomCode, gmUid) {
-    try {
-      return JSON.parse(localStorage.getItem(getAliasStorageKey(roomCode, gmUid)) || '{}') || {};
-    } catch (e) {
-      return {};
-    }
-  }
-
-  function applyAliasMap(aliasMap) {
-    const target = getAliasMap();
-    Object.keys(target).forEach((key) => { delete target[key]; });
-    Object.entries(aliasMap || {}).forEach(([uid, name]) => {
-      const safeUid = String(uid || '').trim();
-      const safeName = normalizeAlias(name);
-      if (!safeUid || !safeName) return;
-      target[safeUid] = safeName;
-    });
-  }
-
-  function ensureAliasSync() {
-    const state = getStateRoot();
-    const roomCode = String(state.roomCode || '').trim();
-    const gmUid = String(state.myId || '').trim();
-    if (!roomCode || !gmUid || !(typeof ROOT.isDmGmView === 'function' && ROOT.isDmGmView())) return;
-    const syncState = ROOT.__DM_ALIAS_SYNC_STATE || (ROOT.__DM_ALIAS_SYNC_STATE = { roomCode: '', gmUid: '', unsubs: [] });
-    if (syncState.roomCode === roomCode && syncState.gmUid === gmUid) return;
-    (syncState.unsubs || []).forEach((unsub) => { try { if (typeof unsub === 'function') unsub(); } catch (e) {} });
-    syncState.unsubs = [];
-    syncState.roomCode = roomCode;
-    syncState.gmUid = gmUid;
-
-    const localMap = loadAliasMapLocal(roomCode, gmUid);
-    applyAliasMap(localMap);
-
-    if (window._FB?.CONFIGURED && typeof ROOT.getDmAliasStoragePath === 'function') {
-      const rootPath = `users/${gmUid}/dmButtonAliases/${roomCode}`;
-      try {
-        const { db, ref, onValue } = window._FB;
-        const unsub = onValue(ref(db, rootPath), (snap) => {
-          const remoteMap = snap.val() || {};
-          applyAliasMap(remoteMap);
-          persistAliasMapLocal(roomCode, gmUid, getAliasMap());
-          renderDmChannelButtons();
-        });
-        if (typeof unsub === 'function') syncState.unsubs.push(unsub);
-      } catch (e) {}
-    }
-  }
-
-  async function saveAlias(uid, alias) {
-    const state = getStateRoot();
-    const roomCode = String(state.roomCode || '').trim();
-    const gmUid = String(state.myId || '').trim();
-    const safeUid = String(uid || '').trim();
-    const safeAlias = normalizeAlias(alias);
-    if (!roomCode || !gmUid || !safeUid) return;
-    const nextMap = { ...getAliasMap() };
-    if (safeAlias) nextMap[safeUid] = safeAlias; else delete nextMap[safeUid];
-    applyAliasMap(nextMap);
-    persistAliasMapLocal(roomCode, gmUid, getAliasMap());
-    renderDmChannelButtons();
-    if (window._FB?.CONFIGURED && typeof ROOT.getDmAliasStoragePath === 'function') {
-      try {
-        const { db, ref, set } = window._FB;
-        const path = ROOT.getDmAliasStoragePath(roomCode, safeUid, gmUid);
-        if (path) await set(ref(db, path), safeAlias || null);
-      } catch (e) {}
-    }
-  }
-
-  function promptAliasEdit(uid, fallbackName) {
-    const current = getAliasLabel(uid, '');
-    const input = window.prompt('표시 이름을 입력하세요. (최대 8글자, 빈칸이면 초기화)', current || '');
-    if (input === null) return;
-    saveAlias(uid, input);
-  }
+  function isChatTabActive() { return typeof _activeRightTab !== 'undefined' ? _activeRightTab === 'chat' : true; }
 
   function getOtherPlayerEntries() {
     const state = getStateRoot();
@@ -145,7 +47,7 @@
     items.push(`<button type="button" class="dm-channel-btn ${isGlobal ? 'is-active' : ''}" data-dm-role="global"><span class="dm-channel-label">전체</span><span class="dm-channel-dot" style="display:none"></span></button>`);
     others.forEach((player) => {
       const active = !isGlobal && selected.has(player.uid);
-      items.push(`<button type="button" class="dm-channel-btn ${active ? 'is-active' : ''}" data-dm-role="player" data-uid="${player.uid.replace(/"/g, '&quot;')}"><span class="dm-channel-label">${getAliasLabel(player.uid, player.name).replace(/</g, '&lt;').replace(/>/g, '&gt;')}</span><span class="dm-channel-dot" style="display:none"></span></button>`);
+      items.push(`<button type="button" class="dm-channel-btn ${active ? 'is-active' : ''}" data-dm-role="player" data-uid="${player.uid.replace(/"/g, '&quot;')}"><span class="dm-channel-label">${player.name.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</span><span class="dm-channel-dot" style="display:none"></span></button>`);
     });
     list.innerHTML = items.join('');
     list.querySelector('[data-dm-role="global"]')?.addEventListener('click', () => {
@@ -160,13 +62,6 @@
         if (next.has(uid)) next.delete(uid); else next.add(uid);
         if (typeof ROOT.selectDmParticipants === 'function') ROOT.selectDmParticipants(Array.from(next));
         renderDmChannelButtons();
-      });
-      btn.addEventListener('contextmenu', (ev) => {
-        ev.preventDefault();
-        const uid = String(btn.dataset.uid || '').trim();
-        if (!uid) return;
-        const fallbackName = String(btn.textContent || '').trim() || '플레이어';
-        promptAliasEdit(uid, fallbackName);
       });
     });
   }
@@ -202,7 +97,6 @@
     const bar = getDmBar();
     const list = getDmListWrap();
     if (!bar || !list) return;
-    ensureAliasSync();
     const visible = isChatTabActive();
     bar.style.display = visible ? 'inline-flex' : 'none';
     if (!visible) { list.innerHTML = ''; return; }
@@ -221,7 +115,6 @@
 
   ROOT.renderDmChannelButtons = renderDmChannelButtons;
   ROOT.refreshDmChannelButtons = renderDmChannelButtons;
-  ROOT.getDmButtonAliasLabel = getAliasLabel;
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', scheduleBootRender, { once: true });
   } else {
