@@ -87,6 +87,31 @@
     return document.getElementById(entry.target);
   }
 
+
+  function getImportedPanelPriorityPayload(order) {
+    const state = getStateRoot().mapState || {};
+    const objects = Array.isArray(state.objects) ? state.objects : [];
+    const objectMap = new Map(objects.map((item) => [String(item?.layerId || ''), item]));
+    const payload = {};
+    let nextPriority = 1000;
+    order.forEach((layerId) => {
+      const item = objectMap.get(String(layerId || ''));
+      const panelTokenId = String(item?.panelTokenId || '').trim();
+      if (!panelTokenId) return;
+      payload[`${panelTokenId}/panelPriority`] = nextPriority;
+      nextPriority += 1;
+    });
+    return payload;
+  }
+
+  async function syncImportedPanelLayerOrder(roomCode, order) {
+    if (!window._FB?.CONFIGURED) return;
+    const payload = getImportedPanelPriorityPayload(order);
+    if (!Object.keys(payload).length) return;
+    const { db, ref, update } = window._FB;
+    await update(ref(db, `rooms/${roomCode}/tokens`), payload);
+  }
+
   function applyMapLayerState() {
     const entries = getLayerEntries();
     const entryMap = new Map(entries.map((entry) => [entry.id, entry]));
@@ -111,6 +136,7 @@
     if (!roomCode || roomCode === 'local') return;
     const { db, ref, update } = window._FB;
     await update(ref(db, `rooms/${roomCode}/bgm`), { mapLayerState: normalized });
+    await syncImportedPanelLayerOrder(roomCode, normalized.order);
   }
 
   function createEyeIcon(isVisible) {

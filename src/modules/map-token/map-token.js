@@ -726,6 +726,7 @@ function renderAllTokens(tokens) {
   Object.values(tokens).forEach(t => createTokenEl(t));
   updateMultiTokenSelectionUI();
   renderMapStatusPanel(tokens);
+  if (typeof applyMapLayerState === 'function') applyMapLayerState();
   /* 게임 화면 진입 후 맵 크기가 정상 반영되도록 보장 */
   applyMapTransform();
 }
@@ -816,6 +817,7 @@ function addOrUpdateSingleToken(id, data) {
   }
   syncMultiTokenSelectionWithTokens(St.tokens);
   updateMultiTokenSelectionUI();
+  if (typeof applyMapLayerState === 'function') applyMapLayerState();
 }
 
 /* 스탠딩 배열의 fingerprint (변경 감지용) */
