@@ -15,11 +15,22 @@
     return document.getElementById('dm-channel-list');
   }
 
+  function isGmView() {
+    const state = getStateRoot();
+    const myId = String(state.myId || '').trim();
+    const myRole = String(state.players?.[myId]?.role || '').trim().toLowerCase();
+    const sessionRole = String(sessionStorage.getItem('itc_session_role') || '').trim().toLowerCase();
+    return !!state.isGM || myRole === 'gm' || sessionRole === 'gm';
+  }
+
   function getOtherPlayerEntries() {
     const state = getStateRoot();
     const players = state.players || {};
     return Object.entries(players)
-      .filter(([uid]) => String(uid) !== String(state.myId || ''))
+      .filter(([uid, player]) => {
+        if (String(uid) === String(state.myId || '')) return false;
+        return String(player?.role || '').trim().toLowerCase() !== 'gm';
+      })
       .map(([uid, player]) => ({
         uid: String(uid || '').trim(),
         name: String(player?.name || '').trim() || '플레이어',
@@ -42,9 +53,8 @@
     const list = getDmListWrap();
     if (!bar || !list) return;
 
-    const state = getStateRoot();
-    const visible = !!state.isGM && isChatTabActive();
-    bar.style.display = visible ? '' : 'none';
+    const visible = isGmView() && isChatTabActive();
+    bar.style.display = visible ? 'flex' : 'none';
     if (!visible) {
       list.innerHTML = '';
       return;
@@ -98,4 +108,10 @@
 
   ROOT.renderDmChannelButtons = renderDmChannelButtons;
   ROOT.refreshDmChannelButtons = renderDmChannelButtons;
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => setTimeout(renderDmChannelButtons, 0), { once: true });
+  } else {
+    setTimeout(renderDmChannelButtons, 0);
+  }
 })();
