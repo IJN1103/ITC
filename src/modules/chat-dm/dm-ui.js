@@ -146,13 +146,17 @@
     const state = getStateRoot();
     const roomCode = String(state.roomCode || state.roomId || '').trim();
     const runtime = getUnreadRuntime();
-    if (!roomCode || typeof ref !== 'function' || typeof onValue !== 'function' || !ROOT.db) return;
+    const fb = ROOT._FB || {};
+    const dbRef = fb.db || (typeof db !== 'undefined' ? db : null);
+    const refFn = fb.ref || (typeof ref === 'function' ? ref : null);
+    const onValueFn = fb.onValue || (typeof onValue === 'function' ? onValue : null);
+    if (!roomCode || !dbRef || typeof refFn !== 'function' || typeof onValueFn !== 'function') return;
     if (runtime.roomCode === roomCode && runtime.off) return;
     try { if (typeof runtime.off === 'function') runtime.off(); } catch (e) {}
     runtime.roomCode = roomCode;
     runtime.off = null;
     try {
-      runtime.off = onValue(ref(ROOT.db, `rooms/${roomCode}/chat`), (snap) => {
+      runtime.off = onValueFn(refFn(dbRef, `rooms/${roomCode}/chat`), (snap) => {
         rebuildUnreadState(snap.val() || {});
         try { renderDmChannelButtons(); } catch (e) {}
       });
