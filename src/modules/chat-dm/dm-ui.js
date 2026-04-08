@@ -96,11 +96,17 @@
     const key = String(channelKey || '').trim();
     if (!key || key === 'global') return;
     const runtime = getUnreadRuntime();
-    const seen = loadSeenMap();
     const latest = Number(runtime.latestByChannel?.[key] || 0);
-    const next = latest || Date.now();
-    if (Number(seen[key] || 0) >= next) return;
-    seen[key] = next;
+    if (!latest) {
+      if (typeof ROOT.clearDmUnreadState === 'function') ROOT.clearDmUnreadState(key);
+      return;
+    }
+    const seen = loadSeenMap();
+    if (Number(seen[key] || 0) >= latest) {
+      if (typeof ROOT.clearDmUnreadState === 'function') ROOT.clearDmUnreadState(key);
+      return;
+    }
+    seen[key] = latest;
     saveSeenMap(seen);
     if (typeof ROOT.clearDmUnreadState === 'function') ROOT.clearDmUnreadState(key);
   }
