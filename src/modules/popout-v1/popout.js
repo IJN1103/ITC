@@ -202,6 +202,7 @@ function buildPopoutScript(journalJson, playersJson) {
   // dice card
   L.push('if(type==="dice"){var dm=text.match(/[\\u{1F3B2}\\u{1F3AF}]\\s*(.+?)\\s*\\u2192\\s*(\\d+)\\s*\\(([^)]+)\\)/u);if(dm){mt.style.display="none";var dc=document.createElement("div");dc.className="dc";["dc-f","dc-r","dc-d"].forEach(function(cls,i){var d=document.createElement("div");d.className=cls;d.textContent=dm[i+1];dc.appendChild(d)});mb.appendChild(dc)}}');
   L.push('row.appendChild(mb);c.appendChild(row);c.scrollTop=c.scrollHeight};');
+  L.push('window.setMessages=function(ch,list){ch=ch||"chat";var c=document.getElementById("pm-"+ch)||document.getElementById("pm-chat");if(!c)return;c.innerHTML="";(Array.isArray(list)?list:[]).forEach(function(item){window.addMsg(item.name,item.text,item.type,item.channel||ch,item.nameColor||"",item.avatar||"",item.time||"",item.fhtml||"")})};');
 
   // setJournals
   L.push('window.setJournals=function(list){journals=list;var c=document.getElementById("pm-journal");c.innerHTML="";list.forEach(function(j){var d=document.createElement("div");d.className="j-item";var b=document.createElement("b");b.textContent=j.title||"\\uBB34\\uC81C";var s=document.createElement("span");s.textContent=(j.body||"").slice(0,40)||"\\uB0B4\\uC6A9 \\uC5C6\\uC74C";d.appendChild(b);d.appendChild(s);c.appendChild(d)})};');
@@ -278,17 +279,31 @@ function popoutChat() {
     return { name: nameEl?.textContent||'', text: textEl?.textContent||'', type, nc: nameEl?.style?.color||'', av: avImg?.src||'', time: timeEl?.textContent||'', fhtml: textEl?.innerHTML||'' };
   };
 
-  const syncExisting = () => {
-    if (!win || win.closed || !win._popReady) return;
-    document.querySelectorAll('#chat-messages > div').forEach(m => {
-      const d = extractMsgData(m);
-      if (d.text || d.fhtml) win.addMsg(d.name, d.text, d.type, 'chat', d.nc, d.av, d.time, d.fhtml);
-    });
-    document.querySelectorAll('#casual-messages > div').forEach(m => {
-      const d = extractMsgData(m);
-      if (d.text || d.fhtml) win.addMsg(d.name, d.text, 'normal', 'casual', '', d.av, d.time, d.fhtml);
-    });
-    try { win.setJournals(loadJournals()); } catch(e){}
+  const extractPopoutPaneMsgData = (m, fallbackChannel = 'chat') => {
+    const nameEl = m.querySelector('.msg-name');
+    const textEl = m.querySelector('.msg-text');
+    const timeEl = m.querySelector('.msg-time');
+    const avImg = m.querySelector('.msg-avatar img');
+    const type = m.classList.contains('msg-dice') ? 'dice' : m.classList.contains('msg-sys') ? 'sys' : m.classList.contains('dsec') ? 'dsec' : 'normal';
+    return {
+      name: nameEl?.textContent || '',
+      text: textEl?.textContent || '',
+      type,
+      channel: fallbackChannel,
+      nameColor: nameEl?.style?.color || '',
+      avatar: avImg?.src || '',
+      time: timeEl?.textContent || '',
+      fhtml: textEl?.innerHTML || '',
+    };
+  };
+
+  const getPaneSnapshot = (selector, fallbackChannel) => Array.from(document.querySelectorAll(selector)).map((m) => extractPopoutPaneMsgData(m, fallbackChannel)).filter((d) => d.text || d.fhtml || d.type === 'dsec');
+
+  const syncPopoutWindow = (targetWin) => {
+    if (!targetWin || targetWin.closed || !targetWin._popReady) return;
+    try { if (targetWin.setMessages) targetWin.setMessages('chat', getPaneSnapshot('#chat-messages > div', 'chat')); } catch (e) {}
+    try { if (targetWin.setMessages) targetWin.setMessages('casual', getPaneSnapshot('#casual-messages > div', 'casual')); } catch (e) {}
+    try { targetWin.setJournals(loadJournals()); } catch(e){}
     try {
       const avMap = {}, ncMap = {};
       _allJournals.forEach(j => {
@@ -297,10 +312,50 @@ function popoutChat() {
         if (j.nameColor) ncMap[j.id] = j.nameColor;
       });
       ncMap['_me'] = St.myNameColor || '';
-      win.setAvatars(avMap);
-      win.setColors(ncMap);
+      targetWin.setAvatars(avMap);
+      targetWin.setColors(ncMap);
     } catch(e){}
   };
+
+  const syncExisting = () => {
+    if (!win || win.closed || !win._popReady) return;
+    syncPopoutWindow(win);
+  };
+
+  const schedulePopoutSync = (() => {
+    let timer = 0;
+    return () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        timer = 0;
+        _popoutWins = _popoutWins.filter(w => w && !w.closed);
+        _popoutWins.forEach(syncPopoutWindow);
+      }, 40);
+    };
+  })();
+
+  const bindPopoutMirror = (() => {
+    let bound = false;
+    let chatObs = null;
+    let casualObs = null;
+    return () => {
+      if (bound) return;
+      bound = true;
+      const chatEl = document.getElementById('chat-messages');
+      const casualEl = document.getElementById('casual-messages');
+      if (chatEl && typeof MutationObserver !== 'undefined') {
+        chatObs = new MutationObserver(() => schedulePopoutSync());
+        chatObs.observe(chatEl, { childList: true, subtree: true, characterData: true });
+      }
+      if (casualEl && typeof MutationObserver !== 'undefined') {
+        casualObs = new MutationObserver(() => schedulePopoutSync());
+        casualObs.observe(casualEl, { childList: true, subtree: true, characterData: true });
+      }
+      document.addEventListener('itc:dm-channel-change', schedulePopoutSync);
+    };
+  })();
+
+  bindPopoutMirror();
   let tries = 0;
   const t = setInterval(() => { tries++; if ((win && win._popReady) || tries > 15) { clearInterval(t); syncExisting(); } }, 200);
   showToast('채팅이 새 창으로 분리됐어요! (' + _popoutWins.length + '/3)');
@@ -325,13 +380,20 @@ function sendChatFromPopout(text, tab) {
 }
 
 const _baseAppend = appendChatMsg;
-appendChatMsg = function(name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId, whisperTo, whisperToName, nameColor, msgKey, channel, standingImg, tokenId, standingLabel, imageWide = false, imageMeta = null, hideImageMeta = false) {
-  _baseAppend(name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId, whisperTo, whisperToName, nameColor, msgKey, channel, standingImg, tokenId, standingLabel, imageWide, imageMeta, hideImageMeta);
-  _popoutWins = _popoutWins.filter(w => w && !w.closed);
-  const d = timestamp ? new Date(timestamp) : new Date();
-  const ts = d.getHours().toString().padStart(2,'0') + ':' + d.getMinutes().toString().padStart(2,'0');
-  const av = speakAsAvatar || getPopoutAvatarUrl(name, uid);
-  const fhtml = fmtText(text);
-  _popoutWins.forEach(w => { if (w.addMsg) w.addMsg(name, text, type, channel || 'chat', nameColor || '', av, ts, fhtml); });
+appendChatMsg = function(msg = {}) {
+  _baseAppend(msg);
 };
 
+const _baseReplace = typeof replaceChatMsg === 'function' ? replaceChatMsg : null;
+if (_baseReplace) {
+  replaceChatMsg = function(msg = {}) {
+    _baseReplace(msg);
+  };
+}
+
+const _baseRemove = typeof removeChatMsg === 'function' ? removeChatMsg : null;
+if (_baseRemove) {
+  removeChatMsg = function(msgKey, channel = 'chat') {
+    _baseRemove(msgKey, channel);
+  };
+}
