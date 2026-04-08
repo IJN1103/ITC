@@ -6,6 +6,7 @@
 let _processedChatKeys = new Set();
 let _processedChatKeysByChannel = new Map();
 let _chatMessageSignaturesByChannel = new Map();
+let _chatRecordsByChannel = new Map();
 let _activeChatChannelKey = 'global';
 let _activeChatChannelUnsubs = [];
 let _processedCasualKeys = new Set();
@@ -139,6 +140,28 @@ function buildChatMessageSignature(message = {}) {
   ]);
 }
 
+function cacheChannelMessages(channelKey = 'global', records = []) {
+  const safeKey = String(channelKey || 'global').trim() || 'global';
+  _chatRecordsByChannel.set(safeKey, (Array.isArray(records) ? records : []).map((record) => ({ ...record })));
+}
+
+function restoreCachedChannelMessages(channelKey = 'global') {
+  const safeKey = String(channelKey || 'global').trim() || 'global';
+  const records = Array.isArray(_chatRecordsByChannel.get(safeKey)) ? _chatRecordsByChannel.get(safeKey) : [];
+  if (typeof resetRenderedMessages === 'function') resetRenderedMessages('chat');
+  const processed = getProcessedChatKeySet(safeKey);
+  const signatures = getChatMessageSignatureStore(safeKey);
+  processed.clear();
+  signatures.clear();
+  records.forEach((record) => {
+    const key = String(record?._key || '').trim();
+    if (!key) return;
+    appendChatMsg({ name: record.name, text: record.text, type: record.type || 'normal', uid: record.uid, timestamp: record.time, speakAsAvatar: record.speakAsAvatar, speakAsJournalId: record.speakAsJournalId, whisperTo: record.whisperTo, whisperToName: record.whisperToName, nameColor: record.nameColor, msgKey: key, channel: 'chat', standingImg: record.standingImg, tokenId: record.tokenId, standingLabel: record.standingLabel, imageWide: !!record.imageWide, imageMeta: record.imageMeta, hideImageMeta: !!record.hideImageMeta });
+    processed.add(key);
+    signatures.set(key, buildChatMessageSignature(record));
+  });
+}
+
 function buildDmChannelCatalogFromChat(rawMessages = {}) {
   const map = new Map();
   Object.values(rawMessages || {}).forEach((message) => {
@@ -209,7 +232,7 @@ function switchActiveChatChannel(channelKey = 'global') {
   const { db, ref, onValue, query, limitToLast } = window._FB;
   cleanupActiveChatChannelListeners();
   _activeChatChannelKey = safeChannelKey;
-  if (typeof resetRenderedMessages === 'function') resetRenderedMessages('chat');
+  restoreCachedChannelMessages(safeChannelKey);
 
   const processed = getProcessedChatKeySet(safeChannelKey);
   const signatures = getChatMessageSignatureStore(safeChannelKey);
@@ -242,6 +265,7 @@ function switchActiveChatChannel(channelKey = 'global') {
       .filter((m) => shouldShowChatMessage(m))
       .sort((a, b) => (a.time || 0) - (b.time || 0));
 
+    cacheChannelMessages(safeChannelKey, filtered);
     const nextKeys = new Set(filtered.map((m) => m._key));
     Array.from(processed).forEach((key) => {
       if (!nextKeys.has(key)) {
@@ -304,6 +328,7 @@ function resetRoomScopedUiState() {
   }
   _processedChatKeysByChannel = new Map();
   _chatMessageSignaturesByChannel = new Map();
+  _chatRecordsByChannel = new Map();
   _activeChatChannelKey = 'global';
 }
 
