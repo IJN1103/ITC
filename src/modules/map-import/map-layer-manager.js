@@ -22,14 +22,12 @@
     objects.forEach((item, index) => {
       const layerId = String(item?.layerId || `object:${item?.id || index + 1}`);
       const label = String(item?.name || '').trim() || String(item?.imageName || '').trim() || `오브젝트 ${index + 1}`;
-      const panelTokenId = String(item?.panelTokenId || '').trim();
       entries.push({
         id: layerId,
         name: label,
         sub: `object ${index + 1}`,
-        target: panelTokenId ? `tok-${panelTokenId}` : `[data-map-layer-id="${layerId.replace(/"/g, '\"')}"]`,
-        previewUrl: String(item?.previewUrl || item?.url || '').trim(),
-        panelTokenId,
+        target: `[data-map-layer-id="${layerId.replace(/"/g, '\"')}"]`,
+        previewUrl: String(item?.url || '').trim(),
       });
     });
     if (state.foreground?.url) {
@@ -140,14 +138,15 @@
       if (panelTokenId) tokenDeletes[panelTokenId] = null;
     });
 
-    const { db, ref, update } = window._FB;
-    await update(ref(db, `rooms/${roomCode}/bgm`), {
-      mapObjects: nextObjects,
-      mapLayerState: nextLayerState,
+    const payload = {
+      'bgm/mapObjects': nextObjects,
+      'bgm/mapLayerState': nextLayerState,
+    };
+    Object.entries(tokenDeletes).forEach(([tokenId, value]) => {
+      payload[`tokens/${tokenId}`] = value;
     });
-    if (Object.keys(tokenDeletes).length) {
-      await update(ref(db, `rooms/${roomCode}/tokens`), tokenDeletes);
-    }
+    const { db, ref, update } = window._FB;
+    await update(ref(db, `rooms/${roomCode}`), payload);
   }
 
   function confirmDeleteLayer(entry) {
@@ -202,14 +201,15 @@
       if (item.panelTokenId) tokenDeletes[item.panelTokenId] = null;
     });
 
-    const { db, ref, update } = window._FB;
-    await update(ref(db, `rooms/${roomCode}/bgm`), {
-      mapObjects: nextObjects,
-      mapLayerState: nextLayerState,
+    const payload = {
+      'bgm/mapObjects': nextObjects,
+      'bgm/mapLayerState': nextLayerState,
+    };
+    Object.entries(tokenDeletes).forEach(([tokenId, value]) => {
+      payload[`tokens/${tokenId}`] = value;
     });
-    if (Object.keys(tokenDeletes).length) {
-      await update(ref(db, `rooms/${roomCode}/tokens`), tokenDeletes);
-    }
+    const { db, ref, update } = window._FB;
+    await update(ref(db, `rooms/${roomCode}`), payload);
   }
 
   function confirmDeleteAllObjectLayers() {
