@@ -81,7 +81,7 @@
   }
 
   function getMessageStamp(msg) {
-    const direct = Number(msg?.updatedAt || msg?.createdAt || msg?.ts || 0);
+    const direct = Number(msg?.updatedAt || msg?.createdAt || msg?.ts || msg?.time || 0);
     if (Number.isFinite(direct) && direct > 0) return direct;
     const parsed = Date.parse(String(msg?.updatedAt || msg?.createdAt || msg?.time || ''));
     return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
