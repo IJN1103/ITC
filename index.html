@@ -424,11 +424,11 @@ window._FB = {
         <button class="rtab" id="rtab-journal" onclick="switchRightTab('journal')">문서</button>
       </div>
       <div class="chat-action-bar" id="chat-action-bar">
+        <button class="chat-popout-btn" id="chat-popout-btn" onclick="popoutChat()" title="채팅을 새 탭으로 분리">⤢</button>
+        <button class="chat-clear-btn" id="chat-clear-btn" onclick="clearAllChatHistory()" title="채팅/잡담 전체 지우기" style="display:none">채팅 지우기</button>
         <div class="dm-channel-bar" id="dm-channel-bar" style="display:none">
           <div class="dm-channel-list" id="dm-channel-list"></div>
         </div>
-        <button class="chat-popout-btn" id="chat-popout-btn" onclick="popoutChat()" title="채팅을 새 탭으로 분리">⤢</button>
-        <button class="chat-clear-btn" id="chat-clear-btn" onclick="clearAllChatHistory()" title="채팅/잡담 전체 지우기" style="display:none">채팅 지우기</button>
       </div>
 
       <!-- 채팅 패널 -->

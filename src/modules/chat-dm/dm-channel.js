@@ -4,7 +4,7 @@
   const state = {
     roomCode: '',
     currentChannelKey: GLOBAL_CHANNEL_KEY,
-    selectedParticipantIds: [], // GM 화면에서는 '선택한 플레이어 uid들(본인 제외)' 기준
+    selectedParticipantIds: [],
     gmAliasOverrides: {},
     unreadByChannel: {},
     availableChannels: [],
@@ -17,19 +17,11 @@
   }
 
   function uniqSortedIds(ids) {
-    return Array.from(new Set((Array.isArray(ids) ? ids : [])
-      .map((id) => String(id || '').trim())
-      .filter(Boolean))).sort();
+    return Array.from(new Set((Array.isArray(ids) ? ids : []).map((id) => String(id || '').trim()).filter(Boolean))).sort();
   }
 
   function getCurrentRoomCode() {
-    return String(
-      state.roomCode ||
-      getStateRoot().roomCode ||
-      sessionStorage.getItem('itc_session_code') ||
-      document.getElementById('topbar-code')?.textContent ||
-      ''
-    ).trim();
+    return String(state.roomCode || getStateRoot().roomCode || sessionStorage.getItem('itc_session_code') || document.getElementById('topbar-code')?.textContent || '').trim();
   }
 
   function getCurrentUserId() {
@@ -63,8 +55,7 @@
 
   function parseDmChannelKey(channelKey) {
     const raw = String(channelKey || '').trim();
-    if (!raw || raw === GLOBAL_CHANNEL_KEY) return [];
-    if (!raw.startsWith('dm_')) return [];
+    if (!raw || raw === GLOBAL_CHANNEL_KEY || !raw.startsWith('dm_')) return [];
     return uniqSortedIds(raw.slice(3).split('_'));
   }
 
@@ -90,11 +81,7 @@
   function selectDmParticipants(participantIds) {
     const ids = uniqSortedIds(participantIds);
     state.selectedParticipantIds = ids;
-    if (isGmView()) {
-      state.currentChannelKey = buildGmScopedDmChannelKey(ids, getCurrentUserId());
-    } else {
-      state.currentChannelKey = ids.length ? buildDmChannelKey(ids) : GLOBAL_CHANNEL_KEY;
-    }
+    state.currentChannelKey = isGmView() ? buildGmScopedDmChannelKey(ids, getCurrentUserId()) : (ids.length ? buildDmChannelKey(ids) : GLOBAL_CHANNEL_KEY);
     return state.currentChannelKey;
   }
 
@@ -117,11 +104,7 @@
     return (Array.isArray(channels) ? channels : []).map((channel) => {
       const participantIds = uniqSortedIds(channel?.participantIds || parseDmChannelKey(channel?.channelKey || ''));
       const channelKey = String(channel?.channelKey || buildDmChannelKey(participantIds) || '').trim();
-      return {
-        channelKey,
-        participantIds,
-        createdBy: String(channel?.createdBy || '').trim(),
-      };
+      return { channelKey, participantIds, createdBy: String(channel?.createdBy || '').trim() };
     }).filter((channel) => channel.channelKey && !isGlobalChannelKey(channel.channelKey));
   }
 
@@ -146,18 +129,13 @@
 
   function setUnread(channelKey, enabled) {
     const key = String(channelKey || '').trim() || GLOBAL_CHANNEL_KEY;
-    if (!key || key === getCurrentChannelKey()) {
-      delete state.unreadByChannel[key];
-      return false;
-    }
-    if (enabled) state.unreadByChannel[key] = true;
-    else delete state.unreadByChannel[key];
+    if (!key || key === getCurrentChannelKey()) { delete state.unreadByChannel[key]; return false; }
+    if (enabled) state.unreadByChannel[key] = true; else delete state.unreadByChannel[key];
     return !!state.unreadByChannel[key];
   }
 
   function clearUnread(channelKey) {
-    const key = String(channelKey || '').trim() || GLOBAL_CHANNEL_KEY;
-    delete state.unreadByChannel[key];
+    delete state.unreadByChannel[String(channelKey || '').trim() || GLOBAL_CHANNEL_KEY];
   }
 
   function getAliasStoragePath(roomCode, targetUid, gmUid) {

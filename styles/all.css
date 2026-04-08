@@ -399,7 +399,7 @@ to{opacity:1}
 .chat-popout-btn{width:24px;padding:0;}
 .chat-clear-btn{padding:0 10px;letter-spacing:.02em;font-size:10px;}
 .chat-popout-btn:hover,.chat-clear-btn:hover{border-color:var(--accent);color:var(--accent);background:rgba(184,154,96,.06);}
-.dm-channel-bar{display:flex;align-items:center;gap:6px;flex:1;min-width:0;margin-right:8px;overflow:hidden}
+.dm-channel-bar{display:inline-flex;align-items:center;gap:6px;flex:0 1 auto;min-width:0;max-width:calc(100% - 90px);overflow:hidden}
 .dm-channel-list{display:flex;align-items:center;gap:6px;min-width:0;overflow-x:auto;padding-bottom:2px;scrollbar-width:none}
 .dm-channel-list::-webkit-scrollbar{display:none}
 .dm-channel-btn{position:relative;height:24px;padding:0 10px;border-radius:999px;border:1px solid var(--border);background:var(--s2);color:var(--muted);font:inherit;font-size:10px;letter-spacing:.02em;cursor:pointer;transition:var(--t);display:flex;align-items:center;justify-content:center;flex-shrink:0;max-width:120px}
