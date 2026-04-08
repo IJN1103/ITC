@@ -302,8 +302,8 @@
       tokenCategory: 'panel',
       type: 'panel',
       name: String(seed.name || blueprint?.name || `오브젝트 ${index + 1}`),
-      x: Number(seed.xPct ?? blueprint?.xPct ?? 50),
-      y: Number(seed.yPct ?? blueprint?.yPct ?? 50),
+      x: Number(seed.xCenterPct ?? seed.xPct ?? blueprint?.xCenterPct ?? blueprint?.xPct ?? 50),
+      y: Number(seed.yCenterPct ?? seed.yPct ?? blueprint?.yCenterPct ?? blueprint?.yPct ?? 50),
       rotation: Number(seed.angle || blueprint?.angle || 0),
       memo: String(seed.memo || ''),
       panelWidth: Math.max(1, Number(seed.panelWidth || blueprint?.sourceWidth || 1) || 1),
@@ -415,6 +415,10 @@
         const objectId = String(item.id || '');
         const imageName = String(item.imageUrl || '').trim();
         const displayName = String(item.name || '').trim() || imageName || `오브젝트 ${Number(item.order || 0) || 0}`;
+        const xPct = ((x - baseLeft) / spanW) * 100;
+        const yPct = ((y - baseTop) / spanH) * 100;
+        const wPct = (w / spanW) * 100;
+        const hPct = (h / spanH) * 100;
         return {
           id: objectId,
           layerId: `object:${objectId}`,
@@ -424,10 +428,12 @@
           sourceZ: Number(item.z || 0),
           sourceOrder: Number(item.order || 0),
           order: Number(item.order || 0),
-          xPct: ((x - baseLeft) / spanW) * 100,
-          yPct: ((y - baseTop) / spanH) * 100,
-          wPct: (w / spanW) * 100,
-          hPct: (h / spanH) * 100,
+          xPct,
+          yPct,
+          wPct,
+          hPct,
+          xCenterPct: xPct + (wPct / 2),
+          yCenterPct: yPct + (hPct / 2),
         };
       });
   }
