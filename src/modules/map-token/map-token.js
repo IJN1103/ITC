@@ -715,7 +715,6 @@ function renderAllTokens(tokens) {
     return;
   }
   _pendingTokenRender = false;
-  clearPanelTokenActionState();
   hideTokenMemoBubble();
   const inner = document.getElementById('map-inner');
   if (inner) inner.querySelectorAll('.map-token').forEach(t => t.remove());
@@ -723,7 +722,7 @@ function renderAllTokens(tokens) {
   Object.values(tokens).forEach(t => createTokenEl(t));
   updateMultiTokenSelectionUI();
   renderMapStatusPanel(tokens);
-  syncPanelTokenEditLifecycleWithTokens(tokens);
+  if (typeof applyMapLayerState === 'function') applyMapLayerState();
   /* 게임 화면 진입 후 맵 크기가 정상 반영되도록 보장 */
   applyMapTransform();
 }
@@ -800,14 +799,10 @@ function addOrUpdateSingleToken(id, data) {
       }
       refreshTokenLiveSnapshot(existing, data);
       if (_teTokenId === id) refreshTokenOwnerBar(data);
-      syncPanelTokenEditLifecycleWithTokens(St.tokens);
       return;
     }
   }
 
-  if (getTokenCategory(data || St.tokens?.[id] || {}) === 'panel') {
-    clearPanelTokenActionState(id);
-  }
   if (existing) existing.remove();
   if (data) {
     createTokenEl(data);
@@ -818,7 +813,7 @@ function addOrUpdateSingleToken(id, data) {
   }
   syncMultiTokenSelectionWithTokens(St.tokens);
   updateMultiTokenSelectionUI();
-  syncPanelTokenEditLifecycleWithTokens(St.tokens);
+  if (typeof applyMapLayerState === 'function') applyMapLayerState();
 }
 
 /* 스탠딩 배열의 fingerprint (변경 감지용) */
@@ -833,7 +828,6 @@ function removeSingleToken(id) {
   if (el) el.remove();
   setMultiTokenSelection(_multiSelectedTokenIds.filter(x => x !== id));
   removeMapStatusCard(id, St.tokens);
-  syncPanelTokenEditLifecycleWithTokens(St.tokens);
 }
 
 
@@ -844,34 +838,18 @@ function clearPanelTokenActionState(tokenId = null) {
   if (id) {
     _panelTokenActionLocks.delete(id);
     _panelTokenActionLastRun.delete(id);
-    _panelTokenActionSuppressUntil.delete(id);
     return;
   }
   cancelPendingPanelTokenClickAction();
   _panelTokenActionLocks.clear();
   _panelTokenActionLastRun.clear();
-  _panelTokenActionSuppressUntil.clear();
-}
-
-function suppressPanelTokenClickAction(tokenId, duration = 340) {
-  const id = String(tokenId || '');
-  if (!id) return;
-  const until = Date.now() + Math.max(0, Number(duration) || 0);
-  _panelTokenActionSuppressUntil.set(id, until);
-  if (_panelTokenClickTokenId === id) cancelPendingPanelTokenClickAction();
 }
 
 function canRunPanelTokenClickAction(tokenId) {
   const id = String(tokenId || '');
   if (!id) return false;
-  if (St.tool === 'erase') return false;
   if (!St.tokens?.[id]) return false;
   if (_panelTokenActionLocks.has(id)) return false;
-  const suppressedUntil = Number(_panelTokenActionSuppressUntil.get(id) || 0);
-  if (suppressedUntil) {
-    if (Date.now() < suppressedUntil) return false;
-    _panelTokenActionSuppressUntil.delete(id);
-  }
   const lastRun = Number(_panelTokenActionLastRun.get(id) || 0);
   if (lastRun && Date.now() - lastRun < PANEL_TOKEN_ACTION_COOLDOWN) return false;
   return true;
@@ -905,40 +883,26 @@ function getCurrentSpeakAsJournalForPanelAction() {
   return loadJournals().find(x => x.id === St.speakAsJournalId) || null;
 }
 
-function getPanelTokenSpeakAsDispatchContext(text = '') {
-  const message = String(text || '');
-  const journal = getCurrentSpeakAsJournalForPanelAction();
-  const speakAsContext = (typeof window.saGetSelectedJournalContext === 'function')
-    ? window.saGetSelectedJournalContext(message)
-    : null;
-  const senderName = speakAsContext?.name || St.myName;
-  const extra = speakAsContext
-    ? {
-        speakAsAvatar: speakAsContext.speakAsAvatar || null,
-        speakAsJournalId: speakAsContext.speakAsJournalId || null,
-        nameColor: speakAsContext.nameColor || '',
-        tokenId: speakAsContext.tokenId || null,
-        standingLabel: speakAsContext.standingLabel || '',
-      }
-    : null;
-  return { journal, speakAsContext, senderName, extra };
-}
-
-async function sendPanelTokenTextAsCurrentProfile(text) {
+async function sendPanelTokenChatAsCurrentProfile(text) {
   const message = String(text || '');
   if (!message.trim()) return;
-  const dispatch = getPanelTokenSpeakAsDispatchContext(message);
-  if (dispatch.journal && typeof saSendMessage === 'function') {
-    await saSendMessage(dispatch.journal, message);
+  const journal = getCurrentSpeakAsJournalForPanelAction();
+  if (journal && typeof saSendMessage === 'function') {
+    await saSendMessage(journal, message);
     return;
   }
-  await sendMessage(dispatch.senderName, message, 'normal', dispatch.extra);
+  await sendMessage(St.myName, message, 'normal');
 }
 
 async function sendPanelTokenChoiceAsCurrentProfile(options) {
   const picked = options[Math.floor(Math.random() * options.length)];
   const message = `🎯 Choice [${options.join(', ')}] → ${picked}`;
-  await sendPanelTokenTextAsCurrentProfile(message);
+  const journal = getCurrentSpeakAsJournalForPanelAction();
+  if (journal && typeof saSendMessage === 'function') {
+    await saSendMessage(journal, message);
+    return;
+  }
+  await sendMessage(St.myName, message, 'normal');
 }
 
 async function rollPanelTokenFormulaAsCurrentProfile(formula) {
@@ -1000,10 +964,22 @@ async function rollPanelTokenFormulaAsCurrentProfile(formula) {
   const label = labelParts.join('');
   const detail = allDetails.join(' ') + ' = ' + grandTotal;
   const text = `🎲 ${label} → ${grandTotal}  (${detail})`;
-  const dispatch = getPanelTokenSpeakAsDispatchContext(text);
-  const rollObj = { playerId: St.myId, player: dispatch.senderName, dice: label, total: grandTotal, rolls: allRolls, detail, time: Date.now() };
+  const speakAsContext = (typeof window.saGetSelectedJournalContext === 'function')
+    ? window.saGetSelectedJournalContext(text)
+    : null;
+  const senderName = speakAsContext?.name || St.myName;
+  const extra = speakAsContext
+    ? {
+        speakAsAvatar: speakAsContext.speakAsAvatar || null,
+        speakAsJournalId: speakAsContext.speakAsJournalId || null,
+        nameColor: speakAsContext.nameColor || '',
+        tokenId: speakAsContext.tokenId || null,
+        standingLabel: speakAsContext.standingLabel || '',
+      }
+    : null;
+  const rollObj = { playerId: St.myId, player: senderName, dice: label, total: grandTotal, rolls: allRolls, detail, time: Date.now() };
   showRollResult(rollObj);
-  await sendMessage(dispatch.senderName, text, 'dice', dispatch.extra);
+  await sendMessage(senderName, text, 'dice', extra);
   if (window._FB?.CONFIGURED) {
     const { db, ref, set } = window._FB;
     set(ref(db, `rooms/${St.roomCode}/lastRoll`), { ...rollObj, time: getDiceServerTimestamp() });
@@ -1025,7 +1001,7 @@ async function dispatchPanelTokenClickAction(tokenId) {
     const text = String(token.panelActionText || '');
     if (!text.trim()) return;
     try {
-      await sendPanelTokenTextAsCurrentProfile(text);
+      await sendPanelTokenChatAsCurrentProfile(text);
     } catch (err) {
       console.error('dispatchPanelTokenClickAction chat failed', err);
       showToast('패널 토큰 채팅 전송에 실패했어요. 다시 시도해 주세요.');
@@ -1156,14 +1132,13 @@ function createTokenEl(t) {
     e.stopPropagation();
     hideTokenMemoBubble();
     if (tokenCategory === 'panel') {
-      suppressPanelTokenClickAction(t.id);
       cancelPendingPanelTokenClickAction();
       togglePanelTokenFace(t.id);
       return;
     }
     if (typeof openTokenEdit === 'function') openTokenEdit(t.id);
   });
-  el.addEventListener('contextmenu', e => { e.preventDefault(); e.stopPropagation(); hideTokenMemoBubble(); if (tokenCategory === 'panel') { suppressPanelTokenClickAction(t.id); cancelPendingPanelTokenClickAction(); } showTokenCtx(e, t.id); });
+  el.addEventListener('contextmenu', e => { e.preventDefault(); e.stopPropagation(); hideTokenMemoBubble(); if (tokenCategory === 'panel') cancelPendingPanelTokenClickAction(); showTokenCtx(e, t.id); });
   makeDraggable(el, t.id);
   refreshTokenLiveSnapshot(el, t);
   inner.appendChild(el);
@@ -1180,11 +1155,7 @@ function makeDraggable(el, tokenId) {
 
     if (e.button !== 0) return;
     if (!hasPerm('moveToken')) { showToast('토큰 이동 권한이 없어요.'); return; }
-    if (St.tool === 'erase') {
-      suppressPanelTokenClickAction(tokenId);
-      removeToken(tokenId);
-      return;
-    }
+    if (St.tool === 'erase') { removeToken(tokenId); return; }
     if (isPanelTokenPositionLocked(tokenId)) { showToast('위치 고정이 켜져 있어 이동할 수 없어요.'); return; }
 
     e.preventDefault();
@@ -1197,14 +1168,8 @@ function makeDraggable(el, tokenId) {
     const dragSession = buildTokenDragSession(tokenId, e);
     if (!dragSession || !dragSession.targetIds?.length) return;
     _activeDragSession = dragSession; // ← 드래그 시작 표시
-    const startClientX = Number(e.clientX || 0);
-    const startClientY = Number(e.clientY || 0);
-    let moved = false;
 
     const onMove = ev => {
-      const dx = Number(ev.clientX || 0) - startClientX;
-      const dy = Number(ev.clientY || 0) - startClientY;
-      if (!moved && ((dx * dx) + (dy * dy) >= 16)) moved = true;
       applyTokenDragSession(dragSession, ev);
     };
 
@@ -1214,9 +1179,6 @@ function makeDraggable(el, tokenId) {
 
       const patch = collectDraggedTokenPositions(dragSession.targetIds);
       _activeDragSession = null; // ← 드래그 종료 표시 (saveTokenPositionPatch 전에 해제)
-      if (moved) {
-        dragSession.targetIds.forEach(id => suppressPanelTokenClickAction(id));
-      }
 
       saveTokenPositionPatch(patch);
       syncMultiTokenSelectionWithTokens(St.tokens);
@@ -1359,7 +1321,6 @@ const PANEL_TOKEN_CLICK_DELAY = 230;
 const PANEL_TOKEN_ACTION_COOLDOWN = 260;
 const _panelTokenActionLocks = new Set();
 const _panelTokenActionLastRun = new Map();
-const _panelTokenActionSuppressUntil = new Map();
 
 const PANEL_TOKEN_DEFAULTS = Object.freeze({
   panelWidth: 4,
@@ -1866,60 +1827,6 @@ function getPanelTokenSnapshot(tokenId) {
   return token ? normalizePanelToken(token) : null;
 }
 
-function isPanelTokenEditOpen() {
-  return !!_pteTokenId && !!document.getElementById('modal-panel-token-edit')?.classList.contains('open');
-}
-
-function buildPanelTokenEditDraftSnapshot(currentToken = null) {
-  const base = normalizePanelToken(currentToken || {});
-  const next = {
-    ...base,
-    ...readPanelTokenEditForm(),
-    ...readPanelTokenActionForm(),
-    panelImage: base.panelImage || null,
-    panelBackImage: base.panelBackImage || null,
-    panelFace: String(base.panelFace || PANEL_TOKEN_DEFAULTS.panelFace),
-  };
-  if (_pteFrontImgCleared) next.panelImage = null;
-  else if (_pteFrontImgBlob) next.panelImage = '__draft_front_blob__';
-  else if (_pteFrontImgData) next.panelImage = _pteFrontImgData;
-
-  if (_pteBackImgCleared) next.panelBackImage = null;
-  else if (_pteBackImgBlob) next.panelBackImage = '__draft_back_blob__';
-  else if (_pteBackImgData) next.panelBackImage = _pteBackImgData;
-
-  return next;
-}
-
-function isPanelTokenEditDirty(currentToken = null) {
-  if (!isPanelTokenEditOpen()) return false;
-  const current = normalizePanelToken(currentToken || {});
-  const draft = buildPanelTokenEditDraftSnapshot(current);
-  return JSON.stringify(draft) !== JSON.stringify(current);
-}
-
-function syncPanelTokenEditLifecycleWithTokens(tokens = St.tokens) {
-  if (!isPanelTokenEditOpen()) return;
-  const current = tokens?.[_pteTokenId] || null;
-  if (!current) {
-    closePanelTokenEdit(true);
-    showToast('편집 중이던 패널 토큰이 사라져 편집창을 닫았어요.');
-    return;
-  }
-  if (_panelTokenEditSaving) return;
-  if (isPanelTokenEditDirty(current)) return;
-  const normalized = normalizePanelToken(current);
-  _pteFrontImgBlob = null;
-  _pteBackImgBlob = null;
-  _pteFrontImgCleared = false;
-  _pteBackImgCleared = false;
-  _pteFrontImgData = normalized.panelImage || null;
-  _pteBackImgData = normalized.panelBackImage || null;
-  refreshPanelTokenFrontPreview();
-  refreshPanelTokenBackPreview();
-  hydratePanelTokenEditModal(normalized);
-}
-
 function clearPanelTokenEditForm() {
   const defaults = normalizePanelToken({ name: '패널', memo: '' });
   const nameEl = document.getElementById('pte-name');
@@ -1976,40 +1883,6 @@ function endPanelTokenEditSaving() {
   _panelTokenEditSaving = false;
 }
 
-function isSamePanelTokenEditSession(tokenId, session) {
-  return !!tokenId && tokenId === _pteTokenId && session === _panelTokenEditSession;
-}
-
-function applyPanelTokenEditImageDraft(side, nextData, nextBlob, cleared) {
-  const isFront = side === 'front';
-  const currentData = isFront ? _pteFrontImgData : _pteBackImgData;
-  revokeTokenPreviewUrl(currentData);
-  if (isFront) {
-    _pteFrontImgBlob = nextBlob || null;
-    _pteFrontImgData = nextData || null;
-    _pteFrontImgCleared = !!cleared;
-    refreshPanelTokenFrontPreview();
-    return;
-  }
-  _pteBackImgBlob = nextBlob || null;
-  _pteBackImgData = nextData || null;
-  _pteBackImgCleared = !!cleared;
-  refreshPanelTokenBackPreview();
-}
-
-async function resolvePanelTokenEditImageValue(options = {}) {
-  const currentValue = options.currentValue || null;
-  const draftData = options.draftData || null;
-  const draftBlob = options.draftBlob || null;
-  const cleared = !!options.cleared;
-  const uploadPath = String(options.uploadPath || '');
-  if (cleared) return null;
-  if (draftBlob) return await uploadTokenBlobToCloudinary(draftBlob, uploadPath);
-  if (!draftData) return currentValue || null;
-  if (/^blob:/.test(String(draftData))) return currentValue || null;
-  return draftData;
-}
-
 function openPanelTokenEdit(tokenId) {
   if (_panelTokenEditSaving) {
     showToast('패널 토큰 저장이 진행 중이에요. 저장이 끝난 뒤 다시 시도해 주세요.');
@@ -2064,25 +1937,28 @@ async function savePanelTokenEdit() {
     });
     if (!actionValidation.ok) return;
     next.panelActionText = String(actionValidation.panelActionText || '');
-    next.panelImage = await resolvePanelTokenEditImageValue({
-      currentValue: current.panelImage || null,
-      draftData: _pteFrontImgData,
-      draftBlob: _pteFrontImgBlob,
-      cleared: _pteFrontImgCleared,
-      uploadPath: `itc/panel-tokens/${St.roomCode}`,
-    });
-    next.panelBackImage = await resolvePanelTokenEditImageValue({
-      currentValue: current.panelBackImage || null,
-      draftData: _pteBackImgData,
-      draftBlob: _pteBackImgBlob,
-      cleared: _pteBackImgCleared,
-      uploadPath: `itc/panel-tokens-back/${St.roomCode}`,
-    });
+    if (_pteFrontImgCleared) {
+      next.panelImage = null;
+    } else if (_pteFrontImgBlob) {
+      next.panelImage = await uploadTokenBlobToCloudinary(_pteFrontImgBlob, `itc/panel-tokens/${St.roomCode}`);
+    } else if (_pteFrontImgData && /^blob:/.test(String(_pteFrontImgData))) {
+      next.panelImage = current.panelImage || null;
+    } else if (_pteFrontImgData) {
+      next.panelImage = _pteFrontImgData;
+    }
+    if (_pteBackImgCleared) {
+      next.panelBackImage = null;
+    } else if (_pteBackImgBlob) {
+      next.panelBackImage = await uploadTokenBlobToCloudinary(_pteBackImgBlob, `itc/panel-tokens-back/${St.roomCode}`);
+    } else if (_pteBackImgData && /^blob:/.test(String(_pteBackImgData))) {
+      next.panelBackImage = current.panelBackImage || null;
+    } else if (_pteBackImgData) {
+      next.panelBackImage = _pteBackImgData;
+    }
     if (editSession !== _panelTokenEditSession || editTokenId !== _pteTokenId) {
       showToast('패널 토큰 편집 상태가 변경되어 저장을 중단했어요. 다시 열어서 저장해 주세요.');
       return;
     }
-    clearPanelTokenActionState(editTokenId);
     if (window._FB?.CONFIGURED) {
       const { db, ref, set } = window._FB;
       await set(ref(db, `rooms/${St.roomCode}/tokens/${editTokenId}`), next);
@@ -2114,14 +1990,7 @@ function refreshPanelTokenFrontPreview() {
 
 async function handlePanelTokenFrontImg(input) {
   const file = input.files?.[0];
-  const editTokenId = _pteTokenId;
-  const editSession = _panelTokenEditSession;
-  if (!file || !editTokenId) return;
-  if (_panelTokenEditSaving) {
-    showToast('패널 토큰 저장 중에는 이미지를 변경할 수 없어요.');
-    input.value = '';
-    return;
-  }
+  if (!file) return;
   if (file.size > 3 * 1024 * 1024) {
     showToast('이미지는 3MB 이하만 가능해요.');
     input.value = '';
@@ -2129,12 +1998,11 @@ async function handlePanelTokenFrontImg(input) {
   }
   try {
     const blob = await makeTokenImageBlob(file, 1200);
-    const nextData = URL.createObjectURL(blob);
-    if (!isSamePanelTokenEditSession(editTokenId, editSession)) {
-      revokeTokenPreviewUrl(nextData);
-      return;
-    }
-    applyPanelTokenEditImageDraft('front', nextData, blob, false);
+    revokeTokenPreviewUrl(_pteFrontImgData);
+    _pteFrontImgBlob = blob;
+    _pteFrontImgData = URL.createObjectURL(blob);
+    _pteFrontImgCleared = false;
+    refreshPanelTokenFrontPreview();
   } catch (err) {
     console.error('panel token image prepare failed', err);
     showToast('패널 이미지를 준비하지 못했어요. 다시 시도해 주세요.');
@@ -2158,14 +2026,7 @@ function refreshPanelTokenBackPreview() {
 
 async function handlePanelTokenBackImg(input) {
   const file = input.files?.[0];
-  const editTokenId = _pteTokenId;
-  const editSession = _panelTokenEditSession;
-  if (!file || !editTokenId) return;
-  if (_panelTokenEditSaving) {
-    showToast('패널 토큰 저장 중에는 이미지를 변경할 수 없어요.');
-    input.value = '';
-    return;
-  }
+  if (!file) return;
   if (file.size > 3 * 1024 * 1024) {
     showToast('이미지는 3MB 이하만 가능해요.');
     input.value = '';
@@ -2173,12 +2034,11 @@ async function handlePanelTokenBackImg(input) {
   }
   try {
     const blob = await makeTokenImageBlob(file, 1200);
-    const nextData = URL.createObjectURL(blob);
-    if (!isSamePanelTokenEditSession(editTokenId, editSession)) {
-      revokeTokenPreviewUrl(nextData);
-      return;
-    }
-    applyPanelTokenEditImageDraft('back', nextData, blob, false);
+    revokeTokenPreviewUrl(_pteBackImgData);
+    _pteBackImgBlob = blob;
+    _pteBackImgData = URL.createObjectURL(blob);
+    _pteBackImgCleared = false;
+    refreshPanelTokenBackPreview();
   } catch (err) {
     console.error('panel token back image prepare failed', err);
     showToast('뒷면 이미지를 준비하지 못했어요. 다시 시도해 주세요.');
@@ -2215,7 +2075,6 @@ async function deletePanelTokenFromEdit() {
 
 
 async function togglePanelTokenFace(tokenId) {
-  clearPanelTokenActionState(tokenId);
   const current = St.tokens[tokenId];
   if (!current) return;
   const normalized = normalizePanelToken(current);
@@ -2238,11 +2097,19 @@ async function togglePanelTokenFace(tokenId) {
 
 
 function clearPanelTokenFrontImg() {
-  applyPanelTokenEditImageDraft('front', null, null, true);
+  revokeTokenPreviewUrl(_pteFrontImgData);
+  _pteFrontImgBlob = null;
+  _pteFrontImgData = null;
+  _pteFrontImgCleared = true;
+  refreshPanelTokenFrontPreview();
 }
 
 function clearPanelTokenBackImg() {
-  applyPanelTokenEditImageDraft('back', null, null, true);
+  revokeTokenPreviewUrl(_pteBackImgData);
+  _pteBackImgBlob = null;
+  _pteBackImgData = null;
+  _pteBackImgCleared = true;
+  refreshPanelTokenBackPreview();
 }
 
 window.normalizeIncomingMapToken = normalizeIncomingMapToken;
