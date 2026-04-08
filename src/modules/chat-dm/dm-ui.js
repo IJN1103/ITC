@@ -3,6 +3,10 @@
 
   function getStateRoot() {
     if (ROOT.St && typeof ROOT.St === 'object') return ROOT.St;
+    if (typeof St !== 'undefined' && St && typeof St === 'object') {
+      ROOT.St = St;
+      return ROOT.St;
+    }
     ROOT.St = {};
     return ROOT.St;
   }
