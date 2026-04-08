@@ -44,10 +44,14 @@
     return String(channelKey || '').trim() === GLOBAL_CHANNEL_KEY;
   }
   function emitChannelChange(channelKey) {
+    const nextKey = String(channelKey || GLOBAL_CHANNEL_KEY).trim() || GLOBAL_CHANNEL_KEY;
     try {
       document.dispatchEvent(new CustomEvent('itc:dm-channel-change', {
-        detail: { channelKey: String(channelKey || GLOBAL_CHANNEL_KEY).trim() || GLOBAL_CHANNEL_KEY }
+        detail: { channelKey: nextKey }
       }));
+    } catch (e) {}
+    try {
+      if (typeof ROOT.switchActiveChatChannel === 'function') ROOT.switchActiveChatChannel(nextKey);
     } catch (e) {}
   }
 

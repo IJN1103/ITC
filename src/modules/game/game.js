@@ -163,21 +163,29 @@ function switchActiveChatChannel(channelKey = 'global') {
     return true;
   };
 
-  const addChatRecord = (key, m) => {
-    if (!shouldShowChatMessage(m)) return;
-    appendChatMsg({ name: m.name, text: m.text, type: m.type || 'normal', uid: m.uid, timestamp: m.time, speakAsAvatar: m.speakAsAvatar, speakAsJournalId: m.speakAsJournalId, whisperTo: m.whisperTo, whisperToName: m.whisperToName, nameColor: m.nameColor, msgKey: key, channel: 'chat', standingImg: m.standingImg, tokenId: m.tokenId, standingLabel: m.standingLabel, imageWide: !!m.imageWide, imageMeta: m.imageMeta, hideImageMeta: !!m.hideImageMeta });
-    processed.add(key);
+  const upsertChatRecord = (key, m) => {
+    const payload = { name: m.name, text: m.text, type: m.type || 'normal', uid: m.uid, timestamp: m.time, speakAsAvatar: m.speakAsAvatar, speakAsJournalId: m.speakAsJournalId, whisperTo: m.whisperTo, whisperToName: m.whisperToName, nameColor: m.nameColor, msgKey: key, channel: 'chat', standingImg: m.standingImg, tokenId: m.tokenId, standingLabel: m.standingLabel, imageWide: !!m.imageWide, imageMeta: m.imageMeta, hideImageMeta: !!m.hideImageMeta };
+    if (processed.has(key)) replaceChatMsg(payload); else appendChatMsg(payload);
   };
 
   trackActiveChatChannelListener(onValue(listenRef, snap => {
     const msgs = snap.val() || {};
-    if (typeof resetRenderedMessages === 'function') resetRenderedMessages('chat');
-    processed.clear();
-    Object.entries(msgs)
+    const filtered = Object.entries(msgs)
       .map(([k, m]) => ({ ...m, _key: k }))
       .filter((m) => shouldShowChatMessage(m))
-      .sort((a, b) => (a.time || 0) - (b.time || 0))
-      .forEach(m => addChatRecord(m._key, m));
+      .sort((a, b) => (a.time || 0) - (b.time || 0));
+
+    const nextKeys = new Set(filtered.map((m) => m._key));
+    Array.from(processed).forEach((key) => {
+      if (!nextKeys.has(key)) removeChatMsg(key, 'chat');
+    });
+
+    filtered.forEach((m) => {
+      upsertChatRecord(m._key, m);
+    });
+
+    processed.clear();
+    nextKeys.forEach((key) => processed.add(key));
   }));
 }
 
