@@ -79,6 +79,12 @@ body{font-family:'DM Sans',sans-serif;background:#101010;color:#e8e3da;font-size
 .tab{flex:1;background:none;border:none;border-bottom:2px solid transparent;color:#5a5751;padding:9px 4px;cursor:pointer;font-family:inherit;font-size:11px;letter-spacing:.08em;text-transform:uppercase;text-align:center;transition:.18s ease}
 .tab.on{color:#b89a60;border-bottom-color:#b89a60}
 .tab:hover:not(.on){color:#8c8882}
+.pdm{display:flex;gap:6px;align-items:center;padding:6px 8px;border-bottom:1px solid #1f1f1f;overflow-x:auto;scrollbar-width:none;background:#121212;flex-shrink:0}
+.pdm::-webkit-scrollbar{display:none}
+.pdm-btn{position:relative;height:24px;padding:0 10px;border-radius:999px;border:1px solid #2b2b2b;background:#161616;color:#8c8882;font:inherit;font-size:10px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;transition:.18s ease;max-width:120px}
+.pdm-btn:hover{border-color:#b89a60;color:#b89a60}
+.pdm-btn.on{border-color:rgba(184,154,96,.45);background:rgba(184,154,96,.12);color:#b89a60}
+.pdm-label{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:88px}
 .pane{display:none;flex:1;flex-direction:column;overflow:hidden}
 .pane.on{display:flex}
 .msgs{flex:1;overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:12px}
@@ -144,7 +150,7 @@ textarea.whisper-mode{border-color:#9b59b6;background:rgba(155,89,182,.05)}
 
   const htmlBody = `
 <div class="tabs" id="tabs"></div>
-<div class="pane on" id="p-chat"><div class="msgs" id="pm-chat"></div></div>
+<div class="pane on" id="p-chat"><div class="pdm" id="pdm"></div><div class="msgs" id="pm-chat"></div></div>
 <div class="pane" id="p-casual"><div class="msgs" id="pm-casual"></div></div>
 <div class="pane" id="p-journal"><div class="j-list" id="pm-journal"></div></div>
 <div class="ptb" id="ptb" style="position:relative">
@@ -186,8 +192,12 @@ function buildPopoutScript(journalJson, playersJson) {
   // switchTab
   L.push('var tabs=document.getElementById("tabs");');
   L.push('["채팅:chat","잡담:casual","저널:journal"].forEach(function(s,i){var p=s.split(":"),b=document.createElement("button");b.className="tab"+(i===0?" on":"");b.dataset.tab=p[1];b.textContent=p[0];b.onclick=function(){switchTab(p[1])};tabs.appendChild(b)});');
-  L.push('function switchTab(t){aTab=t;document.querySelectorAll(".tab").forEach(function(b){b.classList.toggle("on",b.dataset.tab===t)});document.querySelectorAll(".pane").forEach(function(p){p.classList.toggle("on",p.id==="p-"+t)});document.getElementById("iw").style.display=t==="journal"?"none":"";document.getElementById("ptb").style.display=t==="journal"?"none":""}');
+  L.push('function switchTab(t){aTab=t;document.querySelectorAll(".tab").forEach(function(b){b.classList.toggle("on",b.dataset.tab===t)});document.querySelectorAll(".pane").forEach(function(p){p.classList.toggle("on",p.id==="p-"+t)});document.getElementById("iw").style.display=t==="journal"?"none":"";document.getElementById("ptb").style.display=t==="journal"?"none":"";var pdm=document.getElementById("pdm");if(pdm)pdm.style.display=t==="chat"?"flex":"none"}');
   L.push('window.switchTab=switchTab;');
+  L.push('function getOpenerState(){try{return window.opener||null}catch(e){return null}}');
+  L.push('function escHtml(v){return String(v||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;")}');
+  L.push('function renderDmBar(){var host=document.getElementById("pdm");if(!host)return;var op=getOpenerState();if(!op||typeof op.getCurrentDmChannelKey!=="function"){host.innerHTML="";return}var currentKey=op.getCurrentDmChannelKey()||"global";var html=[];html.push(`<button type="button" class="pdm-btn ${currentKey==="global"?"on":""}" data-role="global"><span class="pdm-label">전체</span></button>`);try{if(op.isDmGmView&&op.isDmGmView()){var players=((op.St&&op.St.players)||{});Object.keys(players).forEach(function(uid){var p=players[uid]||{};if(String(uid)===String((op.St&&op.St.myId)||""))return;if(String(p.role||"").toLowerCase()==="gm")return;var selected=(op.__DM_CHANNEL_STATE&&Array.isArray(op.__DM_CHANNEL_STATE.selectedParticipantIds)?op.__DM_CHANNEL_STATE.selectedParticipantIds:[]).indexOf(uid)>=0;html.push(`<button type="button" class="pdm-btn ${(selected&&currentKey!=="global")?"on":""}" data-role="player" data-uid="${escHtml(uid)}"><span class="pdm-label">${escHtml(p.name||"플레이어")}</span></button>`)})}else if(op.getPlayerVisibleDmChannels){var chans=op.getPlayerVisibleDmChannels((op.St&&op.St.myId)||"")||[];chans.forEach(function(ch){var ids=Array.isArray(ch.participantIds)?ch.participantIds:[];var me=String((op.St&&op.St.myId)||"");var players=((op.St&&op.St.players)||{});var label=ids.filter(function(uid){return String(uid)!==me}).map(function(uid){return String((players[uid]&&players[uid].name)||"플레이어")}).join("+")||"DM";html.push(`<button type="button" class="pdm-btn ${String(currentKey)===String(ch.channelKey||"")?"on":""}" data-role="channel" data-key="${escHtml(ch.channelKey||"")}"><span class="pdm-label">${escHtml(label)}</span></button>`)})}}catch(e){}host.innerHTML=html.join("");var g=host.querySelector("[data-role=global]");if(g)g.onclick=function(){try{if(op.selectGlobalDmChannel)op.selectGlobalDmChannel();switchTab("chat")}catch(e){}};Array.from(host.querySelectorAll("[data-role=player]")).forEach(function(btn){btn.onclick=function(){try{var uid=btn.getAttribute("data-uid")||"";var cur=(op.__DM_CHANNEL_STATE&&Array.isArray(op.__DM_CHANNEL_STATE.selectedParticipantIds)?op.__DM_CHANNEL_STATE.selectedParticipantIds.slice():[]);var i=cur.indexOf(uid);if(i>=0)cur.splice(i,1);else cur.push(uid);if(op.selectDmParticipants)op.selectDmParticipants(cur);switchTab("chat")}catch(e){}}});Array.from(host.querySelectorAll("[data-role=channel]")).forEach(function(btn){btn.onclick=function(){try{var key=btn.getAttribute("data-key")||"global";if(op.setCurrentDmChannelKey)op.setCurrentDmChannelKey(key);switchTab("chat")}catch(e){}}})}');
+  L.push('window.renderDmBar=renderDmBar;setInterval(renderDmBar,400);');
 
   // addMsg
   L.push('window.addMsg=function(name,text,type,ch,nc,av,ts,fhtml){');
