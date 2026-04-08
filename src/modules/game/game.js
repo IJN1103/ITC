@@ -232,6 +232,7 @@ function switchActiveChatChannel(channelKey = 'global') {
   const { db, ref, onValue, query, limitToLast } = window._FB;
   cleanupActiveChatChannelListeners();
   _activeChatChannelKey = safeChannelKey;
+  window._itcActiveChatChannelKey = safeChannelKey;
   restoreCachedChannelMessages(safeChannelKey);
 
   const processed = getProcessedChatKeySet(safeChannelKey);
@@ -330,6 +331,7 @@ function resetRoomScopedUiState() {
   _chatMessageSignaturesByChannel = new Map();
   _chatRecordsByChannel = new Map();
   _activeChatChannelKey = 'global';
+  window._itcActiveChatChannelKey = 'global';
 }
 
 function trackFirebaseListener(unsub) {

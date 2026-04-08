@@ -76,7 +76,8 @@ function saSendMessage(journal, text) {
   };
   if (window._FB?.CONFIGURED) {
     const { db, ref, push } = window._FB;
-    push(ref(db, `rooms/${St.roomCode}/chat`), { ...msg, time: getSpeakAsServerTimestamp() });
+    const currentChannelKey = String(window._itcActiveChatChannelKey || (typeof getCurrentDmChannelKey === 'function' ? getCurrentDmChannelKey() : 'global') || 'global').trim() || 'global';
+    push(ref(db, `rooms/${St.roomCode}/chat`), { ...msg, dmChannelKey: currentChannelKey, time: getSpeakAsServerTimestamp() });
   } else {
     appendChatMsg({ ...msg, timestamp: msg.time, channel: 'chat' });
   }

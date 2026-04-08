@@ -1341,7 +1341,7 @@ async function sendPreparedChatImage(preparedOrDataUrl, imageWide = false, image
       imageStoragePath: storageMeta?.path || '',
       imageContentType: storageMeta?.contentType || inferStorageContentTypeFromDataUrl(dataUrl),
     };
-    const currentChannelKey = typeof getCurrentDmChannelKey === 'function' ? getCurrentDmChannelKey() : 'global';
+    const currentChannelKey = String(window._itcActiveChatChannelKey || (typeof getCurrentDmChannelKey === 'function' ? getCurrentDmChannelKey() : 'global') || 'global').trim() || 'global';
     if (window._FB?.CONFIGURED) {
       const { db, ref, push } = window._FB;
       if (!St.roomCode) throw new Error('roomCode missing');
@@ -1402,7 +1402,7 @@ async function sendChat() {
   if (!inp) return;
   const raw = inp.value.trim();
   const hasImages = _pendingChatImages.length > 0;
-  const currentChannelKey = typeof getCurrentDmChannelKey === 'function' ? getCurrentDmChannelKey() : 'global';
+  const currentChannelKey = String(window._itcActiveChatChannelKey || (typeof getCurrentDmChannelKey === 'function' ? getCurrentDmChannelKey() : 'global') || 'global').trim() || 'global';
   const isDmChannel = String(currentChannelKey || 'global').trim() !== 'global';
   if (!raw && !hasImages) return;
 
@@ -1549,7 +1549,7 @@ function sendMessage(name, text, type = 'normal', extra = null) {
   const msg = { name, text, type, uid: St.myId, time: localTime };
   if ((type === 'normal' || type === 'desc') && St.myNameColor) msg.nameColor = St.myNameColor;
   if (extra && typeof extra === 'object') Object.assign(msg, extra);
-  const currentChannelKey = typeof getCurrentDmChannelKey === 'function' ? getCurrentDmChannelKey() : 'global';
+  const currentChannelKey = String(window._itcActiveChatChannelKey || (typeof getCurrentDmChannelKey === 'function' ? getCurrentDmChannelKey() : 'global') || 'global').trim() || 'global';
   if (window._FB?.CONFIGURED) {
     const { db, ref, push } = window._FB;
     if (!St.roomCode) return Promise.reject(new Error('roomCode missing'));
