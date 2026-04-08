@@ -4,6 +4,9 @@
  */
 
 let _processedChatKeys = new Set();
+let _processedChatKeysByChannel = new Map();
+let _activeChatChannelKey = 'global';
+let _activeChatChannelUnsubs = [];
 let _processedCasualKeys = new Set();
 let _firebaseUnsubs = [];
 let _playerDigest = '';
@@ -67,6 +70,8 @@ function bindRoomStabilityEvents() {
     _lastSyncedRoomAvatar = null;
     syncMyAvatarToRoom(avatar, true);
   });
+
+  document.addEventListener('itc:dm-channel-change', handleDmChannelChange);
 }
 
 function refreshTopbarProfileSafe() {
@@ -83,10 +88,133 @@ function refreshTopbarProfileSafe() {
 }
 
 function cleanupFirebaseListeners() {
+  cleanupActiveChatChannelListeners();
   _firebaseUnsubs.forEach(unsub => { try { if (typeof unsub === 'function') unsub(); } catch (e) {} });
   _firebaseUnsubs = [];
   _typingState = {};
   refreshTypingIndicators();
+}
+
+function cleanupActiveChatChannelListeners() {
+  _activeChatChannelUnsubs.forEach(unsub => { try { if (typeof unsub === 'function') unsub(); } catch (e) {} });
+  _activeChatChannelUnsubs = [];
+}
+
+function trackActiveChatChannelListener(unsub) {
+  if (typeof unsub === 'function') _activeChatChannelUnsubs.push(unsub);
+}
+
+function getProcessedChatKeySet(channelKey = 'global') {
+  const safeKey = String(channelKey || 'global').trim() || 'global';
+  if (!_processedChatKeysByChannel.has(safeKey)) _processedChatKeysByChannel.set(safeKey, new Set());
+  return _processedChatKeysByChannel.get(safeKey);
+}
+
+function normalizeDmChannelEntry(channelKey, raw = {}) {
+  const participantIds = Array.isArray(raw?.meta?.participantIds)
+    ? raw.meta.participantIds
+    : (typeof parseDmChannelKey === 'function' ? parseDmChannelKey(channelKey) : []);
+  return {
+    channelKey: String(channelKey || '').trim(),
+    participantIds: Array.from(new Set((participantIds || []).map((id) => String(id || '').trim()).filter(Boolean))).sort(),
+    createdBy: String(raw?.meta?.createdBy || '').trim(),
+  };
+}
+
+async function ensureDmChannelMeta(channelKey = 'global') {
+  const safeKey = String(channelKey || 'global').trim() || 'global';
+  if (!window._FB?.CONFIGURED || !St.roomCode || safeKey === 'global') return;
+  const participantIds = typeof parseDmChannelKey === 'function' ? parseDmChannelKey(safeKey) : [];
+  if (!participantIds.length) return;
+  const { db, ref, update, serverTimestamp } = window._FB;
+  await update(ref(db, `rooms/${St.roomCode}/dmChats/${safeKey}/meta`), {
+    participantIds,
+    createdBy: St.myId || '',
+    updatedAt: typeof serverTimestamp === 'function' ? serverTimestamp() : Date.now(),
+  });
+}
+
+function syncAvailableDmChannels(raw = {}) {
+  const entries = Object.entries(raw || {})
+    .map(([channelKey, node]) => normalizeDmChannelEntry(channelKey, node))
+    .filter((item) => item.channelKey && item.channelKey !== 'global');
+  if (typeof setAvailableDmChannels === 'function') setAvailableDmChannels(entries);
+  if (typeof refreshDmChannelButtons === 'function') refreshDmChannelButtons();
+}
+
+function switchActiveChatChannel(channelKey = 'global') {
+  if (!window._FB?.CONFIGURED || !St.roomCode) return;
+  const safeChannelKey = String(channelKey || 'global').trim() || 'global';
+  const { db, ref, onChildAdded, onChildChanged, onChildRemoved, onValue, query, limitToLast } = window._FB;
+  cleanupActiveChatChannelListeners();
+  _activeChatChannelKey = safeChannelKey;
+  if (typeof activateChatRenderChannel === 'function') activateChatRenderChannel(safeChannelKey);
+
+  const processed = getProcessedChatKeySet(safeChannelKey);
+  const messagesPath = typeof getDmMessagesPath === 'function'
+    ? getDmMessagesPath(St.roomCode, safeChannelKey)
+    : (safeChannelKey === 'global' ? `rooms/${St.roomCode}/chat` : `rooms/${St.roomCode}/dmChats/${safeChannelKey}/messages`);
+  if (!messagesPath) return;
+  const baseRef = ref(db, messagesPath);
+  const listenRef = (query && limitToLast) ? query(baseRef, limitToLast(100)) : baseRef;
+
+  const shouldShowChatMessage = (m) => {
+    if (!m) return false;
+    if (m.type === 'whisper') return safeChannelKey === 'global' && (m.uid === St.myId || m.whisperTo === St.myId);
+    return true;
+  };
+
+  const addChatRecord = (key, m) => {
+    if (!shouldShowChatMessage(m) || processed.has(key)) return;
+    appendChatMsg({ name: m.name, text: m.text, type: m.type || 'normal', uid: m.uid, timestamp: m.time, speakAsAvatar: m.speakAsAvatar, speakAsJournalId: m.speakAsJournalId, whisperTo: m.whisperTo, whisperToName: m.whisperToName, nameColor: m.nameColor, msgKey: key, channel: safeChannelKey, standingImg: m.standingImg, tokenId: m.tokenId, standingLabel: m.standingLabel, imageWide: !!m.imageWide, imageMeta: m.imageMeta, hideImageMeta: !!m.hideImageMeta });
+    processed.add(key);
+  };
+
+  const changeChatRecord = (key, m) => {
+    if (!shouldShowChatMessage(m)) {
+      if (processed.has(key)) {
+        removeChatMsg(key, safeChannelKey);
+        processed.delete(key);
+      }
+      return;
+    }
+    replaceChatMsg({ name: m.name, text: m.text, type: m.type || 'normal', uid: m.uid, timestamp: m.time, speakAsAvatar: m.speakAsAvatar, speakAsJournalId: m.speakAsJournalId, whisperTo: m.whisperTo, whisperToName: m.whisperToName, nameColor: m.nameColor, msgKey: key, channel: safeChannelKey, standingImg: m.standingImg, tokenId: m.tokenId, standingLabel: m.standingLabel, imageWide: !!m.imageWide, imageMeta: m.imageMeta, hideImageMeta: !!m.hideImageMeta });
+    processed.add(key);
+  };
+
+  const removeChatRecord = (key) => {
+    removeChatMsg(key, safeChannelKey);
+    processed.delete(key);
+  };
+
+  if (onChildAdded && onChildChanged && onChildRemoved) {
+    trackActiveChatChannelListener(onChildAdded(listenRef, snap => addChatRecord(snap.key, snap.val() || {})));
+    trackActiveChatChannelListener(onChildChanged(listenRef, snap => changeChatRecord(snap.key, snap.val() || {})));
+    trackActiveChatChannelListener(onChildRemoved(listenRef, snap => removeChatRecord(snap.key)));
+  } else {
+    trackActiveChatChannelListener(onValue(listenRef, snap => {
+      const msgs = snap.val() || {};
+      if (typeof resetRenderedMessages === 'function') resetRenderedMessages(safeChannelKey);
+      processed.clear();
+      Object.entries(msgs)
+        .map(([k, m]) => ({ ...m, _key: k }))
+        .sort((a, b) => (a.time || 0) - (b.time || 0))
+        .forEach(m => addChatRecord(m._key, m));
+      if (typeof activateChatRenderChannel === 'function') activateChatRenderChannel(safeChannelKey);
+    }));
+  }
+}
+
+function handleDmChannelChange(ev) {
+  const detail = ev?.detail || {};
+  const nextChannelKey = String(detail.channelKey || (typeof getCurrentDmChannelKey === 'function' ? getCurrentDmChannelKey() : 'global') || 'global').trim() || 'global';
+  if (!St.roomCode || !window._FB?.CONFIGURED) return;
+  const runner = nextChannelKey === 'global' ? Promise.resolve() : ensureDmChannelMeta(nextChannelKey).catch((err) => {
+    console.error('ensureDmChannelMeta failed', err);
+  });
+  runner.finally(() => {
+    switchActiveChatChannel(nextChannelKey);
+  });
 }
 
 function resetRoomScopedUiState() {
@@ -112,6 +240,8 @@ function resetRoomScopedUiState() {
   } catch (e) {
     console.warn('[game] refreshMapLayerManager reset failed', e);
   }
+  _processedChatKeysByChannel = new Map();
+  _activeChatChannelKey = 'global';
 }
 
 function trackFirebaseListener(unsub) {
@@ -160,52 +290,16 @@ function setupFirebaseListeners() {
     if (typeof refreshDmChannelButtons === 'function') refreshDmChannelButtons();
   }));
 
-  const chatBaseRef = ref(db, `rooms/${code}/chat`);
-  const chatRef = (query && limitToLast) ? query(chatBaseRef, limitToLast(100)) : chatBaseRef;
+  trackFirebaseListener(onValue(ref(db, `rooms/${code}/dmChats`), snap => {
+    syncAvailableDmChannels(snap.val() || {});
+  }));
+  const initialChatChannelKey = typeof getCurrentDmChannelKey === 'function'
+    ? getCurrentDmChannelKey()
+    : 'global';
+  switchActiveChatChannel(initialChatChannelKey || 'global');
+
   const casualBaseRef = ref(db, `rooms/${code}/casual`);
   const casualRef = (query && limitToLast) ? query(casualBaseRef, limitToLast(100)) : casualBaseRef;
-
-  const shouldShowChatMessage = (m) => {
-    if (!m) return false;
-    if (m.type === 'whisper') return m.uid === St.myId || m.whisperTo === St.myId;
-    return true;
-  };
-
-  const addChatRecord = (key, m) => {
-    if (!shouldShowChatMessage(m) || _processedChatKeys.has(key)) return;
-    appendChatMsg({ name: m.name, text: m.text, type: m.type || 'normal', uid: m.uid, timestamp: m.time, speakAsAvatar: m.speakAsAvatar, speakAsJournalId: m.speakAsJournalId, whisperTo: m.whisperTo, whisperToName: m.whisperToName, nameColor: m.nameColor, msgKey: key, channel: 'chat', standingImg: m.standingImg, tokenId: m.tokenId, standingLabel: m.standingLabel, imageWide: !!m.imageWide, imageMeta: m.imageMeta, hideImageMeta: !!m.hideImageMeta });
-    _processedChatKeys.add(key);
-  };
-
-  const changeChatRecord = (key, m) => {
-    if (!shouldShowChatMessage(m)) {
-      if (_processedChatKeys.has(key)) {
-        removeChatMsg(key, 'chat');
-        _processedChatKeys.delete(key);
-      }
-      return;
-    }
-    replaceChatMsg({ name: m.name, text: m.text, type: m.type || 'normal', uid: m.uid, timestamp: m.time, speakAsAvatar: m.speakAsAvatar, speakAsJournalId: m.speakAsJournalId, whisperTo: m.whisperTo, whisperToName: m.whisperToName, nameColor: m.nameColor, msgKey: key, channel: 'chat', standingImg: m.standingImg, tokenId: m.tokenId, standingLabel: m.standingLabel, imageWide: !!m.imageWide, imageMeta: m.imageMeta, hideImageMeta: !!m.hideImageMeta });
-    _processedChatKeys.add(key);
-  };
-
-  const removeChatRecord = (key) => {
-    removeChatMsg(key, 'chat');
-    _processedChatKeys.delete(key);
-  };
-
-  if (onChildAdded && onChildChanged && onChildRemoved) {
-    trackFirebaseListener(onChildAdded(chatRef, snap => addChatRecord(snap.key, snap.val() || {})));
-    trackFirebaseListener(onChildChanged(chatRef, snap => changeChatRecord(snap.key, snap.val() || {})));
-    trackFirebaseListener(onChildRemoved(chatRef, snap => removeChatRecord(snap.key)));
-  } else {
-    trackFirebaseListener(onValue(chatRef, snap => {
-      const msgs = snap.val() || {};
-      if (typeof resetRenderedMessages === 'function') resetRenderedMessages('chat');
-      _processedChatKeys.clear();
-      Object.entries(msgs).map(([k, m]) => ({ ...m, _key: k })).sort((a, b) => (a.time || 0) - (b.time || 0)).forEach(m => addChatRecord(m._key, m));
-    }));
-  }
 
   const addCasualRecord = (key, m) => {
     if (!m || _processedCasualKeys.has(key)) return;

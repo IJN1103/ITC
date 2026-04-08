@@ -43,6 +43,14 @@
   function isGlobalChannelKey(channelKey) {
     return String(channelKey || '').trim() === GLOBAL_CHANNEL_KEY;
   }
+  function emitChannelChange(channelKey) {
+    try {
+      document.dispatchEvent(new CustomEvent('itc:dm-channel-change', {
+        detail: { channelKey: String(channelKey || GLOBAL_CHANNEL_KEY).trim() || GLOBAL_CHANNEL_KEY }
+      }));
+    } catch (e) {}
+  }
+
 
   function buildDmChannelKey(participantIds) {
     const ids = uniqSortedIds(participantIds);
@@ -73,12 +81,14 @@
     const myId = getCurrentUserId();
     const parsed = isGlobalChannelKey(next) ? [] : parseDmChannelKey(next);
     state.selectedParticipantIds = parsed.filter((uid) => uid !== myId);
+    emitChannelChange(state.currentChannelKey);
     return state.currentChannelKey;
   }
 
   function selectGlobalChannel() {
     state.selectedParticipantIds = [];
     state.currentChannelKey = GLOBAL_CHANNEL_KEY;
+    emitChannelChange(state.currentChannelKey);
     return state.currentChannelKey;
   }
 
@@ -86,6 +96,7 @@
     const ids = uniqSortedIds(participantIds);
     state.selectedParticipantIds = ids;
     state.currentChannelKey = isGmView() ? buildGmScopedDmChannelKey(ids, getCurrentUserId()) : (ids.length ? buildDmChannelKey(ids) : GLOBAL_CHANNEL_KEY);
+    emitChannelChange(state.currentChannelKey);
     return state.currentChannelKey;
   }
 
@@ -95,6 +106,7 @@
     state.selectedParticipantIds = [];
     state.unreadByChannel = {};
     state.availableChannels = [];
+    emitChannelChange(state.currentChannelKey);
   }
 
   function syncDmChannelRoom(roomCode) {

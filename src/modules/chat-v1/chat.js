@@ -134,8 +134,47 @@ const _renderState = {
   },
 };
 
+function ensureChatRenderState(channel = 'chat') {
+  const safeChannel = String(channel || 'chat').trim() || 'chat';
+  if (_renderState[safeChannel]) return _renderState[safeChannel];
+  const base = _renderState.chat;
+  _renderState[safeChannel] = {
+    containerId: 'chat-messages',
+    raf: 0,
+    queue: [],
+    map: new Map(),
+    max: base.max,
+    maxMemory: base.maxMemory,
+    loadStep: base.loadStep,
+    storeOrder: [],
+    storeMap: new Map(),
+    scrollBound: false,
+    scrollTick: 0,
+    stickyToBottom: true,
+    pendingBottomNotice: 0,
+    virtualEnabled: base.virtualEnabled,
+    virtualRaf: 0,
+    virtualDirty: false,
+    virtualForceStickBottom: false,
+    topSpacer: null,
+    bottomSpacer: null,
+    renderedStart: 0,
+    renderedEnd: 0,
+    avgItemHeight: base.avgItemHeight,
+    itemHeights: new Map(),
+    overscan: base.overscan,
+    minWindow: base.minWindow,
+    historyLoader: null,
+    historyLoading: false,
+    historyExhausted: true,
+  };
+  return _renderState[safeChannel];
+}
+
 function getRenderState(channel = 'chat') {
-  return _renderState[channel] || _renderState.chat;
+  const safeChannel = String(channel || 'chat').trim() || 'chat';
+  if (safeChannel === 'casual') return _renderState.casual;
+  return ensureChatRenderState(safeChannel);
 }
 
 function getRenderContainer(channel = 'chat') {
@@ -775,6 +814,47 @@ function resetRenderedMessages(channel = 'chat') {
   syncStickyState(channel, el);
 }
 
+function activateChatRenderChannel(channel = 'chat') {
+  const safeChannel = String(channel || 'chat').trim() || 'chat';
+  const el = document.getElementById('chat-messages');
+  if (!el) return;
+
+  Object.keys(_renderState).forEach((key) => {
+    if (key === 'casual') return;
+    const state = getRenderState(key);
+    if (state.raf) {
+      cancelAnimationFrame(state.raf);
+      state.raf = 0;
+    }
+    if (state.scrollTick) {
+      cancelAnimationFrame(state.scrollTick);
+      state.scrollTick = 0;
+    }
+    if (state.virtualRaf) {
+      cancelAnimationFrame(state.virtualRaf);
+      state.virtualRaf = 0;
+    }
+    state.queue = [];
+    state.map.clear();
+    state.topSpacer = null;
+    state.bottomSpacer = null;
+  });
+
+  const state = getRenderState(safeChannel);
+  el.innerHTML = '';
+  if (state.virtualEnabled) {
+    ensureVirtualElements(safeChannel);
+    scheduleVirtualRender(safeChannel, { forceStickBottom: true });
+  } else {
+    ensureHistoryNotice(safeChannel);
+    appendStoredWindow(safeChannel, Math.max(state.loadStep, state.storeOrder.length || 0));
+    requestAnimationFrame(() => {
+      scrollToBottom(el);
+      syncStickyState(safeChannel, el);
+    });
+  }
+}
+
 function getChatImageClassName(imageWide = false) {
   return imageWide ? 'msg-image is-wide' : 'msg-image';
 }
@@ -1261,12 +1341,14 @@ async function sendPreparedChatImage(preparedOrDataUrl, imageWide = false, image
       imageStoragePath: storageMeta?.path || '',
       imageContentType: storageMeta?.contentType || inferStorageContentTypeFromDataUrl(dataUrl),
     };
+    const currentChannelKey = typeof getCurrentDmChannelKey === 'function' ? getCurrentDmChannelKey() : 'global';
+    const messagesPath = typeof getDmMessagesPath === 'function' ? getDmMessagesPath(St.roomCode, currentChannelKey) : `rooms/${St.roomCode}/chat`;
     if (window._FB?.CONFIGURED) {
       const { db, ref, push } = window._FB;
       if (!St.roomCode) throw new Error('roomCode missing');
-      return push(ref(db, `rooms/${St.roomCode}/chat`), { ...msg, time: getChatServerTimestamp() });
+      return push(ref(db, messagesPath), { ...msg, time: getChatServerTimestamp() });
     }
-    appendChatMsg({ name: msg.name, text: finalSrc, type: 'speak-as-image', uid: St.myId, timestamp: msg.time, speakAsAvatar: saAvatar, speakAsJournalId: saJId, channel: 'chat', imageWide: !!imageWide, imageMeta: normalizedMeta, hideImageMeta: !!hideImageMeta });
+    appendChatMsg({ name: msg.name, text: finalSrc, type: 'speak-as-image', uid: St.myId, timestamp: msg.time, speakAsAvatar: saAvatar, speakAsJournalId: saJId, channel: currentChannelKey, imageWide: !!imageWide, imageMeta: normalizedMeta, hideImageMeta: !!hideImageMeta });
     return Promise.resolve();
   }
 
@@ -1321,6 +1403,8 @@ async function sendChat() {
   if (!inp) return;
   const raw = inp.value.trim();
   const hasImages = _pendingChatImages.length > 0;
+  const currentChannelKey = typeof getCurrentDmChannelKey === 'function' ? getCurrentDmChannelKey() : 'global';
+  const isDmChannel = String(currentChannelKey || 'global').trim() !== 'global';
   if (!raw && !hasImages) return;
 
   const restoreInput = () => {
@@ -1361,6 +1445,10 @@ async function sendChat() {
 
     const wm = raw.match(/^\/w\s+(\S+)\s+([\s\S]+)$/i);
     if (wm) {
+      if (isDmChannel) {
+        showToast('DM 채널에서는 귓말을 사용할 수 없어요.');
+        return;
+      }
       if (hasImages) {
         showToast('귓말과 이미지는 함께 보낼 수 없어요.');
         return;
@@ -1413,6 +1501,10 @@ async function sendChat() {
     }
 
     if (St.whisperTo) {
+      if (isDmChannel) {
+        showToast('DM 채널에서는 귓말을 사용할 수 없어요.');
+        return;
+      }
       if (hasImages) {
         showToast('귓말 상태에서는 이미지를 함께 보낼 수 없어요.');
         return;
@@ -1458,12 +1550,14 @@ function sendMessage(name, text, type = 'normal', extra = null) {
   const msg = { name, text, type, uid: St.myId, time: localTime };
   if ((type === 'normal' || type === 'desc') && St.myNameColor) msg.nameColor = St.myNameColor;
   if (extra && typeof extra === 'object') Object.assign(msg, extra);
+  const currentChannelKey = typeof getCurrentDmChannelKey === 'function' ? getCurrentDmChannelKey() : 'global';
+  const messagesPath = typeof getDmMessagesPath === 'function' ? getDmMessagesPath(St.roomCode, currentChannelKey) : `rooms/${St.roomCode}/chat`;
   if (window._FB?.CONFIGURED) {
     const { db, ref, push } = window._FB;
     if (!St.roomCode) return Promise.reject(new Error('roomCode missing'));
-    return push(ref(db, `rooms/${St.roomCode}/chat`), { ...msg, time: getChatServerTimestamp() });
+    return push(ref(db, messagesPath), { ...msg, time: getChatServerTimestamp() });
   }
-  appendChatMsg({ name, text, type, uid: St.myId, timestamp: msg.time, nameColor: msg.nameColor || null, channel: 'chat', imageWide: !!msg.imageWide, imageMeta: msg.imageMeta || null, hideImageMeta: !!msg.hideImageMeta });
+  appendChatMsg({ name, text, type, uid: St.myId, timestamp: msg.time, nameColor: msg.nameColor || null, channel: currentChannelKey, imageWide: !!msg.imageWide, imageMeta: msg.imageMeta || null, hideImageMeta: !!msg.hideImageMeta });
   return Promise.resolve();
 }
 
@@ -1939,6 +2033,7 @@ window.queueMessageRender = queueMessageRender;
 window.replaceRenderedMessage = replaceRenderedMessage;
 window.removeRenderedMessage = removeRenderedMessage;
 window.resetRenderedMessages = resetRenderedMessages;
+window.activateChatRenderChannel = activateChatRenderChannel;
 window.storeMessageRecord = storeMessageRecord;
 window.prependStoredWindow = prependStoredWindow;
 window.configureHistoryPaging = configureHistoryPaging;
