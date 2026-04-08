@@ -235,15 +235,12 @@
     if (!bar) {
       bar = document.createElement('div');
       bar.id = 'map-layer-bulk-actions';
-      bar.style.display = 'flex';
-      bar.style.justifyContent = 'flex-end';
-      bar.style.gap = '8px';
-      bar.style.margin = '0 0 10px';
+      bar.className = 'map-layer-bulk-actions';
       list.parentNode?.insertBefore(bar, list);
     }
     const objectCount = Array.isArray(entries) ? entries.filter((entry) => canDeleteLayer(entry)).length : 0;
     bar.innerHTML = objectCount > 0
-      ? '<button type="button" id="map-layer-delete-all" class="btn-secondary" style="min-width:120px">오브젝트 전체삭제</button>'
+      ? '<button type="button" id="map-layer-delete-all" class="map-layer-bulk-delete">오브젝트 전체삭제</button>'
       : '';
     const btn = document.getElementById('map-layer-delete-all');
     btn?.addEventListener('click', (e) => {
