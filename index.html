@@ -424,6 +424,9 @@ window._FB = {
         <button class="rtab" id="rtab-journal" onclick="switchRightTab('journal')">문서</button>
       </div>
       <div class="chat-action-bar" id="chat-action-bar">
+        <div class="dm-channel-bar" id="dm-channel-bar" style="display:none">
+          <div class="dm-channel-list" id="dm-channel-list"></div>
+        </div>
         <button class="chat-popout-btn" id="chat-popout-btn" onclick="popoutChat()" title="채팅을 새 탭으로 분리">⤢</button>
         <button class="chat-clear-btn" id="chat-clear-btn" onclick="clearAllChatHistory()" title="채팅/잡담 전체 지우기" style="display:none">채팅 지우기</button>
       </div>
@@ -1326,8 +1329,6 @@ window._FB = {
 <script src="src/modules/auth/profile.js"></script>
 <script src="src/modules/lobby/lobby.js"></script>
 <script src="src/modules/game/game.js"></script>
-<script src="src/modules/chat-dm/dm-channel.js"></script>
-<script src="src/modules/chat-dm/dm-storage.js"></script>
 <script src="src/modules/dice-v1/dice.js"></script>
 <script src="src/modules/chat-v1/chat.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>

@@ -157,6 +157,7 @@ function setupFirebaseListeners() {
     if (nextDigest === _playerDigest) return;
     _playerDigest = nextDigest;
     renderPlayers(players);
+    if (typeof refreshDmChannelButtons === 'function') refreshDmChannelButtons();
   }));
 
   const chatBaseRef = ref(db, `rooms/${code}/chat`);
@@ -354,6 +355,8 @@ async function enterGame() {
   document.getElementById('system-disp').textContent = SYS_LABELS[St.system];
   document.getElementById('myname-disp').textContent = St.myName;
   refreshTopbarProfileSafe();
+  if (typeof syncDmChannelRoom === 'function') syncDmChannelRoom(St.roomCode);
+  if (typeof refreshDmChannelButtons === 'function') refreshDmChannelButtons();
 
   _playerDigest = '';
   addPlayerChip(St.myId, St.myName, true, St.isGM ? 'gm' : 'player');

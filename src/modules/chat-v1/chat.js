@@ -32,6 +32,7 @@ function refreshChatActionButtons() {
   const clearBtn = document.getElementById('chat-clear-btn');
   if (popoutBtn) popoutBtn.style.display = visible ? '' : 'none';
   if (clearBtn) clearBtn.style.display = (visible && !!St.isGM) ? '' : 'none';
+  if (typeof refreshDmChannelButtons === 'function') refreshDmChannelButtons();
 }
 
 async function clearAllChatHistory() {
