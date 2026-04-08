@@ -82,6 +82,7 @@
   function setCurrentChannelKey(channelKey) {
     const next = String(channelKey || GLOBAL_CHANNEL_KEY).trim() || GLOBAL_CHANNEL_KEY;
     state.currentChannelKey = next;
+    ROOT._itcActiveChatChannelKey = state.currentChannelKey;
     const myId = getCurrentUserId();
     const parsed = isGlobalChannelKey(next) ? [] : parseDmChannelKey(next);
     state.selectedParticipantIds = parsed.filter((uid) => uid !== myId);
@@ -92,6 +93,7 @@
   function selectGlobalChannel() {
     state.selectedParticipantIds = [];
     state.currentChannelKey = GLOBAL_CHANNEL_KEY;
+    ROOT._itcActiveChatChannelKey = state.currentChannelKey;
     emitChannelChange(state.currentChannelKey);
     return state.currentChannelKey;
   }
@@ -100,6 +102,7 @@
     const ids = uniqSortedIds(participantIds);
     state.selectedParticipantIds = ids;
     state.currentChannelKey = isGmView() ? buildGmScopedDmChannelKey(ids, getCurrentUserId()) : (ids.length ? buildDmChannelKey(ids) : GLOBAL_CHANNEL_KEY);
+    ROOT._itcActiveChatChannelKey = state.currentChannelKey;
     emitChannelChange(state.currentChannelKey);
     return state.currentChannelKey;
   }
@@ -107,6 +110,7 @@
   function resetDmChannelState(roomCode) {
     state.roomCode = String(roomCode || '').trim();
     state.currentChannelKey = GLOBAL_CHANNEL_KEY;
+    ROOT._itcActiveChatChannelKey = state.currentChannelKey;
     state.selectedParticipantIds = [];
     state.unreadByChannel = {};
     state.availableChannels = [];
