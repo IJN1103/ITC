@@ -1054,6 +1054,8 @@ function createTokenEl(t) {
   const tokenCategory = getTokenCategory(t);
   el.className = `map-token ${tokenCategory === 'panel' ? 'panel-token' : (t.type==='enemy'?'enemy':t.type==='npc'?'npc':'')}`;
   el.id = 'tok-' + t.id;
+  if (t?.mapLayerId) el.dataset.mapLayerId = String(t.mapLayerId);
+  if (t?.importedMapObjectHidden === true) el.style.display = 'none';
   el.style.left = storedTokenPercentToDisplay(t.x, 'x') + '%'; el.style.top = storedTokenPercentToDisplay(t.y, 'y') + '%';
   if (t.rotation) el.style.transform = `translate(-50%,-50%) rotate(${t.rotation}deg)`;
   const sz = (t.tokenSize || 1);

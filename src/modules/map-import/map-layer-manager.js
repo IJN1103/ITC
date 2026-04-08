@@ -112,6 +112,28 @@
     await update(ref(db, `rooms/${roomCode}/tokens`), payload);
   }
 
+
+  function getImportedPanelVisibilityPayload(visibleMap) {
+    const state = getStateRoot().mapState || {};
+    const objects = Array.isArray(state.objects) ? state.objects : [];
+    const payload = {};
+    objects.forEach((item) => {
+      const layerId = String(item?.layerId || '').trim();
+      const panelTokenId = String(item?.panelTokenId || '').trim();
+      if (!layerId || !panelTokenId) return;
+      payload[`${panelTokenId}/importedMapObjectHidden`] = visibleMap[layerId] === false;
+    });
+    return payload;
+  }
+
+  async function syncImportedPanelVisibility(roomCode, visibleMap) {
+    if (!window._FB?.CONFIGURED) return;
+    const payload = getImportedPanelVisibilityPayload(visibleMap);
+    if (!Object.keys(payload).length) return;
+    const { db, ref, update } = window._FB;
+    await update(ref(db, `rooms/${roomCode}/tokens`), payload);
+  }
+
   function applyMapLayerState() {
     const entries = getLayerEntries();
     const entryMap = new Map(entries.map((entry) => [entry.id, entry]));
@@ -137,6 +159,7 @@
     const { db, ref, update } = window._FB;
     await update(ref(db, `rooms/${roomCode}/bgm`), { mapLayerState: normalized });
     await syncImportedPanelLayerOrder(roomCode, normalized.order);
+    await syncImportedPanelVisibility(roomCode, normalized.visible);
   }
 
   function createEyeIcon(isVisible) {
