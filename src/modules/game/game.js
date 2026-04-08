@@ -5,6 +5,7 @@
 
 let _processedChatKeys = new Set();
 let _processedChatKeysByChannel = new Map();
+let _chatMessageSignaturesByChannel = new Map();
 let _activeChatChannelKey = 'global';
 let _activeChatChannelUnsubs = [];
 let _processedCasualKeys = new Set();
@@ -110,6 +111,52 @@ function getProcessedChatKeySet(channelKey = 'global') {
   return _processedChatKeysByChannel.get(safeKey);
 }
 
+function getChatMessageSignatureStore(channelKey = 'global') {
+  const safeKey = String(channelKey || 'global').trim() || 'global';
+  if (!_chatMessageSignaturesByChannel.has(safeKey)) _chatMessageSignaturesByChannel.set(safeKey, new Map());
+  return _chatMessageSignaturesByChannel.get(safeKey);
+}
+
+function buildChatMessageSignature(message = {}) {
+  return JSON.stringify([
+    message?.name || '',
+    message?.text || '',
+    message?.type || '',
+    message?.uid || '',
+    message?.time || 0,
+    message?.speakAsAvatar || '',
+    message?.speakAsJournalId || '',
+    message?.whisperTo || '',
+    message?.whisperToName || '',
+    message?.nameColor || '',
+    message?.standingImg || '',
+    message?.tokenId || '',
+    message?.standingLabel || '',
+    !!message?.imageWide,
+    !!message?.hideImageMeta,
+    JSON.stringify(message?.imageMeta || null),
+    message?.dmChannelKey || 'global',
+  ]);
+}
+
+function buildDmChannelCatalogFromChat(rawMessages = {}) {
+  const map = new Map();
+  Object.values(rawMessages || {}).forEach((message) => {
+    const channelKey = String(message?.dmChannelKey || 'global').trim() || 'global';
+    if (!channelKey || channelKey === 'global') return;
+    if (map.has(channelKey)) return;
+    const participantIds = Array.isArray(message?.participantIds)
+      ? message.participantIds
+      : (typeof parseDmChannelKey === 'function' ? parseDmChannelKey(channelKey) : []);
+    map.set(channelKey, {
+      channelKey,
+      participantIds: Array.from(new Set((participantIds || []).map((id) => String(id || '').trim()).filter(Boolean))).sort(),
+      createdBy: String(message?.createdBy || message?.uid || '').trim(),
+    });
+  });
+  return Array.from(map.values());
+}
+
 function normalizeDmChannelEntry(channelKey, raw = {}) {
   const participantIds = Array.isArray(raw?.meta?.participantIds)
     ? raw.meta.participantIds
@@ -131,14 +178,28 @@ async function ensureDmChannelMeta(channelKey = 'global') {
     participantIds,
     createdBy: St.myId || '',
     updatedAt: typeof serverTimestamp === 'function' ? serverTimestamp() : Date.now(),
-  });
+  }).catch(() => {});
+
+  const bootstrapKey = `__dm_bootstrap__${safeKey}`;
+  await update(ref(db, `rooms/${St.roomCode}/chat`), {
+    [bootstrapKey]: {
+      type: 'dm-bootstrap',
+      dmChannelKey: safeKey,
+      participantIds,
+      createdBy: St.myId || '',
+      uid: St.myId || '',
+      name: '',
+      text: '',
+      time: typeof serverTimestamp === 'function' ? serverTimestamp() : Date.now(),
+    }
+  }).catch(() => {});
 }
 
-function syncAvailableDmChannels(raw = {}) {
-  const entries = Object.entries(raw || {})
-    .map(([channelKey, node]) => normalizeDmChannelEntry(channelKey, node))
+function syncAvailableDmChannels(entries = []) {
+  const normalized = (Array.isArray(entries) ? entries : [])
+    .map((entry) => normalizeDmChannelEntry(entry?.channelKey, { meta: entry }))
     .filter((item) => item.channelKey && item.channelKey !== 'global');
-  if (typeof setAvailableDmChannels === 'function') setAvailableDmChannels(entries);
+  if (typeof setAvailableDmChannels === 'function') setAvailableDmChannels(normalized);
   if (typeof refreshDmChannelButtons === 'function') refreshDmChannelButtons();
 }
 
@@ -151,6 +212,7 @@ function switchActiveChatChannel(channelKey = 'global') {
   if (typeof resetRenderedMessages === 'function') resetRenderedMessages('chat');
 
   const processed = getProcessedChatKeySet(safeChannelKey);
+  const signatures = getChatMessageSignatureStore(safeChannelKey);
   const listenRef = (query && limitToLast)
     ? query(ref(db, `rooms/${St.roomCode}/chat`), limitToLast(300))
     : ref(db, `rooms/${St.roomCode}/chat`);
@@ -158,15 +220,20 @@ function switchActiveChatChannel(channelKey = 'global') {
   const resolveMessageChannelKey = (m) => String(m?.dmChannelKey || 'global').trim() || 'global';
   const shouldShowChatMessage = (m) => {
     if (!m) return false;
+    if (m.type === 'dm-bootstrap') return false;
     if (resolveMessageChannelKey(m) !== safeChannelKey) return false;
     if (m.type === 'whisper') return safeChannelKey === 'global' && (m.uid === St.myId || m.whisperTo === St.myId);
     return true;
   };
 
-  const upsertChatRecord = (key, m) => {
-    const payload = { name: m.name, text: m.text, type: m.type || 'normal', uid: m.uid, timestamp: m.time, speakAsAvatar: m.speakAsAvatar, speakAsJournalId: m.speakAsJournalId, whisperTo: m.whisperTo, whisperToName: m.whisperToName, nameColor: m.nameColor, msgKey: key, channel: 'chat', standingImg: m.standingImg, tokenId: m.tokenId, standingLabel: m.standingLabel, imageWide: !!m.imageWide, imageMeta: m.imageMeta, hideImageMeta: !!m.hideImageMeta };
-    if (processed.has(key)) replaceChatMsg(payload); else appendChatMsg(payload);
-  };
+  const makePayload = (key, m) => ({
+    name: m.name, text: m.text, type: m.type || 'normal', uid: m.uid, timestamp: m.time,
+    speakAsAvatar: m.speakAsAvatar, speakAsJournalId: m.speakAsJournalId,
+    whisperTo: m.whisperTo, whisperToName: m.whisperToName, nameColor: m.nameColor,
+    msgKey: key, channel: 'chat', standingImg: m.standingImg, tokenId: m.tokenId,
+    standingLabel: m.standingLabel, imageWide: !!m.imageWide, imageMeta: m.imageMeta,
+    hideImageMeta: !!m.hideImageMeta,
+  });
 
   trackActiveChatChannelListener(onValue(listenRef, snap => {
     const msgs = snap.val() || {};
@@ -177,15 +244,26 @@ function switchActiveChatChannel(channelKey = 'global') {
 
     const nextKeys = new Set(filtered.map((m) => m._key));
     Array.from(processed).forEach((key) => {
-      if (!nextKeys.has(key)) removeChatMsg(key, 'chat');
+      if (!nextKeys.has(key)) {
+        removeChatMsg(key, 'chat');
+        signatures.delete(key);
+      }
     });
 
     filtered.forEach((m) => {
-      upsertChatRecord(m._key, m);
+      const nextSig = buildChatMessageSignature(m);
+      const prevSig = signatures.get(m._key);
+      const payload = makePayload(m._key, m);
+      if (!processed.has(m._key)) appendChatMsg(payload);
+      else if (prevSig !== nextSig) replaceChatMsg(payload);
+      signatures.set(m._key, nextSig);
     });
 
     processed.clear();
     nextKeys.forEach((key) => processed.add(key));
+    Array.from(signatures.keys()).forEach((key) => {
+      if (!nextKeys.has(key)) signatures.delete(key);
+    });
   }));
 }
 
@@ -225,6 +303,7 @@ function resetRoomScopedUiState() {
     console.warn('[game] refreshMapLayerManager reset failed', e);
   }
   _processedChatKeysByChannel = new Map();
+  _chatMessageSignaturesByChannel = new Map();
   _activeChatChannelKey = 'global';
 }
 
@@ -274,8 +353,8 @@ function setupFirebaseListeners() {
     if (typeof refreshDmChannelButtons === 'function') refreshDmChannelButtons();
   }));
 
-  trackFirebaseListener(onValue(ref(db, `rooms/${code}/dmChats`), snap => {
-    syncAvailableDmChannels(snap.val() || {});
+  trackFirebaseListener(onValue(ref(db, `rooms/${code}/chat`), snap => {
+    syncAvailableDmChannels(buildDmChannelCatalogFromChat(snap.val() || {}));
   }));
   const initialChatChannelKey = typeof getCurrentDmChannelKey === 'function'
     ? getCurrentDmChannelKey()
