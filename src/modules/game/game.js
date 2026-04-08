@@ -89,6 +89,31 @@ function cleanupFirebaseListeners() {
   refreshTypingIndicators();
 }
 
+function resetRoomScopedUiState() {
+  if (window.St) {
+    St.tokens = {};
+    St.mapState = { background: null, foreground: null, objects: [] };
+    St.mapLayerState = null;
+  }
+  try {
+    if (typeof renderAllTokens === 'function') renderAllTokens(St.tokens || {});
+  } catch (e) {
+    console.warn('[game] renderAllTokens reset failed', e);
+  }
+  try {
+    if (typeof applyImportedMapState === 'function') {
+      applyImportedMapState({ background: null, foreground: null, objects: [] });
+    }
+  } catch (e) {
+    console.warn('[game] applyImportedMapState reset failed', e);
+  }
+  try {
+    if (typeof refreshMapLayerManager === 'function') refreshMapLayerManager();
+  } catch (e) {
+    console.warn('[game] refreshMapLayerManager reset failed', e);
+  }
+}
+
 function trackFirebaseListener(unsub) {
   if (typeof unsub === 'function') _firebaseUnsubs.push(unsub);
 }
@@ -103,6 +128,7 @@ function digestPlayers(players) {
 function setupFirebaseListeners() {
   if (!window._FB?.CONFIGURED) return;
   cleanupFirebaseListeners();
+  resetRoomScopedUiState();
   bindRoomStabilityEvents();
   _lastSyncedRoomAvatar = null;
 
@@ -623,6 +649,7 @@ async function leaveRoom() {
   St.roomCode = ''; St.isGM = false;
   _lastSyncedRoomAvatar = null;
   if (typeof clearPendingChatImages === 'function') clearPendingChatImages();
+  resetRoomScopedUiState();
   
   closeModal('modal-settings');
   showLobby();
