@@ -57,6 +57,108 @@
     saveAliases(map);
   }
 
+  function getSeenStorageKey() {
+    const state = getStateRoot();
+    const roomCode = String(state.roomCode || state.roomId || '').trim();
+    const myUid = String(state.myId || '').trim();
+    return `itc_dm_seen::${myUid}::${roomCode}`;
+  }
+
+  function loadSeenMap() {
+    try {
+      const raw = localStorage.getItem(getSeenStorageKey());
+      const parsed = raw ? JSON.parse(raw) : {};
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch (e) {
+      return {};
+    }
+  }
+
+  function saveSeenMap(next) {
+    try {
+      localStorage.setItem(getSeenStorageKey(), JSON.stringify(next && typeof next === 'object' ? next : {}));
+    } catch (e) {}
+  }
+
+  function getMessageStamp(msg) {
+    const direct = Number(msg?.updatedAt || msg?.createdAt || msg?.ts || 0);
+    if (Number.isFinite(direct) && direct > 0) return direct;
+    const parsed = Date.parse(String(msg?.updatedAt || msg?.createdAt || msg?.time || ''));
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+  }
+
+  function getUnreadRuntime() {
+    if (!ROOT.__DM_UI_UNREAD) ROOT.__DM_UI_UNREAD = { roomCode: '', off: null, latestByChannel: {} };
+    return ROOT.__DM_UI_UNREAD;
+  }
+
+  function markChannelSeen(channelKey) {
+    const key = String(channelKey || '').trim();
+    if (!key || key === 'global') return;
+    const runtime = getUnreadRuntime();
+    const seen = loadSeenMap();
+    const latest = Number(runtime.latestByChannel?.[key] || 0);
+    const next = latest || Date.now();
+    if (Number(seen[key] || 0) >= next) return;
+    seen[key] = next;
+    saveSeenMap(seen);
+    if (typeof ROOT.clearDmUnreadState === 'function') ROOT.clearDmUnreadState(key);
+  }
+
+  function channelHasUnread(channelKey) {
+    return typeof ROOT.getDmUnreadState === 'function' ? !!ROOT.getDmUnreadState(channelKey) : false;
+  }
+
+  function playerHasUnread(uid) {
+    const safeUid = String(uid || '').trim();
+    if (!safeUid) return false;
+    const channels = typeof ROOT.getAvailableDmChannels === 'function' ? ROOT.getAvailableDmChannels() : [];
+    return channels.some((channel) => Array.isArray(channel?.participantIds) && channel.participantIds.includes(safeUid) && channelHasUnread(channel.channelKey));
+  }
+
+  function rebuildUnreadState(raw) {
+    const runtime = getUnreadRuntime();
+    const latestByChannel = {};
+    Object.values(raw && typeof raw === 'object' ? raw : {}).forEach((msg) => {
+      const key = String(msg?.dmChannelKey || 'global').trim() || 'global';
+      if (key === 'global') return;
+      if (String(msg?.type || '').trim() === 'dm-bootstrap') return;
+      const stamp = getMessageStamp(msg);
+      latestByChannel[key] = Math.max(Number(latestByChannel[key] || 0), stamp);
+    });
+    runtime.latestByChannel = latestByChannel;
+    const seen = loadSeenMap();
+    const currentKey = typeof ROOT.getCurrentDmChannelKey === 'function' ? ROOT.getCurrentDmChannelKey() : 'global';
+    if (currentKey && currentKey !== 'global') {
+      const latest = Number(latestByChannel[currentKey] || 0);
+      if (latest && Number(seen[currentKey] || 0) < latest) {
+        seen[currentKey] = latest;
+        saveSeenMap(seen);
+      }
+    }
+    Object.keys(latestByChannel).forEach((key) => {
+      const unread = Number(latestByChannel[key] || 0) > Number(seen[key] || 0);
+      if (typeof ROOT.setDmUnreadState === 'function') ROOT.setDmUnreadState(key, unread);
+    });
+  }
+
+  function ensureUnreadSync() {
+    const state = getStateRoot();
+    const roomCode = String(state.roomCode || state.roomId || '').trim();
+    const runtime = getUnreadRuntime();
+    if (!roomCode || typeof ref !== 'function' || typeof onValue !== 'function' || !ROOT.db) return;
+    if (runtime.roomCode === roomCode && runtime.off) return;
+    try { if (typeof runtime.off === 'function') runtime.off(); } catch (e) {}
+    runtime.roomCode = roomCode;
+    runtime.off = null;
+    try {
+      runtime.off = onValue(ref(ROOT.db, `rooms/${roomCode}/chat`), (snap) => {
+        rebuildUnreadState(snap.val() || {});
+        try { renderDmChannelButtons(); } catch (e) {}
+      });
+    } catch (e) {}
+  }
+
   function getOtherPlayerEntries() {
     const state = getStateRoot();
     const players = state.players || {};
@@ -90,7 +192,8 @@
     others.forEach((player) => {
       const active = !isGlobal && selected.has(player.uid);
       const label = (getAliasForUid(player.uid) || player.name).replace(/</g, '&lt;').replace(/>/g, '&gt;');
-      items.push(`<button type="button" class="dm-channel-btn ${active ? 'is-active' : ''}" data-dm-role="player" data-uid="${player.uid.replace(/"/g, '&quot;')}"><span class="dm-channel-label">${label}</span><span class="dm-channel-dot" style="display:none"></span></button>`);
+      const dotStyle = playerHasUnread(player.uid) ? '' : 'display:none';
+      items.push(`<button type="button" class="dm-channel-btn ${active ? 'is-active' : ''}" data-dm-role="player" data-uid="${player.uid.replace(/"/g, '&quot;')}"><span class="dm-channel-label">${label}</span><span class="dm-channel-dot" style="${dotStyle}"></span></button>`);
     });
     list.innerHTML = items.join('');
     list.querySelector('[data-dm-role="global"]')?.addEventListener('click', () => {
@@ -104,6 +207,8 @@
         const next = new Set(getSelectedParticipantIds());
         if (next.has(uid)) next.delete(uid); else next.add(uid);
         if (typeof ROOT.selectDmParticipants === 'function') ROOT.selectDmParticipants(Array.from(next));
+        const nextKey = typeof ROOT.getCurrentDmChannelKey === 'function' ? ROOT.getCurrentDmChannelKey() : '';
+        markChannelSeen(nextKey);
         renderDmChannelButtons();
       });
       btn.addEventListener('contextmenu', (ev) => {
@@ -129,7 +234,8 @@
     channels.forEach((channel) => {
       const active = String(currentKey) === String(channel.channelKey || '');
       const label = getChannelLabelForViewer(channel, myId);
-      items.push(`<button type="button" class="dm-channel-btn ${active ? 'is-active' : ''}" data-dm-role="channel" data-channel-key="${String(channel.channelKey || '').replace(/"/g, '&quot;')}"><span class="dm-channel-label">${label.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</span><span class="dm-channel-dot" style="display:none"></span></button>`);
+      const dotStyle = channelHasUnread(channel.channelKey) ? '' : 'display:none';
+      items.push(`<button type="button" class="dm-channel-btn ${active ? 'is-active' : ''}" data-dm-role="channel" data-channel-key="${String(channel.channelKey || '').replace(/"/g, '&quot;')}"><span class="dm-channel-label">${label.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</span><span class="dm-channel-dot" style="${dotStyle}"></span></button>`);
     });
     list.innerHTML = items.join('');
     list.querySelector('[data-dm-role="global"]')?.addEventListener('click', () => {
@@ -141,6 +247,7 @@
         const channelKey = String(btn.dataset.channelKey || '').trim();
         if (!channelKey) return;
         if (typeof ROOT.setCurrentDmChannelKey === 'function') ROOT.setCurrentDmChannelKey(channelKey);
+        markChannelSeen(channelKey);
         renderDmChannelButtons();
       });
     });
@@ -150,9 +257,11 @@
     const bar = getDmBar();
     const list = getDmListWrap();
     if (!bar || !list) return;
+    ensureUnreadSync();
     const visible = isChatTabActive();
     bar.style.display = visible ? 'inline-flex' : 'none';
     if (!visible) { list.innerHTML = ''; return; }
+    markChannelSeen(typeof ROOT.getCurrentDmChannelKey === 'function' ? ROOT.getCurrentDmChannelKey() : 'global');
     if (typeof ROOT.isDmGmView === 'function' && ROOT.isDmGmView()) renderGmButtons(list);
     else renderPlayerButtons(list);
   }
@@ -169,6 +278,7 @@
   ROOT.renderDmChannelButtons = renderDmChannelButtons;
   ROOT.refreshDmChannelButtons = renderDmChannelButtons;
   ROOT.getDmButtonAlias = getAliasForUid;
+  ROOT.setDmButtonAlias = setAliasForUid;
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', scheduleBootRender, { once: true });
   } else {
