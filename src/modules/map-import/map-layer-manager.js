@@ -163,6 +163,96 @@
       });
   }
 
+  function getDeletableObjectLayers() {
+    const state = getStateRoot().mapState || {};
+    const objects = Array.isArray(state.objects) ? state.objects : [];
+    return objects.map((item, index) => ({
+      layerId: String(item?.layerId || `object:${item?.id || index + 1}`),
+      panelTokenId: String(item?.panelTokenId || '').trim(),
+    }));
+  }
+
+  async function deleteAllObjectLayers() {
+    const deletable = getDeletableObjectLayers();
+    if (!deletable.length) return;
+    const removeLayerIds = new Set(deletable.map((item) => item.layerId));
+    const stateRoot = getStateRoot();
+    const currentState = stateRoot.mapState || {};
+    const nextObjects = [];
+    const nextLayerState = normalizeLayerState(stateRoot.mapLayerState || null);
+    nextLayerState.order = nextLayerState.order.filter((layerId) => !removeLayerIds.has(layerId));
+    if (nextLayerState.visible && typeof nextLayerState.visible === 'object') {
+      removeLayerIds.forEach((layerId) => { delete nextLayerState.visible[layerId]; });
+    }
+
+    stateRoot.mapState = { ...currentState, objects: nextObjects };
+    stateRoot.mapLayerState = nextLayerState;
+    if (typeof applyImportedMapState === 'function') applyImportedMapState(stateRoot.mapState);
+    applyMapLayerState();
+    renderMapLayerList();
+
+    if (!window._FB?.CONFIGURED) return;
+    const roomCode = getLiveRoomCode();
+    if (!roomCode || roomCode === 'local') return;
+
+    const tokenDeletes = {};
+    deletable.forEach((item) => {
+      if (item.panelTokenId) tokenDeletes[item.panelTokenId] = null;
+    });
+
+    const { db, ref, update } = window._FB;
+    await update(ref(db, `rooms/${roomCode}/bgm`), {
+      mapObjects: nextObjects,
+      mapLayerState: nextLayerState,
+    });
+    if (Object.keys(tokenDeletes).length) {
+      await update(ref(db, `rooms/${roomCode}/tokens`), tokenDeletes);
+    }
+  }
+
+  function confirmDeleteAllObjectLayers() {
+    const count = getDeletableObjectLayers().length;
+    if (!count) {
+      if (typeof showToast === 'function') showToast('삭제할 맵세팅 오브젝트 레이어가 없어요.');
+      return;
+    }
+    const ok = window.confirm(`맵세팅 오브젝트 레이어 ${count}개를 모두 삭제할까요?
+배경/전경은 유지되고, 연결된 맵세팅 패널만 함께 삭제됩니다.`);
+    if (!ok) return;
+    deleteAllObjectLayers()
+      .then(() => { if (typeof showToast === 'function') showToast('맵세팅 오브젝트 레이어를 모두 삭제했어요.'); })
+      .catch((err) => {
+        console.error('deleteAllObjectLayers failed', err);
+        if (typeof showToast === 'function') showToast('전체삭제 중 오류가 발생했어요.');
+        if (typeof refreshMapLayerManager === 'function') refreshMapLayerManager();
+      });
+  }
+
+  function ensureMapLayerBulkActions(list, entries) {
+    const modal = document.getElementById('modal-map-layers');
+    if (!modal || !list) return;
+    let bar = document.getElementById('map-layer-bulk-actions');
+    if (!bar) {
+      bar = document.createElement('div');
+      bar.id = 'map-layer-bulk-actions';
+      bar.style.display = 'flex';
+      bar.style.justifyContent = 'flex-end';
+      bar.style.gap = '8px';
+      bar.style.margin = '0 0 10px';
+      list.parentNode?.insertBefore(bar, list);
+    }
+    const objectCount = Array.isArray(entries) ? entries.filter((entry) => canDeleteLayer(entry)).length : 0;
+    bar.innerHTML = objectCount > 0
+      ? '<button type="button" id="map-layer-delete-all" class="btn-secondary" style="min-width:120px">오브젝트 전체삭제</button>'
+      : '';
+    const btn = document.getElementById('map-layer-delete-all');
+    btn?.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      confirmDeleteAllObjectLayers();
+    });
+  }
+
   function getImportedPanelPriorityPayload(order) {
     const state = getStateRoot().mapState || {};
     const objects = Array.isArray(state.objects) ? state.objects : [];
@@ -253,6 +343,7 @@
     stateRoot.mapLayerState = normalized;
     list.innerHTML = '';
     empty.style.display = entries.length ? 'none' : '';
+    ensureMapLayerBulkActions(list, entries);
     if (!entries.length) return;
 
     const entryMap = new Map(entries.map((entry) => [entry.id, entry]));
