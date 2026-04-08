@@ -102,7 +102,6 @@
     clearImportedMapObjects();
     if (!mapInner) return;
     objects.forEach((item, index) => {
-      if (item?.panelTokenId) return;
       if (!item?.url) return;
       const el = document.createElement('div');
       const layerId = String(item.layerId || `object:${item.id || index + 1}`);
@@ -287,77 +286,6 @@
     return parsed;
   }
 
-
-  function buildImportedPanelTokenId(roomCode, sourceItemId, index) {
-    const safeRoom = String(roomCode || 'room').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 16) || 'room';
-    const safeSource = String(sourceItemId || index + 1).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 24) || String(index + 1);
-    return `mapimp_${safeRoom}_${safeSource}_${Date.now()}_${index + 1}`;
-  }
-
-  function buildImportedPanelToken(blueprint, roomCode, index) {
-    const seed = blueprint?.panelTokenSeed || {};
-    const tokenId = buildImportedPanelTokenId(roomCode, seed.sourceItemId || blueprint?.id || '', index);
-    return {
-      id: tokenId,
-      tokenCategory: 'panel',
-      type: 'panel',
-      name: String(seed.name || blueprint?.name || `오브젝트 ${index + 1}`),
-      x: Number(seed.xCenterPct ?? seed.xPct ?? blueprint?.xCenterPct ?? blueprint?.xPct ?? 50),
-      y: Number(seed.yCenterPct ?? seed.yPct ?? blueprint?.yCenterPct ?? blueprint?.yPct ?? 50),
-      rotation: Number(seed.angle || blueprint?.angle || 0),
-      memo: String(seed.memo || ''),
-      panelWidth: Math.max(1, Number(seed.panelWidth || blueprint?.sourceWidth || 1) || 1),
-      panelHeight: Math.max(1, Number(seed.panelHeight || blueprint?.sourceHeight || 1) || 1),
-      panelPriority: Math.max(1, Number(seed.panelPriority || 1) || 1),
-      panelImage: blueprint?.url || '',
-      panelBackImage: blueprint?.coverUrl || '',
-      panelFace: 'front',
-      panelLockPosition: !!seed.panelLockPosition,
-      panelLockSize: !!seed.panelLockSize,
-      panelActionType: 'none',
-      panelActionText: '',
-      mapLayerId: String(blueprint?.layerId || `object:${blueprint?.id || index + 1}`),
-      importedMapObject: true,
-      importedMapObjectMeta: {
-        sourceItemId: String(seed.sourceItemId || blueprint?.id || ''),
-        sourceLayerId: String(seed.sourceLayerId || blueprint?.layerId || ''),
-        sourceImageName: String(seed.sourceImageName || blueprint?.imageName || ''),
-        sourceCoverImageName: String(seed.sourceCoverImageName || blueprint?.coverImageName || ''),
-        clickAction: seed.clickAction || null,
-        visible: seed.visible !== false,
-        sourceMeta: seed.sourceMeta || null,
-      },
-      ownerId: String(window.St?.myId || ''),
-      ownerName: String(window.St?.myName || ''),
-      createdBy: String(window.St?.myId || ''),
-      createdByName: String(window.St?.myName || ''),
-      tokenSize: 1,
-    };
-  }
-
-  async function clearPreviousImportedPanelTokens(roomCode, objects) {
-    const ids = Array.isArray(objects)
-      ? objects.map((item) => String(item?.panelTokenId || '').trim()).filter(Boolean)
-      : [];
-    if (!ids.length || !window._FB?.CONFIGURED) return;
-    const { db, ref, update } = window._FB;
-    const payload = {};
-    ids.forEach((id) => { payload[id] = null; });
-    await update(ref(db, `rooms/${roomCode}/tokens`), payload);
-  }
-
-  async function saveImportedPanelTokens(roomCode, tokens) {
-    if (!Array.isArray(tokens) || !tokens.length || !window._FB?.CONFIGURED) return;
-    const { db, ref, update } = window._FB;
-    const payload = {};
-    tokens.forEach((token) => {
-      if (!token?.id) return;
-      payload[token.id] = token;
-    });
-    if (!Object.keys(payload).length) return;
-    await update(ref(db, `rooms/${roomCode}/tokens`), payload);
-  }
-
   function buildImportedMapObjects(itemsMap = {}, roomMeta = {}, sceneAspect = 1) {
     const rawItems = Object.entries(itemsMap)
       .map(([id, item]) => ({ id, ...(item || {}) }))
@@ -523,7 +451,6 @@
         : 1;
       const objectBlueprints = buildImportedMapObjects(validated.parsed?.entities?.items || {}, room, sceneAspect);
       const importedObjects = [];
-      const importedPanelTokens = [];
       for (let i = 0; i < objectBlueprints.length; i++) {
         const blueprint = objectBlueprints[i];
         const entry = zip.file(blueprint.imageName);
@@ -532,28 +459,8 @@
         const objExt = blueprint.imageName.split('.').pop() || 'png';
         const objectUrl = await uploadMapLayerBlob(objectBlob, roomCode, `map-obj-${i + 1}-${Date.now()}.${objExt}`);
         if (!objectUrl) continue;
-        let coverUrl = '';
-        if (blueprint.coverImageName) {
-          const coverEntry = zip.file(blueprint.coverImageName);
-          if (coverEntry) {
-            const coverBlob = await coverEntry.async('blob');
-            const coverExt = blueprint.coverImageName.split('.').pop() || 'png';
-            coverUrl = await uploadMapLayerBlob(coverBlob, roomCode, `map-obj-cover-${i + 1}-${Date.now()}.${coverExt}`) || '';
-          }
-        }
-        const objectWithUrl = { ...blueprint, url: objectUrl, coverUrl };
-        const panelToken = buildImportedPanelToken(objectWithUrl, roomCode, i);
-        importedPanelTokens.push(panelToken);
-        importedObjects.push({
-          ...objectWithUrl,
-          panelTokenId: panelToken.id,
-          targetType: 'panel-token',
-          previewUrl: objectUrl,
-        });
+        importedObjects.push({ ...blueprint, url: objectUrl });
       }
-
-      await clearPreviousImportedPanelTokens(roomCode, window.St?.mapState?.objects || []);
-      await saveImportedPanelTokens(roomCode, importedPanelTokens);
 
       const nextMapState = {
         background: {
@@ -577,8 +484,8 @@
         mapForegroundImportedAt: nextMapState.foreground?.importedAt || 0,
         mapObjects: nextMapState.objects || [],
       });
-      setSummary(buildValidationSummary(pendingFile, validated.parsed) + `<br><br><b>맵 이미지 적용 완료</b><br>스크린 패널 ${importedPanelTokens.length}개 생성 / 레이어 항목 유지`);
-      if (typeof showToast === 'function') showToast('맵 이미지 + 스크린 패널 적용 완료');
+      setSummary(buildValidationSummary(pendingFile, validated.parsed) + `<br><br><b>맵 이미지 적용 완료</b><br>image item 오브젝트 ${importedObjects.length}개 반영`);
+      if (typeof showToast === 'function') showToast('맵 이미지 + 오브젝트 적용 완료');
     } catch (err) {
       console.error('map background apply failed', err);
       setError(err?.message || '맵 이미지 적용 중 오류가 발생했어요.');

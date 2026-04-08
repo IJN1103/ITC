@@ -722,7 +722,6 @@ function renderAllTokens(tokens) {
   Object.values(tokens).forEach(t => createTokenEl(t));
   updateMultiTokenSelectionUI();
   renderMapStatusPanel(tokens);
-  if (typeof applyMapLayerState === 'function') applyMapLayerState();
   /* 게임 화면 진입 후 맵 크기가 정상 반영되도록 보장 */
   applyMapTransform();
 }
@@ -813,7 +812,6 @@ function addOrUpdateSingleToken(id, data) {
   }
   syncMultiTokenSelectionWithTokens(St.tokens);
   updateMultiTokenSelectionUI();
-  if (typeof applyMapLayerState === 'function') applyMapLayerState();
 }
 
 /* 스탠딩 배열의 fingerprint (변경 감지용) */
@@ -1055,9 +1053,19 @@ function createTokenEl(t) {
   const sz = (t.tokenSize || 1);
   if (tokenCategory === 'panel') {
     el.textContent = '';
-    const panelSize = getPanelTokenPixelSize(t);
-    el.style.width = panelSize.width + 'px';
-    el.style.minHeight = panelSize.height + 'px';
+    const importedLayout = t?.importedMapObjectMeta?.layoutPct || null;
+    const importedWidthPct = Number(importedLayout?.width || 0);
+    const importedHeightPct = Number(importedLayout?.height || 0);
+    if (importedWidthPct > 0 && importedHeightPct > 0) {
+      el.style.width = importedWidthPct + '%';
+      el.style.height = importedHeightPct + '%';
+      el.style.minHeight = '0';
+    } else {
+      const panelSize = getPanelTokenPixelSize(t);
+      el.style.width = panelSize.width + 'px';
+      el.style.height = '';
+      el.style.minHeight = panelSize.height + 'px';
+    }
     el.style.fontSize = Math.max(11, 12 * sz) + 'px';
     el.style.zIndex = String(normalizePanelToken(t).panelPriority);
     const activePanelImg = getPanelTokenDisplayImage(t);
@@ -1314,7 +1322,6 @@ let _pteBackImgData = null;
 let _pteBackImgBlob = null;
 let _pteBackImgCleared = false;
 let _panelTokenEditSaving = false;
-let _panelTokenEditSession = 0;
 let _panelTokenClickTimer = null;
 let _panelTokenClickTokenId = null;
 const PANEL_TOKEN_CLICK_DELAY = 230;
@@ -1827,37 +1834,6 @@ function getPanelTokenSnapshot(tokenId) {
   return token ? normalizePanelToken(token) : null;
 }
 
-function clearPanelTokenEditForm() {
-  const defaults = normalizePanelToken({ name: '패널', memo: '' });
-  const nameEl = document.getElementById('pte-name');
-  const widthEl = document.getElementById('pte-width');
-  const heightEl = document.getElementById('pte-height');
-  const priorityEl = document.getElementById('pte-priority');
-  const memoEl = document.getElementById('pte-memo');
-  const lockPosEl = document.getElementById('pte-lock-pos');
-  const lockSizeEl = document.getElementById('pte-lock-size');
-  const actionTypeEl = document.getElementById('pte-action-type');
-  const actionTextEl = document.getElementById('pte-action-text');
-  const frontFileEl = document.getElementById('pte-front-file');
-  const backFileEl = document.getElementById('pte-back-file');
-
-  if (nameEl) nameEl.value = String(defaults.name || '');
-  if (widthEl) widthEl.value = Math.max(1, Math.round(defaults.panelWidth));
-  if (heightEl) heightEl.value = Math.max(1, Math.round(defaults.panelHeight));
-  if (priorityEl) priorityEl.value = Number(defaults.panelPriority || 0);
-  if (memoEl) memoEl.value = '';
-  if (lockPosEl) lockPosEl.checked = false;
-  if (lockSizeEl) lockSizeEl.checked = false;
-  if (actionTypeEl) actionTypeEl.value = PANEL_TOKEN_DEFAULTS.panelActionType;
-  if (actionTextEl) actionTextEl.value = '';
-  if (frontFileEl) frontFileEl.value = '';
-  if (backFileEl) backFileEl.value = '';
-  syncPanelTokenLockUi();
-  syncPanelTokenActionUi();
-  refreshPanelTokenFrontPreview();
-  refreshPanelTokenBackPreview();
-}
-
 function resetPanelTokenEditDraft() {
   revokeTokenPreviewUrl(_pteFrontImgData);
   revokeTokenPreviewUrl(_pteBackImgData);
@@ -1867,7 +1843,6 @@ function resetPanelTokenEditDraft() {
   _pteBackImgBlob = null;
   _pteBackImgData = null;
   _pteBackImgCleared = false;
-  clearPanelTokenEditForm();
 }
 
 function beginPanelTokenEditSaving() {
@@ -1884,14 +1859,9 @@ function endPanelTokenEditSaving() {
 }
 
 function openPanelTokenEdit(tokenId) {
-  if (_panelTokenEditSaving) {
-    showToast('패널 토큰 저장이 진행 중이에요. 저장이 끝난 뒤 다시 시도해 주세요.');
-    return;
-  }
   const t = getPanelTokenSnapshot(tokenId);
   if (!t) return;
   clearPanelTokenActionState(tokenId);
-  _panelTokenEditSession += 1;
   _pteTokenId = tokenId;
   resetPanelTokenEditDraft();
   _pteFrontImgData = t.panelImage || null;
@@ -1903,15 +1873,11 @@ function openPanelTokenEdit(tokenId) {
   openModal('modal-panel-token-edit');
 }
 
-function closePanelTokenEdit(force = false) {
-  if (!force && _panelTokenEditSaving) {
-    showToast('패널 토큰 저장이 진행 중이에요. 저장이 끝날 때까지 창을 닫을 수 없어요.');
-    return;
-  }
-  _panelTokenEditSession += 1;
+function closePanelTokenEdit() {
   resetPanelTokenEditDraft();
   closeModal('modal-panel-token-edit');
   _pteTokenId = null;
+  endPanelTokenEditSaving();
 }
 
 function panelTokenEditPendingToast() {
@@ -1922,14 +1888,9 @@ function panelTokenEditPendingToast() {
 async function savePanelTokenEdit() {
   if (!_pteTokenId) return;
   if (!beginPanelTokenEditSaving()) return;
-  const editTokenId = _pteTokenId;
-  const editSession = _panelTokenEditSession;
   try {
-    const current = getPanelTokenSnapshot(editTokenId);
-    if (!current) {
-      showToast('편집 중인 패널 토큰을 찾지 못했어요. 다시 열어서 시도해 주세요.');
-      return;
-    }
+    const current = getPanelTokenSnapshot(_pteTokenId);
+    if (!current) return;
     const next = buildPanelTokenSavePayload(current);
     const actionValidation = validatePanelTokenActionForm({
       panelActionType: next.panelActionType,
@@ -1955,21 +1916,14 @@ async function savePanelTokenEdit() {
     } else if (_pteBackImgData) {
       next.panelBackImage = _pteBackImgData;
     }
-    if (editSession !== _panelTokenEditSession || editTokenId !== _pteTokenId) {
-      showToast('패널 토큰 편집 상태가 변경되어 저장을 중단했어요. 다시 열어서 저장해 주세요.');
-      return;
-    }
     if (window._FB?.CONFIGURED) {
       const { db, ref, set } = window._FB;
-      await set(ref(db, `rooms/${St.roomCode}/tokens/${editTokenId}`), next);
+      await set(ref(db, `rooms/${St.roomCode}/tokens/${_pteTokenId}`), next);
     }
-    St.tokens[editTokenId] = next;
+    St.tokens[_pteTokenId] = next;
     renderAllTokens(St.tokens);
-    if (_pteTokenId === editTokenId) closePanelTokenEdit(true);
+    closePanelTokenEdit();
     showToast('패널 토큰 설정이 저장됐어요.');
-  } catch (err) {
-    console.error('panel token save failed', err);
-    showToast('패널 토큰 저장 중 문제가 발생했어요. 다시 시도해 주세요.');
   } finally {
     endPanelTokenEditSaving();
   }
@@ -2049,28 +2003,20 @@ async function handlePanelTokenBackImg(input) {
 
 
 async function deletePanelTokenFromEdit() {
-  if (_panelTokenEditSaving) {
-    showToast('패널 토큰 저장이 진행 중일 때는 삭제할 수 없어요.');
-    return;
-  }
   if (!_pteTokenId) return;
   const token = St.tokens[_pteTokenId];
   if (!token) return;
   if (!confirm(`패널 토큰 "${token.name || '패널'}"을(를) 삭제할까요?`)) return;
   const deleteId = _pteTokenId;
-  closePanelTokenEdit(true);
-  try {
-    if (window._FB?.CONFIGURED) {
-      const { db, ref, remove } = window._FB;
-      await remove(ref(db, `rooms/${St.roomCode}/tokens/${deleteId}`));
-    }
+  closePanelTokenEdit();
+  if (window._FB?.CONFIGURED) {
+    const { db, ref, remove } = window._FB;
+    await remove(ref(db, `rooms/${St.roomCode}/tokens/${deleteId}`));
+  } else {
     delete St.tokens[deleteId];
     renderAllTokens(St.tokens);
-    showToast('패널 토큰이 삭제됐어요.');
-  } catch (err) {
-    console.error('panel token delete failed', err);
-    showToast('패널 토큰 삭제 중 문제가 발생했어요. 다시 시도해 주세요.');
   }
+  showToast('패널 토큰이 삭제됐어요.');
 }
 
 
