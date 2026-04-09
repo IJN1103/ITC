@@ -316,6 +316,15 @@ function popoutChat() {
 
   const getPaneSnapshot = (selector, fallbackChannel) => Array.from(document.querySelectorAll(selector)).map((m) => extractPopoutPaneMsgData(m, fallbackChannel)).filter((d) => d.text || d.fhtml || d.type === 'dsec');
 
+  const formatPopoutMessageTime = (value) => {
+    if (!value) return '';
+    if (typeof value === 'string' && /^\d{1,2}:\d{2}$/.test(value.trim())) return value.trim();
+    const num = Number(value);
+    const date = Number.isFinite(num) && num > 0 ? new Date(num) : new Date(String(value));
+    if (!date || Number.isNaN(date.getTime())) return '';
+    return String(date.getHours()).padStart(2, '0') + ':' + String(date.getMinutes()).padStart(2, '0');
+  };
+
   const syncPopoutWindow = (targetWin) => {
     if (!targetWin || targetWin.closed || !targetWin._popReady) return;
     try {
@@ -328,7 +337,7 @@ function popoutChat() {
         channel: 'chat',
         nameColor: m.nameColor || '',
         avatar: m.speakAsAvatar || getPopoutAvatarUrl(m.name, m.uid),
-        time: formatTime(m.time),
+        time: formatPopoutMessageTime(m.time),
         fhtml: '',
       })) : getPaneSnapshot('#chat-messages > div', 'chat');
       if (targetWin.setMessages) targetWin.setMessages('chat', list);
