@@ -96,6 +96,20 @@ function cleanupFirebaseListeners() {
   _typingState = {};
   refreshTypingIndicators();
   try { if (typeof window.cleanupDmUnreadListener === 'function') window.cleanupDmUnreadListener(); } catch (e) {}
+  _processedChatKeys.clear();
+  _processedCasualKeys.clear();
+  _processedChatKeysByChannel = new Map();
+  _chatMessageSignaturesByChannel = new Map();
+  _chatRecordsByChannel = new Map();
+  _activeChatChannelKey = 'global';
+  window._itcActiveChatChannelKey = 'global';
+  try {
+    if (typeof resetRenderedMessages === 'function') {
+      resetRenderedMessages('chat');
+      resetRenderedMessages('casual');
+    }
+  } catch (e) {}
+  try { if (typeof refreshDmChannelButtons === 'function') refreshDmChannelButtons(); } catch (e) {}
 }
 
 function cleanupActiveChatChannelListeners() {
