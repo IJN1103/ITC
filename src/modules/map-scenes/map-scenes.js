@@ -10,6 +10,7 @@
     activeSceneId: '',
     loadedRoomCode: '',
     isDirty: false,
+    autoCreatedOnOpen: false,
   };
 
   function makeSceneId(){
@@ -71,6 +72,7 @@
       state.activeSceneId = state.scenes[0].id;
       state.loadedRoomCode = '';
       state.isDirty = false;
+      state.autoCreatedOnOpen = false;
       return;
     }
     if (!ROOT._FB?.CONFIGURED) {
@@ -79,6 +81,7 @@
       state.activeSceneId = state.scenes[0].id;
       state.loadedRoomCode = ROOT.St.roomCode;
       state.isDirty = false;
+      state.autoCreatedOnOpen = false;
       return;
     }
     const refs = getMapScenesRefs();
@@ -91,6 +94,7 @@
     state.activeSceneId = String(activeSnap.val() || '').trim();
     state.loadedRoomCode = ROOT.St.roomCode;
     state.isDirty = false;
+    state.autoCreatedOnOpen = !entries.length;
     ensureSceneMinimum();
   }
 
@@ -105,12 +109,13 @@
       return;
     }
     emptyEl.style.display = 'none';
-    listEl.innerHTML = state.scenes.map(scene => {
+    listEl.innerHTML = state.scenes.map((scene, index) => {
       const isSelected = scene.id === state.selectedSceneId;
       const isActive = scene.id === state.activeSceneId;
       return `
         <button type="button" class="map-scene-item${isSelected ? ' is-selected' : ''}" data-scene-id="${scene.id}">
           <div class="map-scene-item-main">
+            <div class="map-scene-item-index">씬 ${index + 1}</div>
             <div class="map-scene-item-name">${ROOT.esc(scene.name || '무제 씬')}</div>
             <div class="map-scene-item-meta">${isActive ? '현재 표시 중' : '대기 중'}</div>
           </div>
@@ -140,6 +145,7 @@
       nameInput.value = selected.name || '';
       preview.textContent = [
         `씬 ID: ${selected.id}`,
+        `선택한 씬: ${selected.name || '무제 씬'}`,
         `배경 저장 여부: ${selected.background ? '있음' : '없음'}`,
         `오브젝트 수: ${Array.isArray(selected.objects) ? selected.objects.length : 0}`,
         `레이어 상태 저장 여부: ${selected.layerState ? '있음' : '없음'}`,
@@ -218,7 +224,7 @@
     }
   }
 
-  async function saveMapScenes(){
+  async function saveMapScenes(options = {}){
     const hint = document.getElementById('map-scene-hint');
     ensureSceneMinimum();
     if (!ROOT.St?.isGM) {
@@ -237,14 +243,15 @@
       payload[normalized.id] = normalized;
     });
     try {
-      if (hint) hint.textContent = '저장 중...';
+      if (hint) hint.textContent = options.silent ? (options.hintText || '기본 씬을 준비하는 중...') : '저장 중...';
       await Promise.all([
         set(refs.scenesRef, payload),
         set(refs.activeRef, state.activeSceneId || state.scenes[0].id),
       ]);
       state.isDirty = false;
-      if (hint) hint.textContent = '저장됐어요 ✓';
-      ROOT.showToast('장면 전환 씬 설정을 저장했어요.');
+      state.autoCreatedOnOpen = false;
+      if (hint) hint.textContent = options.silent ? (options.hintText || '기본 씬을 준비했어요.') : '저장됐어요 ✓';
+      if (!options.silent) ROOT.showToast('장면 전환 씬 설정을 저장했어요.');
       setTimeout(() => {
         const nextHint = document.getElementById('map-scene-hint');
         if (nextHint && nextHint.isConnected && !state.isDirty) nextHint.textContent = '';
@@ -252,7 +259,7 @@
     } catch (err) {
       console.error('saveMapScenes failed', err);
       if (hint) hint.textContent = '저장에 실패했어요.';
-      ROOT.showToast('장면 전환 씬 저장에 실패했어요.');
+      if (!options.silent) ROOT.showToast('장면 전환 씬 저장에 실패했어요.');
     }
   }
 
@@ -265,6 +272,9 @@
     bindSceneModalEvents();
     const roomChanged = state.loadedRoomCode !== String(ROOT.St?.roomCode || '');
     if (roomChanged || !state.scenes.length) await loadScenesFromRoom();
+    if (state.autoCreatedOnOpen && ROOT._FB?.CONFIGURED && ROOT.St?.roomCode) {
+      await saveMapScenes({ silent: true, hintText: '기본 씬을 준비했어요.' });
+    }
     renderMapSceneModal();
   }
 

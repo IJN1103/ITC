@@ -1026,15 +1026,15 @@ window._FB = {
 <div class="overlay" id="modal-map-scenes">
   <div class="modal-card" style="width:min(920px,92vw);max-height:88vh;display:flex;flex-direction:column">
     <div class="modal-head">
-      <div class="modal-title">🎬 맵 장면 전환</div>
+      <div class="modal-title">맵 장면 전환</div>
       <button class="modal-close" onclick="closeMapSceneModal()">✕</button>
     </div>
-    <div class="modal-info" style="line-height:1.7">GM이 미리 씬을 준비하고, 나중에 이 씬을 실제 맵 전환에 연결할 수 있도록 저장 구조를 관리하는 단계입니다.</div>
+    <div class="modal-info" style="line-height:1.7">GM이 미리 씬을 준비하고, 나중에 이 씬을 실제 맵 전환에 연결할 수 있도록 저장 구조를 관리하는 단계입니다. 처음 열면 기본 씬 1개가 자동으로 준비됩니다.</div>
     <div class="map-scene-layout">
       <div class="map-scene-side">
         <div class="map-scene-side-head">
           <div class="map-scene-side-title">씬 목록</div>
-          <button type="button" class="btn-secondary" id="map-scene-add-btn">+ 씬 추가</button>
+          <button type="button" class="btn-secondary" id="map-scene-add-btn">+</button>
         </div>
         <div class="map-scene-list" id="map-scene-list"></div>
         <div class="map-scene-list-empty" id="map-scene-empty" style="display:none">등록된 씬이 없습니다.</div>
@@ -1055,7 +1055,7 @@ window._FB = {
         </div>
       </div>
     </div>
-    <div class="modal-actions" style="margin-top:16px">
+    <div class="modal-actions" style="margin-top:16px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
       <button type="button" class="btn-danger" id="map-scene-delete-btn">선택한 씬 삭제</button>
       <div class="spacer"></div>
       <span id="map-scene-hint" style="font-size:11px;color:var(--muted)"></span>
