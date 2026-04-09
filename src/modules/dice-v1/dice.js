@@ -200,8 +200,7 @@ function rollFromFormula(formula) {
       grandTotal += sign * sum;
       allRolls.push(...rolls);
       const mulSuffix = mulOp ? `${mulOp}${mulVal}` : '';
-      const detailInner = mulOp ? `(${rolls.join(',')}=${rawSum})${mulOp}${mulVal}` : rolls.join(',');
-      allDetails.push((sign < 0 ? '-' : (allDetails.length > 0 ? '+' : '')) + `${count}d${sides}${mulSuffix}[${detailInner}]`);
+      allDetails.push((sign < 0 ? '-' : (allDetails.length > 0 ? '+' : '')) + `${count}d${sides}[${rolls.join(',')}]${mulSuffix}`);
       labelParts.push((sign < 0 ? '-' : (labelParts.length > 0 ? '+' : '')) + `${count}d${sides}${mulSuffix}`);
       continue;
     }
