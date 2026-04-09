@@ -565,6 +565,9 @@ function addCombatRow() {
 
 async function saveSheet() {
   if (!_sheetJournalId) return;
+  const targetJournalId = _sheetJournalId;
+  const targetAssignedTokenId = _jdAssignedTokenId || null;
+  const targetAssignedTo = Array.isArray(_sheetAssignedTo) ? [..._sheetAssignedTo] : (_sheetAssignedTo || []);
   const data = {};
 
   ['name','player','job','age','residence','birthplace'].forEach(k => {
@@ -631,23 +634,23 @@ async function saveSheet() {
     const _keepAv = getSharedJournalAvatarRuntime().sanitizePersistentAvatarSrc(
       _sheetAvatarStoredUrl
       || _sheetAvatarData
-      || getSharedJournalAvatarRuntime().readStoredAvatar(_sheetJournalId)
+      || getSharedJournalAvatarRuntime().readStoredAvatar(targetJournalId)
       || existing.avatar
       || null
     );
     if (_keepAv) {
       data.avatar = _keepAv;
       existing.avatar = _keepAv;
-      saSetAvatar(_sheetJournalId, _keepAv);
+      saSetAvatar(targetJournalId, _keepAv);
     }
 
     const metaPatch = {
       ownerId: existing.ownerId || St.myId,
       title: data.name || existing.title,
       updatedAt: Date.now(),
-      assignedTokenId: _jdAssignedTokenId || null,
+      assignedTokenId: targetAssignedTokenId,
     };
-    if (_sheetAssignedTo !== undefined) metaPatch.assignedTo = _sheetAssignedTo || [];
+    if (_sheetAssignedTo !== undefined) metaPatch.assignedTo = targetAssignedTo;
     if (_keepAv) metaPatch.avatar = _keepAv;
 
     existing.sheet = data;
@@ -656,24 +659,24 @@ async function saveSheet() {
     existing.assignedTokenId = metaPatch.assignedTokenId;
     if (_sheetAssignedTo !== undefined) existing.assignedTo = metaPatch.assignedTo;
 
-    saveJournalSheetFB(_sheetJournalId, data, metaPatch);
+    saveJournalSheetFB(targetJournalId, data, metaPatch);
   } else {
     const newJ = {
-      id: _sheetJournalId,
+      id: targetJournalId,
       title: data.name || '무제 저널',
       body: '',
       sheet: data,
       ownerId: St.myId,
       createdAt: Date.now(),
       updatedAt: Date.now(),
-      assignedTokenId: _jdAssignedTokenId || null,
-      assignedTo: _sheetAssignedTo || [],
+      assignedTokenId: targetAssignedTokenId,
+      assignedTo: targetAssignedTo,
     };
     const newAvatar = getSharedJournalAvatarRuntime().sanitizePersistentAvatarSrc(_sheetAvatarStoredUrl || _sheetAvatarData || null);
     if (newAvatar) {
       newJ.avatar = newAvatar;
       data.avatar = newAvatar;
-      saSetAvatar(_sheetJournalId, newAvatar);
+      saSetAvatar(targetJournalId, newAvatar);
     }
     saveJournalFB(newJ);
     if (_sheetIsNew) {
