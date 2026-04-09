@@ -266,10 +266,12 @@
     ROOT.openModal('modal-map-scenes');
     bindSceneModalEvents();
     const roomChanged = state.loadedRoomCode !== String(ROOT.St?.roomCode || '');
-    if (roomChanged || !state.scenes.length) await loadScenesFromRoom();
+    if (roomChanged || !state.scenes.length) {
+      try { await loadScenesFromRoom(); } catch (e) { console.warn('loadScenesFromRoom failed', e); }
+    }
     ensureSceneMinimum();
     if (state.autoCreatedOnOpen && ROOT._FB?.CONFIGURED && ROOT.St?.roomCode) {
-      await saveMapScenes({ silent: true, hintText: '기본 씬을 준비했어요.' });
+      try { await saveMapScenes({ silent: true, hintText: '기본 씬을 준비했어요.' }); } catch (e) {}
     }
     renderMapSceneModal();
   }
