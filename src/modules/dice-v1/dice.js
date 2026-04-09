@@ -166,7 +166,7 @@ function rollFromFormula(formula) {
   }
   if (buf) tokens.push(buf);
 
-  if (tokens.length === 0) { showToast('올바른 수식이 아니에요. 예: /1d100, /2d6+3'); return; }
+  if (tokens.length === 0) { showToast('올바른 수식이 아니에요. 예: /1d100, /2d6+3, /3d6*6'); return; }
 
   let grandTotal = 0;
   const allDetails = [];
@@ -181,28 +181,43 @@ function rollFromFormula(formula) {
     if (expr.startsWith('+')) { expr = expr.slice(1); }
     else if (expr.startsWith('-')) { sign = -1; expr = expr.slice(1); }
 
-    // NdS 패턴
-    const diceMatch = expr.match(/^(\d+)?d(\d+)$/);
+    // NdS 패턴 (NdS*M, NdS/M 포함)
+    const diceMatch = expr.match(/^(\d+)?d(\d+)(?:([*/])(\d+))?$/);
     if (diceMatch) {
       const count = parseInt(diceMatch[1] || '1');
       const sides = parseInt(diceMatch[2]);
+      const mulOp = diceMatch[3] || '';
+      const mulVal = parseInt(diceMatch[4] || '0');
       if (count < 1 || count > 100 || sides < 1 || sides > 10000) { valid = false; break; }
+      if (mulOp && (mulVal < 1 || mulVal > 10000)) { valid = false; break; }
+      if (mulOp === '/' && mulVal === 0) { valid = false; break; }
       const rolls = [];
       for (let i = 0; i < count; i++) rolls.push(Math.ceil(Math.random() * sides));
-      const sum = rolls.reduce((a, b) => a + b, 0);
+      let sum = rolls.reduce((a, b) => a + b, 0);
+      const rawSum = sum;
+      if (mulOp === '*') sum = sum * mulVal;
+      else if (mulOp === '/') sum = Math.floor(sum / mulVal);
       grandTotal += sign * sum;
       allRolls.push(...rolls);
-      allDetails.push((sign < 0 ? '-' : (allDetails.length > 0 ? '+' : '')) + `${count}d${sides}[${rolls.join(',')}]`);
-      labelParts.push((sign < 0 ? '-' : (labelParts.length > 0 ? '+' : '')) + `${count}d${sides}`);
+      const mulSuffix = mulOp ? `${mulOp}${mulVal}` : '';
+      const detailInner = mulOp ? `(${rolls.join(',')}=${rawSum})${mulOp}${mulVal}` : rolls.join(',');
+      allDetails.push((sign < 0 ? '-' : (allDetails.length > 0 ? '+' : '')) + `${count}d${sides}${mulSuffix}[${detailInner}]`);
+      labelParts.push((sign < 0 ? '-' : (labelParts.length > 0 ? '+' : '')) + `${count}d${sides}${mulSuffix}`);
       continue;
     }
 
-    // 상수
-    const num = parseInt(expr);
-    if (!isNaN(num)) {
+    // 상수 (N*M, N/M 포함)
+    const constMatch = expr.match(/^(\d+)(?:([*/])(\d+))?$/);
+    if (constMatch) {
+      let num = parseInt(constMatch[1]);
+      const cOp = constMatch[2] || '';
+      const cVal = parseInt(constMatch[3] || '0');
+      if (cOp === '*') num = num * cVal;
+      else if (cOp === '/') num = cVal === 0 ? 0 : Math.floor(num / cVal);
       grandTotal += sign * num;
-      allDetails.push((sign < 0 ? '-' : (allDetails.length > 0 ? '+' : '')) + String(num));
-      labelParts.push((sign < 0 ? '-' : (labelParts.length > 0 ? '+' : '')) + String(num));
+      const display = cOp ? `${constMatch[1]}${cOp}${cVal}` : String(num);
+      allDetails.push((sign < 0 ? '-' : (allDetails.length > 0 ? '+' : '')) + display);
+      labelParts.push((sign < 0 ? '-' : (labelParts.length > 0 ? '+' : '')) + display);
       continue;
     }
 
@@ -211,7 +226,7 @@ function rollFromFormula(formula) {
   }
 
   if (!valid) {
-    showToast('올바른 수식이 아니에요. 예: /1d100, /2d6+3, /1d100+2d20');
+    showToast('올바른 수식이 아니에요. 예: /1d100, /2d6+3, /3d6*6');
     return;
   }
 
