@@ -31,6 +31,11 @@ const COC_SKILLS = [
 
 let _sheetJournalId = null;
 
+function canEditJournalEntry(journal) {
+  if (!journal) return false;
+  return !!St.isGM || String(journal.ownerId || '') === String(St.myId || '') || (Array.isArray(journal.assignedTo) && journal.assignedTo.includes(St.myId));
+}
+
 function initSheetUI() {
   const grid = document.getElementById('sh-stats-grid');
   if (grid && !grid.children.length) {
@@ -469,7 +474,7 @@ function openSheet(journalId) {
   _sheetAssignedTo = j?.assignedTo || [];
   refreshSheetAssignBar(j);
 
-  const canEditSheet = canManageJournalEntry(j);
+  const canEditSheet = canEditJournalEntry(j);
   setSheetEditorMode(canEditSheet);
 
   const delBtn = document.querySelector('.sheet-del-btn');
@@ -607,8 +612,8 @@ async function saveSheet() {
   if (!_sheetJournalId) return;
   const targetJournalId = _sheetJournalId;
   const existingJournal = _allJournals.find(j => j.id === _sheetJournalId) || null;
-  if (existingJournal && !canManageJournalEntry(existingJournal)) {
-    showToast('저널 소유자나 GM만 저장할 수 있어요.');
+  if (existingJournal && !canEditJournalEntry(existingJournal)) {
+    showToast('저널 접근 권한이 있는 플레이어만 저장할 수 있어요.');
     return;
   }
   const targetAssignedTokenId = _jdAssignedTokenId || null;

@@ -773,15 +773,26 @@ function loadJournals() {
   );
 }
 
-function canManageJournalEntry(journal) {
+function canEditJournalEntry(journal) {
+  if (!journal) return false;
+  return !!St.isGM || String(journal.ownerId || '') === String(St.myId || '') || (Array.isArray(journal.assignedTo) && journal.assignedTo.includes(St.myId));
+}
+
+function canEditJournalById(journalId) {
+  if (!journalId) return false;
+  const journal = _allJournals.find(j => j.id === journalId) || null;
+  return canEditJournalEntry(journal);
+}
+
+function canDeleteJournalEntry(journal) {
   if (!journal) return false;
   return !!St.isGM || String(journal.ownerId || '') === String(St.myId || '');
 }
 
-function canManageJournalById(journalId) {
+function canDeleteJournalById(journalId) {
   if (!journalId) return false;
   const journal = _allJournals.find(j => j.id === journalId) || null;
-  return canManageJournalEntry(journal);
+  return canDeleteJournalEntry(journal);
 }
 
 function fetchJournalsFromFB() {
@@ -1126,7 +1137,7 @@ function saveJournalFromDrawer() {
   const body  = document.getElementById('jd-body').value;
   const hint  = document.getElementById('jd-footer-hint');
   const existing = _allJournals.find(j => j.id === _currentJournalId);
-  if (existing && !canManageJournalEntry(existing)) { showToast('저널 소유자나 GM만 저장할 수 있어요.'); return; }
+  if (existing && !canEditJournalEntry(existing)) { showToast('저널 접근 권한이 있는 플레이어만 저장할 수 있어요.'); return; }
   if (existing) {
     existing.title = title;
     existing.body = body;
@@ -1153,7 +1164,7 @@ function saveJournal() { saveJournalFromDrawer(); }
 
 function deleteJournalFromDrawer() {
   if (!_currentJournalId || !confirm('이 저널을 삭제할까요?')) return;
-  if (!canManageJournalById(_currentJournalId)) { showToast('저널 소유자나 GM만 삭제할 수 있어요.'); return; }
+  if (!canDeleteJournalById(_currentJournalId)) { showToast('저널 소유자나 GM만 삭제할 수 있어요.'); return; }
   const _delId = _currentJournalId;
   deleteJournalFB(_delId);
   if (St.speakAsJournalId === _delId) { St.speakAsJournalId = null; saRefreshBtn(); }
@@ -1165,7 +1176,7 @@ function deleteJournal() { deleteJournalFromDrawer(); }
 
 function deleteJournalById(id) {
   if (!id || !confirm('이 저널을 삭제할까요?')) return;
-  if (!canManageJournalById(id)) { showToast('저널 소유자나 GM만 삭제할 수 있어요.'); return; }
+  if (!canDeleteJournalById(id)) { showToast('저널 소유자나 GM만 삭제할 수 있어요.'); return; }
   deleteJournalFB(id);
   if (St.speakAsJournalId === id) { St.speakAsJournalId = null; saRefreshBtn(); }
   try { localStorage.removeItem('itc_av_' + id); } catch(e) {}
@@ -1175,7 +1186,7 @@ function deleteJournalById(id) {
 
 function deleteSheetJournal() {
   if (!_sheetJournalId || !confirm('이 저널을 삭제할까요?')) return;
-  if (!canManageJournalById(_sheetJournalId)) { showToast('저널 소유자나 GM만 삭제할 수 있어요.'); return; }
+  if (!canDeleteJournalById(_sheetJournalId)) { showToast('저널 소유자나 GM만 삭제할 수 있어요.'); return; }
   const delId = _sheetJournalId;
   deleteJournalFB(delId);
   if (St.speakAsJournalId === delId) { St.speakAsJournalId = null; saRefreshBtn(); }
@@ -2091,7 +2102,7 @@ function openSheet(journalId) {
   _sheetAssignedTo = j?.assignedTo || [];
   refreshSheetAssignBar(j);
 
-  const canEditSheet = canManageJournalEntry(j);
+  const canEditSheet = canEditJournalEntry(j);
   setSheetEditorMode(canEditSheet);
 
   const delBtn = document.querySelector('.sheet-del-btn');
@@ -2229,8 +2240,8 @@ async function saveSheet() {
   if (!_sheetJournalId) return;
   const targetJournalId = _sheetJournalId;
   const existingJournal = _allJournals.find(j => j.id === _sheetJournalId) || null;
-  if (existingJournal && !canManageJournalEntry(existingJournal)) {
-    showToast('저널 소유자나 GM만 저장할 수 있어요.');
+  if (existingJournal && !canEditJournalEntry(existingJournal)) {
+    showToast('저널 접근 권한이 있는 플레이어만 저장할 수 있어요.');
     return;
   }
   const targetAssignedTokenId = _jdAssignedTokenId || null;
