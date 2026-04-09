@@ -164,6 +164,14 @@
     try {
       runtime.off = onValueFn(refFn(dbRef, `rooms/${roomCode}/chat`), (snap) => {
         rebuildUnreadState(snap.val() || {});
+        try {
+          document.dispatchEvent(new CustomEvent('itc:dm-unread-change', {
+            detail: {
+              roomCode,
+              currentChannelKey: typeof ROOT.getCurrentDmChannelKey === 'function' ? ROOT.getCurrentDmChannelKey() : 'global',
+            },
+          }));
+        } catch (e) {}
         try { renderDmChannelButtons(); } catch (e) {}
       });
     } catch (e) {}

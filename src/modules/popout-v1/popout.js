@@ -365,6 +365,7 @@ function popoutChat() {
         casualObs.observe(casualEl, { childList: true, subtree: true, characterData: true });
       }
       document.addEventListener('itc:dm-channel-change', schedulePopoutSync);
+      document.addEventListener('itc:dm-unread-change', schedulePopoutSync);
     };
   })();
 
