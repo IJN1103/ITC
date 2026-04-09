@@ -142,14 +142,12 @@ function buildJournalListItem(j) {
     ? `<div class="journal-avatar"><img src="${imgSrc}" alt="avatar"></div>`
     : `<div class="journal-avatar">${esc(initials)}</div>`;
   const players = St.players || {};
-  const ownerName = j.ownerId && players[j.ownerId] ? players[j.ownerId].name : '';
-  const ownerTag = ownerName && j.ownerId !== St.myId ? `<span style="font-size:9px;color:var(--muted);margin-left:4px">(${esc(ownerName)})</span>` : '';
-  const assignedNames = (j.assignedTo || []).map(uid => players[uid]?.name).filter(Boolean);
-  const assignTag = assignedNames.length > 0 ? `<span style="font-size:9px;color:var(--green);margin-left:4px">(부여: ${esc(assignedNames.join(', '))})</span>` : '';
-  const canDelete = St.isGM || j.ownerId === St.myId;
+  const grantedNames = (j.assignedTo || []).map(uid => players[uid]?.name).filter(Boolean);
+  const grantTag = grantedNames.length > 0 ? `<span style="font-size:9px;color:var(--green);margin-left:4px">(권한: ${esc(grantedNames.join(', '))})</span>` : '';
+  const canDelete = canEditJournalEntry(j);
   const delHtml = canDelete ? `<button class="journal-item-del" data-jid="${j.id}" onclick="event.stopPropagation();deleteJournalById(this.dataset.jid)" title="삭제">🗑</button>` : '';
   div.innerHTML = `${avatarHtml}<div class="journal-item-body">
-    <div class="journal-item-title">${esc(j.title||'무제 저널')}${ownerTag}${assignTag}</div>
+    <div class="journal-item-title">${esc(j.title||'무제 저널')}${grantTag}</div>
     <div class="journal-item-meta"><span style="color:var(--dim);font-size:11px">${esc(pre)}${(j.body||'').length>40?'…':''}</span><span>${ds}</span></div>
   </div>${delHtml}`;
   return div;
@@ -410,16 +408,7 @@ function refreshSheetAssignBar(journal) {
 
   bar.style.display = St.isGM ? '' : 'none';
 
-  if (ownerBar) {
-    if (journal?.ownerId) {
-      const players = St.players || {};
-      const owner = players[journal.ownerId];
-      ownerBar.textContent = `소유: ${owner?.name || '알 수 없음'}`;
-      ownerBar.style.display = '';
-    } else {
-      ownerBar.style.display = 'none';
-    }
-  }
+  if (ownerBar) ownerBar.style.display = 'none';
 
   if (!St.isGM) return;
   list.innerHTML = '';
