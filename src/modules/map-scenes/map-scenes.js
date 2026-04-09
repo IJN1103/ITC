@@ -1,6 +1,6 @@
 /**
- * ITC TRPG — Map Scenes (Stage 1)
- * 씬 데이터 구조 + GM 전용 설정창 UI
+ * ITC TRPG — Map Scenes
+ * 씬 데이터 구조 + GM 전용 설정창 UI + activeSceneId 기반 실제 씬 전환 연결
  */
 (function(){
   const ROOT = window;
@@ -11,7 +11,14 @@
     loadedRoomCode: '',
     isDirty: false,
     autoCreatedOnOpen: false,
+    remoteScenes: [],
+    remoteActiveSceneId: '',
+    syncRoomCode: '',
+    syncAppliedKey: '',
   };
+
+  let _sceneSyncWatchTimer = null;
+  let _sceneSyncUnsubs = [];
 
   function makeSceneId(){
     return `scene_${Date.now().toString(36)}_${Math.random().toString(36).slice(2,7)}`;
@@ -58,6 +65,87 @@
       scenesRef: ref(db, `rooms/${ROOT.St.roomCode}/mapScenes`),
       activeRef: ref(db, `rooms/${ROOT.St.roomCode}/meta/activeSceneId`),
     };
+  }
+
+  function deepCopy(value){
+    if (value == null) return value;
+    try { return JSON.parse(JSON.stringify(value)); } catch (_) { return value; }
+  }
+
+  function getSceneHasMapData(scene){
+    return !!(scene?.background?.url || (Array.isArray(scene?.objects) && scene.objects.length));
+  }
+
+  function applySceneToRuntime(scene){
+    if (!scene || !getSceneHasMapData(scene)) return false;
+    ROOT.St.mapState = {
+      background: scene.background ? deepCopy(scene.background) : null,
+      foreground: null,
+      objects: Array.isArray(scene.objects) ? deepCopy(scene.objects) : [],
+    };
+    ROOT.St.mapLayerState = scene.layerState ? deepCopy(scene.layerState) : null;
+    if (typeof ROOT.applyImportedMapState === 'function') ROOT.applyImportedMapState(ROOT.St.mapState);
+    if (typeof ROOT.refreshMapLayerManager === 'function') ROOT.refreshMapLayerManager();
+    return true;
+  }
+
+  function syncActiveSceneToRuntime(){
+    const roomCode = String(ROOT.St?.roomCode || '').trim();
+    if (!roomCode || roomCode !== state.syncRoomCode) return;
+    const activeId = String(state.remoteActiveSceneId || '').trim();
+    if (!activeId) return;
+    const scene = state.remoteScenes.find(s => s.id === activeId);
+    if (!scene || !getSceneHasMapData(scene)) return;
+    const applyKey = [roomCode, activeId, Number(scene.updatedAt || 0), String(scene.background?.url || ''), Array.isArray(scene.objects) ? scene.objects.length : 0].join('|');
+    if (state.syncAppliedKey === applyKey) return;
+    if (applySceneToRuntime(scene)) state.syncAppliedKey = applyKey;
+  }
+
+  function cleanupSceneSync(){
+    _sceneSyncUnsubs.forEach(function(unsub){ try { if (typeof unsub === 'function') unsub(); } catch (_) {} });
+    _sceneSyncUnsubs = [];
+    state.syncRoomCode = '';
+    state.remoteScenes = [];
+    state.remoteActiveSceneId = '';
+    state.syncAppliedKey = '';
+  }
+
+  function startSceneSyncForRoom(roomCode){
+    const nextRoomCode = String(roomCode || '').trim();
+    if (!ROOT._FB?.CONFIGURED || !nextRoomCode) {
+      cleanupSceneSync();
+      return;
+    }
+    if (state.syncRoomCode === nextRoomCode && _sceneSyncUnsubs.length) return;
+    cleanupSceneSync();
+    state.syncRoomCode = nextRoomCode;
+    const { db, ref, onValue } = ROOT._FB;
+    const scenesRef = ref(db, `rooms/${nextRoomCode}/mapScenes`);
+    const activeRef = ref(db, `rooms/${nextRoomCode}/meta/activeSceneId`);
+    const onScenes = onValue(scenesRef, function(snap){
+      const rawScenes = snap.val() || {};
+      state.remoteScenes = Object.entries(rawScenes).map(function(entry){
+        return normalizeScene(entry[1], entry[0]);
+      }).sort(function(a,b){ return (a.createdAt || 0) - (b.createdAt || 0); });
+      syncActiveSceneToRuntime();
+    });
+    const onActive = onValue(activeRef, function(snap){
+      state.remoteActiveSceneId = String(snap.val() || '').trim();
+      syncActiveSceneToRuntime();
+    });
+    _sceneSyncUnsubs.push(onScenes, onActive);
+  }
+
+  function ensureSceneSyncWatch(){
+    if (_sceneSyncWatchTimer) return;
+    _sceneSyncWatchTimer = window.setInterval(function(){
+      const roomCode = String(ROOT.St?.roomCode || '').trim();
+      if (!roomCode || !ROOT._FB?.CONFIGURED) {
+        if (state.syncRoomCode) cleanupSceneSync();
+        return;
+      }
+      if (roomCode !== state.syncRoomCode) startSceneSyncForRoom(roomCode);
+    }, 1000);
   }
 
   async function loadScenesFromRoom(){
@@ -162,7 +250,7 @@
     listEl.innerHTML = state.scenes.map(function(scene, index){
       var isSelected = scene.id === state.selectedSceneId;
       var isActive = scene.id === state.activeSceneId;
-      var hasMapData = !!(scene.background?.url || (scene.objects && scene.objects.length));
+      var hasMapData = getSceneHasMapData(scene);
       return '<button type="button" class="map-scene-item' + (isSelected ? ' is-selected' : '') + '" data-scene-id="' + scene.id + '">'
         + '<div class="map-scene-item-main">'
         + '<div class="map-scene-item-index">씬 ' + (index + 1) + '</div>'
@@ -265,6 +353,7 @@
     if (!ROOT.St?.isGM) { ROOT.showToast('GM만 장면 전환 설정을 열 수 있어요.'); return; }
     ROOT.openModal('modal-map-scenes');
     bindSceneModalEvents();
+    ensureSceneSyncWatch();
     var roomChanged = state.loadedRoomCode !== String(ROOT.St?.roomCode || '');
     if (roomChanged || !state.scenes.length) {
       try { await loadScenesFromRoom(); } catch (e) { console.warn('loadScenesFromRoom failed', e); }
@@ -281,6 +370,7 @@
     ROOT.closeModal('modal-map-scenes');
   }
 
+  ensureSceneSyncWatch();
   ROOT.openMapSceneModal = openMapSceneModal;
   ROOT.closeMapSceneModal = closeMapSceneModal;
 })();
