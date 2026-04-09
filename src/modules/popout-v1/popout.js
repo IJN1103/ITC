@@ -260,7 +260,7 @@ L.push('window.renderDmBar=renderDmBar;');
   L.push('function send(){var i=document.getElementById("pi");var t=i.value.trim();if(!t)return;i.value="";if(!window.opener)return;');
   L.push('if(descMode){window.opener.sendMessage(window.opener.St.myName,t,"dsec");return}');
   L.push('if(whisperUid){window.opener.sendWhisperMessage(saJId?(journals.find(function(j){return j.id===saJId})||{}).title||window.opener.St.myName:window.opener.St.myName,t,whisperUid,whisperName);return}');
-  L.push('window.opener.sendChatFromPopout(t,aTab)}');
+  L.push('window.opener.sendChatFromPopout(t,aTab,getCurrentDmChannelKey())}');
 
   L.push('document.getElementById("sb").onclick=send;');
   L.push('document.getElementById("pi").onkeydown=function(ev){if(ev.key==="Enter"&&!ev.shiftKey){ev.preventDefault();send()}};');
@@ -416,11 +416,19 @@ function getPopoutAvatarUrl(name, uid) {
   return '';
 }
 
-function sendChatFromPopout(text, tab) {
-  if (tab === 'casual') { sendCasualMsg(_casualNickname || St.myName, text); }
-  else {
-    if (St.speakAsJournalId) { const j = loadJournals().find(x => x.id === St.speakAsJournalId); if (j) { saSendMessage(j, text); return; } }
-    sendMessage(St.myName, text, 'normal');
+function sendChatFromPopout(text, tab, channelKey = 'global') {
+  if (tab === 'casual') { sendCasualMsg(_casualNickname || St.myName, text); return; }
+  const prevChannelKey = String(window._itcActiveChatChannelKey || 'global').trim() || 'global';
+  const nextChannelKey = String(channelKey || 'global').trim() || 'global';
+  window._itcActiveChatChannelKey = nextChannelKey;
+  try {
+    if (St.speakAsJournalId) {
+      const j = loadJournals().find(x => x.id === St.speakAsJournalId);
+      if (j) return saSendMessage(j, text);
+    }
+    return sendMessage(St.myName, text, 'normal');
+  } finally {
+    window._itcActiveChatChannelKey = prevChannelKey;
   }
 }
 
