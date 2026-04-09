@@ -96,6 +96,43 @@ let _quickSheetInteractionCleanup = null;
 
 function getQuickSheetModalEl() { return document.getElementById('sheet-modal'); }
 
+function setSheetEditorMode(editable) {
+  const modal = getQuickSheetModalEl();
+  if (!modal) return;
+  modal.dataset.editable = editable ? '1' : '0';
+
+  modal.querySelectorAll('input, textarea, select').forEach((el) => {
+    const tag = String(el.tagName || '').toLowerCase();
+    const type = String(el.type || '').toLowerCase();
+    if (tag === 'select' || type === 'checkbox' || type === 'radio' || type === 'file') {
+      el.disabled = !editable;
+    } else {
+      el.readOnly = !editable;
+    }
+  });
+
+  const saveBtn = modal.querySelector('.btn-primary[onclick*="saveSheet"]');
+  if (saveBtn) saveBtn.style.display = editable ? '' : 'none';
+
+  const delBtn = modal.querySelector('.sheet-del-btn');
+  if (delBtn) delBtn.style.display = editable ? '' : 'none';
+
+  const addCombatBtn = modal.querySelector('button[onclick*="addCombatRow"]');
+  if (addCombatBtn) addCombatBtn.style.display = editable ? '' : 'none';
+
+  const tokenAssignBtn = document.getElementById('sh-token-assign-btn');
+  if (tokenAssignBtn) tokenAssignBtn.style.display = editable ? '' : 'none';
+
+  const tokenClearBtn = modal.querySelector('.sh-token-clear');
+  if (tokenClearBtn) tokenClearBtn.style.display = editable ? '' : 'none';
+
+  const avatarEl = document.getElementById('sh-avatar');
+  if (avatarEl) avatarEl.style.pointerEvents = editable ? '' : 'none';
+
+  const avatarHint = modal.querySelector('.sh-avatar-hint');
+  if (avatarHint) avatarHint.style.display = editable ? '' : 'none';
+}
+
 function clearQuickSheetInteractionCleanup() {
   if (typeof _quickSheetInteractionCleanup === 'function') {
     try { _quickSheetInteractionCleanup(); } catch (_) {}
@@ -432,8 +469,11 @@ function openSheet(journalId) {
   _sheetAssignedTo = j?.assignedTo || [];
   refreshSheetAssignBar(j);
 
+  const canEditSheet = canManageJournalEntry(j);
+  setSheetEditorMode(canEditSheet);
+
   const delBtn = document.querySelector('.sheet-del-btn');
-  if (delBtn) delBtn.style.display = '';
+  if (delBtn) delBtn.style.display = canEditSheet ? '' : 'none';
   document.getElementById('sheet-overlay').classList.add('open');
 }
 
