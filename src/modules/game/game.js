@@ -235,6 +235,12 @@ function switchActiveChatChannel(channelKey = 'global') {
   _activeChatChannelKey = safeChannelKey;
   window._itcActiveChatChannelKey = safeChannelKey;
   restoreCachedChannelMessages(safeChannelKey);
+  try {
+    document.dispatchEvent(new CustomEvent('itc:dm-active-channel-applied', {
+      detail: { channelKey: safeChannelKey }
+    }));
+  } catch (e) {}
+  try { if (typeof refreshDmChannelButtons === 'function') refreshDmChannelButtons(); } catch (e) {}
 
   const processed = getProcessedChatKeySet(safeChannelKey);
   const signatures = getChatMessageSignatureStore(safeChannelKey);
