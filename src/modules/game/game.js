@@ -141,10 +141,49 @@ function buildChatMessageSignature(message = {}) {
   ]);
 }
 
+
+function resolveMessageChannelKey(message) {
+  return String(message?.dmChannelKey || 'global').trim() || 'global';
+}
+
+function shouldShowChatMessageForChannel(channelKey = 'global', message = {}) {
+  const safeChannelKey = String(channelKey || 'global').trim() || 'global';
+  if (!message) return false;
+  if (message.type === 'dm-bootstrap') return false;
+  if (resolveMessageChannelKey(message) !== safeChannelKey) return false;
+  if (message.type === 'whisper') return safeChannelKey === 'global' && (message.uid === St.myId || message.whisperTo === St.myId);
+  return true;
+}
+
+function rebuildChatRecordCacheFromRaw(rawMessages = {}) {
+  const grouped = new Map();
+  Object.entries(rawMessages || {}).forEach(([key, message]) => {
+    const safeMessage = { ...(message || {}), _key: key };
+    const channelKey = resolveMessageChannelKey(safeMessage);
+    if (!grouped.has(channelKey)) grouped.set(channelKey, []);
+    grouped.get(channelKey).push(safeMessage);
+  });
+  grouped.forEach((records, channelKey) => {
+    const filtered = records
+      .filter((record) => shouldShowChatMessageForChannel(channelKey, record))
+      .sort((a, b) => (a.time || 0) - (b.time || 0));
+    cacheChannelMessages(channelKey, filtered);
+  });
+  Array.from(_chatRecordsByChannel.keys()).forEach((channelKey) => {
+    if (!grouped.has(channelKey)) cacheChannelMessages(channelKey, []);
+  });
+}
+
 function cacheChannelMessages(channelKey = 'global', records = []) {
   const safeKey = String(channelKey || 'global').trim() || 'global';
   _chatRecordsByChannel.set(safeKey, (Array.isArray(records) ? records : []).map((record) => ({ ...record })));
 }
+
+window.getChatRecordsForChannel = function(channelKey = 'global') {
+  const safeKey = String(channelKey || 'global').trim() || 'global';
+  const records = Array.isArray(_chatRecordsByChannel.get(safeKey)) ? _chatRecordsByChannel.get(safeKey) : [];
+  return records.map((record) => ({ ...record }));
+};
 
 function restoreCachedChannelMessages(channelKey = 'global') {
   const safeKey = String(channelKey || 'global').trim() || 'global';
@@ -248,14 +287,7 @@ function switchActiveChatChannel(channelKey = 'global') {
     ? query(ref(db, `rooms/${St.roomCode}/chat`), limitToLast(300))
     : ref(db, `rooms/${St.roomCode}/chat`);
 
-  const resolveMessageChannelKey = (m) => String(m?.dmChannelKey || 'global').trim() || 'global';
-  const shouldShowChatMessage = (m) => {
-    if (!m) return false;
-    if (m.type === 'dm-bootstrap') return false;
-    if (resolveMessageChannelKey(m) !== safeChannelKey) return false;
-    if (m.type === 'whisper') return safeChannelKey === 'global' && (m.uid === St.myId || m.whisperTo === St.myId);
-    return true;
-  };
+  const shouldShowChatMessage = (m) => shouldShowChatMessageForChannel(safeChannelKey, m);
 
   const makePayload = (key, m) => ({
     name: m.name, text: m.text, type: m.type || 'normal', uid: m.uid, timestamp: m.time,
@@ -388,7 +420,9 @@ function setupFirebaseListeners() {
   }));
 
   trackFirebaseListener(onValue(ref(db, `rooms/${code}/chat`), snap => {
-    syncAvailableDmChannels(buildDmChannelCatalogFromChat(snap.val() || {}));
+    const rawMessages = snap.val() || {};
+    syncAvailableDmChannels(buildDmChannelCatalogFromChat(rawMessages));
+    rebuildChatRecordCacheFromRaw(rawMessages);
   }));
   const initialChatChannelKey = typeof getCurrentDmChannelKey === 'function'
     ? getCurrentDmChannelKey()
