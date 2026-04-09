@@ -813,7 +813,10 @@ function syncExistingTokenPosition(el, data) {
 }
 
 function addOrUpdateSingleToken(id, data) {
-  if (_activeDragSession && _activeDragSession.targetIds.includes(id)) return;
+  if (_activeDragSession && _activeDragSession.targetIds.includes(id)) {
+    _pendingTokenRender = true;
+    return;
+  }
 
   const existing = getTokenEl(id);
 
@@ -852,6 +855,10 @@ function _standingsKey(t) {
 }
 
 function removeSingleToken(id) {
+  if (_activeDragSession && _activeDragSession.targetIds.includes(id)) {
+    _pendingTokenRender = true;
+    return;
+  }
   const el = getTokenEl(id);
   if (el) el.remove();
   setMultiTokenSelection(_multiSelectedTokenIds.filter(x => x !== id));
