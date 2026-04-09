@@ -14,6 +14,13 @@ let _mapBaseHeight = MAP_LOGICAL_HEIGHT;
 let _mapViewportWidth = 0;
 let _mapViewportHeight = 0;
 
+function roundMapNumber(value, digits = 4) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return 0;
+  const factor = 10 ** digits;
+  return Math.round(num * factor) / factor;
+}
+
 /* ── 드래그 보호 상태 ── */
 let _activeDragSession = null;
 let _pendingTokenRender = false;
@@ -497,8 +504,8 @@ function preserveMapViewportCenterOnResize(map = document.getElementById('map-ar
   const logicalCenterX = ((prevWidth / 2) - _mapPanX) / scale;
   const logicalCenterY = ((prevHeight / 2) - _mapPanY) / scale;
 
-  _mapPanX = (next.width / 2) - (logicalCenterX * scale);
-  _mapPanY = (next.height / 2) - (logicalCenterY * scale);
+  _mapPanX = roundMapNumber((next.width / 2) - (logicalCenterX * scale));
+  _mapPanY = roundMapNumber((next.height / 2) - (logicalCenterY * scale));
   syncMapViewportMetrics(map);
   return true;
 }
@@ -528,10 +535,10 @@ function mapZoom(dir, cx, cy) {
   const rect = map.getBoundingClientRect();
   if (cx === undefined) { cx = rect.width / 2; cy = rect.height / 2; }
   const prevScale = _mapScale;
-  _mapScale = Math.max(0.2, Math.min(4, _mapScale + dir * 0.15));
+  _mapScale = roundMapNumber(Math.max(0.2, Math.min(4, _mapScale + dir * 0.15)));
   const ratio = _mapScale / prevScale;
-  _mapPanX = cx - ratio * (cx - _mapPanX);
-  _mapPanY = cy - ratio * (cy - _mapPanY);
+  _mapPanX = roundMapNumber(cx - ratio * (cx - _mapPanX));
+  _mapPanY = roundMapNumber(cy - ratio * (cy - _mapPanY));
   applyMapTransform();
 }
 
@@ -608,8 +615,8 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
     if (!isPanning) return;
-    _mapPanX = panOriginX + (e.clientX - panStartX);
-    _mapPanY = panOriginY + (e.clientY - panStartY);
+    _mapPanX = roundMapNumber(panOriginX + (e.clientX - panStartX));
+    _mapPanY = roundMapNumber(panOriginY + (e.clientY - panStartY));
     applyMapTransform();
   });
 
