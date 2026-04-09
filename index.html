@@ -359,6 +359,7 @@ window._FB = {
         <button class="map-add-token gm-only" id="map-add-token" onclick="openModal('modal-token')" style="display:none">+ 캐릭터 토큰</button>
         <button class="map-add-token gm-only map-add-panel-token" id="map-add-panel-token" onclick="openModal('modal-panel-token')" style="display:none">+ 패널 토큰</button>
         <button class="map-add-token gm-only" id="map-import-trigger" onclick="openMapImportModal()" style="display:none;top:46px">+ 맵세팅</button>
+        <button class="map-add-token gm-only" id="map-scene-trigger" onclick="openMapSceneModal()" style="display:none;top:86px">+ 장면 전환</button>
         <!-- 줌 컨트롤 -->
         <div class="map-zoom" id="map-zoom">
           <button class="map-zoom-btn" onclick="mapZoom(1)" title="확대">
@@ -1021,6 +1022,48 @@ window._FB = {
   </div>
 </div>
 
+
+<div class="overlay" id="modal-map-scenes">
+  <div class="modal-card" style="width:min(920px,92vw);max-height:88vh;display:flex;flex-direction:column">
+    <div class="modal-head">
+      <div class="modal-title">🎬 맵 장면 전환</div>
+      <button class="modal-close" onclick="closeMapSceneModal()">✕</button>
+    </div>
+    <div class="modal-info" style="line-height:1.7">GM이 미리 씬을 준비하고, 나중에 이 씬을 실제 맵 전환에 연결할 수 있도록 저장 구조를 관리하는 단계입니다.</div>
+    <div class="map-scene-layout">
+      <div class="map-scene-side">
+        <div class="map-scene-side-head">
+          <div class="map-scene-side-title">씬 목록</div>
+          <button type="button" class="btn-secondary" id="map-scene-add-btn">+ 씬 추가</button>
+        </div>
+        <div class="map-scene-list" id="map-scene-list"></div>
+        <div class="map-scene-list-empty" id="map-scene-empty" style="display:none">등록된 씬이 없습니다.</div>
+      </div>
+      <div class="map-scene-main">
+        <div class="map-scene-form-row">
+          <label class="map-scene-label" for="map-scene-name-input">씬 이름</label>
+          <input class="input" id="map-scene-name-input" maxlength="40" placeholder="씬 이름을 입력하세요">
+        </div>
+        <div class="map-scene-form-row">
+          <label class="map-scene-label" for="map-scene-active-select">현재 실제 맵에 표시할 씬</label>
+          <select class="input" id="map-scene-active-select"></select>
+        </div>
+        <div class="map-scene-note" id="map-scene-note">이 단계에서는 씬 구조와 이름, 현재 씬 선택 정보만 저장합니다.</div>
+        <div class="map-scene-preview">
+          <div class="map-scene-preview-title">선택한 씬 정보</div>
+          <div class="map-scene-preview-body" id="map-scene-preview-body">씬을 선택해주세요.</div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-actions" style="margin-top:16px">
+      <button type="button" class="btn-danger" id="map-scene-delete-btn">선택한 씬 삭제</button>
+      <div class="spacer"></div>
+      <span id="map-scene-hint" style="font-size:11px;color:var(--muted)"></span>
+      <button type="button" class="btn-primary" id="map-scene-save-btn">씬 설정 저장</button>
+    </div>
+  </div>
+</div>
+
 <div class="overlay" id="modal-map-layers">
   <div class="modal" style="width:min(420px,94vw)">
     <div class="modal-row">
@@ -1337,6 +1380,7 @@ window._FB = {
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="src/modules/map-import/cocofolia-import.js"></script>
 <script src="src/modules/map-import/map-layer-manager.js"></script>
+<script src="src/modules/map-scenes/map-scenes.js"></script>
 <script src="src/modules/map-token/map-token.js"></script>
 <script src="src/modules/bgm-v1/bgm.js"></script>
 <script src="src/modules/ui/ui.js"></script>
