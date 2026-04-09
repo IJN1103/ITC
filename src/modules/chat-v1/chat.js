@@ -1902,13 +1902,14 @@ function buildChatMsgElement(msg = {}) {
   }
 
   const defaultAvatarHtml = getAvatarHtml(name, uid || (name === St.myName ? St.myId : null));
+  const nameStyle = nameColor ? ` style="color:${nameColor}"` : '';
 
   if (type === 'image') {
     const div = document.createElement('div');
     div.className = `chat-msg msg-image-msg${imageWide ? ' msg-image-wide-row' : ''}${hideImageMeta ? ' msg-image-hide-meta' : ''}`;
     div.dataset.avatarUid = uid || '';
     div.dataset.avatarName = name || '';
-    div.innerHTML = buildStandardChatImageSection(name, time, text, avatarHtml, !!imageWide, imageMeta, '', '', !!hideImageMeta);
+    div.innerHTML = buildStandardChatImageSection(name, time, text, defaultAvatarHtml, !!imageWide, imageMeta, '', nameStyle, !!hideImageMeta);
     addMsgActions(div, uid, msgKey, channel || 'chat', text, type);
     return div;
   }
@@ -1917,7 +1918,6 @@ function buildChatMsgElement(msg = {}) {
   div.className = `chat-msg msg-${type}`;
   div.dataset.avatarUid = uid || '';
   div.dataset.avatarName = name || '';
-  const nameStyle = nameColor ? ` style="color:${nameColor}"` : '';
   if (type === 'dice') {
     const diceMatch = text.match(/🎲\s*(.+?)\s*→\s*(\d+)\s*\(([^)]+)\)/);
     if (diceMatch) {
