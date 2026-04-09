@@ -91,8 +91,8 @@
     _ctxTargetId = sceneId;
     const ctx = document.getElementById('map-scene-ctx');
     if (!ctx) return;
-    ctx.style.left = Math.min(x, window.innerWidth - 140) + 'px';
-    ctx.style.top = Math.min(y, window.innerHeight - 90) + 'px';
+    ctx.style.left = Math.min(x, window.innerWidth - 160) + 'px';
+    ctx.style.top = Math.min(y, window.innerHeight - 120) + 'px';
     ctx.style.display = 'flex';
   }
 
@@ -106,6 +106,24 @@
     const sceneId = _ctxTargetId;
     hideCtxMenu();
     if (!sceneId) return;
+
+    if (action === 'capture') {
+      const scene = state.scenes.find(s => s.id === sceneId);
+      if (!scene) return;
+      const ms = ROOT.St?.mapState || {};
+      const hasMap = !!(ms.background?.url || (Array.isArray(ms.objects) && ms.objects.length));
+      if (!hasMap) {
+        ROOT.showToast('현재 맵에 저장할 데이터가 없어요. 맵세팅을 먼저 적용해 주세요.');
+        return;
+      }
+      scene.background = ms.background ? { url: ms.background.url || '', fit: ms.background.fit || 'contain', sourceName: ms.background.sourceName || '' } : null;
+      scene.objects = Array.isArray(ms.objects) ? JSON.parse(JSON.stringify(ms.objects)) : [];
+      scene.layerState = ROOT.St?.mapLayerState ? JSON.parse(JSON.stringify(ROOT.St.mapLayerState)) : null;
+      scene.updatedAt = Date.now();
+      state.isDirty = true;
+      renderSceneList();
+      ROOT.showToast('"' + (scene.name || '씬') + '"에 현재 맵 상태를 저장했어요. 씬 설정 저장을 눌러 반영하세요.');
+    }
 
     if (action === 'rename') {
       const scene = state.scenes.find(s => s.id === sceneId);
@@ -144,11 +162,12 @@
     listEl.innerHTML = state.scenes.map(function(scene, index){
       var isSelected = scene.id === state.selectedSceneId;
       var isActive = scene.id === state.activeSceneId;
+      var hasMapData = !!(scene.background?.url || (scene.objects && scene.objects.length));
       return '<button type="button" class="map-scene-item' + (isSelected ? ' is-selected' : '') + '" data-scene-id="' + scene.id + '">'
         + '<div class="map-scene-item-main">'
         + '<div class="map-scene-item-index">씬 ' + (index + 1) + '</div>'
         + '<div class="map-scene-item-name">' + ROOT.esc(scene.name || '무제 씬') + '</div>'
-        + '<div class="map-scene-item-meta">' + (isActive ? '현재 표시 중' : '대기 중') + '</div>'
+        + '<div class="map-scene-item-meta">' + (isActive ? '현재 표시 중' : '대기 중') + (hasMapData ? ' · 맵 저장됨' : '') + '</div>'
         + '</div>'
         + (isActive ? '<span class="map-scene-badge">LIVE</span>' : '')
         + '</button>';
