@@ -592,6 +592,11 @@ to{transform:translateX(0);opacity:1;}
 .stat-card{background:var(--s2);border:1px solid var(--border);border-radius:var(--r);padding:8px 6px;text-align:center;transition:var(--t);}
 .stat-card:focus-within{border-color:var(--accent);}
 .stat-name{font-size:10px;color:var(--muted);letter-spacing:.06em;margin-bottom:4px;}
+.stat-roll-trigger{appearance:none;background:none;border:none;padding:0;margin:0;font:inherit;cursor:pointer;width:100%;text-align:center;}
+.stat-roll-trigger:hover{color:var(--accent);}
+.stat-roll-trigger:focus-visible{outline:1px solid rgba(184,154,96,.45);outline-offset:1px;border-radius:2px;}
+.resource-roll-trigger{cursor:pointer;}
+.resource-roll-trigger:hover{color:var(--accent);}
 .stat-val{font-family:var(--font-mono);font-size:18px;font-weight:500;color:var(--accent);background:none;border:none;outline:none;width:100%;text-align:center;}
 .stat-half{font-size:11px;color:var(--dim);}
 .resource-row{display:flex;gap:8px;}

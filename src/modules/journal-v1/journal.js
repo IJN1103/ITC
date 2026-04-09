@@ -1517,6 +1517,42 @@ async function importCcfoliaApiToJournal(rawText = '') {
 
 let _sheetJournalId = null;
 
+function bindStatRollInteractions(grid) {
+  if (!grid || grid.dataset.rollBound === '1') return;
+  grid.dataset.rollBound = '1';
+  grid.addEventListener('click', (event) => {
+    const trigger = event.target.closest('.stat-roll-trigger');
+    if (!trigger || !grid.contains(trigger)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const key = trigger.dataset.statKey || '';
+    const name = trigger.dataset.statName || '특성치';
+    const input = document.getElementById('sh-' + key);
+    const value = input ? parseInt(input.value, 10) || 0 : 0;
+    if (typeof window.rollJournalSheetSkillCheck === 'function') {
+      window.rollJournalSheetSkillCheck(name, value);
+    }
+  });
+}
+
+function bindResourceRollInteractions() {
+  document.querySelectorAll('.resource-roll-trigger').forEach(btn => {
+    if (btn.dataset.rollBound === '1') return;
+    btn.dataset.rollBound = '1';
+    btn.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const inputId = btn.dataset.rollInput || '';
+      const name = btn.dataset.rollName || '판정';
+      const input = inputId ? document.getElementById(inputId) : null;
+      const value = input ? parseInt(input.value, 10) || 0 : 0;
+      if (typeof window.rollJournalSheetSkillCheck === 'function') {
+        window.rollJournalSheetSkillCheck(name, value);
+      }
+    });
+  });
+}
+
 function bindSheetSkillRollInteractions(wrap) {
   if (!wrap || wrap.dataset.rollBound === '1') return;
   wrap.dataset.rollBound = '1';
@@ -1541,11 +1577,12 @@ function initSheetUI() {
     COC_STATS.forEach(s => {
       const div = document.createElement('div');
       div.className = 'stat-card';
-      div.innerHTML = `<div class="stat-name">${s.name}</div>
+      div.innerHTML = `<button type="button" class="stat-name stat-roll-trigger" data-stat-key="${s.key}" data-stat-name="${s.name}" title="${s.name} 판정">${s.name}</button>
         <input class="stat-val" id="sh-${s.key}" type="number" min="0" max="99" placeholder="0" oninput="updateStatHalf('${s.key}')">
         <div class="stat-half" id="sh-${s.key}-half">½ — / ⅕ —</div>`;
       grid.appendChild(div);
     });
+    bindStatRollInteractions(grid);
   }
 
   const wrap = document.getElementById('sh-skills-wrap');
@@ -1579,6 +1616,7 @@ function initSheetUI() {
     });
     wrap.appendChild(col);
   });
+  bindResourceRollInteractions();
 }
 
 function updateSkillFractions(index) {
