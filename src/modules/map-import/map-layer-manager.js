@@ -92,6 +92,21 @@
     return objects.find((item, index) => String(item?.layerId || `object:${item?.id || index + 1}`) === String(layerId || '')) || null;
   }
 
+
+  function removeImportedPanelTokensFromLocalState(panelTokenIds) {
+    const ids = Array.isArray(panelTokenIds)
+      ? panelTokenIds.map((id) => String(id || '').trim()).filter(Boolean)
+      : [];
+    if (!ids.length) return;
+    const stateRoot = getStateRoot();
+    stateRoot.tokens = stateRoot.tokens || {};
+    ids.forEach((tokenId) => {
+      delete stateRoot.tokens[tokenId];
+      if (typeof removeSingleToken === 'function') removeSingleToken(tokenId);
+      else document.getElementById(`tok-${tokenId}`)?.remove();
+    });
+  }
+
   function canDeleteLayer(entry) {
     if (!entry?.id) return false;
     const item = getMapObjectByLayerId(entry.id);
@@ -121,6 +136,7 @@
       delete nextLayerState.visible[id];
     }
 
+    removeImportedPanelTokensFromLocalState(removed.map((item) => item?.panelTokenId));
     stateRoot.mapState = { ...currentState, objects: nextObjects };
     stateRoot.mapLayerState = nextLayerState;
     if (typeof applyImportedMapState === 'function') applyImportedMapState(stateRoot.mapState);
@@ -174,8 +190,10 @@
 
   async function deleteAllObjectLayers() {
     const deletable = getDeletableObjectLayers();
-    if (!deletable.length) return;
+    const hasBackground = !!(getStateRoot().mapState || {}).background?.url;
+    if (!deletable.length && !hasBackground) return;
     const removeLayerIds = new Set(deletable.map((item) => item.layerId));
+    if (hasBackground) removeLayerIds.add('background');
     const stateRoot = getStateRoot();
     const currentState = stateRoot.mapState || {};
     const nextObjects = [];
@@ -185,7 +203,8 @@
       removeLayerIds.forEach((layerId) => { delete nextLayerState.visible[layerId]; });
     }
 
-    stateRoot.mapState = { ...currentState, objects: nextObjects };
+    removeImportedPanelTokensFromLocalState(deletable.map((item) => item?.panelTokenId));
+    stateRoot.mapState = { ...currentState, background: null, objects: nextObjects };
     stateRoot.mapLayerState = nextLayerState;
     if (typeof applyImportedMapState === 'function') applyImportedMapState(stateRoot.mapState);
     applyMapLayerState();
@@ -201,6 +220,10 @@
     });
 
     const payload = {
+      'bgm/mapBackground': '',
+      'bgm/mapBackgroundFit': '',
+      'bgm/mapBackgroundSourceName': '',
+      'bgm/mapBackgroundImportedAt': 0,
       'bgm/mapObjects': nextObjects,
       'bgm/mapLayerState': nextLayerState,
     };
@@ -213,15 +236,16 @@
 
   function confirmDeleteAllObjectLayers() {
     const count = getDeletableObjectLayers().length;
-    if (!count) {
-      if (typeof showToast === 'function') showToast('삭제할 맵세팅 오브젝트 레이어가 없어요.');
+    const hasBackground = !!(getStateRoot().mapState || {}).background?.url;
+    if (!count && !hasBackground) {
+      if (typeof showToast === 'function') showToast('삭제할 맵세팅 레이어가 없어요.');
       return;
     }
     const ok = window.confirm(`맵세팅 오브젝트 레이어 ${count}개를 모두 삭제할까요?
-배경/전경은 유지되고, 연결된 맵세팅 패널만 함께 삭제됩니다.`);
+배경 이미지도 함께 삭제되고, 연결된 맵세팅 패널도 함께 삭제됩니다.`);
     if (!ok) return;
     deleteAllObjectLayers()
-      .then(() => { if (typeof showToast === 'function') showToast('맵세팅 오브젝트 레이어를 모두 삭제했어요.'); })
+      .then(() => { if (typeof showToast === 'function') showToast('맵세팅 레이어와 배경 이미지를 모두 삭제했어요.'); })
       .catch((err) => {
         console.error('deleteAllObjectLayers failed', err);
         if (typeof showToast === 'function') showToast('전체삭제 중 오류가 발생했어요.');
