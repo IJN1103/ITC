@@ -572,6 +572,10 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   mapEl.addEventListener('wheel', e => {
+    if (_tokenSelectionState.active || _activeDragSession) {
+      e.preventDefault();
+      return;
+    }
     e.preventDefault();
     const rect = mapEl.getBoundingClientRect();
     mapZoom(e.deltaY < 0 ? 1 : -1, e.clientX - rect.left, e.clientY - rect.top);
