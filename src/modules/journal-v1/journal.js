@@ -1643,8 +1643,16 @@ const _quickSheetState = {
   height: null,
 };
 let _quickSheetInteractionsBound = false;
+let _quickSheetInteractionCleanup = null;
 
 function getQuickSheetModalEl() { return document.getElementById('sheet-modal'); }
+
+function clearQuickSheetInteractionCleanup() {
+  if (typeof _quickSheetInteractionCleanup === 'function') {
+    try { _quickSheetInteractionCleanup(); } catch (_) {}
+  }
+  _quickSheetInteractionCleanup = null;
+}
 
 function clampQuickSheetRect(x, y, width, height) {
   const pad = 16;
@@ -1766,6 +1774,8 @@ function initQuickSheetInteractions() {
     if (!_sheetQuickViewMode || !overlay?.classList.contains('quick-view')) return;
     if (event.button !== 0) return;
     if (event.target.closest('button, input, textarea, select, label, a')) return;
+    event.preventDefault();
+    clearQuickSheetInteractionCleanup();
 
     const rect = modal.getBoundingClientRect();
     const startX = event.clientX;
@@ -1784,12 +1794,20 @@ function initQuickSheetInteractions() {
       _quickSheetState.y = next.y;
       applyQuickSheetState();
     };
-    const onUp = () => {
+    const cleanup = () => {
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('blur', onUp);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      if (_quickSheetInteractionCleanup === cleanup) _quickSheetInteractionCleanup = null;
     };
+    const onUp = () => { cleanup(); };
+    const onVisibilityChange = () => { if (document.hidden) onUp(); };
+    _quickSheetInteractionCleanup = cleanup;
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
+    window.addEventListener('blur', onUp);
+    document.addEventListener('visibilitychange', onVisibilityChange);
   });
 
   modal.querySelectorAll('.sheet-resize-handle').forEach((handle) => {
@@ -1799,6 +1817,7 @@ function initQuickSheetInteractions() {
       if (event.button !== 0) return;
       event.preventDefault();
       event.stopPropagation();
+      clearQuickSheetInteractionCleanup();
       const dir = handle.dataset.resizeDir || '';
       const rect = modal.getBoundingClientRect();
       const startX = event.clientX;
@@ -1841,12 +1860,20 @@ function initQuickSheetInteractions() {
         _quickSheetState.height = finalRect.height;
         applyQuickSheetState();
       };
-      const onUp = () => {
+      const cleanup = () => {
         window.removeEventListener('pointermove', onMove);
         window.removeEventListener('pointerup', onUp);
+        window.removeEventListener('blur', onUp);
+        document.removeEventListener('visibilitychange', onVisibilityChange);
+        if (_quickSheetInteractionCleanup === cleanup) _quickSheetInteractionCleanup = null;
       };
+      const onUp = () => { cleanup(); };
+      const onVisibilityChange = () => { if (document.hidden) onUp(); };
+      _quickSheetInteractionCleanup = cleanup;
       window.addEventListener('pointermove', onMove);
       window.addEventListener('pointerup', onUp);
+      window.addEventListener('blur', onUp);
+      document.addEventListener('visibilitychange', onVisibilityChange);
     });
   });
 
