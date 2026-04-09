@@ -147,6 +147,7 @@ function applyQuickSheetState() {
 }
 
 function resetQuickSheetStateFromLayout() {
+  clearQuickSheetInteractionCleanup();
   const modal = getQuickSheetModalEl();
   if (!modal) return;
   modal.style.left = '';
@@ -437,6 +438,7 @@ function openSheet(journalId) {
 }
 
 function closeSheet() {
+  clearQuickSheetInteractionCleanup();
   const overlay = document.getElementById('sheet-overlay');
   if (overlay) overlay.classList.remove('open', 'quick-view');
   const modal = getQuickSheetModalEl();
