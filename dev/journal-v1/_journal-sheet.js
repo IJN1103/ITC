@@ -566,6 +566,11 @@ function addCombatRow() {
 async function saveSheet() {
   if (!_sheetJournalId) return;
   const targetJournalId = _sheetJournalId;
+  const existingJournal = _allJournals.find(j => j.id === _sheetJournalId) || null;
+  if (existingJournal && !canManageJournalEntry(existingJournal)) {
+    showToast('저널 소유자나 GM만 저장할 수 있어요.');
+    return;
+  }
   const targetAssignedTokenId = _jdAssignedTokenId || null;
   const targetAssignedTo = Array.isArray(_sheetAssignedTo) ? [..._sheetAssignedTo] : (_sheetAssignedTo || []);
   const data = {};

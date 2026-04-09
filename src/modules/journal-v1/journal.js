@@ -773,6 +773,17 @@ function loadJournals() {
   );
 }
 
+function canManageJournalEntry(journal) {
+  if (!journal) return false;
+  return !!St.isGM || String(journal.ownerId || '') === String(St.myId || '');
+}
+
+function canManageJournalById(journalId) {
+  if (!journalId) return false;
+  const journal = _allJournals.find(j => j.id === journalId) || null;
+  return canManageJournalEntry(journal);
+}
+
 function fetchJournalsFromFB() {
   if (!window._FB?.CONFIGURED || !St.roomCode) return;
   const { db, ref, get } = window._FB;
@@ -1114,6 +1125,7 @@ function saveJournalFromDrawer() {
   const body  = document.getElementById('jd-body').value;
   const hint  = document.getElementById('jd-footer-hint');
   const existing = _allJournals.find(j => j.id === _currentJournalId);
+  if (existing && !canManageJournalEntry(existing)) { showToast('저널 소유자나 GM만 저장할 수 있어요.'); return; }
   if (existing) {
     existing.title = title;
     existing.body = body;
@@ -1140,6 +1152,7 @@ function saveJournal() { saveJournalFromDrawer(); }
 
 function deleteJournalFromDrawer() {
   if (!_currentJournalId || !confirm('이 저널을 삭제할까요?')) return;
+  if (!canManageJournalById(_currentJournalId)) { showToast('저널 소유자나 GM만 삭제할 수 있어요.'); return; }
   const _delId = _currentJournalId;
   deleteJournalFB(_delId);
   if (St.speakAsJournalId === _delId) { St.speakAsJournalId = null; saRefreshBtn(); }
@@ -1151,6 +1164,7 @@ function deleteJournal() { deleteJournalFromDrawer(); }
 
 function deleteJournalById(id) {
   if (!id || !confirm('이 저널을 삭제할까요?')) return;
+  if (!canManageJournalById(id)) { showToast('저널 소유자나 GM만 삭제할 수 있어요.'); return; }
   deleteJournalFB(id);
   if (St.speakAsJournalId === id) { St.speakAsJournalId = null; saRefreshBtn(); }
   try { localStorage.removeItem('itc_av_' + id); } catch(e) {}
@@ -1160,6 +1174,7 @@ function deleteJournalById(id) {
 
 function deleteSheetJournal() {
   if (!_sheetJournalId || !confirm('이 저널을 삭제할까요?')) return;
+  if (!canManageJournalById(_sheetJournalId)) { showToast('저널 소유자나 GM만 삭제할 수 있어요.'); return; }
   const delId = _sheetJournalId;
   deleteJournalFB(delId);
   if (St.speakAsJournalId === delId) { St.speakAsJournalId = null; saRefreshBtn(); }
@@ -2172,6 +2187,11 @@ function addCombatRow() {
 async function saveSheet() {
   if (!_sheetJournalId) return;
   const targetJournalId = _sheetJournalId;
+  const existingJournal = _allJournals.find(j => j.id === _sheetJournalId) || null;
+  if (existingJournal && !canManageJournalEntry(existingJournal)) {
+    showToast('저널 소유자나 GM만 저장할 수 있어요.');
+    return;
+  }
   const targetAssignedTokenId = _jdAssignedTokenId || null;
   const targetAssignedTo = Array.isArray(_sheetAssignedTo) ? [..._sheetAssignedTo] : (_sheetAssignedTo || []);
   const data = {};
