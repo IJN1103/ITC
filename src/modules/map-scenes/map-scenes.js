@@ -103,11 +103,6 @@
     const emptyEl = document.getElementById('map-scene-empty');
     if (!listEl || !emptyEl) return;
     ensureSceneMinimum();
-    if (!state.scenes.length) {
-      listEl.innerHTML = '';
-      emptyEl.style.display = 'block';
-      return;
-    }
     emptyEl.style.display = 'none';
     listEl.innerHTML = state.scenes.map((scene, index) => {
       const isSelected = scene.id === state.selectedSceneId;
@@ -272,6 +267,7 @@
     bindSceneModalEvents();
     const roomChanged = state.loadedRoomCode !== String(ROOT.St?.roomCode || '');
     if (roomChanged || !state.scenes.length) await loadScenesFromRoom();
+    ensureSceneMinimum();
     if (state.autoCreatedOnOpen && ROOT._FB?.CONFIGURED && ROOT.St?.roomCode) {
       await saveMapScenes({ silent: true, hintText: '기본 씬을 준비했어요.' });
     }
