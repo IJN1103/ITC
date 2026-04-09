@@ -366,6 +366,7 @@ function popoutChat() {
       }
       document.addEventListener('itc:dm-channel-change', schedulePopoutSync);
       document.addEventListener('itc:dm-unread-change', schedulePopoutSync);
+      document.addEventListener('itc:dm-channel-catalog-change', schedulePopoutSync);
     };
   })();
 

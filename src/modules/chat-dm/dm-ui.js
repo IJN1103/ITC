@@ -306,6 +306,9 @@
   ROOT.refreshDmChannelButtons = renderDmChannelButtons;
   ROOT.getDmButtonAlias = getAliasForUid;
   ROOT.setDmButtonAlias = setAliasForUid;
+  document.addEventListener('itc:dm-channel-catalog-change', () => {
+    try { renderDmChannelButtons(); } catch (e) {}
+  });
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', scheduleBootRender, { once: true });
   } else {

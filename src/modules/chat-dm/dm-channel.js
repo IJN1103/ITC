@@ -133,7 +133,20 @@
   }
 
   function setAvailableDmChannels(channels) {
-    state.availableChannels = normalizeDmChannels(channels);
+    const next = normalizeDmChannels(channels);
+    const prevSig = JSON.stringify(state.availableChannels || []);
+    const nextSig = JSON.stringify(next || []);
+    state.availableChannels = next;
+    if (prevSig !== nextSig) {
+      try {
+        document.dispatchEvent(new CustomEvent('itc:dm-channel-catalog-change', {
+          detail: { channels: state.availableChannels.slice() }
+        }));
+      } catch (e) {}
+      try {
+        if (typeof ROOT.refreshDmChannelButtons === 'function') ROOT.refreshDmChannelButtons();
+      } catch (e) {}
+    }
     return state.availableChannels.slice();
   }
 
