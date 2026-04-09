@@ -227,38 +227,92 @@ function removeSingleToken(id) {
   removeMapStatusCard(id, St.tokens);
 }
 
+
+function isPanelToken(token) {
+  return String(token?.type || token?.tokenCategory || '').trim() === 'panel';
+}
+
+function getPanelTokenImageSource(token) {
+  if (!isPanelToken(token)) return '';
+  const face = String(token?.panelFace || 'front').trim() || 'front';
+  if (face === 'back' && token?.panelBackImage) return String(token.panelBackImage || '').trim();
+  return String(token?.panelImage || token?.panelBackImage || '').trim();
+}
+
+function applyPanelTokenSize(el, token) {
+  if (!el || !token) return;
+  const layout = token?.importedMapObjectMeta?.layoutPct || null;
+  const widthPct = Number(layout?.width);
+  const heightPct = Number(layout?.height);
+  if (Number.isFinite(widthPct) && widthPct > 0 && Number.isFinite(heightPct) && heightPct > 0) {
+    el.style.width = widthPct + '%';
+    el.style.height = heightPct + '%';
+    el.style.minWidth = '0';
+    el.style.minHeight = '0';
+    return;
+  }
+  const pxW = Math.max(24, Number(token?.panelWidth || 0) || 0);
+  const pxH = Math.max(24, Number(token?.panelHeight || 0) || 0);
+  if (pxW > 0) el.style.width = pxW + 'px';
+  if (pxH > 0) el.style.height = pxH + 'px';
+  el.style.minWidth = '0';
+  el.style.minHeight = '0';
+}
+
 function createTokenEl(t) {
   const inner = document.getElementById('map-inner');
   const el = document.createElement('div');
-  el.className = `map-token ${t.type==='enemy'?'enemy':t.type==='npc'?'npc':''}`;
+  const isPanel = isPanelToken(t);
+  el.className = `map-token ${isPanel ? 'panel-token' : ''} ${t.type==='enemy'?'enemy':t.type==='npc'?'npc':''}`.trim();
   el.id = 'tok-' + t.id;
   el.style.left = storedTokenPercentToDisplay(t.x, 'x') + '%'; el.style.top = storedTokenPercentToDisplay(t.y, 'y') + '%';
   if (t.rotation) el.style.transform = `translate(-50%,-50%) rotate(${t.rotation}deg)`;
   const sz = (t.tokenSize || 1);
-  let tokenImgSrc = null;
-  if (t.standingAsToken && t.standings && t.standings.length > 0) {
+  let tokenImgSrc = '';
+  if (isPanel) {
+    tokenImgSrc = getPanelTokenImageSource(t);
+  } else if (t.standingAsToken && t.standings && t.standings.length > 0) {
     const jForToken = _allJournals.find(j => j.assignedTokenId === t.id);
     const curLabel = jForToken ? _vnCurrentStanding[jForToken.id] : null;
     const curStanding = curLabel ? t.standings.find(s => s.label === curLabel && s.img) : null;
     tokenImgSrc = curStanding ? curStanding.img : (t.standings.find(s => s.img)?.img || t.tokenImg || null);
   } else {
-    tokenImgSrc = t.tokenImg || null;
+    tokenImgSrc = t.tokenImg || '';
   }
   if (tokenImgSrc) {
     el.textContent = '';
     const img = document.createElement('img');
     img.src = tokenImgSrc;
-    img.style.cssText = 'width:100%;height:100%;object-fit:contain;pointer-events:none;';
+    if (isPanel) {
+      img.className = 'panel-token-display-img';
+      img.style.cssText = 'width:100%;height:100%;object-fit:fill;pointer-events:none;display:block;';
+      el.classList.add('panel-token-has-image');
+      applyPanelTokenSize(el, t);
+    } else {
+      img.style.cssText = 'width:100%;height:100%;object-fit:contain;pointer-events:none;';
+      el.classList.add('has-img');
+      const px = 36 * sz; el.style.width = px+'px'; el.style.height = 'auto'; el.style.minHeight = px+'px';
+      const nameLabel = document.createElement('span');
+      nameLabel.className = 'token-name-label';
+      nameLabel.textContent = t.name || '';
+      el.appendChild(nameLabel);
+    }
     el.appendChild(img);
-    el.classList.add('has-img');
-    const px = 36 * sz; el.style.width = px+'px'; el.style.height = 'auto'; el.style.minHeight = px+'px';
-    const nameLabel = document.createElement('span');
-    nameLabel.className = 'token-name-label';
-    nameLabel.textContent = t.name || '';
-    el.appendChild(nameLabel);
+    if (isPanel) {
+      if (!t.importedMapObject) {
+        const nameLabel = document.createElement('span');
+        nameLabel.className = 'token-name-label';
+        nameLabel.textContent = t.name || '';
+        el.appendChild(nameLabel);
+      }
+    }
   } else {
     el.textContent = t.name;
-    if (sz > 1) { const px = 36 * sz; el.style.width = px+'px'; el.style.height = px+'px'; el.style.fontSize = Math.max(9, 11*sz)+'px'; }
+    if (isPanel) {
+      applyPanelTokenSize(el, t);
+    } else if (sz > 1) {
+      const px = 36 * sz; el.style.width = px+'px'; el.style.height = px+'px'; el.style.fontSize = Math.max(9, 11*sz)+'px';
+    }
   }
   if (_multiSelectedTokenIds.includes(String(t.id))) el.classList.add('multi-selected');
   const memoText = String(t.memo || '').trim();

@@ -47,12 +47,16 @@ function displayTokenPercentToStored(value, axis = 'x') {
   return Number(value) || 0;
 }
 
+function getTokenStoredPercentMin(axis = 'x') {
+  return -75;
+}
+
 function getTokenStoredPercentMax(axis = 'x') {
-  return 100;
+  return 175;
 }
 
 function clampTokenStoredPercent(value, axis = 'x') {
-  return Math.max(0, Math.min(getTokenStoredPercentMax(axis), Number(value) || 0));
+  return Math.max(getTokenStoredPercentMin(axis), Math.min(getTokenStoredPercentMax(axis), Number(value) || 0));
 }
 
 function syncRenderedTokenPositions() {
