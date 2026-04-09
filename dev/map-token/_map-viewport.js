@@ -539,12 +539,29 @@ document.addEventListener('DOMContentLoaded', () => {
   const mapEl = document.getElementById('map-area');
   if (!mapEl) return;
 
+  const finishTransientMapInteractions = (options = {}) => {
+    if (_tokenSelectionState.active) finishTokenSelection();
+    if (isPanning) {
+      isPanning = false;
+      mapEl.classList.remove('panning');
+    }
+    if (options.flushDrag !== false && typeof _activeDragCleanup === 'function') {
+      _activeDragCleanup({ save: true });
+    }
+  };
+
   refreshMapBaseSize();
   syncMapViewportMetrics(mapEl);
   applyMapTransform();
   window.addEventListener('resize', () => {
     preserveMapViewportCenterOnResize(mapEl);
     applyMapTransform();
+  });
+  window.addEventListener('blur', () => {
+    finishTransientMapInteractions({ flushDrag: true });
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) finishTransientMapInteractions({ flushDrag: true });
   });
 
   mapEl.addEventListener('wheel', e => {

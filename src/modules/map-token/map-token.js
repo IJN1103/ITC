@@ -539,12 +539,29 @@ document.addEventListener('DOMContentLoaded', () => {
   const mapEl = document.getElementById('map-area');
   if (!mapEl) return;
 
+  const finishTransientMapInteractions = (options = {}) => {
+    if (_tokenSelectionState.active) finishTokenSelection();
+    if (isPanning) {
+      isPanning = false;
+      mapEl.classList.remove('panning');
+    }
+    if (options.flushDrag !== false && typeof _activeDragCleanup === 'function') {
+      _activeDragCleanup({ save: true });
+    }
+  };
+
   refreshMapBaseSize();
   syncMapViewportMetrics(mapEl);
   applyMapTransform();
   window.addEventListener('resize', () => {
     preserveMapViewportCenterOnResize(mapEl);
     applyMapTransform();
+  });
+  window.addEventListener('blur', () => {
+    finishTransientMapInteractions({ flushDrag: true });
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) finishTransientMapInteractions({ flushDrag: true });
   });
 
   mapEl.addEventListener('wheel', e => {
@@ -841,6 +858,8 @@ function removeSingleToken(id) {
   removeMapStatusCard(id, St.tokens);
 }
 
+let _activeDragCleanup = null;
+
 
 function isPanelToken(token) {
   return String(token?.type || token?.tokenCategory || '').trim() === 'panel';
@@ -967,28 +986,35 @@ function makeDraggable(el, tokenId) {
     if (!map) return;
 
     const dragSession = buildTokenDragSession(tokenId, e);
-    _activeDragSession = dragSession; // ← 드래그 시작 표시
+    _activeDragSession = dragSession;
 
     const onMove = ev => {
       applyTokenDragSession(dragSession, ev);
     };
 
-    const onUp = () => {
+    let finalized = false;
+    const finalizeDrag = (options = {}) => {
+      if (finalized) return;
+      finalized = true;
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup', onUp);
+      if (_activeDragCleanup === finalizeDrag) _activeDragCleanup = null;
 
-      const patch = collectDraggedTokenPositions(dragSession.targetIds);
-      _activeDragSession = null; // ← 드래그 종료 표시 (saveTokenPositionPatch 전에 해제)
+      const shouldSave = options.save !== false;
+      const patch = shouldSave ? collectDraggedTokenPositions(dragSession.targetIds) : null;
+      _activeDragSession = null;
 
-      saveTokenPositionPatch(patch);
+      if (patch && Object.keys(patch).length) saveTokenPositionPatch(patch);
       syncMultiTokenSelectionWithTokens(St.tokens);
 
-      /* 드래그 중 보류되었던 renderAllTokens 실행 */
       if (_pendingTokenRender) {
         _pendingTokenRender = false;
         renderAllTokens(St.tokens);
       }
     };
+
+    const onUp = () => finalizeDrag({ save: true });
+    _activeDragCleanup = finalizeDrag;
 
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp);
