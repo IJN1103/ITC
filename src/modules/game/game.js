@@ -95,6 +95,7 @@ function cleanupFirebaseListeners() {
   _firebaseUnsubs = [];
   _typingState = {};
   refreshTypingIndicators();
+  try { if (typeof window.cleanupDmUnreadListener === 'function') window.cleanupDmUnreadListener(); } catch (e) {}
 }
 
 function cleanupActiveChatChannelListeners() {

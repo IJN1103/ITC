@@ -285,6 +285,15 @@
     }, 250);
   }
 
+  function cleanupDmUnreadListener() {
+    const runtime = getUnreadRuntime();
+    try { if (typeof runtime.off === 'function') runtime.off(); } catch (e) {}
+    runtime.off = null;
+    runtime.roomCode = '';
+    runtime.latestByChannel = {};
+  }
+
+  ROOT.cleanupDmUnreadListener = cleanupDmUnreadListener;
   ROOT.renderDmChannelButtons = renderDmChannelButtons;
   ROOT.refreshDmChannelButtons = renderDmChannelButtons;
   ROOT.getDmButtonAlias = getAliasForUid;
