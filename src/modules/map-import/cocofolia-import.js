@@ -212,7 +212,6 @@
     objects.forEach((item, index) => {
       ids.push(String(item?.layerId || `object:${item?.id || index + 1}`));
     });
-    if (mapState?.foreground?.url) ids.push('foreground');
     return {
       order: ids,
       visible: Object.fromEntries(ids.map((id) => [id, true])),
@@ -266,8 +265,7 @@
       `<b>검사 완료</b>`,
       `파일명: ${escapeHtml(file.name)}`,
       `버전: ${escapeHtml(version)}`,
-      `배경 이미지: ${room.backgroundUrl ? '있음' : '없음'}`,
-      `전경 이미지: ${room.foregroundUrl ? '있음' : '없음'}`,
+      `맵 이미지: ${(room.backgroundUrl || room.foregroundUrl) ? '있음' : '없음'}`,
       `item 수: ${Object.keys(items).length}개`,
       `리소스 수: ${Object.keys(resources).length}개`,
       `그리드: ${gridLabel} / 크기 ${Number(room.gridSize || 0) || 0}`,
@@ -576,44 +574,25 @@
       return;
     }
     const room = validated.parsed?.entities?.room || {};
-    const backgroundName = String(room.backgroundUrl || '').trim();
-    if (!backgroundName) {
-      setError('이 맵세팅에는 배경 이미지가 없습니다.');
+    const mapImageName = String(room.backgroundUrl || room.foregroundUrl || '').trim();
+    if (!mapImageName) {
+      setError('이 맵세팅에는 맵 이미지가 없습니다.');
       return;
     }
     IMPORT_STATE.isBusy = true;
     try {
-      setHint('세션 상태를 확인한 뒤 배경 이미지를 업로드하는 중이에요…');
+      setHint('세션 상태를 확인한 뒤 맵 이미지를 업로드하는 중이에요…');
       const { roomCode } = await ensureLiveRoomContext();
       const zip = await window.JSZip.loadAsync(pendingFile);
-      const backgroundEntry = zip.file(backgroundName);
-      if (!backgroundEntry) throw new Error('ZIP 안에서 배경 이미지 파일을 찾지 못했어요.');
+      const backgroundEntry = zip.file(mapImageName);
+      if (!backgroundEntry) throw new Error('ZIP 안에서 맵 이미지 파일을 찾지 못했어요.');
       const blob = await backgroundEntry.async('blob');
       const backgroundSize = await getImageSizeFromBlob(blob);
-      const ext = backgroundName.split('.').pop() || 'png';
+      const ext = mapImageName.split('.').pop() || 'png';
       const uploadedUrl = await uploadMapLayerBlob(blob, roomCode, `map-bg-${Date.now()}.${ext}`);
-      if (!uploadedUrl) throw new Error('배경 이미지 업로드에 실패했어요.');
+      if (!uploadedUrl) throw new Error('맵 이미지 업로드에 실패했어요.');
 
-      let foregroundState = null;
-      let foregroundSize = null;
-      const foregroundName = String(room.foregroundUrl || '').trim();
-      if (foregroundName) {
-        const foregroundEntry = zip.file(foregroundName);
-        if (!foregroundEntry) throw new Error('ZIP 안에서 전경 이미지 파일을 찾지 못했어요.');
-        const foregroundBlob = await foregroundEntry.async('blob');
-        foregroundSize = await getImageSizeFromBlob(foregroundBlob);
-        const fgExt = foregroundName.split('.').pop() || 'png';
-        const uploadedForegroundUrl = await uploadMapLayerBlob(foregroundBlob, roomCode, `map-fg-${Date.now()}.${fgExt}`);
-        if (!uploadedForegroundUrl) throw new Error('전경 이미지 업로드에 실패했어요.');
-        foregroundState = {
-          url: uploadedForegroundUrl,
-          sourceName: foregroundName,
-          fit: String(room.fieldObjectFit || 'contain').trim() || 'contain',
-          importedAt: Date.now(),
-        };
-      }
-
-      const dominantSize = foregroundSize || backgroundSize || null;
+      const dominantSize = backgroundSize || null;
       const sceneAspect = dominantSize?.width && dominantSize?.height
         ? (dominantSize.width / dominantSize.height)
         : 1;
@@ -654,11 +633,11 @@
       const nextMapState = {
         background: {
           url: uploadedUrl,
-          sourceName: backgroundName,
+          sourceName: mapImageName,
           fit: String(room.fieldObjectFit || 'contain').trim() || 'contain',
           importedAt: Date.now(),
         },
-        foreground: foregroundState,
+        foreground: null,
         objects: importedObjects,
       };
       const nextLayerState = buildDefaultImportedMapLayerState(nextMapState);
@@ -668,10 +647,10 @@
         mapBackgroundFit: nextMapState.background.fit,
         mapBackgroundSourceName: nextMapState.background.sourceName || '',
         mapBackgroundImportedAt: nextMapState.background.importedAt || Date.now(),
-        mapForeground: nextMapState.foreground?.url || '',
-        mapForegroundFit: nextMapState.foreground?.fit || '',
-        mapForegroundSourceName: nextMapState.foreground?.sourceName || '',
-        mapForegroundImportedAt: nextMapState.foreground?.importedAt || 0,
+        mapForeground: '',
+        mapForegroundFit: '',
+        mapForegroundSourceName: '',
+        mapForegroundImportedAt: 0,
         mapObjects: nextMapState.objects || [],
         mapLayerState: nextLayerState,
       });

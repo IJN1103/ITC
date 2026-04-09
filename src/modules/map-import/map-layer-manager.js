@@ -32,9 +32,6 @@
         panelTokenId,
       });
     });
-    if (state.foreground?.url) {
-      entries.push({ id: 'foreground', name: '전경 이미지', sub: 'foregroundUrl', target: 'map-fg-layer', previewUrl: state.foreground.url });
-    }
     return entries;
   }
 

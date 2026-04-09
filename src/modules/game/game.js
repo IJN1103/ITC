@@ -485,11 +485,7 @@ function setupFirebaseListeners() {
         fit: bgm.mapBackgroundFit || 'contain',
         sourceName: bgm.mapBackgroundSourceName || '',
       } : null,
-      foreground: bgm.mapForeground ? {
-        url: bgm.mapForeground,
-        fit: bgm.mapForegroundFit || 'contain',
-        sourceName: bgm.mapForegroundSourceName || '',
-      } : null,
+      foreground: null,
       objects: Array.isArray(bgm.mapObjects) ? bgm.mapObjects : [],
     };
     St.mapLayerState = bgm.mapLayerState || null;
