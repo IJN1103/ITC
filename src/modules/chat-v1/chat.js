@@ -1335,6 +1335,7 @@ async function sendPreparedChatImage(preparedOrDataUrl, imageWide = false, image
       time: Date.now(),
       speakAsAvatar: saAvatar,
       speakAsJournalId: saJId,
+      nameColor: saJournal.nameColor || '',
       imageWide: !!imageWide,
       hideImageMeta: !!hideImageMeta,
       imageMeta: normalizedMeta,
@@ -1547,7 +1548,7 @@ async function sendChat() {
 function sendMessage(name, text, type = 'normal', extra = null) {
   const localTime = Date.now();
   const msg = { name, text, type, uid: St.myId, time: localTime };
-  if ((type === 'normal' || type === 'desc') && St.myNameColor) msg.nameColor = St.myNameColor;
+  if (St.myNameColor) msg.nameColor = St.myNameColor;
   if (extra && typeof extra === 'object') Object.assign(msg, extra);
   const currentChannelKey = String(window._itcActiveChatChannelKey || (typeof getCurrentDmChannelKey === 'function' ? getCurrentDmChannelKey() : 'global') || 'global').trim() || 'global';
   if (window._FB?.CONFIGURED) {

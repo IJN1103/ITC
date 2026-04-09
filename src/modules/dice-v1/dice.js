@@ -63,7 +63,15 @@ function rollDice(ci) {
   showRollResult(rollObj);
 
   const chatText = `🎲 ${d.l} → ${total}  (${rolls.join(', ')})`;
-  if (!isSecret) sendMessage(St.myName, chatText, 'dice');
+  if (!isSecret) {
+    const speakAsContext = (typeof window.saGetSelectedJournalContext === 'function')
+      ? window.saGetSelectedJournalContext(chatText) : null;
+    const senderName = speakAsContext?.name || St.myName;
+    const extra = speakAsContext
+      ? { speakAsAvatar: speakAsContext.speakAsAvatar || null, speakAsJournalId: speakAsContext.speakAsJournalId || null, nameColor: speakAsContext.nameColor || '', tokenId: speakAsContext.tokenId || null, standingLabel: speakAsContext.standingLabel || '' }
+      : null;
+    sendMessage(senderName, chatText, 'dice', extra);
+  }
   else addLocalMessage('dice', St.myName, `🎲 [비밀] ${d.l} → ${total}`);
 
   if (window._FB?.CONFIGURED && !isSecret) {
@@ -232,8 +240,15 @@ function rollFromFormula(formula) {
   const label = labelParts.join('');
   const detail = allDetails.join(' ') + ' = ' + grandTotal;
   const rollObj = { playerId: St.myId, player: St.myName, dice: label, total: grandTotal, rolls: allRolls, detail, time: Date.now() };
+  const chatText = `🎲 ${label} → ${grandTotal}  (${detail})`;
+  const speakAsContext = (typeof window.saGetSelectedJournalContext === 'function')
+    ? window.saGetSelectedJournalContext(chatText) : null;
+  const senderName = speakAsContext?.name || St.myName;
+  const extra = speakAsContext
+    ? { speakAsAvatar: speakAsContext.speakAsAvatar || null, speakAsJournalId: speakAsContext.speakAsJournalId || null, nameColor: speakAsContext.nameColor || '', tokenId: speakAsContext.tokenId || null, standingLabel: speakAsContext.standingLabel || '' }
+    : null;
   showRollResult(rollObj);
-  sendMessage(St.myName, `🎲 ${label} → ${grandTotal}  (${detail})`, 'dice');
+  sendMessage(senderName, chatText, 'dice', extra);
   if (window._FB?.CONFIGURED) {
     const { db, ref, set } = window._FB;
     set(ref(db, `rooms/${St.roomCode}/lastRoll`), { ...rollObj, time: getDiceServerTimestamp() });
