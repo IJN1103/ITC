@@ -1,7 +1,9 @@
 /**
  * ITC TRPG — Map Scenes
  * 씬 데이터 구조 + GM 전용 설정창 UI + activeSceneId 기반 실제 씬 전환 연결
- * 씬 전환 시 맵 영역에 페이드아웃/페이드인 효과를 덧입힌다.
+ * - 씬 전환 시 맵 영역에 페이드아웃/페이드인 효과를 덧입힌다.
+ * - 씬에 tokens 스냅샷이 명시적으로 담긴 경우 전환 시 토큰 경로까지 교체한다 (GM만 set, 플레이어는 tokens 리스너로 자동 반영).
+ * - 첫 적용(방 입장)은 페이드 없이 맵세팅만 반영하며 토큰 경로는 건드리지 않는다.
  */
 (function(){
   const ROOT = window;
@@ -21,40 +23,33 @@
   let _sceneSyncWatchTimer = null;
   let _sceneSyncUnsubs = [];
 
-  /* ── fade transition ── */
+  /* ── fade transition (transient overlay) ── */
   const FADE_OUT_MS = 340;
   const FADE_SETTLE_MS = 40;
   const FADE_IN_MS = 320;
   let _sceneFadeActive = false;
-  let _sceneFadeOverlayEl = null;
-
-  function ensureSceneFadeOverlay(){
-    const area = document.getElementById('map-area');
-    if (!area) return null;
-    let overlay = _sceneFadeOverlayEl;
-    if (!overlay || !overlay.isConnected || overlay.parentElement !== area) {
-      overlay = area.querySelector(':scope > .map-scene-fade');
-      if (!overlay) {
-        overlay = document.createElement('div');
-        overlay.className = 'map-scene-fade';
-        overlay.setAttribute('aria-hidden', 'true');
-        area.appendChild(overlay);
-      }
-      _sceneFadeOverlayEl = overlay;
-    }
-    return overlay;
-  }
 
   function runSceneFadeTransition(applyCallback){
-    const overlay = ensureSceneFadeOverlay();
-    if (!overlay) { try { applyCallback(); } catch (e) { console.warn('scene apply failed', e); } return; }
+    const area = document.getElementById('map-area');
+    if (!area) {
+      try { applyCallback(); } catch (e) { console.warn('scene apply failed', e); }
+      return;
+    }
     if (_sceneFadeActive) {
-      // 기존 페이드 진행 중이면 누적 피하고 즉시 적용만 수행
+      // 이미 페이드 진행 중이면 새 전환은 즉시 적용만 수행 (누적/중첩 방지)
       try { applyCallback(); } catch (e) { console.warn('scene apply failed', e); }
       return;
     }
     _sceneFadeActive = true;
-    // reflow로 초기 상태를 확정한 뒤 트랜지션 시작
+    // 잔여 오버레이 정리 (안전 장치)
+    area.querySelectorAll(':scope > .map-scene-fade').forEach(function(n){
+      try { n.remove(); } catch (_) {}
+    });
+    const overlay = document.createElement('div');
+    overlay.className = 'map-scene-fade';
+    overlay.setAttribute('aria-hidden', 'true');
+    area.appendChild(overlay);
+    // reflow 후 class 추가로 트랜지션 시작
     void overlay.offsetWidth;
     overlay.classList.add('is-visible');
     window.setTimeout(function(){
@@ -62,6 +57,7 @@
       window.setTimeout(function(){
         overlay.classList.remove('is-visible');
         window.setTimeout(function(){
+          try { if (overlay.isConnected) overlay.remove(); } catch (_) {}
           _sceneFadeActive = false;
         }, FADE_IN_MS + 40);
       }, FADE_SETTLE_MS);
@@ -74,7 +70,7 @@
 
   function normalizeScene(raw, id){
     const sceneId = String(id || raw?.id || '').trim() || makeSceneId();
-    return {
+    const out = {
       id: sceneId,
       name: String(raw?.name || '기본 씬').trim() || '기본 씬',
       background: raw?.background || null,
@@ -83,10 +79,21 @@
       createdAt: Number(raw?.createdAt) || Date.now(),
       updatedAt: Number(raw?.updatedAt) || Date.now(),
     };
+    // tokens 필드는 명시적으로 제공됐을 때만 포함한다 (기존 저장된 씬과의 호환을 위해).
+    if (raw && Object.prototype.hasOwnProperty.call(raw, 'tokens') && raw.tokens !== undefined) {
+      out.tokens = (raw.tokens && typeof raw.tokens === 'object') ? raw.tokens : {};
+    }
+    return out;
   }
 
   function buildDefaultScene(){
+    // 최초 기본 씬은 tokens 필드를 의도적으로 남기지 않는다 (방 첫 입장 시 기존 토큰 보존).
     return normalizeScene({ name:'기본 씬' });
+  }
+
+  function buildEmptyAddedScene(index){
+    // + 버튼으로 추가하는 씬은 "빈 페이지" (맵세팅/레이어/토큰 모두 비움)
+    return normalizeScene({ name: '씬 ' + (index + 1), tokens: {} });
   }
 
   function ensureSceneMinimum(){
@@ -124,8 +131,9 @@
     return !!(scene?.background?.url || (Array.isArray(scene?.objects) && scene.objects.length));
   }
 
-  function applySceneToRuntime(scene){
-    if (!scene || !getSceneHasMapData(scene)) return false;
+  function applyMapPartToRuntime(scene){
+    // 맵 배경/포그라운드/오브젝트/레이어만 적용 (토큰은 별도 처리)
+    if (!scene) return;
     ROOT.St.mapState = {
       background: scene.background ? deepCopy(scene.background) : null,
       foreground: null,
@@ -134,6 +142,24 @@
     ROOT.St.mapLayerState = scene.layerState ? deepCopy(scene.layerState) : null;
     if (typeof ROOT.applyImportedMapState === 'function') ROOT.applyImportedMapState(ROOT.St.mapState);
     if (typeof ROOT.refreshMapLayerManager === 'function') ROOT.refreshMapLayerManager();
+  }
+
+  function applySceneToRuntime(scene){
+    if (!scene) return false;
+    applyMapPartToRuntime(scene);
+    // 씬에 토큰 스냅샷이 명시적으로 있으면 GM만 Firebase tokens 경로 교체.
+    // (플레이어 측은 기존 tokens 리스너로 자동 반영됨)
+    if (scene.tokens !== undefined && ROOT.St?.isGM && ROOT._FB?.CONFIGURED && ROOT.St?.roomCode) {
+      try {
+        const { db, ref, set } = ROOT._FB;
+        const tokensData = (scene.tokens && typeof scene.tokens === 'object') ? deepCopy(scene.tokens) : {};
+        set(ref(db, `rooms/${ROOT.St.roomCode}/tokens`), tokensData).catch(function(e){
+          console.warn('scene token restore failed', e);
+        });
+      } catch (e) {
+        console.warn('scene token restore failed', e);
+      }
+    }
     return true;
   }
 
@@ -143,12 +169,21 @@
     const activeId = String(state.remoteActiveSceneId || '').trim();
     if (!activeId) return;
     const scene = state.remoteScenes.find(s => s.id === activeId);
-    if (!scene || !getSceneHasMapData(scene)) return;
-    const applyKey = [roomCode, activeId, Number(scene.updatedAt || 0), String(scene.background?.url || ''), Array.isArray(scene.objects) ? scene.objects.length : 0].join('|');
+    if (!scene) return;
+    const applyKey = [
+      roomCode,
+      activeId,
+      Number(scene.updatedAt || 0),
+      String(scene.background?.url || ''),
+      Array.isArray(scene.objects) ? scene.objects.length : 0,
+      scene.tokens === undefined ? 'no-tok' : ('tok-' + Object.keys(scene.tokens || {}).length)
+    ].join('|');
     if (state.syncAppliedKey === applyKey) return;
     const isFirstApply = !state.syncAppliedKey;
     if (isFirstApply) {
-      if (applySceneToRuntime(scene)) state.syncAppliedKey = applyKey;
+      // 첫 적용: 페이드 없이 맵세팅만 반영 (토큰 경로는 건드리지 않아 방 입장 회귀 차단)
+      applyMapPartToRuntime(scene);
+      state.syncAppliedKey = applyKey;
       return;
     }
     // 전환 케이스: 페이드아웃 → 적용 → 페이드인
@@ -256,17 +291,20 @@
       if (!scene) return;
       const ms = ROOT.St?.mapState || {};
       const hasMap = !!(ms.background?.url || (Array.isArray(ms.objects) && ms.objects.length));
-      if (!hasMap) {
-        ROOT.showToast('현재 맵에 저장할 데이터가 없어요. 맵세팅을 먼저 적용해 주세요.');
+      const tokensObj = (ROOT.St?.tokens && typeof ROOT.St.tokens === 'object') ? ROOT.St.tokens : {};
+      const hasTokens = Object.keys(tokensObj).length > 0;
+      if (!hasMap && !hasTokens) {
+        ROOT.showToast('현재 맵에 저장할 데이터가 없어요. 맵세팅이나 토큰을 먼저 배치해 주세요.');
         return;
       }
       scene.background = ms.background ? { url: ms.background.url || '', fit: ms.background.fit || 'contain', sourceName: ms.background.sourceName || '' } : null;
       scene.objects = Array.isArray(ms.objects) ? JSON.parse(JSON.stringify(ms.objects)) : [];
       scene.layerState = ROOT.St?.mapLayerState ? JSON.parse(JSON.stringify(ROOT.St.mapLayerState)) : null;
+      scene.tokens = JSON.parse(JSON.stringify(tokensObj));
       scene.updatedAt = Date.now();
       state.isDirty = true;
       renderSceneList();
-      ROOT.showToast('"' + (scene.name || '씬') + '"에 현재 맵 상태를 저장했어요. 씬 설정 저장을 눌러 반영하세요.');
+      ROOT.showToast('"' + (scene.name || '씬') + '"에 현재 맵과 토큰 상태를 저장했어요. 씬 설정 저장을 눌러 반영하세요.');
     }
 
     if (action === 'rename') {
@@ -307,11 +345,13 @@
       var isSelected = scene.id === state.selectedSceneId;
       var isActive = scene.id === state.activeSceneId;
       var hasMapData = getSceneHasMapData(scene);
+      var tokenCount = (scene.tokens && typeof scene.tokens === 'object') ? Object.keys(scene.tokens).length : -1;
+      var tokenLabel = tokenCount >= 0 ? (' · 토큰 ' + tokenCount + '개') : '';
       return '<button type="button" class="map-scene-item' + (isSelected ? ' is-selected' : '') + '" data-scene-id="' + scene.id + '">'
         + '<div class="map-scene-item-main">'
         + '<div class="map-scene-item-index">씬 ' + (index + 1) + '</div>'
         + '<div class="map-scene-item-name">' + ROOT.esc(scene.name || '무제 씬') + '</div>'
-        + '<div class="map-scene-item-meta">' + (isActive ? '현재 표시 중' : '대기 중') + (hasMapData ? ' · 맵 저장됨' : '') + '</div>'
+        + '<div class="map-scene-item-meta">' + (isActive ? '현재 표시 중' : '대기 중') + (hasMapData ? ' · 맵 저장됨' : '') + tokenLabel + '</div>'
         + '</div>'
         + (isActive ? '<span class="map-scene-badge">LIVE</span>' : '')
         + '</button>';
@@ -344,7 +384,7 @@
     if (addBtn && !addBtn.dataset.bound) {
       addBtn.dataset.bound = '1';
       addBtn.addEventListener('click', function(){
-        var next = normalizeScene({ name: '씬 ' + (state.scenes.length + 1) });
+        var next = buildEmptyAddedScene(state.scenes.length);
         state.scenes.push(next);
         state.selectedSceneId = next.id;
         if (!state.activeSceneId) state.activeSceneId = next.id;
