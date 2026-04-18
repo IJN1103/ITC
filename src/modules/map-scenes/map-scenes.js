@@ -23,6 +23,8 @@
     syncRoomCode: '',
     syncAppliedKey: '',
     suppressAutoSaveUntil: 0,  // 씬 전환 직후 일시적으로 자동 저장 보류 (다단 변경 안정화용)
+    isApplyingScene: false,     // 씬 전환으로 라이브 맵을 교체하는 중에는 자동 저장 완전 차단
+    sceneApplySeq: 0,           // 연속 더블클릭 시 오래된 적용 콜백 무효화
   };
 
   let _sceneSyncWatchTimer = null;
@@ -150,6 +152,32 @@
     try { return JSON.stringify(stableNormalize(value)); } catch (_) { return ''; }
   }
 
+  function beginSceneApplyGuard(durationMs){
+    state.sceneApplySeq += 1;
+    state.isApplyingScene = true;
+    state.suppressAutoSaveUntil = Date.now() + Math.max(1200, Number(durationMs) || 2400);
+    if (_autoSavePendingTimer) {
+      clearTimeout(_autoSavePendingTimer);
+      _autoSavePendingTimer = null;
+    }
+    _autoSavePendingSceneId = '';
+    _autoSaveLastSig = '';
+    return state.sceneApplySeq;
+  }
+
+  function isCurrentSceneApply(seq){
+    return Number(seq) === Number(state.sceneApplySeq);
+  }
+
+  function resetAutoSaveBaselineSoon(seq, delayMs){
+    window.setTimeout(function(){
+      if (!isCurrentSceneApply(seq)) return;
+      try { _autoSaveLastSig = currentRuntimeSignature(); } catch (_) { _autoSaveLastSig = ''; }
+      state.isApplyingScene = false;
+      state.suppressAutoSaveUntil = Math.max(state.suppressAutoSaveUntil, Date.now() + 350);
+    }, Math.max(80, Number(delayMs) || 800));
+  }
+
   function getCurrentRuntimeSnapshot(){
     const ms = ROOT.St?.mapState || {};
     const bg = ms.background ? {
@@ -168,6 +196,30 @@
 
   function getSceneHasMapData(scene){
     return !!(scene?.background?.url || (Array.isArray(scene?.objects) && scene.objects.length));
+  }
+
+  function getSceneEffectiveTokens(scene){
+    if (!scene) return undefined;
+    if (scene.tokens !== undefined) {
+      return (scene.tokens && typeof scene.tokens === 'object') ? deepCopy(scene.tokens) : {};
+    }
+    if (scene.isEmpty === true) return {};
+    return undefined;
+  }
+
+  function hasLayerStateData(layerState){
+    if (!layerState || typeof layerState !== 'object') return false;
+    try { return Object.keys(layerState).length > 0; } catch (_) { return false; }
+  }
+
+  function isSceneExplicitlyEmpty(scene){
+    if (!scene) return false;
+    const tokens = getSceneEffectiveTokens(scene);
+    return scene.isEmpty === true
+      && !scene?.background?.url
+      && !(Array.isArray(scene?.objects) && scene.objects.length)
+      && !hasLayerStateData(scene?.layerState)
+      && (tokens === undefined || Object.keys(tokens || {}).length === 0);
   }
 
   /* ── apply helpers ── */
@@ -210,14 +262,21 @@
     }
   }
 
-  function syncSceneTokensToRuntime(scene){
-    if (!ROOT.St?.isGM || !ROOT._FB?.CONFIGURED || !ROOT.St?.roomCode) return;
-    if (!scene || scene.tokens === undefined) return;
+  async function applySceneTokensToRuntime(scene, options){
+    options = options || {};
+    const effectiveTokens = getSceneEffectiveTokens(scene);
+    if (effectiveTokens === undefined) return;
     try {
+      const nextTokens = (effectiveTokens && typeof effectiveTokens === 'object') ? deepCopy(effectiveTokens) : {};
+      const currentTokens = (ROOT.St?.tokens && typeof ROOT.St.tokens === 'object') ? ROOT.St.tokens : {};
+      ROOT.St.tokens = deepCopy(nextTokens) || {};
+      if (typeof ROOT.renderAllTokens === 'function') ROOT.renderAllTokens(ROOT.St.tokens);
+
+      if (options.syncRoomTokens !== true) return;
+      if (!ROOT.St?.isGM || !ROOT._FB?.CONFIGURED || !ROOT.St?.roomCode) return;
+
       const { db, ref, update } = ROOT._FB;
       const roomCode = ROOT.St.roomCode;
-      const nextTokens = (scene.tokens && typeof scene.tokens === 'object') ? deepCopy(scene.tokens) : {};
-      const currentTokens = (ROOT.St?.tokens && typeof ROOT.St.tokens === 'object') ? ROOT.St.tokens : {};
       const payload = {};
       Object.keys(currentTokens).forEach(function(tokenId){
         if (!Object.prototype.hasOwnProperty.call(nextTokens, tokenId)) {
@@ -227,29 +286,23 @@
       Object.entries(nextTokens).forEach(function(entry){
         payload[`tokens/${entry[0]}`] = entry[1];
       });
-      ROOT.St.tokens = deepCopy(nextTokens) || {};
-      if (typeof ROOT.renderAllTokens === 'function') ROOT.renderAllTokens(ROOT.St.tokens);
       if (Object.keys(payload).length) {
-        update(ref(db, `rooms/${roomCode}`), payload).catch(function(e){
-          console.warn('scene token sync failed', e);
-        });
+        await update(ref(db, `rooms/${roomCode}`), payload);
       }
     } catch (e) {
       console.warn('scene token restore failed', e);
     }
   }
 
-  function applySceneToRuntime(scene, options){
+  async function applySceneToRuntime(scene, options){
     if (!scene) return false;
     options = options || {};
     applyMapPartToRuntime(scene);
-    // isEmpty 플래그가 있으면 tokens가 누락됐더라도 "명시적 빈 씬"으로 간주
-    const effectiveTokens = (scene.tokens !== undefined) ? scene.tokens : (scene.isEmpty === true ? {} : undefined);
-    if (effectiveTokens !== undefined && ROOT.St?.isGM && ROOT._FB?.CONFIGURED && ROOT.St?.roomCode) {
-      syncSceneTokensToRuntime({ ...scene, tokens: effectiveTokens });
-    }
+    // isEmpty 플래그가 있으면 tokens가 누락됐더라도 "명시적 빈 씬"으로 간주한다.
+    // 플레이어도 로컬 화면은 즉시 비우고, GM만 rooms/{code}/tokens 경로를 동기화한다.
+    await applySceneTokensToRuntime(scene, { syncRoomTokens: options.syncRoomBgm === true });
     if (options.syncRoomBgm === true) {
-      syncSceneMapToRoomBgm(scene);
+      await syncSceneMapToRoomBgm(scene);
     }
     return true;
   }
@@ -283,22 +336,43 @@
     const isSameSceneUpdate = !isFirstApply && state.syncAppliedKey.split('|')[1] === activeId;
 
     if (isFirstApply) {
-      // 첫 적용: 방 입장 직후에는 기존 bgm/tokens 리스너와 충돌하지 않도록 맵세팅만 맞춘다.
-      applyMapPartToRuntime(scene);
+      // 첫 적용: 기본 씬은 기존 bgm/tokens 리스너와 충돌하지 않도록 맵세팅만 맞춘다.
+      // 단, 명시적 빈 씬은 토큰 잔상이 남지 않아야 하므로 로컬 토큰까지 즉시 비운다.
+      if (isSceneExplicitlyEmpty(scene)) {
+        Promise.resolve(applySceneToRuntime(scene, { syncRoomBgm: ROOT.St?.isGM === true })).catch(function(e){
+          console.warn('initial empty scene apply failed', e);
+        });
+      } else {
+        applyMapPartToRuntime(scene);
+      }
       state.syncAppliedKey = applyKey;
       return;
     }
     if (isSameSceneUpdate) {
       // 같은 LIVE 씬의 저장 내용이 갱신된 경우도 플레이어 화면에는 반영되어야 한다.
-      // GM 자기 에코는 bgm/tokens 리스너가 이미 처리하므로, 여기서는 맵 파트만 보정한다.
-      applyMapPartToRuntime(scene);
+      // 명시적 빈 씬이면 토큰 잔상까지 제거하고, 그 외에는 맵 파트만 보정한다.
+      if (isSceneExplicitlyEmpty(scene)) {
+        Promise.resolve(applySceneToRuntime(scene, { syncRoomBgm: ROOT.St?.isGM === true })).catch(function(e){
+          console.warn('same empty scene apply failed', e);
+        });
+      } else {
+        applyMapPartToRuntime(scene);
+      }
       state.syncAppliedKey = applyKey;
       return;
     }
     // 씬 전환: 선택한 씬이 현재 라이브 맵이 되도록 실제 런타임 상태를 교체한다.
-    state.suppressAutoSaveUntil = Date.now() + 1800; // 전환 직후 자동 저장 억제
+    const applySeq = beginSceneApplyGuard(2800);
     runSceneFadeTransition(function(){
-      if (applySceneToRuntime(scene, { syncRoomBgm: ROOT.St?.isGM === true })) state.syncAppliedKey = applyKey;
+      if (!isCurrentSceneApply(applySeq)) return;
+      Promise.resolve(applySceneToRuntime(scene, { syncRoomBgm: ROOT.St?.isGM === true })).then(function(applied){
+        if (!isCurrentSceneApply(applySeq)) return;
+        if (applied) state.syncAppliedKey = applyKey;
+        resetAutoSaveBaselineSoon(applySeq, 900);
+      }).catch(function(e){
+        console.warn('scene runtime apply failed', e);
+        resetAutoSaveBaselineSoon(applySeq, 900);
+      });
     });
   }
 
@@ -317,6 +391,8 @@
     state.isDirty = false;
     state.autoCreatedOnOpen = false;
     state.suppressAutoSaveUntil = 0;
+    state.isApplyingScene = false;
+    state.sceneApplySeq += 1;
     stopActiveSceneAutoSave();
   }
 
@@ -390,11 +466,13 @@
   const AUTO_SAVE_DEBOUNCE_MS = 900;
   let _autoSaveTimer = null;
   let _autoSavePendingTimer = null;
+  let _autoSavePendingSceneId = '';
   let _autoSaveLastSig = '';
 
   function stopActiveSceneAutoSave(){
     if (_autoSaveTimer) { clearInterval(_autoSaveTimer); _autoSaveTimer = null; }
     if (_autoSavePendingTimer) { clearTimeout(_autoSavePendingTimer); _autoSavePendingTimer = null; }
+    _autoSavePendingSceneId = '';
     _autoSaveLastSig = '';
   }
 
@@ -410,11 +488,28 @@
     return stableStringify(getCurrentRuntimeSnapshot());
   }
 
+  function getCurrentActiveSceneId(){
+    return String(state.remoteActiveSceneId || state.activeSceneId || "").trim();
+  }
+
+  function canPersistActiveSceneTarget(sceneId, roomCode){
+    const targetId = String(sceneId || "").trim();
+    const activeId = getCurrentActiveSceneId();
+    const currentRoomCode = String(ROOT.St?.roomCode || "").trim();
+    if (!targetId || !activeId || targetId !== activeId) return false;
+    if (!roomCode || roomCode !== currentRoomCode || roomCode !== state.syncRoomCode) return false;
+    if (state.isApplyingScene) return false;
+    if (Date.now() < state.suppressAutoSaveUntil) return false;
+    if (!state.remoteScenes.some(function(s){ return s.id === targetId; }) && !state.scenes.some(function(s){ return s.id === targetId; })) return false;
+    return true;
+  }
+
   function autoSavePollTick(){
     if (!ROOT.St?.isGM) return;
     if (!ROOT._FB?.CONFIGURED) return;
     const roomCode = String(ROOT.St?.roomCode || '').trim();
     if (!roomCode || roomCode !== state.syncRoomCode) return;
+    if (state.isApplyingScene) return;
     if (Date.now() < state.suppressAutoSaveUntil) return;
     if (!state.remoteActiveSceneId) return;
 
@@ -422,12 +517,18 @@
     if (!_autoSaveLastSig) { _autoSaveLastSig = sig; return; }
     if (sig === _autoSaveLastSig) return;
 
-    // 변경 감지됨 → debounce
+    // 변경 감지됨 → 현재 activeSceneId를 함께 고정해서 debounce 중 씬이 바뀌면 저장하지 않는다.
+    const targetSceneId = getCurrentActiveSceneId();
+    if (!canPersistActiveSceneTarget(targetSceneId, roomCode)) return;
     _autoSaveLastSig = sig;
+    _autoSavePendingSceneId = targetSceneId;
     if (_autoSavePendingTimer) clearTimeout(_autoSavePendingTimer);
     _autoSavePendingTimer = window.setTimeout(function(){
+      const pendingSceneId = String(_autoSavePendingSceneId || '').trim();
       _autoSavePendingTimer = null;
-      persistActiveSceneFromRuntime().catch(function(e){
+      _autoSavePendingSceneId = '';
+      if (!canPersistActiveSceneTarget(pendingSceneId, roomCode)) return;
+      persistActiveSceneFromRuntime(pendingSceneId).catch(function(e){
         console.warn('persistActiveSceneFromRuntime failed', e);
       });
     }, AUTO_SAVE_DEBOUNCE_MS);
@@ -444,7 +545,8 @@
       || {};
     const hasMap = !!(ms.background?.url || (Array.isArray(ms.objects) && ms.objects.length));
     const hasTokens = Object.keys(tokens).length > 0;
-    const isStillEmpty = !hasMap && !hasTokens;
+    const hasLayers = hasLayerStateData(snapshot.layerState);
+    const isStillEmpty = !hasMap && !hasTokens && !hasLayers;
     const rawNext = {
       id: targetId,
       name: existing.name || '씬',
@@ -452,22 +554,28 @@
       updatedAt: Date.now(),
       background: ms.background ? { url: ms.background.url || '', fit: ms.background.fit || 'contain', sourceName: ms.background.sourceName || '', importedAt: ms.background.importedAt || 0 } : null,
       objects: Array.isArray(ms.objects) ? deepCopy(ms.objects) : [],
-      layerState: snapshot.layerState ? deepCopy(snapshot.layerState) : null,
+      layerState: isStillEmpty ? null : (snapshot.layerState ? deepCopy(snapshot.layerState) : null),
       tokens: tokens,
     };
     if (isStillEmpty) rawNext.isEmpty = true;
     return normalizeScene(rawNext, targetId);
   }
 
-  async function persistSceneFromRuntime(sceneId){
+  async function persistSceneFromRuntime(sceneId, options){
+    options = options || {};
     if (!ROOT.St?.isGM || !ROOT._FB?.CONFIGURED) return null;
+    if (state.isApplyingScene || Date.now() < state.suppressAutoSaveUntil) return null;
     const roomCode = String(ROOT.St?.roomCode || '').trim();
     if (!roomCode) return null;
-    const nextScene = buildRuntimeSceneSnapshot(sceneId);
+    const targetId = String(sceneId || '').trim();
+    if (!options.allowInactive && !canPersistActiveSceneTarget(targetId, roomCode)) return null;
+    const nextScene = buildRuntimeSceneSnapshot(targetId);
     if (!nextScene) return null;
     const { db, ref, set } = ROOT._FB;
     try {
+      if (!options.allowInactive && !canPersistActiveSceneTarget(nextScene.id, roomCode)) return null;
       await set(ref(db, `rooms/${roomCode}/mapScenes/${nextScene.id}`), nextScene);
+      if (!options.allowInactive && !canPersistActiveSceneTarget(nextScene.id, roomCode)) return nextScene;
       const idx = state.scenes.findIndex(function(s){ return s.id === nextScene.id; });
       if (idx >= 0) state.scenes[idx] = nextScene;
       else state.scenes.push(nextScene);
@@ -482,13 +590,16 @@
     }
   }
 
-  async function persistActiveSceneFromRuntime(){
-    const activeId = String(state.remoteActiveSceneId || state.activeSceneId || '').trim();
-    if (!activeId) return;
+  async function persistActiveSceneFromRuntime(expectedSceneId){
+    const activeId = String(expectedSceneId || getCurrentActiveSceneId()).trim();
+    const roomCode = String(ROOT.St?.roomCode || '').trim();
+    if (!activeId || !canPersistActiveSceneTarget(activeId, roomCode)) return null;
     return persistSceneFromRuntime(activeId);
   }
 
-  /* ── context menu (rename / delete 만 유지, capture 제거) ── */
+  /* ── context menu (capture / rename / delete) ──
+     - 현재 맵 저장(capture): 지금 라이브 맵/토큰 상태를 선택 씬에 즉시 캡처한다.
+     - 이름 편집/삭제: 씬 목록 메타 변경. 하단 '씬 설정 저장'과 같은 목록 관리 영역이다. */
   let _ctxTargetId = '';
 
   function showCtxMenu(x, y, sceneId){
@@ -512,8 +623,9 @@
     if (!sceneId) return;
 
     if (action === 'capture') {
-      persistSceneFromRuntime(sceneId).then(function(){
-        ROOT.showToast('현재 맵 상태를 이 씬에 저장했어요.');
+      persistSceneFromRuntime(sceneId, { allowInactive: true }).then(function(saved){
+        if (!saved) { ROOT.showToast('현재 맵을 저장할 수 있는 상태가 아니에요.'); return; }
+        ROOT.showToast('현재 맵 상태를 이 씬에 즉시 저장했어요.');
       }).catch(function(e){
         ROOT.showToast('현재 맵 저장 실패: ' + (e?.message || e));
       });
@@ -622,10 +734,10 @@
       return;
     }
 
+    const applySeq = beginSceneApplyGuard(3200);
     state.activeSceneId = sceneId;
     state.selectedSceneId = sceneId;
     state.remoteActiveSceneId = sceneId;
-    state.suppressAutoSaveUntil = Date.now() + 2200;
     renderSceneList();
 
     const roomCode = ROOT.St.roomCode;
@@ -643,17 +755,17 @@
 
       // 3) 실제 라이브 맵 데이터 교체: 기존 맵 기능들이 바라보는 bgm/tokens 경로까지 맞춘다.
       //    빈 씬이면 bgm은 비워지고, tokens는 빈 객체로 동기화되어 화면도 빈 맵이 된다.
-      applySceneToRuntime(normalized, { syncRoomBgm: true });
+      if (!isCurrentSceneApply(applySeq)) return;
+      await applySceneToRuntime(normalized, { syncRoomBgm: true });
+      if (!isCurrentSceneApply(applySeq)) return;
       state.syncAppliedKey = buildSceneApplyKey(roomCode, sceneId, normalized);
 
       // 4) 자동 저장 기준선을 전환 후 상태로 재설정해서 직전 씬 데이터가 새 씬에 덮이는 것을 막는다.
-      _autoSaveLastSig = '';
-      window.setTimeout(function(){
-        try { _autoSaveLastSig = currentRuntimeSignature(); } catch (_) {}
-      }, 700);
+      resetAutoSaveBaselineSoon(applySeq, 900);
     } catch (e) {
       console.warn('activateSceneNow failed', e);
       ROOT.showToast('씬 전환 실패: ' + (e?.message || e));
+      resetAutoSaveBaselineSoon(applySeq, 900);
     }
   }
 
@@ -692,7 +804,9 @@
     }
   }
 
-  /* 목록 메타 (이름/추가/삭제) 만 저장 - 활성 씬 본문은 자동 저장이 담당 */
+  /* 목록 메타 저장 전용
+     - 씬 추가/삭제/이름 변경/activeSceneId 같은 목록 설정을 저장한다.
+     - 활성 씬의 맵/토큰 본문은 자동 저장 또는 우클릭 '현재 맵 저장'이 담당한다. */
   async function persistSceneListMeta(){
     if (!ROOT.St?.isGM || !ROOT._FB?.CONFIGURED || !ROOT.St?.roomCode) return;
     ensureSceneMinimum();
@@ -739,11 +853,11 @@
     if (!ROOT.St?.isGM) { ROOT.showToast('GM만 장면 전환 설정을 저장할 수 있어요.'); return; }
     if (!ROOT._FB?.CONFIGURED || !ROOT.St?.roomCode) { ROOT.showToast('방에 입장한 상태에서만 저장할 수 있어요.'); return; }
     try {
-      if (hint) hint.textContent = options.silent ? (options.hintText || '기본 씬을 준비하는 중...') : '저장 중...';
+      if (hint) hint.textContent = options.silent ? (options.hintText || '기본 씬을 준비하는 중...') : '씬 목록 설정 저장 중...';
       await persistSceneListMeta();
       state.autoCreatedOnOpen = false;
-      if (hint) hint.textContent = options.silent ? (options.hintText || '기본 씬을 준비했어요.') : '저장됐어요 ✓';
-      if (!options.silent) ROOT.showToast('장면 전환 씬 목록을 저장했어요.');
+      if (hint) hint.textContent = options.silent ? (options.hintText || '기본 씬을 준비했어요.') : '씬 목록 설정이 저장됐어요 ✓';
+      if (!options.silent) ROOT.showToast('씬 목록/이름 설정을 저장했어요.');
       setTimeout(function(){
         var h = document.getElementById('map-scene-hint');
         if (h && h.isConnected && !state.isDirty) h.textContent = '';
