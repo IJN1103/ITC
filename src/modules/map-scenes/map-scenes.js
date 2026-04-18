@@ -144,21 +144,44 @@
     if (typeof ROOT.refreshMapLayerManager === 'function') ROOT.refreshMapLayerManager();
   }
 
+  function syncSceneTokensToRuntime(scene){
+    if (!ROOT.St?.isGM || !ROOT._FB?.CONFIGURED || !ROOT.St?.roomCode) return;
+    if (!scene || scene.tokens === undefined) return;
+    try {
+      const { db, ref, set, remove } = ROOT._FB;
+      const roomCode = ROOT.St.roomCode;
+      const nextTokens = (scene.tokens && typeof scene.tokens === 'object') ? deepCopy(scene.tokens) : {};
+      const currentTokens = (ROOT.St?.tokens && typeof ROOT.St.tokens === 'object') ? ROOT.St.tokens : {};
+      const currentIds = Object.keys(currentTokens);
+      const nextIds = new Set(Object.keys(nextTokens));
+
+      currentIds.forEach(function(tokenId){
+        if (!nextIds.has(tokenId)) {
+          remove(ref(db, `rooms/${roomCode}/tokens/${tokenId}`)).catch(function(e){
+            console.warn('scene token remove failed', tokenId, e);
+          });
+        }
+      });
+
+      Object.entries(nextTokens).forEach(function(entry){
+        const tokenId = entry[0];
+        const tokenData = entry[1];
+        set(ref(db, `rooms/${roomCode}/tokens/${tokenId}`), tokenData).catch(function(e){
+          console.warn('scene token restore failed', tokenId, e);
+        });
+      });
+    } catch (e) {
+      console.warn('scene token restore failed', e);
+    }
+  }
+
   function applySceneToRuntime(scene){
     if (!scene) return false;
     applyMapPartToRuntime(scene);
     // 씬에 토큰 스냅샷이 명시적으로 있으면 GM만 Firebase tokens 경로 교체.
     // (플레이어 측은 기존 tokens 리스너로 자동 반영됨)
     if (scene.tokens !== undefined && ROOT.St?.isGM && ROOT._FB?.CONFIGURED && ROOT.St?.roomCode) {
-      try {
-        const { db, ref, set } = ROOT._FB;
-        const tokensData = (scene.tokens && typeof scene.tokens === 'object') ? deepCopy(scene.tokens) : {};
-        set(ref(db, `rooms/${ROOT.St.roomCode}/tokens`), tokensData).catch(function(e){
-          console.warn('scene token restore failed', e);
-        });
-      } catch (e) {
-        console.warn('scene token restore failed', e);
-      }
+      syncSceneTokensToRuntime(scene);
     }
     return true;
   }

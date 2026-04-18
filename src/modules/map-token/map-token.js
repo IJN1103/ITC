@@ -757,6 +757,40 @@ function addToken() {
   document.getElementById('token-name').value = '';
 }
 
+function addPanelToken() {
+  if (!hasPerm('createToken')) { showToast('?좏겙 ?앹꽦 沅뚰븳???놁뼱??'); return; }
+  const input = document.getElementById('panel-token-name');
+  const name = input?.value.trim() || '패널';
+  const id = genId();
+  const token = {
+    id,
+    name,
+    type: 'panel',
+    x: 50,
+    y: 50,
+    ownerId: St.myId || '',
+    ownerName: St.myName || '',
+    createdBy: St.myId || '',
+    createdByName: St.myName || '',
+    panelFace: 'front',
+    panelImage: '',
+    panelBackImage: '',
+    panelWidth: 240,
+    panelHeight: 135,
+    lockPosition: false,
+    lockSize: false,
+  };
+  if (window._FB?.CONFIGURED) {
+    const { db, ref, set } = window._FB;
+    set(ref(db, `rooms/${St.roomCode}/tokens/${id}`), token);
+  } else {
+    St.tokens[id] = token;
+    renderAllTokens(St.tokens);
+  }
+  closeModal('modal-panel-token');
+  if (input) input.value = '';
+}
+
 function renderAllTokens(tokens) {
   /* 드래그 중이면 전체 re-render를 보류 (드래그 끝나면 자동 실행) */
   if (_activeDragSession) {
