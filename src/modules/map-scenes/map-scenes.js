@@ -1,6 +1,7 @@
 /**
  * ITC TRPG — Map Scenes
  * 씬 데이터 구조 + GM 전용 설정창 UI + activeSceneId 기반 실제 씬 전환 연결
+ * 씬 전환 시 맵 영역에 페이드아웃/페이드인 효과를 덧입힌다.
  */
 (function(){
   const ROOT = window;
@@ -19,6 +20,53 @@
 
   let _sceneSyncWatchTimer = null;
   let _sceneSyncUnsubs = [];
+
+  /* ── fade transition ── */
+  const FADE_OUT_MS = 340;
+  const FADE_SETTLE_MS = 40;
+  const FADE_IN_MS = 320;
+  let _sceneFadeActive = false;
+  let _sceneFadeOverlayEl = null;
+
+  function ensureSceneFadeOverlay(){
+    const area = document.getElementById('map-area');
+    if (!area) return null;
+    let overlay = _sceneFadeOverlayEl;
+    if (!overlay || !overlay.isConnected || overlay.parentElement !== area) {
+      overlay = area.querySelector(':scope > .map-scene-fade');
+      if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.className = 'map-scene-fade';
+        overlay.setAttribute('aria-hidden', 'true');
+        area.appendChild(overlay);
+      }
+      _sceneFadeOverlayEl = overlay;
+    }
+    return overlay;
+  }
+
+  function runSceneFadeTransition(applyCallback){
+    const overlay = ensureSceneFadeOverlay();
+    if (!overlay) { try { applyCallback(); } catch (e) { console.warn('scene apply failed', e); } return; }
+    if (_sceneFadeActive) {
+      // 기존 페이드 진행 중이면 누적 피하고 즉시 적용만 수행
+      try { applyCallback(); } catch (e) { console.warn('scene apply failed', e); }
+      return;
+    }
+    _sceneFadeActive = true;
+    // reflow로 초기 상태를 확정한 뒤 트랜지션 시작
+    void overlay.offsetWidth;
+    overlay.classList.add('is-visible');
+    window.setTimeout(function(){
+      try { applyCallback(); } catch (e) { console.warn('scene apply failed', e); }
+      window.setTimeout(function(){
+        overlay.classList.remove('is-visible');
+        window.setTimeout(function(){
+          _sceneFadeActive = false;
+        }, FADE_IN_MS + 40);
+      }, FADE_SETTLE_MS);
+    }, FADE_OUT_MS);
+  }
 
   function makeSceneId(){
     return `scene_${Date.now().toString(36)}_${Math.random().toString(36).slice(2,7)}`;
@@ -98,7 +146,15 @@
     if (!scene || !getSceneHasMapData(scene)) return;
     const applyKey = [roomCode, activeId, Number(scene.updatedAt || 0), String(scene.background?.url || ''), Array.isArray(scene.objects) ? scene.objects.length : 0].join('|');
     if (state.syncAppliedKey === applyKey) return;
-    if (applySceneToRuntime(scene)) state.syncAppliedKey = applyKey;
+    const isFirstApply = !state.syncAppliedKey;
+    if (isFirstApply) {
+      if (applySceneToRuntime(scene)) state.syncAppliedKey = applyKey;
+      return;
+    }
+    // 전환 케이스: 페이드아웃 → 적용 → 페이드인
+    runSceneFadeTransition(function(){
+      if (applySceneToRuntime(scene)) state.syncAppliedKey = applyKey;
+    });
   }
 
   function cleanupSceneSync(){
