@@ -186,6 +186,17 @@
     return true;
   }
 
+  function buildSceneApplyKey(roomCode, activeId, scene){
+    return [
+      String(roomCode || '').trim(),
+      String(activeId || scene?.id || '').trim(),
+      Number(scene?.updatedAt || 0),
+      String(scene?.background?.url || ''),
+      Array.isArray(scene?.objects) ? scene.objects.length : 0,
+      scene?.tokens === undefined ? 'no-tok' : ('tok-' + Object.keys(scene.tokens || {}).join(','))
+    ].join('|');
+  }
+
   function syncActiveSceneToRuntime(){
     const roomCode = String(ROOT.St?.roomCode || '').trim();
     if (!roomCode || roomCode !== state.syncRoomCode) return;
@@ -193,14 +204,7 @@
     if (!activeId) return;
     const scene = state.remoteScenes.find(s => s.id === activeId);
     if (!scene) return;
-    const applyKey = [
-      roomCode,
-      activeId,
-      Number(scene.updatedAt || 0),
-      String(scene.background?.url || ''),
-      Array.isArray(scene.objects) ? scene.objects.length : 0,
-      scene.tokens === undefined ? 'no-tok' : ('tok-' + Object.keys(scene.tokens || {}).length)
-    ].join('|');
+    const applyKey = buildSceneApplyKey(roomCode, activeId, scene);
     if (state.syncAppliedKey === applyKey) return;
     const isFirstApply = !state.syncAppliedKey;
     if (isFirstApply) {
@@ -213,6 +217,38 @@
     runSceneFadeTransition(function(){
       if (applySceneToRuntime(scene)) state.syncAppliedKey = applyKey;
     });
+  }
+
+  async function activateScene(sceneId){
+    var sid = String(sceneId || '').trim();
+    var scene = state.scenes.find(function(item){ return item.id === sid; });
+    if (!sid || !scene) return false;
+    if (state.activeSceneId === sid && !state.isDirty) return true;
+
+    var prevActiveId = state.activeSceneId;
+    state.activeSceneId = sid;
+    state.isDirty = true;
+    renderSceneList();
+
+    if (ROOT._FB?.CONFIGURED && ROOT.St?.roomCode) {
+      await saveMapScenes({ silent: true, hintText: '장면 전환 적용 중...' });
+      if (state.isDirty) {
+        state.activeSceneId = prevActiveId;
+        renderSceneList();
+        return false;
+      }
+      var roomCode = String(ROOT.St?.roomCode || '').trim();
+      var applyKey = buildSceneApplyKey(roomCode, sid, scene);
+      runSceneFadeTransition(function(){
+        if (applySceneToRuntime(scene)) state.syncAppliedKey = applyKey;
+      });
+      return true;
+    }
+
+    runSceneFadeTransition(function(){
+      applySceneToRuntime(scene);
+    });
+    return true;
   }
 
   function cleanupSceneSync(){
@@ -385,13 +421,11 @@
         state.selectedSceneId = btn.dataset.sceneId || '';
         renderSceneList();
       });
-      btn.addEventListener('dblclick', function(e){
+      btn.addEventListener('dblclick', async function(e){
         e.preventDefault();
         var sid = btn.dataset.sceneId || '';
         if (!sid || state.activeSceneId === sid) return;
-        state.activeSceneId = sid;
-        state.isDirty = true;
-        renderSceneList();
+        await activateScene(sid);
       });
       btn.addEventListener('contextmenu', function(e){
         e.preventDefault();
