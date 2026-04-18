@@ -523,22 +523,32 @@
     state.activeSceneId = sceneId;
     state.selectedSceneId = sceneId;
     renderSceneList();
-    try {
-      const roomCode = ROOT.St.roomCode;
-      const { db, ref, set, get } = ROOT._FB;
-      // 해당 씬 레코드가 Firebase에 없으면(로컬에서 방금 + 눌러 추가된 신규 씬) 먼저 생성
-      const sceneSnap = await get(ref(db, `rooms/${roomCode}/mapScenes/${sceneId}`));
-      if (!sceneSnap.exists()) {
-        const localScene = state.scenes.find(function(s){ return s.id === sceneId; });
-        if (localScene) {
-          const normalized = normalizeScene({ ...localScene, updatedAt: Date.now() }, sceneId);
+    const roomCode = ROOT.St.roomCode;
+    const { db, ref, set } = ROOT._FB;
+
+    // 1) 해당 씬 레코드를 항상 먼저 보장 (로컬 state 기준으로 set — 이미 있으면 덮어쓰는데 내용이 동일해 무해)
+    //    단, remoteScenes에 이미 존재하면 본문은 건드리지 않고 activeSceneId만 변경 (기존 저장 내용 보호)
+    const remoteHasScene = state.remoteScenes.some(function(s){ return s.id === sceneId; });
+    if (!remoteHasScene) {
+      const localScene = state.scenes.find(function(s){ return s.id === sceneId; });
+      if (localScene) {
+        const normalized = normalizeScene({ ...localScene, updatedAt: Date.now() }, sceneId);
+        try {
           await set(ref(db, `rooms/${roomCode}/mapScenes/${sceneId}`), normalized);
+        } catch (e) {
+          console.warn('activateSceneNow: scene create failed', e);
+          ROOT.showToast('씬 레코드 생성 실패: ' + (e?.message || e));
+          return;
         }
       }
+    }
+
+    // 2) activeSceneId 업데이트
+    try {
       await set(ref(db, `rooms/${roomCode}/meta/activeSceneId`), sceneId);
     } catch (e) {
-      console.warn('activateSceneNow failed', e);
-      ROOT.showToast('씬 전환에 실패했어요.');
+      console.warn('activateSceneNow: activeSceneId set failed', e);
+      ROOT.showToast('씬 전환 실패: ' + (e?.message || e));
     }
   }
 
@@ -581,35 +591,40 @@
   async function persistSceneListMeta(){
     if (!ROOT.St?.isGM || !ROOT._FB?.CONFIGURED || !ROOT.St?.roomCode) return;
     ensureSceneMinimum();
-    const { db, ref, get, set, update } = ROOT._FB;
+    const { db, ref, set, remove } = ROOT._FB;
     const roomCode = ROOT.St.roomCode;
-    // 기존 Firebase 씬 목록과 비교해 신규는 추가, 삭제된 것은 remove
-    const snap = await get(ref(db, `rooms/${roomCode}/mapScenes`));
-    const existingIds = new Set(Object.keys(snap.val() || {}));
+    // 기존 Firebase 씬 목록 (remoteScenes 캐시 사용, 별도 get 호출 회피)
+    const existingIds = new Set(state.remoteScenes.map(function(s){ return s.id; }));
     const localIds = new Set(state.scenes.map(function(s){ return s.id; }));
-    const updates = {};
+
+    // 1) 로컬에 새로 추가된 씬: 전체 레코드 set
+    const tasks = [];
     state.scenes.forEach(function(scene, index){
       const normalized = normalizeScene({ ...scene, name: scene.name || ('씬 ' + (index + 1)) }, scene.id);
       if (!existingIds.has(normalized.id)) {
-        // 신규 씬: 전체 레코드 생성
-        updates['mapScenes/' + normalized.id] = normalized;
-      } else {
-        // 이름만 업데이트 (본문은 자동 저장이 관리)
-        updates['mapScenes/' + normalized.id + '/name'] = normalized.name;
-        updates['mapScenes/' + normalized.id + '/updatedAt'] = Date.now();
+        tasks.push(set(ref(db, `rooms/${roomCode}/mapScenes/${normalized.id}`), normalized));
+      } else if (scene.name !== (state.remoteScenes.find(function(s){ return s.id === scene.id; })?.name)) {
+        // 이름만 변경된 경우: 이름과 updatedAt 두 필드만 set
+        tasks.push(set(ref(db, `rooms/${roomCode}/mapScenes/${normalized.id}/name`), normalized.name));
+        tasks.push(set(ref(db, `rooms/${roomCode}/mapScenes/${normalized.id}/updatedAt`), Date.now()));
       }
     });
+
+    // 2) 로컬에서 삭제된 씬: remove
     existingIds.forEach(function(id){
-      if (!localIds.has(id)) updates['mapScenes/' + id] = null;
+      if (!localIds.has(id)) {
+        tasks.push(remove(ref(db, `rooms/${roomCode}/mapScenes/${id}`)));
+      }
     });
+
+    // 3) activeSceneId
     if (!state.activeSceneId) state.activeSceneId = state.scenes[0]?.id || '';
-    updates['meta/activeSceneId'] = state.activeSceneId;
-    try {
-      await update(ref(db, `rooms/${roomCode}`), updates);
-      state.isDirty = false;
-    } catch (e) {
-      console.warn('persistSceneListMeta failed', e);
+    if (state.activeSceneId) {
+      tasks.push(set(ref(db, `rooms/${roomCode}/meta/activeSceneId`), state.activeSceneId));
     }
+
+    await Promise.all(tasks);
+    state.isDirty = false;
   }
 
   async function saveMapScenes(options){
@@ -631,7 +646,7 @@
     } catch (err) {
       console.error('saveMapScenes failed', err);
       if (hint) hint.textContent = '저장에 실패했어요.';
-      if (!options.silent) ROOT.showToast('장면 전환 씬 저장에 실패했어요.');
+      if (!options.silent) ROOT.showToast('저장 실패: ' + (err?.message || err));
     }
   }
 
