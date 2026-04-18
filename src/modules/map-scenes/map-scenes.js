@@ -84,6 +84,8 @@
     if (raw && Object.prototype.hasOwnProperty.call(raw, 'tokens') && raw.tokens !== undefined) {
       out.tokens = (raw.tokens && typeof raw.tokens === 'object') ? raw.tokens : {};
     }
+    // isEmpty 플래그: Firebase는 빈 객체를 저장하지 않으므로 "의도된 빈 상태"를 명시적으로 기록한다.
+    if (raw && raw.isEmpty === true) out.isEmpty = true;
     return out;
   }
 
@@ -93,8 +95,8 @@
   }
 
   function buildEmptyAddedScene(index){
-    // + 버튼으로 추가하는 씬은 맵/토큰 모두 비어있는 상태 명시
-    return normalizeScene({ name: '씬 ' + (index + 1), tokens: {} });
+    // + 버튼으로 추가하는 씬은 맵/토큰 모두 비어있는 상태를 isEmpty 플래그로 명시
+    return normalizeScene({ name: '씬 ' + (index + 1), tokens: {}, isEmpty: true });
   }
 
   function ensureSceneMinimum(){
@@ -178,8 +180,10 @@
   function applySceneToRuntime(scene){
     if (!scene) return false;
     applyMapPartToRuntime(scene);
-    if (scene.tokens !== undefined && ROOT.St?.isGM && ROOT._FB?.CONFIGURED && ROOT.St?.roomCode) {
-      syncSceneTokensToRuntime(scene);
+    // isEmpty 플래그가 있으면 tokens가 누락됐더라도 "명시적 빈 씬"으로 간주
+    const effectiveTokens = (scene.tokens !== undefined) ? scene.tokens : (scene.isEmpty === true ? {} : undefined);
+    if (effectiveTokens !== undefined && ROOT.St?.isGM && ROOT._FB?.CONFIGURED && ROOT.St?.roomCode) {
+      syncSceneTokensToRuntime({ ...scene, tokens: effectiveTokens });
     }
     return true;
   }
@@ -191,7 +195,8 @@
       Number(scene?.updatedAt || 0),
       String(scene?.background?.url || ''),
       Array.isArray(scene?.objects) ? scene.objects.length : 0,
-      scene?.tokens === undefined ? 'no-tok' : ('tok-' + Object.keys(scene.tokens || {}).length)
+      scene?.tokens === undefined ? 'no-tok' : ('tok-' + Object.keys(scene.tokens || {}).length),
+      scene?.isEmpty === true ? 'empty' : 'nonempty'
     ].join('|');
   }
 
@@ -232,6 +237,14 @@
     state.remoteScenes = [];
     state.remoteActiveSceneId = '';
     state.syncAppliedKey = '';
+    // 방이 바뀌면 이전 방의 로컬 씬 목록/선택 상태가 새 방으로 넘어오지 않도록 전부 초기화
+    state.scenes = [];
+    state.selectedSceneId = '';
+    state.activeSceneId = '';
+    state.loadedRoomCode = '';
+    state.isDirty = false;
+    state.autoCreatedOnOpen = false;
+    state.suppressAutoSaveUntil = 0;
     stopActiveSceneAutoSave();
   }
 
@@ -375,7 +388,10 @@
 
     // 기존 씬 객체를 베이스로 업데이트
     const existing = state.remoteScenes.find(function(s){ return s.id === activeId; }) || {};
-    const nextScene = normalizeScene({
+    const hasMap = !!(ms.background?.url || (Array.isArray(ms.objects) && ms.objects.length));
+    const hasTokens = Object.keys(tokens).length > 0;
+    const isStillEmpty = !hasMap && !hasTokens;
+    const rawNext = {
       id: activeId,
       name: existing.name || '씬',
       createdAt: existing.createdAt || Date.now(),
@@ -384,7 +400,9 @@
       objects: Array.isArray(ms.objects) ? deepCopy(ms.objects) : [],
       layerState: ROOT.St?.mapLayerState ? deepCopy(ROOT.St.mapLayerState) : null,
       tokens: tokens,
-    }, activeId);
+    };
+    if (isStillEmpty) rawNext.isEmpty = true;
+    const nextScene = normalizeScene(rawNext, activeId);
 
     try {
       await set(ref(db, `rooms/${roomCode}/mapScenes/${activeId}`), nextScene);
