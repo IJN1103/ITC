@@ -147,43 +147,73 @@
     if (typeof ROOT.refreshMapLayerManager === 'function') ROOT.refreshMapLayerManager();
   }
 
+  function buildSceneBgmPayload(scene){
+    const background = scene?.background || null;
+    const objects = Array.isArray(scene?.objects) ? deepCopy(scene.objects) : [];
+    return {
+      mapBackground: background?.url || '',
+      mapBackgroundFit: background?.fit || 'contain',
+      mapBackgroundSourceName: background?.sourceName || '',
+      mapBackgroundImportedAt: background?.url ? (background?.importedAt || Date.now()) : 0,
+      mapForeground: '',
+      mapForegroundFit: '',
+      mapForegroundSourceName: '',
+      mapForegroundImportedAt: 0,
+      mapObjects: objects,
+      mapLayerState: scene?.layerState ? deepCopy(scene.layerState) : null,
+    };
+  }
+
+  async function syncSceneMapToRoomBgm(scene){
+    if (!ROOT.St?.isGM || !ROOT._FB?.CONFIGURED || !ROOT.St?.roomCode) return;
+    try {
+      const { db, ref, update } = ROOT._FB;
+      await update(ref(db, `rooms/${ROOT.St.roomCode}/bgm`), buildSceneBgmPayload(scene));
+    } catch (e) {
+      console.warn('scene bgm sync failed', e);
+    }
+  }
+
   function syncSceneTokensToRuntime(scene){
     if (!ROOT.St?.isGM || !ROOT._FB?.CONFIGURED || !ROOT.St?.roomCode) return;
     if (!scene || scene.tokens === undefined) return;
     try {
-      const { db, ref, set, remove } = ROOT._FB;
+      const { db, ref, update } = ROOT._FB;
       const roomCode = ROOT.St.roomCode;
       const nextTokens = (scene.tokens && typeof scene.tokens === 'object') ? deepCopy(scene.tokens) : {};
       const currentTokens = (ROOT.St?.tokens && typeof ROOT.St.tokens === 'object') ? ROOT.St.tokens : {};
-      const currentIds = Object.keys(currentTokens);
-      const nextIds = new Set(Object.keys(nextTokens));
-
-      currentIds.forEach(function(tokenId){
-        if (!nextIds.has(tokenId)) {
-          remove(ref(db, `rooms/${roomCode}/tokens/${tokenId}`)).catch(function(e){
-            console.warn('scene token remove failed', tokenId, e);
-          });
+      const payload = {};
+      Object.keys(currentTokens).forEach(function(tokenId){
+        if (!Object.prototype.hasOwnProperty.call(nextTokens, tokenId)) {
+          payload[`tokens/${tokenId}`] = null;
         }
       });
       Object.entries(nextTokens).forEach(function(entry){
-        const tokenId = entry[0];
-        const tokenData = entry[1];
-        set(ref(db, `rooms/${roomCode}/tokens/${tokenId}`), tokenData).catch(function(e){
-          console.warn('scene token restore failed', tokenId, e);
-        });
+        payload[`tokens/${entry[0]}`] = entry[1];
       });
+      ROOT.St.tokens = deepCopy(nextTokens) || {};
+      if (typeof ROOT.renderAllTokens === 'function') ROOT.renderAllTokens(ROOT.St.tokens);
+      if (Object.keys(payload).length) {
+        update(ref(db, `rooms/${roomCode}`), payload).catch(function(e){
+          console.warn('scene token sync failed', e);
+        });
+      }
     } catch (e) {
       console.warn('scene token restore failed', e);
     }
   }
 
-  function applySceneToRuntime(scene){
+  function applySceneToRuntime(scene, options){
     if (!scene) return false;
+    options = options || {};
     applyMapPartToRuntime(scene);
     // isEmpty 플래그가 있으면 tokens가 누락됐더라도 "명시적 빈 씬"으로 간주
     const effectiveTokens = (scene.tokens !== undefined) ? scene.tokens : (scene.isEmpty === true ? {} : undefined);
     if (effectiveTokens !== undefined && ROOT.St?.isGM && ROOT._FB?.CONFIGURED && ROOT.St?.roomCode) {
       syncSceneTokensToRuntime({ ...scene, tokens: effectiveTokens });
+    }
+    if (options.syncRoomBgm === true) {
+      syncSceneMapToRoomBgm(scene);
     }
     return true;
   }
@@ -213,20 +243,22 @@
     const isSameSceneUpdate = !isFirstApply && state.syncAppliedKey.split('|')[1] === activeId;
 
     if (isFirstApply) {
-      // 첫 적용: 페이드 없이 맵세팅만 (토큰 경로 보존)
+      // 첫 적용: 방 입장 직후에는 기존 bgm/tokens 리스너와 충돌하지 않도록 맵세팅만 맞춘다.
       applyMapPartToRuntime(scene);
       state.syncAppliedKey = applyKey;
       return;
     }
     if (isSameSceneUpdate) {
-      // 동일 씬의 내부 업데이트(자동 저장으로 인한 자기 에코 등)는 페이드 없이 조용히 키만 갱신
+      // 같은 LIVE 씬의 저장 내용이 갱신된 경우도 플레이어 화면에는 반영되어야 한다.
+      // GM 자기 에코는 bgm/tokens 리스너가 이미 처리하므로, 여기서는 맵 파트만 보정한다.
+      applyMapPartToRuntime(scene);
       state.syncAppliedKey = applyKey;
       return;
     }
-    // 씬 전환
-    state.suppressAutoSaveUntil = Date.now() + 1500; // 전환 직후 1.5초간 자동 저장 억제
+    // 씬 전환: 선택한 씬이 현재 라이브 맵이 되도록 실제 런타임 상태를 교체한다.
+    state.suppressAutoSaveUntil = Date.now() + 1800; // 전환 직후 자동 저장 억제
     runSceneFadeTransition(function(){
-      if (applySceneToRuntime(scene)) state.syncAppliedKey = applyKey;
+      if (applySceneToRuntime(scene, { syncRoomBgm: ROOT.St?.isGM === true })) state.syncAppliedKey = applyKey;
     });
   }
 
@@ -376,43 +408,58 @@
     }, AUTO_SAVE_DEBOUNCE_MS);
   }
 
-  async function persistActiveSceneFromRuntime(){
-    if (!ROOT.St?.isGM || !ROOT._FB?.CONFIGURED) return;
-    const roomCode = String(ROOT.St?.roomCode || '').trim();
-    if (!roomCode) return;
-    const activeId = String(state.remoteActiveSceneId || '').trim();
-    if (!activeId) return;
-    const { db, ref, set } = ROOT._FB;
+  function buildRuntimeSceneSnapshot(sceneId){
+    const targetId = String(sceneId || '').trim();
+    if (!targetId) return null;
     const ms = ROOT.St?.mapState || {};
     const tokens = (ROOT.St?.tokens && typeof ROOT.St.tokens === 'object') ? deepCopy(ROOT.St.tokens) : {};
-
-    // 기존 씬 객체를 베이스로 업데이트
-    const existing = state.remoteScenes.find(function(s){ return s.id === activeId; }) || {};
+    const existing = state.remoteScenes.find(function(s){ return s.id === targetId; })
+      || state.scenes.find(function(s){ return s.id === targetId; })
+      || {};
     const hasMap = !!(ms.background?.url || (Array.isArray(ms.objects) && ms.objects.length));
     const hasTokens = Object.keys(tokens).length > 0;
     const isStillEmpty = !hasMap && !hasTokens;
     const rawNext = {
-      id: activeId,
+      id: targetId,
       name: existing.name || '씬',
       createdAt: existing.createdAt || Date.now(),
       updatedAt: Date.now(),
-      background: ms.background ? { url: ms.background.url || '', fit: ms.background.fit || 'contain', sourceName: ms.background.sourceName || '' } : null,
+      background: ms.background ? { url: ms.background.url || '', fit: ms.background.fit || 'contain', sourceName: ms.background.sourceName || '', importedAt: ms.background.importedAt || 0 } : null,
       objects: Array.isArray(ms.objects) ? deepCopy(ms.objects) : [],
       layerState: ROOT.St?.mapLayerState ? deepCopy(ROOT.St.mapLayerState) : null,
       tokens: tokens,
     };
     if (isStillEmpty) rawNext.isEmpty = true;
-    const nextScene = normalizeScene(rawNext, activeId);
+    return normalizeScene(rawNext, targetId);
+  }
 
+  async function persistSceneFromRuntime(sceneId){
+    if (!ROOT.St?.isGM || !ROOT._FB?.CONFIGURED) return null;
+    const roomCode = String(ROOT.St?.roomCode || '').trim();
+    if (!roomCode) return null;
+    const nextScene = buildRuntimeSceneSnapshot(sceneId);
+    if (!nextScene) return null;
+    const { db, ref, set } = ROOT._FB;
     try {
-      await set(ref(db, `rooms/${roomCode}/mapScenes/${activeId}`), nextScene);
-      // 로컬 상태도 업데이트
-      const idx = state.scenes.findIndex(function(s){ return s.id === activeId; });
+      await set(ref(db, `rooms/${roomCode}/mapScenes/${nextScene.id}`), nextScene);
+      const idx = state.scenes.findIndex(function(s){ return s.id === nextScene.id; });
       if (idx >= 0) state.scenes[idx] = nextScene;
       else state.scenes.push(nextScene);
+      const ridx = state.remoteScenes.findIndex(function(s){ return s.id === nextScene.id; });
+      if (ridx >= 0) state.remoteScenes[ridx] = nextScene;
+      else state.remoteScenes.push(nextScene);
+      renderSceneList();
+      return nextScene;
     } catch (e) {
-      console.warn('persistActiveSceneFromRuntime set failed', e);
+      console.warn('persistSceneFromRuntime set failed', e);
+      throw e;
     }
+  }
+
+  async function persistActiveSceneFromRuntime(){
+    const activeId = String(state.remoteActiveSceneId || state.activeSceneId || '').trim();
+    if (!activeId) return;
+    return persistSceneFromRuntime(activeId);
   }
 
   /* ── context menu (rename / delete 만 유지, capture 제거) ── */
@@ -439,8 +486,11 @@
     if (!sceneId) return;
 
     if (action === 'capture') {
-      // 레거시 UI 잔존 시 대비: 즉시 수동 저장 한 번 수행
-      ROOT.showToast('활성 씬은 편집 시 자동 저장됩니다.');
+      persistSceneFromRuntime(sceneId).then(function(){
+        ROOT.showToast('현재 맵 상태를 이 씬에 저장했어요.');
+      }).catch(function(e){
+        ROOT.showToast('현재 맵 저장 실패: ' + (e?.message || e));
+      });
       return;
     }
 
@@ -531,41 +581,52 @@
     });
   }
 
-  /* 더블클릭 즉시 반영: Firebase activeSceneId set → onValue 리스너가 페이드+적용 */
+  /* 더블클릭 즉시 반영: Firebase activeSceneId set + 현재 라이브 맵 데이터 교체 */
   async function activateSceneNow(sceneId){
     if (!ROOT.St?.isGM) { ROOT.showToast('GM만 씬 전환을 할 수 있어요.'); return; }
     if (!ROOT._FB?.CONFIGURED || !ROOT.St?.roomCode) {
       ROOT.showToast('방에 입장한 상태에서만 씬을 전환할 수 있어요.');
       return;
     }
-    state.activeSceneId = sceneId;
-    state.selectedSceneId = sceneId;
-    renderSceneList();
-    const roomCode = ROOT.St.roomCode;
-    const { db, ref, set } = ROOT._FB;
-
-    // 1) 해당 씬 레코드를 항상 먼저 보장 (로컬 state 기준으로 set — 이미 있으면 덮어쓰는데 내용이 동일해 무해)
-    //    단, remoteScenes에 이미 존재하면 본문은 건드리지 않고 activeSceneId만 변경 (기존 저장 내용 보호)
-    const remoteHasScene = state.remoteScenes.some(function(s){ return s.id === sceneId; });
-    if (!remoteHasScene) {
-      const localScene = state.scenes.find(function(s){ return s.id === sceneId; });
-      if (localScene) {
-        const normalized = normalizeScene({ ...localScene, updatedAt: Date.now() }, sceneId);
-        try {
-          await set(ref(db, `rooms/${roomCode}/mapScenes/${sceneId}`), normalized);
-        } catch (e) {
-          console.warn('activateSceneNow: scene create failed', e);
-          ROOT.showToast('씬 레코드 생성 실패: ' + (e?.message || e));
-          return;
-        }
-      }
+    const localScene = state.scenes.find(function(s){ return s.id === sceneId; });
+    const remoteScene = state.remoteScenes.find(function(s){ return s.id === sceneId; });
+    const scene = remoteScene || localScene;
+    if (!scene) {
+      ROOT.showToast('전환할 씬 정보를 찾을 수 없어요.');
+      return;
     }
 
-    // 2) activeSceneId 업데이트
+    state.activeSceneId = sceneId;
+    state.selectedSceneId = sceneId;
+    state.remoteActiveSceneId = sceneId;
+    state.suppressAutoSaveUntil = Date.now() + 2200;
+    renderSceneList();
+
+    const roomCode = ROOT.St.roomCode;
+    const { db, ref, set } = ROOT._FB;
+    const normalized = normalizeScene(scene, sceneId);
+
     try {
+      // 1) 씬 레코드 보장: 새로 추가한 빈 씬도 즉시 Firebase에 존재해야 모든 클라이언트가 전환 가능하다.
+      if (!remoteScene) {
+        await set(ref(db, `rooms/${roomCode}/mapScenes/${sceneId}`), normalized);
+      }
+
+      // 2) activeSceneId 먼저 갱신: 플레이어/GM 모두 같은 LIVE 씬을 바라보게 한다.
       await set(ref(db, `rooms/${roomCode}/meta/activeSceneId`), sceneId);
+
+      // 3) 실제 라이브 맵 데이터 교체: 기존 맵 기능들이 바라보는 bgm/tokens 경로까지 맞춘다.
+      //    빈 씬이면 bgm은 비워지고, tokens는 빈 객체로 동기화되어 화면도 빈 맵이 된다.
+      applySceneToRuntime(normalized, { syncRoomBgm: true });
+      state.syncAppliedKey = buildSceneApplyKey(roomCode, sceneId, normalized);
+
+      // 4) 자동 저장 기준선을 전환 후 상태로 재설정해서 직전 씬 데이터가 새 씬에 덮이는 것을 막는다.
+      _autoSaveLastSig = '';
+      window.setTimeout(function(){
+        try { _autoSaveLastSig = currentRuntimeSignature(); } catch (_) {}
+      }, 700);
     } catch (e) {
-      console.warn('activateSceneNow: activeSceneId set failed', e);
+      console.warn('activateSceneNow failed', e);
       ROOT.showToast('씬 전환 실패: ' + (e?.message || e));
     }
   }
