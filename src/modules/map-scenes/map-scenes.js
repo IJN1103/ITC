@@ -130,6 +130,42 @@
     try { return JSON.parse(JSON.stringify(value)); } catch (_) { return value; }
   }
 
+  function stableNormalize(value){
+    if (value == null) return value;
+    if (typeof value === 'number') {
+      if (!Number.isFinite(value)) return 0;
+      return Math.round(value * 10000) / 10000;
+    }
+    if (typeof value !== 'object') return value;
+    if (Array.isArray(value)) return value.map(stableNormalize);
+    const out = {};
+    Object.keys(value).sort().forEach(function(key){
+      if (typeof value[key] === 'function' || value[key] === undefined) return;
+      out[key] = stableNormalize(value[key]);
+    });
+    return out;
+  }
+
+  function stableStringify(value){
+    try { return JSON.stringify(stableNormalize(value)); } catch (_) { return ''; }
+  }
+
+  function getCurrentRuntimeSnapshot(){
+    const ms = ROOT.St?.mapState || {};
+    const bg = ms.background ? {
+      url: ms.background.url || '',
+      fit: ms.background.fit || 'contain',
+      sourceName: ms.background.sourceName || '',
+      importedAt: ms.background.importedAt || 0,
+    } : null;
+    return {
+      background: bg,
+      objects: Array.isArray(ms.objects) ? deepCopy(ms.objects) : [],
+      layerState: ROOT.St?.mapLayerState ? deepCopy(ROOT.St.mapLayerState) : null,
+      tokens: (ROOT.St?.tokens && typeof ROOT.St.tokens === 'object') ? deepCopy(ROOT.St.tokens) : {},
+    };
+  }
+
   function getSceneHasMapData(scene){
     return !!(scene?.background?.url || (Array.isArray(scene?.objects) && scene.objects.length));
   }
@@ -219,14 +255,18 @@
   }
 
   function buildSceneApplyKey(roomCode, activeId, scene){
+    const sceneBody = {
+      background: scene?.background || null,
+      objects: Array.isArray(scene?.objects) ? scene.objects : [],
+      layerState: scene?.layerState || null,
+      tokens: scene?.tokens === undefined ? '__NO_TOKEN_FIELD__' : (scene.tokens || {}),
+      isEmpty: scene?.isEmpty === true,
+    };
     return [
       String(roomCode || '').trim(),
       String(activeId || scene?.id || '').trim(),
       Number(scene?.updatedAt || 0),
-      String(scene?.background?.url || ''),
-      Array.isArray(scene?.objects) ? scene.objects.length : 0,
-      scene?.tokens === undefined ? 'no-tok' : ('tok-' + Object.keys(scene.tokens || {}).length),
-      scene?.isEmpty === true ? 'empty' : 'nonempty'
+      stableStringify(sceneBody)
     ].join('|');
   }
 
@@ -367,22 +407,7 @@
   }
 
   function currentRuntimeSignature(){
-    const ms = ROOT.St?.mapState || {};
-    const layer = ROOT.St?.mapLayerState || null;
-    const tokens = (ROOT.St?.tokens && typeof ROOT.St.tokens === 'object') ? ROOT.St.tokens : {};
-    let tokenSig = '';
-    try {
-      const ids = Object.keys(tokens).sort();
-      tokenSig = ids.map(function(id){
-        const t = tokens[id] || {};
-        return id + ':' + Number(t.x||0).toFixed(2) + ',' + Number(t.y||0).toFixed(2) + ',' + (t.rotation||0) + ',' + (t.panelFace||'') + ',' + (t.panelImage?1:0) + ',' + (t.panelBackImage?1:0) + ',' + (t.panelWidth||0) + ',' + (t.panelHeight||0) + ',' + (t.memo?1:0) + ',' + (t.name||'');
-      }).join('|');
-    } catch (_) { tokenSig = ''; }
-    const objs = Array.isArray(ms.objects) ? ms.objects : [];
-    const objSig = objs.length + ':' + objs.map(function(o){ return (o?.id||'') + (o?.url?1:0); }).join(',');
-    const bgSig = String(ms.background?.url || '') + '|' + String(ms.background?.fit || '');
-    const layerSig = layer ? JSON.stringify(layer).length + '' : '0';
-    return [bgSig, objSig, layerSig, tokenSig].join('||');
+    return stableStringify(getCurrentRuntimeSnapshot());
   }
 
   function autoSavePollTick(){
@@ -411,8 +436,9 @@
   function buildRuntimeSceneSnapshot(sceneId){
     const targetId = String(sceneId || '').trim();
     if (!targetId) return null;
-    const ms = ROOT.St?.mapState || {};
-    const tokens = (ROOT.St?.tokens && typeof ROOT.St.tokens === 'object') ? deepCopy(ROOT.St.tokens) : {};
+    const snapshot = getCurrentRuntimeSnapshot();
+    const ms = { background: snapshot.background, objects: snapshot.objects };
+    const tokens = snapshot.tokens || {};
     const existing = state.remoteScenes.find(function(s){ return s.id === targetId; })
       || state.scenes.find(function(s){ return s.id === targetId; })
       || {};
@@ -426,7 +452,7 @@
       updatedAt: Date.now(),
       background: ms.background ? { url: ms.background.url || '', fit: ms.background.fit || 'contain', sourceName: ms.background.sourceName || '', importedAt: ms.background.importedAt || 0 } : null,
       objects: Array.isArray(ms.objects) ? deepCopy(ms.objects) : [],
-      layerState: ROOT.St?.mapLayerState ? deepCopy(ROOT.St.mapLayerState) : null,
+      layerState: snapshot.layerState ? deepCopy(snapshot.layerState) : null,
       tokens: tokens,
     };
     if (isStillEmpty) rawNext.isEmpty = true;
