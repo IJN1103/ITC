@@ -95,13 +95,35 @@
   }
 
   function buildDefaultScene(){
-    // 기본 씬: tokens 필드 생략 (방 최초 입장 시 기존 토큰 보존)
-    return normalizeScene({ name:'기본 씬' });
+    // 기본 씬은 방마다 고정된 id를 사용한다. 매번 새 id가 생성되면 새로고침 때마다 Firebase에서 찾지 못해 사라진 것처럼 보이고, 토큰 자동 저장 대상도 매번 달라진다.
+    return normalizeScene({ id: 'default', name:'기본 씬' }, 'default');
   }
 
   function buildEmptyAddedScene(index){
     // + 버튼으로 추가하는 씬은 맵/토큰 모두 비어있는 상태를 isEmpty 플래그로 명시
     return normalizeScene({ name: '씬 ' + (index + 1), tokens: {}, isEmpty: true });
+  }
+
+  // Firebase에 기본 씬이 없으면 생성하고 activeSceneId를 그걸로 맞춘다. (GM 전용, 새로고침/첫 입장 시 씬 유실 방지)
+  async function ensureDefaultSceneOnRemote(roomCode){
+    if (!ROOT._FB?.CONFIGURED || !ROOT.St?.isGM) return;
+    const currentRoomCode = String(ROOT.St?.roomCode || '').trim();
+    if (!roomCode || roomCode !== currentRoomCode) return;
+    const { db, ref, get, set } = ROOT._FB;
+    const defaultScene = buildDefaultScene();
+    try {
+      const existing = await get(ref(db, `rooms/${roomCode}/mapScenes/${defaultScene.id}`));
+      if (!existing.exists()) {
+        await set(ref(db, `rooms/${roomCode}/mapScenes/${defaultScene.id}`), defaultScene);
+      }
+      const activeSnap = await get(ref(db, `rooms/${roomCode}/meta/activeSceneId`));
+      const activeVal = String(activeSnap.val() || '').trim();
+      if (!activeVal) {
+        await set(ref(db, `rooms/${roomCode}/meta/activeSceneId`), defaultScene.id);
+      }
+    } catch (e) {
+      console.warn('ensureDefaultSceneOnRemote network failed', e);
+    }
   }
 
   function hydrateLocalScenesFromRemoteIfAvailable(force){
@@ -435,6 +457,11 @@
         return normalizeScene(entry[1], entry[0]);
       }).sort(function(a,b){ return (a.createdAt || 0) - (b.createdAt || 0); });
       _sceneRemoteListReceived = true;
+      // 방에 씬이 하나도 없으면 기본 씬을 즉시 Firebase에 생성한다 (GM만).
+      // 이 처리가 없으면 기본 씬 id가 매 세션 새로 생성되어 새로고침마다 씬이 사라지고 토큰 자동 저장이 엉뚱한 씬에 쌓인다.
+      if (!state.remoteScenes.length && ROOT.St?.isGM) {
+        ensureDefaultSceneOnRemote(nextRoomCode).catch(function(e){ console.warn('ensureDefaultSceneOnRemote failed', e); });
+      }
       if (state.remoteScenes.length && (!state.scenes.length || (!state.isDirty && state.loadedRoomCode === nextRoomCode))) {
         hydrateLocalScenesFromRemoteIfAvailable(false);
         if (document.getElementById('modal-map-scenes')?.classList.contains('show')) renderSceneList();
