@@ -29,6 +29,9 @@
 
   let _sceneSyncWatchTimer = null;
   let _sceneSyncUnsubs = [];
+  let _autoSaveWarmupUntil = 0;              // 방 입장 직후 자동 저장 웜업 기간 (Firebase 초기 동기화 완료까지 대기)
+  let _sceneRemoteListReceived = false;      // onValue(scenesRef)가 최소 1회 발동했는지
+  const AUTO_SAVE_WARMUP_MS = 4000;           // 웜업 지속 시간 (새로고침 직후 잔여 bgm/tokens 리스너 수신까지 포함)
 
   /* ── fade transition (transient overlay) ── */
   const FADE_OUT_MS = 340;
@@ -409,6 +412,8 @@
     state.suppressAutoSaveUntil = 0;
     state.isApplyingScene = false;
     state.sceneApplySeq += 1;
+    _sceneRemoteListReceived = false;
+    _autoSaveWarmupUntil = 0;
     stopActiveSceneAutoSave();
   }
 
@@ -429,6 +434,7 @@
       state.remoteScenes = Object.entries(rawScenes).map(function(entry){
         return normalizeScene(entry[1], entry[0]);
       }).sort(function(a,b){ return (a.createdAt || 0) - (b.createdAt || 0); });
+      _sceneRemoteListReceived = true;
       if (state.remoteScenes.length && (!state.scenes.length || (!state.isDirty && state.loadedRoomCode === nextRoomCode))) {
         hydrateLocalScenesFromRemoteIfAvailable(false);
         if (document.getElementById('modal-map-scenes')?.classList.contains('show')) renderSceneList();
@@ -440,6 +446,7 @@
       syncActiveSceneToRuntime();
     });
     _sceneSyncUnsubs.push(onScenes, onActive);
+    _autoSaveWarmupUntil = Date.now() + AUTO_SAVE_WARMUP_MS;
     startActiveSceneAutoSave(nextRoomCode);
   }
 
@@ -471,6 +478,17 @@
     const [sceneSnap, activeSnap] = await Promise.all([get(refs.scenesRef), get(refs.activeRef)]);
     const rawScenes = sceneSnap.val() || {};
     const entries = Object.entries(rawScenes).map(([id, raw]) => normalizeScene(raw, id));
+    // 보호: get이 타이밍/오프라인 이슈로 빈 결과를 돌려주는 경우, 이미 onValue로 수신된 remoteScenes가 있으면 그걸 신뢰한다.
+    // 이 보호가 없으면 autoCreatedOnOpen=true로 판단되어 기본 씬이 추가 생성되고 활성 씬이 엉뚱한 쪽으로 넘어갈 수 있다.
+    if (!entries.length && Array.isArray(state.remoteScenes) && state.remoteScenes.length) {
+      state.scenes = state.remoteScenes.map(function(scene){ return normalizeScene(deepCopy(scene), scene.id); });
+      state.activeSceneId = String(activeSnap.val() || state.remoteActiveSceneId || '').trim();
+      state.loadedRoomCode = ROOT.St.roomCode;
+      state.isDirty = false;
+      state.autoCreatedOnOpen = false;
+      ensureSceneMinimum();
+      return;
+    }
     state.scenes = entries.sort((a,b) => (a.createdAt||0) - (b.createdAt||0));
     state.remoteScenes = state.scenes.map(function(scene){ return normalizeScene(deepCopy(scene), scene.id); });
     state.activeSceneId = String(activeSnap.val() || '').trim();
@@ -534,6 +552,14 @@
     if (state.isApplyingScene) return;
     if (Date.now() < state.suppressAutoSaveUntil) return;
     if (!state.remoteActiveSceneId) return;
+    // 새로고침 직후 Firebase 초기 동기화가 끝나기 전에는 자동 저장을 트리거하지 않는다.
+    // 이 가드가 없으면 빈 runtime 상태(토큰/맵세팅 리스너 수신 전)가 활성 씬에 덮여 씬이 망가질 수 있다.
+    if (!_sceneRemoteListReceived) return;
+    if (Date.now() < _autoSaveWarmupUntil) {
+      // 웜업 중엔 시그니처만 최신으로 갱신 (변경 감지 트리거 X)
+      _autoSaveLastSig = currentRuntimeSignature();
+      return;
+    }
 
     const sig = currentRuntimeSignature();
     if (!_autoSaveLastSig) { _autoSaveLastSig = sig; return; }
