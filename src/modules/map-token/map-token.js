@@ -1088,13 +1088,25 @@ function createTokenEl(t) {
     e.preventDefault();
     e.stopPropagation();
     hideTokenMemoBubble();
+    if (shouldPanMapFromLockedMapSettingToken(t)) {
+      return;
+    }
     if (isPanelToken(t) && t.panelImage && t.panelBackImage) {
       togglePanelTokenFace(t.id);
       return;
     }
     if (typeof openTokenEdit === 'function') openTokenEdit(t.id);
   });
-  el.addEventListener('contextmenu', e => { e.preventDefault(); e.stopPropagation(); hideTokenMemoBubble(); showTokenCtx(e, t.id); });
+  el.addEventListener('contextmenu', e => {
+    e.preventDefault();
+    e.stopPropagation();
+    hideTokenMemoBubble();
+    if (shouldPanMapFromLockedMapSettingToken(t)) {
+      hideTokenCtx();
+      return;
+    }
+    showTokenCtx(e, t.id);
+  });
   makeDraggable(el, t.id);
   refreshTokenLiveSnapshot(el, t);
   inner.appendChild(el);
@@ -1102,6 +1114,11 @@ function createTokenEl(t) {
 
 function makeDraggable(el, tokenId) {
   el.addEventListener('mousedown', e => {
+    const dragToken = St.tokens[tokenId];
+    if (shouldPanMapFromLockedMapSettingToken(dragToken)) {
+      return;
+    }
+
     if (e.button === 1) {
       e.preventDefault();
       e.stopPropagation();
@@ -1110,10 +1127,6 @@ function makeDraggable(el, tokenId) {
     }
 
     if (e.button !== 0) return;
-    const dragToken = St.tokens[tokenId];
-    if (shouldPanMapFromLockedMapSettingToken(dragToken)) {
-      return;
-    }
     if (!hasPerm('moveToken')) { showToast('토큰 이동 권한이 없어요.'); return; }
     if (St.tool === 'erase') { removeToken(tokenId); return; }
     if (shouldShowLockedTokenToast(dragToken)) {
@@ -1208,6 +1221,9 @@ function tokCtxAction(action) {
   if (!id) return;
   const t = St.tokens[id];
   if (!t) return;
+  if (shouldPanMapFromLockedMapSettingToken(t) && !['copy', 'copyId'].includes(action)) {
+    return;
+  }
 
   switch (action) {
     case 'edit':
