@@ -598,7 +598,8 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    if (e.target.closest('.map-token')) return;
+    const mapTokenEl = e.target.closest('.map-token');
+    if (mapTokenEl && !shouldPanMapFromLockedMapSettingToken(getTokenFromElement(mapTokenEl))) return;
     if (e.button !== 0) return;
 
     hideTokenMemoBubble();
@@ -931,6 +932,50 @@ function removeSingleToken(id) {
 let _activeDragCleanup = null;
 
 
+function isTrueLike(value) {
+  return value === true || value === 1 || value === '1' || String(value).toLowerCase() === 'true';
+}
+
+function getTokenIdFromElement(el) {
+  const rawId = String(el?.id || '');
+  return rawId ? rawId.replace(/^tok-/, '') : '';
+}
+
+function getTokenFromElement(el) {
+  const tokenId = getTokenIdFromElement(el);
+  return tokenId ? (St.tokens?.[tokenId] || null) : null;
+}
+
+function isImportedMapSettingToken(token) {
+  if (!token) return false;
+  if (token.importedMapObject === true) return true;
+  if (token.importedMapObjectMeta && typeof token.importedMapObjectMeta === 'object') return true;
+  const mapLayerId = String(token.mapLayerId || '').trim();
+  if (mapLayerId.startsWith('object:')) return true;
+  return false;
+}
+
+function isTokenPositionLocked(token) {
+  if (!token) return false;
+  const sourceMeta = token.importedMapObjectMeta?.sourceMeta || {};
+  return !!(
+    isTrueLike(token.panelLockPosition) ||
+    isTrueLike(token.lockPosition) ||
+    isTrueLike(token.positionLocked) ||
+    isTrueLike(token.locked) ||
+    isTrueLike(sourceMeta.locked) ||
+    isTrueLike(sourceMeta.freezed)
+  );
+}
+
+function shouldPanMapFromLockedMapSettingToken(token) {
+  return isImportedMapSettingToken(token) && isTokenPositionLocked(token);
+}
+
+function shouldShowLockedTokenToast(token) {
+  return isTokenPositionLocked(token) && !shouldPanMapFromLockedMapSettingToken(token);
+}
+
 function isPanelToken(token) {
   if (!token) return false;
   const type = String(token.type || '').trim();
@@ -1065,10 +1110,13 @@ function makeDraggable(el, tokenId) {
     }
 
     if (e.button !== 0) return;
+    const dragToken = St.tokens[tokenId];
+    if (shouldPanMapFromLockedMapSettingToken(dragToken)) {
+      return;
+    }
     if (!hasPerm('moveToken')) { showToast('토큰 이동 권한이 없어요.'); return; }
     if (St.tool === 'erase') { removeToken(tokenId); return; }
-    const dragToken = St.tokens[tokenId];
-    if (isPanelToken(dragToken) && (dragToken.panelLockPosition || dragToken.lockPosition)) {
+    if (shouldShowLockedTokenToast(dragToken)) {
       showToast('위치가 고정된 패널 토큰이에요.');
       return;
     }
