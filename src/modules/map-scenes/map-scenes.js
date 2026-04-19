@@ -239,6 +239,27 @@
     return !!(scene?.background?.url || (Array.isArray(scene?.objects) && scene.objects.length));
   }
 
+  function getSceneThumbnailUrl(scene){
+    return String(scene?.background?.url || scene?.backgroundUrl || '').trim();
+  }
+
+  function escAttr(value){
+    return ROOT.esc(String(value || '')).replace(/'/g, '&#39;');
+  }
+
+  function buildSceneThumbStyle(url){
+    var safeUrl = String(url || '').trim();
+    if (!safeUrl) return '';
+    safeUrl = safeUrl.replace(/\\/g, '\\\\').replace(/"/g, '%22').replace(/'/g, '%27').replace(/\)/g, '%29');
+    return ' style="background-image:url(&quot;' + escAttr(safeUrl) + '&quot;)"';
+  }
+  function getSceneThumbnailLabel(scene, hasMapData){
+    if (getSceneThumbnailUrl(scene)) return '';
+    if (scene?.isEmpty === true) return '빈 씬';
+    if (hasMapData) return '배경 없음';
+    return '미리보기 없음';
+  }
+
   function getSceneEffectiveTokens(scene){
     if (!scene) return undefined;
     if (scene.tokens !== undefined) {
@@ -765,13 +786,18 @@
       var hasMapData = getSceneHasMapData(scene);
       var tokenCount = (scene.tokens && typeof scene.tokens === 'object') ? Object.keys(scene.tokens).length : -1;
       var tokenLabel = tokenCount >= 0 ? (' · 토큰 ' + tokenCount + '개') : '';
-      return '<button type="button" class="map-scene-item' + (isSelected ? ' is-selected' : '') + '" data-scene-id="' + scene.id + '">'
+      var thumbUrl = getSceneThumbnailUrl(scene);
+      var thumbLabel = getSceneThumbnailLabel(scene, hasMapData);
+      return '<button type="button" class="map-scene-item' + (isSelected ? ' is-selected' : '') + (isActive ? ' is-active' : '') + '" data-scene-id="' + escAttr(scene.id) + '">'
+        + '<div class="map-scene-thumb' + (thumbUrl ? ' has-image' : '') + '"' + buildSceneThumbStyle(thumbUrl) + '>'
+        + (isActive ? '<span class="map-scene-badge">LIVE</span>' : '')
+        + (thumbLabel ? '<span class="map-scene-thumb-empty">' + ROOT.esc(thumbLabel) + '</span>' : '')
+        + '</div>'
         + '<div class="map-scene-item-main">'
-        + '<div class="map-scene-item-index">씬 ' + (index + 1) + '</div>'
+        + '<div class="map-scene-item-top"><span class="map-scene-item-index">씬 ' + (index + 1) + '</span></div>'
         + '<div class="map-scene-item-name">' + ROOT.esc(scene.name || '무제 씬') + '</div>'
         + '<div class="map-scene-item-meta">' + (isActive ? '현재 표시 중' : '대기 중') + (hasMapData ? ' · 맵 저장됨' : '') + tokenLabel + '</div>'
         + '</div>'
-        + (isActive ? '<span class="map-scene-badge">LIVE</span>' : '')
         + '</button>';
     }).join('');
 
