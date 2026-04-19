@@ -101,6 +101,22 @@
     return normalizeScene({ name: '씬 ' + (index + 1), tokens: {}, isEmpty: true });
   }
 
+  function hydrateLocalScenesFromRemoteIfAvailable(force){
+    if (!Array.isArray(state.remoteScenes) || !state.remoteScenes.length) return false;
+    if (!force && state.isDirty) return false;
+    state.scenes = state.remoteScenes.map(function(scene){ return normalizeScene(deepCopy(scene), scene.id); });
+    if (!state.selectedSceneId || !state.scenes.some(function(s){ return s.id === state.selectedSceneId; })) {
+      state.selectedSceneId = state.remoteActiveSceneId || state.activeSceneId || state.scenes[0].id;
+    }
+    if (!state.activeSceneId || !state.scenes.some(function(s){ return s.id === state.activeSceneId; })) {
+      state.activeSceneId = state.remoteActiveSceneId || state.scenes[0].id;
+    }
+    state.loadedRoomCode = String(ROOT.St?.roomCode || state.syncRoomCode || state.loadedRoomCode || '');
+    state.autoCreatedOnOpen = false;
+    state.isDirty = false;
+    return true;
+  }
+
   function ensureSceneMinimum(){
     if (!state.scenes.length) {
       const base = buildDefaultScene();
@@ -413,6 +429,10 @@
       state.remoteScenes = Object.entries(rawScenes).map(function(entry){
         return normalizeScene(entry[1], entry[0]);
       }).sort(function(a,b){ return (a.createdAt || 0) - (b.createdAt || 0); });
+      if (state.remoteScenes.length && (!state.scenes.length || (!state.isDirty && state.loadedRoomCode === nextRoomCode))) {
+        hydrateLocalScenesFromRemoteIfAvailable(false);
+        if (document.getElementById('modal-map-scenes')?.classList.contains('show')) renderSceneList();
+      }
       syncActiveSceneToRuntime();
     });
     const onActive = onValue(activeRef, function(snap){
@@ -452,7 +472,9 @@
     const rawScenes = sceneSnap.val() || {};
     const entries = Object.entries(rawScenes).map(([id, raw]) => normalizeScene(raw, id));
     state.scenes = entries.sort((a,b) => (a.createdAt||0) - (b.createdAt||0));
+    state.remoteScenes = state.scenes.map(function(scene){ return normalizeScene(deepCopy(scene), scene.id); });
     state.activeSceneId = String(activeSnap.val() || '').trim();
+    state.remoteActiveSceneId = state.activeSceneId || state.remoteActiveSceneId;
     state.loadedRoomCode = ROOT.St.roomCode;
     state.isDirty = false;
     state.autoCreatedOnOpen = !entries.length;
@@ -809,35 +831,29 @@
      - 활성 씬의 맵/토큰 본문은 자동 저장 또는 우클릭 '현재 맵 저장'이 담당한다. */
   async function persistSceneListMeta(){
     if (!ROOT.St?.isGM || !ROOT._FB?.CONFIGURED || !ROOT.St?.roomCode) return;
+    if (!state.scenes.length && hydrateLocalScenesFromRemoteIfAvailable(true)) {
+      // 원격 씬 목록이 이미 있는데 로컬만 비어 있던 경우, 기본 씬 자동 생성으로 덮지 않는다.
+    }
     ensureSceneMinimum();
-    const { db, ref, set, remove } = ROOT._FB;
+    const { db, ref, set } = ROOT._FB;
     const roomCode = ROOT.St.roomCode;
-    // 기존 Firebase 씬 목록 (remoteScenes 캐시 사용, 별도 get 호출 회피)
-    const existingIds = new Set(state.remoteScenes.map(function(s){ return s.id; }));
-    const localIds = new Set(state.scenes.map(function(s){ return s.id; }));
+    const remoteById = new Map((state.remoteScenes || []).map(function(scene){ return [scene.id, scene]; }));
 
-    // 1) 로컬에 새로 추가된 씬: 전체 레코드 set
     const tasks = [];
     state.scenes.forEach(function(scene, index){
       const normalized = normalizeScene({ ...scene, name: scene.name || ('씬 ' + (index + 1)) }, scene.id);
-      if (!existingIds.has(normalized.id)) {
+      const remote = remoteById.get(normalized.id);
+      if (!remote) {
         tasks.push(set(ref(db, `rooms/${roomCode}/mapScenes/${normalized.id}`), normalized));
-      } else if (scene.name !== (state.remoteScenes.find(function(s){ return s.id === scene.id; })?.name)) {
-        // 이름만 변경된 경우: 이름과 updatedAt 두 필드만 set
+      } else if (normalized.name !== remote.name) {
         tasks.push(set(ref(db, `rooms/${roomCode}/mapScenes/${normalized.id}/name`), normalized.name));
         tasks.push(set(ref(db, `rooms/${roomCode}/mapScenes/${normalized.id}/updatedAt`), Date.now()));
       }
     });
 
-    // 2) 로컬에서 삭제된 씬: remove
-    existingIds.forEach(function(id){
-      if (!localIds.has(id)) {
-        tasks.push(remove(ref(db, `rooms/${roomCode}/mapScenes/${id}`)));
-      }
-    });
-
-    // 3) activeSceneId
-    if (!state.activeSceneId) state.activeSceneId = state.scenes[0]?.id || '';
+    // 씬 삭제는 우클릭 삭제 함수에서만 수행한다.
+    // 새로고침 직후 로컬 목록이 늦게 채워지는 상황에서 기존 Firebase 씬을 지우지 않기 위한 보호다.
+    if (!state.activeSceneId) state.activeSceneId = state.remoteActiveSceneId || state.scenes[0]?.id || '';
     if (state.activeSceneId) {
       tasks.push(set(ref(db, `rooms/${roomCode}/meta/activeSceneId`), state.activeSceneId));
     }
@@ -878,8 +894,9 @@
     if (roomChanged || !state.scenes.length) {
       try { await loadScenesFromRoom(); } catch (e) { console.warn('loadScenesFromRoom failed', e); }
     }
+    if (!state.scenes.length) hydrateLocalScenesFromRemoteIfAvailable(true);
     ensureSceneMinimum();
-    if (state.autoCreatedOnOpen && ROOT._FB?.CONFIGURED && ROOT.St?.roomCode) {
+    if (state.autoCreatedOnOpen && ROOT._FB?.CONFIGURED && ROOT.St?.roomCode && !state.remoteScenes.length) {
       try { await saveMapScenes({ silent: true, hintText: '기본 씬을 준비했어요.' }); } catch (e) {}
     }
     renderSceneList();
