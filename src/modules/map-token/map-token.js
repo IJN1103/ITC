@@ -336,7 +336,7 @@ function getRenderableStatuses(token) {
 }
 
 function shouldShowTokenInStatusPanel(token) {
-  if (!token || token.hideList) return false;
+  if (!token || isPanelToken(token) || token.hideList) return false;
   if (hasVisibleTokenInitiative(token)) return true;
   if (getRenderableStatuses(token).length > 0) return true;
   return false;
@@ -758,7 +758,7 @@ function addToken() {
 }
 
 function addPanelToken() {
-  if (!hasPerm('createToken')) { showToast('?좏겙 ?앹꽦 沅뚰븳???놁뼱??'); return; }
+  if (!hasPerm('createToken')) { showToast('토큰 생성 권한이 없어요.'); return; }
   const input = document.getElementById('panel-token-name');
   const name = input?.value.trim() || '패널';
   const id = genId();
@@ -766,8 +766,11 @@ function addPanelToken() {
     id,
     name,
     type: 'panel',
+    tokenCategory: 'panel',
+    panelToken: true,
     x: 50,
     y: 50,
+    rotation: 0,
     ownerId: St.myId || '',
     ownerName: St.myName || '',
     createdBy: St.myId || '',
@@ -777,15 +780,20 @@ function addPanelToken() {
     panelBackImage: '',
     panelWidth: 240,
     panelHeight: 135,
-    lockPosition: false,
-    lockSize: false,
+    panelPriority: 1,
+    panelLockPosition: false,
+    panelLockSize: false,
+    panelActionType: 'none',
+    panelActionText: '',
   };
+  St.tokens[id] = token;
+  renderAllTokens(St.tokens);
   if (window._FB?.CONFIGURED) {
     const { db, ref, set } = window._FB;
-    set(ref(db, `rooms/${St.roomCode}/tokens/${id}`), token);
-  } else {
-    St.tokens[id] = token;
-    renderAllTokens(St.tokens);
+    set(ref(db, `rooms/${St.roomCode}/tokens/${id}`), token).catch((err) => {
+      console.error('panel token create failed', err);
+      showToast('패널 토큰 생성에 실패했어요.');
+    });
   }
   closeModal('modal-panel-token');
   if (input) input.value = '';
@@ -816,11 +824,21 @@ function getTokenRenderSignature(token) {
     name: String(token?.name || ''),
     tokenImg: String(token?.tokenImg || ''),
     type: String(token?.type || ''),
+    tokenCategory: String(token?.tokenCategory || ''),
+    panelToken: !!token?.panelToken,
     tokenSize: Number(token?.tokenSize || 1),
     rotation: Number(token?.rotation || 0),
     memo: String(token?.memo || ''),
     standingAsToken: !!token?.standingAsToken,
     standingsKey: _standingsKey(token),
+    panelFace: String(token?.panelFace || ''),
+    panelImage: String(token?.panelImage || ''),
+    panelBackImage: String(token?.panelBackImage || ''),
+    panelWidth: Number(token?.panelWidth || 0),
+    panelHeight: Number(token?.panelHeight || 0),
+    panelPriority: Number(token?.panelPriority || 0),
+    importedMapObjectHidden: !!token?.importedMapObjectHidden,
+    importedLayoutKey: JSON.stringify(token?.importedMapObjectMeta?.layoutPct || null),
   });
 }
 
@@ -914,7 +932,13 @@ let _activeDragCleanup = null;
 
 
 function isPanelToken(token) {
-  return String(token?.type || token?.tokenCategory || '').trim() === 'panel';
+  if (!token) return false;
+  const type = String(token.type || '').trim();
+  const category = String(token.tokenCategory || '').trim();
+  if (type === 'panel' || category === 'panel' || token.panelToken === true) return true;
+  if (token.importedMapObject === true) return true;
+  if (token.panelImage || token.panelBackImage || token.panelWidth || token.panelHeight || token.panelFace) return true;
+  return false;
 }
 
 function getPanelTokenImageSource(token) {
@@ -948,8 +972,13 @@ function createTokenEl(t) {
   const inner = document.getElementById('map-inner');
   const el = document.createElement('div');
   const isPanel = isPanelToken(t);
-  el.className = `map-token ${isPanel ? 'panel-token' : ''} ${t.type==='enemy'?'enemy':t.type==='npc'?'npc':''}`.trim();
+  el.className = `map-token ${isPanel ? 'panel-token' : ''} ${(!isPanel && t.type==='enemy')?'enemy':(!isPanel && t.type==='npc')?'npc':''}`.trim();
   el.id = 'tok-' + t.id;
+  if (isPanel) {
+    const priority = Number(t.panelPriority || 1);
+    el.style.zIndex = String(Number.isFinite(priority) ? Math.max(1, priority) : 1);
+    if (t.importedMapObjectHidden) el.style.display = 'none';
+  }
   el.style.left = storedTokenPercentToDisplay(t.x, 'x') + '%'; el.style.top = storedTokenPercentToDisplay(t.y, 'y') + '%';
   if (t.rotation) el.style.transform = `translate(-50%,-50%) rotate(${t.rotation}deg)`;
   const sz = (t.tokenSize || 1);
@@ -1010,7 +1039,16 @@ function createTokenEl(t) {
       if (_tokenMemoBubbleTokenId === t.id) hideTokenMemoBubble();
     });
   }
-  el.addEventListener('dblclick', e => { e.preventDefault(); e.stopPropagation(); hideTokenMemoBubble(); if (typeof openTokenEdit === 'function') openTokenEdit(t.id); });
+  el.addEventListener('dblclick', e => {
+    e.preventDefault();
+    e.stopPropagation();
+    hideTokenMemoBubble();
+    if (isPanelToken(t) && t.panelImage && t.panelBackImage) {
+      togglePanelTokenFace(t.id);
+      return;
+    }
+    if (typeof openTokenEdit === 'function') openTokenEdit(t.id);
+  });
   el.addEventListener('contextmenu', e => { e.preventDefault(); e.stopPropagation(); hideTokenMemoBubble(); showTokenCtx(e, t.id); });
   makeDraggable(el, t.id);
   refreshTokenLiveSnapshot(el, t);
@@ -1029,6 +1067,11 @@ function makeDraggable(el, tokenId) {
     if (e.button !== 0) return;
     if (!hasPerm('moveToken')) { showToast('토큰 이동 권한이 없어요.'); return; }
     if (St.tool === 'erase') { removeToken(tokenId); return; }
+    const dragToken = St.tokens[tokenId];
+    if (isPanelToken(dragToken) && (dragToken.panelLockPosition || dragToken.lockPosition)) {
+      showToast('위치가 고정된 패널 토큰이에요.');
+      return;
+    }
 
     e.preventDefault();
     e.stopPropagation();
@@ -1120,7 +1163,8 @@ function tokCtxAction(action) {
 
   switch (action) {
     case 'edit':
-      openTokenEdit(id);
+      if (isPanelToken(t)) openPanelTokenEdit(id);
+      else openTokenEdit(id);
       break;
     case 'rotate': {
       t.rotation = ((t.rotation || 0) + 45) % 360;
@@ -1186,9 +1230,13 @@ let _teTokenId = null;
 let _teTokenImgData = null;
 
 function openTokenEdit(tokenId) {
-  _teTokenId = tokenId;
   const t = St.tokens[tokenId];
   if (!t) return;
+  if (isPanelToken(t)) {
+    openPanelTokenEdit(tokenId);
+    return;
+  }
+  _teTokenId = tokenId;
 
   refreshTokenOwnerBar(t);
 
@@ -1462,6 +1510,211 @@ function deleteTokenFromEdit() {
   if (window._FB?.CONFIGURED) {
     const { db, ref, remove } = window._FB;
     remove(ref(db, `rooms/${St.roomCode}/tokens/${delId}`));
+  }
+}
+
+
+let _pteTokenId = null;
+let _pteFrontData = null;
+let _pteBackData = null;
+let _pteFrontBlob = null;
+let _pteBackBlob = null;
+let _panelTokenAdvancedOpen = true;
+
+function cleanupPanelTokenEditPendingAssets() {
+  revokeTokenPreviewUrl(_pteFrontData);
+  revokeTokenPreviewUrl(_pteBackData);
+  _pteFrontData = null;
+  _pteBackData = null;
+  _pteFrontBlob = null;
+  _pteBackBlob = null;
+}
+
+function setPanelTokenPreview(previewId, url, emptyText, clearFnName) {
+  const wrap = document.getElementById(previewId);
+  if (!wrap) return;
+  wrap.classList.toggle('has-image', !!url);
+  if (url) {
+    wrap.innerHTML = `<img src="${esc(url)}" alt=""><button class="panel-token-preview-delete" type="button" onclick="event.stopPropagation(); ${clearFnName}()">×</button>`;
+  } else {
+    wrap.textContent = emptyText;
+  }
+}
+
+function refreshPanelTokenPreviews() {
+  setPanelTokenPreview('pte-front-preview', _pteFrontData, '이미지 없음', 'clearPanelTokenFrontImg');
+  setPanelTokenPreview('pte-back-preview', _pteBackData, '뒷면 이미지 없음', 'clearPanelTokenBackImg');
+}
+
+function openPanelTokenEdit(tokenId) {
+  const t = St.tokens[tokenId];
+  if (!t) return;
+  _pteTokenId = tokenId;
+  cleanupPanelTokenEditPendingAssets();
+  _pteFrontData = t.panelImage || '';
+  _pteBackData = t.panelBackImage || '';
+
+  const setValue = (id, value) => { const el = document.getElementById(id); if (el) el.value = value; };
+  const setChecked = (id, value) => { const el = document.getElementById(id); if (el) el.checked = !!value; };
+  setValue('pte-name', t.name || '패널');
+  setValue('pte-width', Math.max(1, Number(t.panelWidth || 240) || 240));
+  setValue('pte-height', Math.max(1, Number(t.panelHeight || 135) || 135));
+  setValue('pte-priority', Math.max(1, Number(t.panelPriority || 1) || 1));
+  setValue('pte-memo', t.memo || '');
+  setChecked('pte-lock-pos', !!(t.panelLockPosition ?? t.lockPosition));
+  setChecked('pte-lock-size', !!(t.panelLockSize ?? t.lockSize));
+  setValue('pte-action-type', String(t.panelActionType || 'none'));
+  setValue('pte-action-text', String(t.panelActionText || ''));
+  refreshPanelTokenPreviews();
+  syncPanelTokenLockUi();
+  syncPanelTokenActionUi();
+  openModal('modal-panel-token-edit');
+}
+
+function closePanelTokenEdit() {
+  cleanupPanelTokenEditPendingAssets();
+  _pteTokenId = null;
+  closeModal('modal-panel-token-edit');
+}
+
+function syncPanelTokenLockUi() {
+  const locked = !!document.getElementById('pte-lock-size')?.checked;
+  ['pte-width', 'pte-height'].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = locked;
+  });
+}
+
+function syncPanelTokenActionUi() {
+  const type = String(document.getElementById('pte-action-type')?.value || 'none');
+  const wrap = document.getElementById('pte-action-text-wrap');
+  const help = document.getElementById('pte-action-help');
+  const label = document.getElementById('pte-action-text-label');
+  if (wrap) wrap.style.display = type === 'none' ? 'none' : '';
+  if (label) label.textContent = type === 'macro' ? 'Macro to run' : 'Text to be sent';
+  if (help) {
+    help.textContent = type === 'macro'
+      ? '패널 클릭 시 매크로/다이스 명령을 실행합니다.'
+      : type === 'chat'
+        ? '패널 클릭 시 입력한 문장을 채팅으로 보냅니다.'
+        : '패널 클릭 시 별도 동작을 하지 않습니다.';
+  }
+}
+
+function togglePanelTokenAdvanced() {
+  _panelTokenAdvancedOpen = !_panelTokenAdvancedOpen;
+  const body = document.getElementById('panel-token-advanced-body');
+  const arrow = document.getElementById('panel-token-advanced-arrow');
+  if (body) body.style.display = _panelTokenAdvancedOpen ? '' : 'none';
+  if (arrow) arrow.textContent = _panelTokenAdvancedOpen ? '▴' : '▾';
+}
+
+async function preparePanelTokenImage(input, side) {
+  const file = input.files?.[0];
+  if (!file) return;
+  if (file.size > 5 * 1024 * 1024) { showToast('이미지는 5MB 이하만 가능해요.'); input.value = ''; return; }
+  try {
+    const blob = await makeTokenImageBlob(file, 1600);
+    const previewUrl = URL.createObjectURL(blob);
+    if (side === 'front') {
+      revokeTokenPreviewUrl(_pteFrontData);
+      _pteFrontBlob = blob;
+      _pteFrontData = previewUrl;
+    } else {
+      revokeTokenPreviewUrl(_pteBackData);
+      _pteBackBlob = blob;
+      _pteBackData = previewUrl;
+    }
+    refreshPanelTokenPreviews();
+  } catch (err) {
+    console.error('panel token image prepare failed', err);
+    showToast('패널 이미지를 준비하지 못했어요. 다시 시도해 주세요.');
+  } finally {
+    input.value = '';
+  }
+}
+
+function handlePanelTokenFrontImg(input) { preparePanelTokenImage(input, 'front'); }
+function handlePanelTokenBackImg(input) { preparePanelTokenImage(input, 'back'); }
+function clearPanelTokenFrontImg() { revokeTokenPreviewUrl(_pteFrontData); _pteFrontData = ''; _pteFrontBlob = null; refreshPanelTokenPreviews(); }
+function clearPanelTokenBackImg() { revokeTokenPreviewUrl(_pteBackData); _pteBackData = ''; _pteBackBlob = null; refreshPanelTokenPreviews(); }
+
+async function savePanelTokenEdit() {
+  if (!_pteTokenId) return;
+  const t = St.tokens[_pteTokenId];
+  if (!t) return;
+  const name = document.getElementById('pte-name')?.value?.trim() || '패널';
+  const width = Math.max(1, Number(document.getElementById('pte-width')?.value || t.panelWidth || 240) || 240);
+  const height = Math.max(1, Number(document.getElementById('pte-height')?.value || t.panelHeight || 135) || 135);
+  const priority = Math.max(1, Number(document.getElementById('pte-priority')?.value || t.panelPriority || 1) || 1);
+  let frontUrl = _pteFrontData || '';
+  let backUrl = _pteBackData || '';
+
+  try {
+    if (_pteFrontBlob) frontUrl = await uploadTokenBlobToCloudinary(_pteFrontBlob, `itc/panels/${St.roomCode}`);
+    else if (frontUrl.startsWith('blob:')) frontUrl = t.panelImage || '';
+    if (_pteBackBlob) backUrl = await uploadTokenBlobToCloudinary(_pteBackBlob, `itc/panels/${St.roomCode}`);
+    else if (backUrl.startsWith('blob:')) backUrl = t.panelBackImage || '';
+  } catch (err) {
+    console.error('panel token image upload failed', err);
+    showToast('패널 이미지 업로드에 실패했어요.');
+    return;
+  }
+
+  const actionType = String(document.getElementById('pte-action-type')?.value || 'none');
+  const next = {
+    ...t,
+    name,
+    type: 'panel',
+    tokenCategory: 'panel',
+    panelToken: true,
+    memo: document.getElementById('pte-memo')?.value || '',
+    panelWidth: width,
+    panelHeight: height,
+    panelPriority: priority,
+    panelImage: frontUrl,
+    panelBackImage: backUrl,
+    panelFace: (t.panelFace === 'back' && backUrl) ? 'back' : 'front',
+    panelLockPosition: !!document.getElementById('pte-lock-pos')?.checked,
+    panelLockSize: !!document.getElementById('pte-lock-size')?.checked,
+    panelActionType: actionType === 'chat' || actionType === 'macro' ? actionType : 'none',
+    panelActionText: document.getElementById('pte-action-text')?.value || '',
+  };
+
+  St.tokens[_pteTokenId] = next;
+  addOrUpdateSingleToken(_pteTokenId, next);
+  if (window._FB?.CONFIGURED) {
+    const { db, ref, set } = window._FB;
+    try {
+      await set(ref(db, `rooms/${St.roomCode}/tokens/${_pteTokenId}`), next);
+    } catch (err) {
+      console.error('panel token save failed', err);
+      showToast('패널 토큰 저장에 실패했어요.');
+      return;
+    }
+  }
+  cleanupPanelTokenEditPendingAssets();
+  _pteFrontData = next.panelImage || '';
+  _pteBackData = next.panelBackImage || '';
+  showToast('패널 토큰이 저장됐어요.');
+}
+
+function deletePanelTokenFromEdit() {
+  if (!_pteTokenId || !confirm('이 패널 토큰을 삭제할까요?')) return;
+  const id = _pteTokenId;
+  closePanelTokenEdit();
+  removeToken(id);
+}
+
+function togglePanelTokenFace(tokenId) {
+  const t = St.tokens[tokenId];
+  if (!isPanelToken(t) || !t.panelBackImage) return;
+  const nextFace = String(t.panelFace || 'front') === 'back' ? 'front' : 'back';
+  t.panelFace = nextFace;
+  addOrUpdateSingleToken(tokenId, t);
+  if (window._FB?.CONFIGURED) {
+    const { db, ref, update } = window._FB;
+    update(ref(db, `rooms/${St.roomCode}/tokens/${tokenId}`), { panelFace: nextFace }).catch((err) => console.error('panel face update failed', err));
   }
 }
 
