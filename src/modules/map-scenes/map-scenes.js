@@ -75,12 +75,37 @@
     return `scene_${Date.now().toString(36)}_${Math.random().toString(36).slice(2,7)}`;
   }
 
+  function normalizeBackground(raw){
+    if (!raw || typeof raw !== 'object') return null;
+    if (raw.background && typeof raw.background === 'object') {
+      const bg = raw.background;
+      const url = String(bg.url || '').trim();
+      if (url) {
+        return {
+          url: url,
+          fit: bg.fit || 'contain',
+          sourceName: bg.sourceName || '',
+          importedAt: bg.importedAt || 0,
+        };
+      }
+    }
+    const fallbackUrl = String(raw.mapBackground || raw.backgroundUrl || '').trim();
+    if (!fallbackUrl) return null;
+    return {
+      url: fallbackUrl,
+      fit: raw.mapBackgroundFit || raw.backgroundFit || 'contain',
+      sourceName: raw.mapBackgroundSourceName || raw.backgroundSourceName || '',
+      importedAt: raw.mapBackgroundImportedAt || raw.backgroundImportedAt || 0,
+    };
+  }
+
   function normalizeScene(raw, id){
+    raw = raw || {};
     const sceneId = String(id || raw?.id || '').trim() || makeSceneId();
     const out = {
       id: sceneId,
       name: String(raw?.name || '기본 씬').trim() || '기본 씬',
-      background: raw?.background || null,
+      background: normalizeBackground(raw),
       objects: Array.isArray(raw?.objects) ? raw.objects : [],
       layerState: raw?.layerState || null,
       createdAt: Number(raw?.createdAt) || Date.now(),
@@ -219,13 +244,45 @@
     }, Math.max(80, Number(delayMs) || 800));
   }
 
+  function extractUrlFromCssBackground(value){
+    const text = String(value || '').trim();
+    if (!text || text === 'none') return '';
+    const match = text.match(/url\((['"]?)(.*?)\1\)/i);
+    return match ? String(match[2] || '').trim() : '';
+  }
+
+  function getVisibleMapBackgroundFallback(){
+    const bgLayer = document.getElementById('map-bg-layer');
+    if (!bgLayer) return null;
+    const inlineUrl = extractUrlFromCssBackground(bgLayer.style.backgroundImage);
+    const computed = window.getComputedStyle ? window.getComputedStyle(bgLayer) : null;
+    const computedUrl = computed ? extractUrlFromCssBackground(computed.backgroundImage) : '';
+    const url = inlineUrl || computedUrl;
+    if (!url) return null;
+    const inlineSize = String(bgLayer.style.backgroundSize || '').trim();
+    const computedSize = computed ? String(computed.backgroundSize || '').trim() : '';
+    const size = inlineSize || computedSize;
+    let fit = 'contain';
+    if (size === 'cover') fit = 'cover';
+    else if (size === '100% 100%') fit = 'fill';
+    return {
+      url: url,
+      fit: fit,
+      sourceName: '',
+      importedAt: Date.now(),
+    };
+  }
+
   function getCurrentRuntimeSnapshot(){
     const ms = ROOT.St?.mapState || {};
-    const bg = ms.background ? {
-      url: ms.background.url || '',
-      fit: ms.background.fit || 'contain',
-      sourceName: ms.background.sourceName || '',
-      importedAt: ms.background.importedAt || 0,
+    const stateBg = ms.background && String(ms.background.url || '').trim() ? ms.background : null;
+    const fallbackBg = stateBg ? null : getVisibleMapBackgroundFallback();
+    const sourceBg = stateBg || fallbackBg;
+    const bg = sourceBg ? {
+      url: sourceBg.url || '',
+      fit: sourceBg.fit || 'contain',
+      sourceName: sourceBg.sourceName || '',
+      importedAt: sourceBg.importedAt || 0,
     } : null;
     return {
       background: bg,
@@ -660,18 +717,19 @@
   async function persistSceneFromRuntime(sceneId, options){
     options = options || {};
     if (!ROOT.St?.isGM || !ROOT._FB?.CONFIGURED) return null;
-    if (state.isApplyingScene || Date.now() < state.suppressAutoSaveUntil) return null;
+    const isManualCapture = options.allowInactive === true;
+    if (!isManualCapture && (state.isApplyingScene || Date.now() < state.suppressAutoSaveUntil)) return null;
     const roomCode = String(ROOT.St?.roomCode || '').trim();
     if (!roomCode) return null;
     const targetId = String(sceneId || '').trim();
-    if (!options.allowInactive && !canPersistActiveSceneTarget(targetId, roomCode)) return null;
+    if (!isManualCapture && !canPersistActiveSceneTarget(targetId, roomCode)) return null;
     const nextScene = buildRuntimeSceneSnapshot(targetId);
     if (!nextScene) return null;
     const { db, ref, set } = ROOT._FB;
     try {
-      if (!options.allowInactive && !canPersistActiveSceneTarget(nextScene.id, roomCode)) return null;
+      if (!isManualCapture && !canPersistActiveSceneTarget(nextScene.id, roomCode)) return null;
       await set(ref(db, `rooms/${roomCode}/mapScenes/${nextScene.id}`), nextScene);
-      if (!options.allowInactive && !canPersistActiveSceneTarget(nextScene.id, roomCode)) return nextScene;
+      if (!isManualCapture && !canPersistActiveSceneTarget(nextScene.id, roomCode)) return nextScene;
       const idx = state.scenes.findIndex(function(s){ return s.id === nextScene.id; });
       if (idx >= 0) state.scenes[idx] = nextScene;
       else state.scenes.push(nextScene);
