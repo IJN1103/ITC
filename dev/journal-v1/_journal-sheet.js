@@ -355,7 +355,7 @@ function setSheetEditorMode(editable) {
   if (saveBtn) saveBtn.style.display = editable ? '' : 'none';
 
   const delBtn = modal.querySelector('.sheet-del-btn');
-  if (delBtn) delBtn.style.display = editable ? '' : 'none';
+  if (delBtn) delBtn.style.display = canDeleteJournalById(_sheetJournalId) ? '' : 'none';
 
   const addCombatBtn = modal.querySelector('button[onclick*="addCombatRow"]');
   if (addCombatBtn) addCombatBtn.style.display = editable ? '' : 'none';
@@ -768,7 +768,7 @@ function openSheet(journalId) {
   setSheetEditorMode(canEditSheet);
 
   const delBtn = document.querySelector('.sheet-del-btn');
-  if (delBtn) delBtn.style.display = canEditSheet ? '' : 'none';
+  if (delBtn) delBtn.style.display = canDeleteJournalById(journalId) ? '' : 'none';
   document.getElementById('sheet-overlay').classList.add('open');
 }
 

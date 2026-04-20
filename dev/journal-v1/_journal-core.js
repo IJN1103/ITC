@@ -280,6 +280,8 @@ function openJournalEditor(id) {
   }
 
   if (hintEl) hintEl.textContent = '';
+  const delBtn = document.querySelector('#journal-drawer .jd-del-btn');
+  if (delBtn) delBtn.style.display = canDeleteJournalById(_currentJournalId) ? '' : 'none';
   const drawer = document.getElementById('journal-drawer');
   if (drawer) drawer.classList.add('open');
   setTimeout(() => {
@@ -394,8 +396,9 @@ function saveJournalFromDrawer() {
 function saveJournal() { saveJournalFromDrawer(); }
 
 function deleteJournalFromDrawer() {
-  if (!_currentJournalId || !confirm('이 저널을 삭제할까요?')) return;
+  if (!_currentJournalId) return;
   if (!canDeleteJournalById(_currentJournalId)) { showToast('저널 삭제는 GM만 할 수 있어요.'); return; }
+  if (!confirm('이 저널을 삭제할까요?')) return;
   const _delId = _currentJournalId;
   deleteJournalFB(_delId);
   if (St.speakAsJournalId === _delId) { St.speakAsJournalId = null; saRefreshBtn(); }
@@ -406,8 +409,9 @@ function deleteJournalFromDrawer() {
 function deleteJournal() { deleteJournalFromDrawer(); }
 
 function deleteJournalById(id) {
-  if (!id || !confirm('이 저널을 삭제할까요?')) return;
+  if (!id) return;
   if (!canDeleteJournalById(id)) { showToast('저널 삭제는 GM만 할 수 있어요.'); return; }
+  if (!confirm('이 저널을 삭제할까요?')) return;
   deleteJournalFB(id);
   if (St.speakAsJournalId === id) { St.speakAsJournalId = null; saRefreshBtn(); }
   try { localStorage.removeItem('itc_av_' + id); } catch(e) {}
@@ -416,8 +420,9 @@ function deleteJournalById(id) {
 }
 
 function deleteSheetJournal() {
-  if (!_sheetJournalId || !confirm('이 저널을 삭제할까요?')) return;
+  if (!_sheetJournalId) return;
   if (!canDeleteJournalById(_sheetJournalId)) { showToast('저널 삭제는 GM만 할 수 있어요.'); return; }
+  if (!confirm('이 저널을 삭제할까요?')) return;
   const delId = _sheetJournalId;
   deleteJournalFB(delId);
   if (St.speakAsJournalId === delId) { St.speakAsJournalId = null; saRefreshBtn(); }

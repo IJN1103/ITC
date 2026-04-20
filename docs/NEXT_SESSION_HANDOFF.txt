@@ -293,6 +293,8 @@ styles/all.css          — 통합 CSS
 - Firebase Rules는 `assignedMap/{uid} === true`를 기준으로 권한 받은 플레이어의 저널 수정을 허용한다.
 - 권한 받은 플레이어가 저널 권한 목록(`assignedTo`, `assignedMap`)을 직접 바꾸지 못하도록 Rules에서 고정했다.
 - 저널 삭제는 GM만 가능하도록 UI와 클라이언트 가드를 맞췄다.
+- 권한 받은 플레이어에게는 저널 목록 / 기본 저널 편집창 / 캐릭터 시트 창의 삭제 버튼이 표시되면 안 된다.
+- 삭제 함수는 권한 확인을 먼저 하고, 권한이 없으면 확인창을 띄우지 않는다.
 - 핸드아웃은 `allowedTo` 배열과 함께 `allowedMap` 객체를 저장한다.
 - 플레이어의 핸드아웃 수정/삭제 UI는 보이지 않도록 정리했다.
 - `database.rules.json`을 Firebase Console Rules에 다시 적용해야 이 권한 기준이 Rules 레벨까지 반영된다.
