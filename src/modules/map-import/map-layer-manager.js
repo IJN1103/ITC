@@ -258,8 +258,11 @@
       if (typeof showToast === 'function') showToast('삭제할 맵세팅 레이어가 없어요.');
       return;
     }
-    const ok = window.confirm(`맵세팅 오브젝트 레이어 ${count}개를 모두 삭제할까요?
-배경 이미지도 함께 삭제되고, 연결된 맵세팅 패널도 함께 삭제됩니다.`);
+    const objectPart = count > 0 ? `오브젝트 레이어 ${count}개` : '';
+    const bgPart = hasBackground ? '배경 이미지' : '';
+    const targetLabel = [objectPart, bgPart].filter(Boolean).join('와 ');
+    const ok = window.confirm(`맵세팅 ${targetLabel || '레이어'}를 전체 삭제할까요?
+연결된 맵세팅 패널도 함께 삭제됩니다.`);
     if (!ok) return;
     deleteAllObjectLayers()
       .then(() => { if (typeof showToast === 'function') showToast('맵세팅 레이어와 배경 이미지를 모두 삭제했어요.'); })

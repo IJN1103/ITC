@@ -140,3 +140,31 @@ styles/all.css          — 통합 CSS
 - 상태만 바뀌면 해당 status card만 교체/재정렬
 - 구조 변경일 때만 토큰 DOM 재생성 유지
 - 토큰 삭제/편집창 삭제/컨텍스트 삭제도 status card 개별 제거로 정리
+
+[2026-04-20] 맵 장면 전환 / 패널 토큰 / 맵세팅 안정화 기준 추가
+- 장면 전환 설정창은 가로 카드형 UI + 16:9 썸네일 카드 구조를 사용한다.
+- 현재 썸네일은 안정형 A 방식: scene.background.url 기반 배경 썸네일이다.
+- 실제 맵 스냅샷형 썸네일(C 방식)은 보류. CORS/성능/브라우저/Cloudinary 캡처 이슈가 있어 수동 스냅샷 저장 방식으로 별도 실험 필요.
+- 패널 토큰은 캐릭터 토큰과 별도 개념이다.
+  - type: 'panel'
+  - tokenCategory: 'panel'
+  - panelToken: true
+- +패널 토큰 생성 시 캐릭터 토큰이 아니라 패널 토큰 전용 편집창으로 열려야 한다.
+- 패널 토큰 이름을 완전히 비워두면 맵 위 이름 라벨이 표시되지 않아야 한다.
+- 패널 토큰 클릭 액션은 유지한다.
+  - 채팅 보내기: 일반 텍스트만 허용
+  - 매크로: /1d10, /choice(a,b) 같은 / 시작 명령만 허용
+  - speak-as 선택 시 저널 기준으로 발화되어야 한다.
+- 맵세팅 ZIP의 object item은 imported panel token으로 생성되어야 한다.
+  - importedMapObject: true
+  - importedMapObjectMeta 유지
+  - mapLayerId: object:* 유지
+- 맵세팅 위치고정 imported panel token의 좌클릭 드래그 기준:
+  - 토스트 메시지 없음
+  - 토큰 위치 이동 없음
+  - 맵 팬/드래그 이동 가능
+- 단, 위치고정 imported panel token의 앞/뒷면 전환과 편집창 기능은 막지 않는다.
+- 맵세팅 레이어 UI의 표시/숨김/순서는 imported panel token의 importedMapObjectHidden/panelPriority와 동기화되어야 한다.
+- 장면 전환 후에도 맵세팅 레이어 상태가 imported panel token DOM 생성 이후 재적용되어야 한다.
+- 맵세팅 레이어의 '전체 삭제'는 오브젝트 레이어, 연결된 imported panel token, 배경 이미지를 함께 삭제하는 동작이 맞다.
+
