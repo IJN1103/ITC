@@ -970,9 +970,14 @@ to{transform:translateX(0);opacity:1;}
 .map-scene-list::-webkit-scrollbar{height:8px}
 .map-scene-list::-webkit-scrollbar-track{background:rgba(255,255,255,.06);border-radius:999px}
 .map-scene-list::-webkit-scrollbar-thumb{background:rgba(184,154,96,.45);border-radius:999px}
-.map-scene-item{appearance:none;flex:0 0 184px;width:184px;border:1px solid var(--border);border-radius:14px;background:var(--s3);padding:8px;display:flex;flex-direction:column;align-items:stretch;justify-content:flex-start;gap:8px;text-align:left;font:inherit;color:inherit;cursor:pointer;transition:var(--t)}
+.map-scene-item{appearance:none;position:relative;flex:0 0 184px;width:184px;border:1px solid var(--border);border-radius:14px;background:var(--s3);padding:8px;display:flex;flex-direction:column;align-items:stretch;justify-content:flex-start;gap:8px;text-align:left;font:inherit;color:inherit;cursor:grab;transition:var(--t);user-select:none}
+.map-scene-item:active{cursor:grabbing}
 .map-scene-item:hover{border-color:var(--accent);background:rgba(184,154,96,.08);transform:translateY(-1px)}
 .map-scene-item.is-selected{border-color:var(--accent);box-shadow:0 0 0 1px rgba(184,154,96,.18) inset,0 8px 22px rgba(0,0,0,.18)}
+.map-scene-item.is-dragging{opacity:.45;transform:scale(.98)}
+.map-scene-item.is-drop-before::before,.map-scene-item.is-drop-after::after{content:"";position:absolute;top:8px;bottom:8px;width:3px;border-radius:999px;background:var(--accent);box-shadow:0 0 0 3px rgba(184,154,96,.16);z-index:3}
+.map-scene-item.is-drop-before::before{left:-8px}
+.map-scene-item.is-drop-after::after{right:-8px}
 .map-scene-thumb{position:relative;width:100%;aspect-ratio:16/9;border-radius:10px;border:1px solid rgba(255,255,255,.08);background:linear-gradient(135deg,rgba(255,255,255,.06),rgba(255,255,255,.015));background-position:center;background-size:cover;background-repeat:no-repeat;overflow:hidden;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:11px;line-height:1.2}
 .map-scene-thumb.has-image::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.04),rgba(0,0,0,.28));pointer-events:none}
 .map-scene-thumb-empty{position:relative;z-index:1;padding:4px 8px;border-radius:999px;background:rgba(0,0,0,.18);border:1px solid rgba(255,255,255,.08);white-space:nowrap}

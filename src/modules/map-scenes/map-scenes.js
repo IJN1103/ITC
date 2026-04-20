@@ -111,6 +111,8 @@
       createdAt: Number(raw?.createdAt) || Date.now(),
       updatedAt: Number(raw?.updatedAt) || Date.now(),
     };
+    const orderValue = Number(raw?.order);
+    if (Number.isFinite(orderValue)) out.order = orderValue;
     if (raw && Object.prototype.hasOwnProperty.call(raw, 'tokens') && raw.tokens !== undefined) {
       out.tokens = (raw.tokens && typeof raw.tokens === 'object') ? raw.tokens : {};
     }
@@ -154,7 +156,7 @@
   function hydrateLocalScenesFromRemoteIfAvailable(force){
     if (!Array.isArray(state.remoteScenes) || !state.remoteScenes.length) return false;
     if (!force && state.isDirty) return false;
-    state.scenes = state.remoteScenes.map(function(scene){ return normalizeScene(deepCopy(scene), scene.id); });
+    state.scenes = sortScenesByOrder(state.remoteScenes.map(function(scene){ return normalizeScene(deepCopy(scene), scene.id); }));
     if (!state.selectedSceneId || !state.scenes.some(function(s){ return s.id === state.selectedSceneId; })) {
       state.selectedSceneId = state.remoteActiveSceneId || state.activeSceneId || state.scenes[0].id;
     }
@@ -216,6 +218,46 @@
 
   function stableStringify(value){
     try { return JSON.stringify(stableNormalize(value)); } catch (_) { return ''; }
+  }
+
+  function getSceneOrderNumber(scene){
+    const value = Number(scene?.order);
+    return Number.isFinite(value) ? value : null;
+  }
+
+  function sortScenesByOrder(list){
+    const arr = Array.isArray(list) ? list : [];
+    return arr.sort(function(a, b){
+      const ao = getSceneOrderNumber(a);
+      const bo = getSceneOrderNumber(b);
+      if (ao !== null || bo !== null) {
+        if (ao !== null && bo !== null && ao !== bo) return ao - bo;
+        if (ao !== null && bo === null) return -1;
+        if (ao === null && bo !== null) return 1;
+      }
+      const ac = Number(a?.createdAt) || 0;
+      const bc = Number(b?.createdAt) || 0;
+      if (ac !== bc) return ac - bc;
+      return String(a?.id || '').localeCompare(String(b?.id || ''));
+    });
+  }
+
+  function assignSceneOrders(list){
+    if (!Array.isArray(list)) return list;
+    list.forEach(function(scene, index){
+      if (!scene || typeof scene !== 'object') return;
+      scene.order = (index + 1) * 10;
+    });
+    return list;
+  }
+
+  function syncRemoteSceneOrderFromLocal(){
+    if (!Array.isArray(state.remoteScenes) || !state.remoteScenes.length) return;
+    const orderById = new Map((state.scenes || []).map(function(scene){ return [scene.id, scene.order]; }));
+    state.remoteScenes.forEach(function(scene){
+      if (scene && orderById.has(scene.id)) scene.order = orderById.get(scene.id);
+    });
+    sortScenesByOrder(state.remoteScenes);
   }
 
   function beginSceneApplyGuard(durationMs){
@@ -569,9 +611,9 @@
     const activeRef = ref(db, `rooms/${nextRoomCode}/meta/activeSceneId`);
     const onScenes = onValue(scenesRef, function(snap){
       const rawScenes = snap.val() || {};
-      state.remoteScenes = Object.entries(rawScenes).map(function(entry){
+      state.remoteScenes = sortScenesByOrder(Object.entries(rawScenes).map(function(entry){
         return normalizeScene(entry[1], entry[0]);
-      }).sort(function(a,b){ return (a.createdAt || 0) - (b.createdAt || 0); });
+      }));
       _sceneRemoteListReceived = true;
       // 방에 씬이 하나도 없으면 기본 씬을 즉시 Firebase에 생성한다 (GM만).
       // 이 처리가 없으면 기본 씬 id가 매 세션 새로 생성되어 새로고침마다 씬이 사라지고 토큰 자동 저장이 엉뚱한 씬에 쌓인다.
@@ -624,7 +666,7 @@
     // 보호: get이 타이밍/오프라인 이슈로 빈 결과를 돌려주는 경우, 이미 onValue로 수신된 remoteScenes가 있으면 그걸 신뢰한다.
     // 이 보호가 없으면 autoCreatedOnOpen=true로 판단되어 기본 씬이 추가 생성되고 활성 씬이 엉뚱한 쪽으로 넘어갈 수 있다.
     if (!entries.length && Array.isArray(state.remoteScenes) && state.remoteScenes.length) {
-      state.scenes = state.remoteScenes.map(function(scene){ return normalizeScene(deepCopy(scene), scene.id); });
+      state.scenes = sortScenesByOrder(state.remoteScenes.map(function(scene){ return normalizeScene(deepCopy(scene), scene.id); }));
       state.activeSceneId = String(activeSnap.val() || state.remoteActiveSceneId || '').trim();
       state.loadedRoomCode = ROOT.St.roomCode;
       state.isDirty = false;
@@ -632,7 +674,7 @@
       ensureSceneMinimum();
       return;
     }
-    state.scenes = entries.sort((a,b) => (a.createdAt||0) - (b.createdAt||0));
+    state.scenes = sortScenesByOrder(entries);
     state.remoteScenes = state.scenes.map(function(scene){ return normalizeScene(deepCopy(scene), scene.id); });
     state.activeSceneId = String(activeSnap.val() || '').trim();
     state.remoteActiveSceneId = state.activeSceneId || state.remoteActiveSceneId;
@@ -745,6 +787,7 @@
       name: existing.name || '씬',
       createdAt: existing.createdAt || Date.now(),
       updatedAt: Date.now(),
+      order: getSceneOrderNumber(existing) !== null ? getSceneOrderNumber(existing) : undefined,
       background: ms.background ? { url: ms.background.url || '', fit: ms.background.fit || 'contain', sourceName: ms.background.sourceName || '', importedAt: ms.background.importedAt || 0 } : null,
       objects: Array.isArray(ms.objects) ? deepCopy(ms.objects) : [],
       layerState: isStillEmpty ? null : (snapshot.layerState ? deepCopy(snapshot.layerState) : null),
@@ -814,6 +857,42 @@
   }
 
   ROOT.requestActiveMapSceneSave = requestActiveSceneRuntimeSave;
+
+  async function persistSceneOrder(reason){
+    if (!ROOT.St?.isGM || !ROOT._FB?.CONFIGURED || !ROOT.St?.roomCode) return false;
+    ensureSceneMinimum();
+    assignSceneOrders(state.scenes);
+    syncRemoteSceneOrderFromLocal();
+    const roomCode = String(ROOT.St.roomCode || '').trim();
+    if (!roomCode) return false;
+    const payload = {};
+    state.scenes.forEach(function(scene){
+      if (!scene?.id) return;
+      payload[`mapScenes/${scene.id}/order`] = Number(scene.order) || 0;
+    });
+    if (!Object.keys(payload).length) return false;
+    try {
+      const { db, ref, update } = ROOT._FB;
+      await update(ref(db, `rooms/${roomCode}`), payload);
+      state.isDirty = false;
+      const hint = document.getElementById('map-scene-hint');
+      if (hint) {
+        hint.textContent = '씬 순서를 저장했어요 ✓';
+        window.setTimeout(function(){
+          const h = document.getElementById('map-scene-hint');
+          if (h && h.isConnected) h.textContent = '';
+        }, 1400);
+      }
+      return true;
+    } catch (e) {
+      console.warn('persistSceneOrder failed', reason || '', e);
+      state.isDirty = true;
+      const hint = document.getElementById('map-scene-hint');
+      if (hint) hint.textContent = '씬 순서 저장에 실패했어요. 다시 시도해주세요.';
+      ROOT.showToast('씬 순서 저장 실패: ' + (e?.message || e));
+      return false;
+    }
+  }
 
   /* ── context menu (capture / rename / delete) ──
      - 현재 맵 저장(capture): 지금 라이브 맵/토큰 상태를 선택 씬에 즉시 캡처한다.
@@ -892,9 +971,12 @@
       const { db, ref, set } = ROOT._FB;
       await set(ref(db, `rooms/${roomCode}/mapScenes/${duplicatedScene.id}`), duplicatedScene);
       insertSceneAfterSource(state.scenes, sourceId, duplicatedScene);
+      assignSceneOrders(state.scenes);
       insertSceneAfterSource(state.remoteScenes, sourceId, deepCopy(duplicatedScene));
+      syncRemoteSceneOrderFromLocal();
       state.selectedSceneId = duplicatedScene.id;
       renderSceneList();
+      await persistSceneOrder('duplicate');
       ROOT.showToast('씬을 복제했어요.');
     } catch (e) {
       console.warn('duplicateSceneById failed', e);
@@ -942,6 +1024,8 @@
       if (!window.confirm(`"${scene?.name || '선택한 씬'}" 씬을 정말 삭제하시겠습니까?`)) return;
       const wasActive = state.activeSceneId === sceneId;
       state.scenes = state.scenes.filter(s => s.id !== sceneId);
+      assignSceneOrders(state.scenes);
+      syncRemoteSceneOrderFromLocal();
       if (wasActive) state.activeSceneId = state.scenes[0]?.id || '';
       if (state.selectedSceneId === sceneId) state.selectedSceneId = state.scenes[0]?.id || '';
       ensureSceneMinimum();
@@ -967,12 +1051,56 @@
     }
   }
 
+  /* ── scene card drag reorder ── */
+  let _sceneDragSourceId = '';
+  let _sceneSuppressClickUntil = 0;
+
+  function clearSceneDropMarkers(listEl){
+    const root = listEl || document.getElementById('map-scene-list');
+    if (!root) return;
+    root.querySelectorAll('.map-scene-item.is-drop-before,.map-scene-item.is-drop-after').forEach(function(node){
+      node.classList.remove('is-drop-before', 'is-drop-after');
+    });
+  }
+
+  function clearSceneDragVisuals(listEl){
+    const root = listEl || document.getElementById('map-scene-list');
+    if (!root) return;
+    root.querySelectorAll('.map-scene-item.is-drop-before,.map-scene-item.is-drop-after,.map-scene-item.is-dragging').forEach(function(node){
+      node.classList.remove('is-drop-before', 'is-drop-after', 'is-dragging');
+    });
+  }
+
+  function reorderSceneByDrag(sourceId, targetId, placeAfter){
+    sourceId = String(sourceId || '').trim();
+    targetId = String(targetId || '').trim();
+    if (!sourceId || !targetId || sourceId === targetId) return false;
+    const list = state.scenes;
+    const fromIndex = list.findIndex(function(scene){ return scene.id === sourceId; });
+    if (fromIndex < 0) return false;
+    const moved = list.splice(fromIndex, 1)[0];
+    let targetIndex = list.findIndex(function(scene){ return scene.id === targetId; });
+    if (targetIndex < 0) {
+      list.splice(fromIndex, 0, moved);
+      return false;
+    }
+    if (placeAfter) targetIndex += 1;
+    list.splice(targetIndex, 0, moved);
+    assignSceneOrders(list);
+    syncRemoteSceneOrderFromLocal();
+    state.selectedSceneId = sourceId;
+    state.isDirty = true;
+    renderSceneList();
+    return true;
+  }
+
   /* ── render ── */
   function renderSceneList(){
     const listEl = document.getElementById('map-scene-list');
     const emptyEl = document.getElementById('map-scene-empty');
     if (!listEl || !emptyEl) return;
     ensureSceneMinimum();
+    sortScenesByOrder(state.scenes);
     emptyEl.style.display = 'none';
     listEl.innerHTML = state.scenes.map(function(scene, index){
       var isSelected = scene.id === state.selectedSceneId;
@@ -982,7 +1110,7 @@
       var tokenLabel = tokenCount >= 0 ? (' · 토큰 ' + tokenCount + '개') : '';
       var thumbUrl = getSceneThumbnailUrl(scene);
       var thumbLabel = getSceneThumbnailLabel(scene, hasMapData);
-      return '<button type="button" class="map-scene-item' + (isSelected ? ' is-selected' : '') + (isActive ? ' is-active' : '') + '" data-scene-id="' + escAttr(scene.id) + '">'
+      return '<button type="button" draggable="true" class="map-scene-item' + (isSelected ? ' is-selected' : '') + (isActive ? ' is-active' : '') + '" data-scene-id="' + escAttr(scene.id) + '">'
         + '<div class="map-scene-thumb' + (thumbUrl ? ' has-image' : '') + '"' + buildSceneThumbStyle(thumbUrl) + '>'
         + (isActive ? '<span class="map-scene-badge">LIVE</span>' : '')
         + (thumbLabel ? '<span class="map-scene-thumb-empty">' + ROOT.esc(thumbLabel) + '</span>' : '')
@@ -996,11 +1124,19 @@
     }).join('');
 
     listEl.querySelectorAll('.map-scene-item').forEach(function(btn){
-      btn.addEventListener('click', function(){
+      btn.addEventListener('click', function(e){
+        if (Date.now() < _sceneSuppressClickUntil) {
+          e.preventDefault();
+          return;
+        }
         state.selectedSceneId = btn.dataset.sceneId || '';
         renderSceneList();
       });
       btn.addEventListener('dblclick', function(e){
+        if (Date.now() < _sceneSuppressClickUntil) {
+          e.preventDefault();
+          return;
+        }
         e.preventDefault();
         var sid = btn.dataset.sceneId || '';
         if (!sid || state.activeSceneId === sid) return;
@@ -1011,7 +1147,76 @@
         e.stopPropagation();
         showCtxMenu(e.clientX, e.clientY, btn.dataset.sceneId || '');
       });
+      btn.addEventListener('dragstart', function(e){
+        _sceneDragSourceId = btn.dataset.sceneId || '';
+        _sceneSuppressClickUntil = Date.now() + 500;
+        hideCtxMenu();
+        btn.classList.add('is-dragging');
+        try {
+          e.dataTransfer.effectAllowed = 'move';
+          e.dataTransfer.setData('text/plain', _sceneDragSourceId);
+        } catch (_) {}
+      });
+      btn.addEventListener('dragover', function(e){
+        if (!_sceneDragSourceId) return;
+        const targetId = btn.dataset.sceneId || '';
+        if (!targetId || targetId === _sceneDragSourceId) return;
+        e.preventDefault();
+        clearSceneDropMarkers(listEl);
+        const rect = btn.getBoundingClientRect();
+        const placeAfter = e.clientX > (rect.left + rect.width / 2);
+        btn.classList.add(placeAfter ? 'is-drop-after' : 'is-drop-before');
+        try { e.dataTransfer.dropEffect = 'move'; } catch (_) {}
+      });
+      btn.addEventListener('drop', function(e){
+        if (!_sceneDragSourceId) return;
+        e.preventDefault();
+        const targetId = btn.dataset.sceneId || '';
+        const rect = btn.getBoundingClientRect();
+        const placeAfter = e.clientX > (rect.left + rect.width / 2);
+        const sourceId = _sceneDragSourceId;
+        const changed = reorderSceneByDrag(sourceId, targetId, placeAfter);
+        clearSceneDragVisuals(listEl);
+        _sceneDragSourceId = '';
+        _sceneSuppressClickUntil = Date.now() + 600;
+        if (changed) persistSceneOrder('drag-drop').catch(function(){});
+      });
+      btn.addEventListener('dragend', function(){
+        clearSceneDragVisuals(listEl);
+        _sceneDragSourceId = '';
+        _sceneSuppressClickUntil = Date.now() + 400;
+      });
     });
+    if (!listEl.dataset.dragBound) {
+      listEl.dataset.dragBound = '1';
+      listEl.addEventListener('dragover', function(e){
+        if (!_sceneDragSourceId) return;
+        if (e.target.closest('.map-scene-item')) return;
+        e.preventDefault();
+        clearSceneDropMarkers(listEl);
+        try { e.dataTransfer.dropEffect = 'move'; } catch (_) {}
+      });
+      listEl.addEventListener('drop', function(e){
+        if (!_sceneDragSourceId) return;
+        if (e.target.closest('.map-scene-item')) return;
+        e.preventDefault();
+        const sourceId = _sceneDragSourceId;
+        const fromIndex = state.scenes.findIndex(function(scene){ return scene.id === sourceId; });
+        if (fromIndex >= 0 && fromIndex !== state.scenes.length - 1) {
+          const moved = state.scenes.splice(fromIndex, 1)[0];
+          state.scenes.push(moved);
+          assignSceneOrders(state.scenes);
+          syncRemoteSceneOrderFromLocal();
+          state.selectedSceneId = sourceId;
+          state.isDirty = true;
+          renderSceneList();
+          persistSceneOrder('drag-drop-end').catch(function(){});
+        }
+        clearSceneDragVisuals(listEl);
+        _sceneDragSourceId = '';
+        _sceneSuppressClickUntil = Date.now() + 600;
+      });
+    }
   }
 
   /* 더블클릭 즉시 반영: Firebase activeSceneId set + 현재 라이브 맵 데이터 교체 */
@@ -1072,6 +1277,8 @@
       addBtn.addEventListener('click', function(){
         var next = buildEmptyAddedScene(state.scenes.length);
         state.scenes.push(next);
+        assignSceneOrders(state.scenes);
+        syncRemoteSceneOrderFromLocal();
         state.selectedSceneId = next.id;
         if (!state.activeSceneId) state.activeSceneId = next.id;
         state.isDirty = true;
@@ -1108,6 +1315,8 @@
       // 원격 씬 목록이 이미 있는데 로컬만 비어 있던 경우, 기본 씬 자동 생성으로 덮지 않는다.
     }
     ensureSceneMinimum();
+    assignSceneOrders(state.scenes);
+    syncRemoteSceneOrderFromLocal();
     const { db, ref, set } = ROOT._FB;
     const roomCode = ROOT.St.roomCode;
     const remoteById = new Map((state.remoteScenes || []).map(function(scene){ return [scene.id, scene]; }));
@@ -1118,9 +1327,14 @@
       const remote = remoteById.get(normalized.id);
       if (!remote) {
         tasks.push(set(ref(db, `rooms/${roomCode}/mapScenes/${normalized.id}`), normalized));
-      } else if (normalized.name !== remote.name) {
-        tasks.push(set(ref(db, `rooms/${roomCode}/mapScenes/${normalized.id}/name`), normalized.name));
-        tasks.push(set(ref(db, `rooms/${roomCode}/mapScenes/${normalized.id}/updatedAt`), Date.now()));
+      } else {
+        if (normalized.name !== remote.name) {
+          tasks.push(set(ref(db, `rooms/${roomCode}/mapScenes/${normalized.id}/name`), normalized.name));
+          tasks.push(set(ref(db, `rooms/${roomCode}/mapScenes/${normalized.id}/updatedAt`), Date.now()));
+        }
+        if (Number(normalized.order) !== Number(remote.order)) {
+          tasks.push(set(ref(db, `rooms/${roomCode}/mapScenes/${normalized.id}/order`), Number(normalized.order) || 0));
+        }
       }
     });
 
