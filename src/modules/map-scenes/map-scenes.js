@@ -651,10 +651,12 @@
   let _autoSavePendingTimer = null;
   let _autoSavePendingSceneId = '';
   let _autoSaveLastSig = '';
+  let _externalSceneSaveTimer = null;
 
   function stopActiveSceneAutoSave(){
     if (_autoSaveTimer) { clearInterval(_autoSaveTimer); _autoSaveTimer = null; }
     if (_autoSavePendingTimer) { clearTimeout(_autoSavePendingTimer); _autoSavePendingTimer = null; }
+    if (_externalSceneSaveTimer) { clearTimeout(_externalSceneSaveTimer); _externalSceneSaveTimer = null; }
     _autoSavePendingSceneId = '';
     _autoSaveLastSig = '';
   }
@@ -788,6 +790,30 @@
     if (!activeId || !canPersistActiveSceneTarget(activeId, roomCode)) return null;
     return persistSceneFromRuntime(activeId);
   }
+
+  function requestActiveSceneRuntimeSave(reason, delayMs){
+    if (!ROOT.St?.isGM || !ROOT._FB?.CONFIGURED) return false;
+    const roomCode = String(ROOT.St?.roomCode || '').trim();
+    const activeId = getCurrentActiveSceneId();
+    if (!activeId || !canPersistActiveSceneTarget(activeId, roomCode)) return false;
+
+    const delay = Math.max(120, Math.min(1200, Number(delayMs || 260)));
+    if (_externalSceneSaveTimer) clearTimeout(_externalSceneSaveTimer);
+    _externalSceneSaveTimer = window.setTimeout(function(){
+      _externalSceneSaveTimer = null;
+      const nextRoomCode = String(ROOT.St?.roomCode || '').trim();
+      const nextActiveId = getCurrentActiveSceneId();
+      if (!nextActiveId || !canPersistActiveSceneTarget(nextActiveId, nextRoomCode)) return;
+      persistActiveSceneFromRuntime(nextActiveId).then(function(saved){
+        if (saved) _autoSaveLastSig = currentRuntimeSignature();
+      }).catch(function(e){
+        console.warn('requestActiveSceneRuntimeSave failed', reason || '', e);
+      });
+    }, delay);
+    return true;
+  }
+
+  ROOT.requestActiveMapSceneSave = requestActiveSceneRuntimeSave;
 
   /* ── context menu (capture / rename / delete) ──
      - 현재 맵 저장(capture): 지금 라이브 맵/토큰 상태를 선택 씬에 즉시 캡처한다.

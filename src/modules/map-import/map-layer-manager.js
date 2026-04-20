@@ -74,6 +74,16 @@
     ).trim();
   }
 
+  function requestActiveSceneSave(reason) {
+    const root = (typeof window !== 'undefined' ? window : globalThis);
+    if (typeof root.requestActiveMapSceneSave !== 'function') return;
+    try {
+      root.requestActiveMapSceneSave(reason || 'map-layer-change', 260);
+    } catch (e) {
+      console.warn('requestActiveMapSceneSave failed', reason || '', e);
+    }
+  }
+
   function getDropInsertIndex(order, targetId, position) {
     const targetIndex = order.indexOf(targetId);
     if (targetIndex < 0) return order.length;
@@ -159,6 +169,7 @@
     if (typeof applyImportedMapState === 'function') applyImportedMapState(stateRoot.mapState);
     applyMapLayerState();
     renderMapLayerList();
+    requestActiveSceneSave('map-layer-delete');
 
     if (!window._FB?.CONFIGURED) return;
     const roomCode = getLiveRoomCode();
@@ -226,6 +237,7 @@
     if (typeof applyImportedMapState === 'function') applyImportedMapState(stateRoot.mapState);
     applyMapLayerState();
     renderMapLayerList();
+    requestActiveSceneSave('map-layer-delete');
 
     if (!window._FB?.CONFIGURED) return;
     const roomCode = getLiveRoomCode();
@@ -363,6 +375,7 @@
     const normalized = normalizeLayerState(nextState);
     getStateRoot().mapLayerState = normalized;
     applyMapLayerState();
+    requestActiveSceneSave('map-layer-state-change');
     if (!window._FB?.CONFIGURED) return;
     const roomCode = getLiveRoomCode();
     if (!roomCode || roomCode === 'local') return;
