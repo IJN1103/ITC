@@ -1,105 +1,52 @@
-Firebase Rules Stage 3 콘솔 적용 준비
-====================================
+Firebase Rules Stage 3 콘솔 적용 기록
+=====================================
 
-목적
-----
-Stage 3는 실제 Firebase Console Rules 적용 전에 사용할 콘솔 적용 후보를 확정하는 단계다.
-이번 단계에서도 자동으로 콘솔을 변경하지 않는다.
+현재 상태
+---------
+Stage 3에서 준비한 `database.rules.console-candidate.json`은 Stage 4에서 Firebase Console에 적용되었고, GM/플레이어 2계정 테스트를 통과했다.
 
 사용 파일
 ---------
-- 현재 콘솔 백업 기준: database.rules.json
-- 검토/수정 초안: database.rules.hardening-draft.json
-- 콘솔 적용 후보: database.rules.console-candidate.json
+- 현재 운영 기준: `database.rules.json`
+- 적용 후보 기록: `database.rules.console-candidate.json`
+- 검토용 초안: `database.rules.hardening-draft.json`
+- 롤백용 기존 Rules: `database.rules.rollback-current.json`
 
-중요 변경점
------------
+적용된 핵심 변경점
+-----------------
 1. 방 전체 삭제
-   - owner 또는 GM만 rooms/{roomCode} 전체 삭제 가능.
+   - owner 또는 GM만 `rooms/{roomCode}` 전체 삭제 가능.
    - 일반 플레이어가 마지막으로 방을 나가도 방 전체 삭제 불가.
 
 2. players 권한 상승 방지
    - 상위 players 전체 write를 열지 않는다.
-   - 플레이어 본인은 자기 표시 정보/online 갱신만 가능.
    - 플레이어 본인이 role 또는 permissions를 직접 상승시키는 것은 금지.
    - owner/GM은 role/permissions 관리 가능.
 
 3. BGM / 맵세팅 데이터 분리
-   - 현재 프로젝트는 BGM 데이터와 맵세팅 데이터 일부가 rooms/{roomCode}/bgm 하위에 함께 있다.
-   - 따라서 manageBgm 권한으로 bgm 전체를 쓰게 두면, BGM 권한자가 맵 배경/맵 오브젝트까지 수정할 수 있다.
-   - Stage 3 후보에서는 아래처럼 분리한다.
-     - bgm/playlist, bgm/currentTrack: owner/GM 또는 manageBgm
-     - bgm/mapBackground, mapObjects, mapLayerState 등 맵세팅 키: owner/GM 또는 manageMap
-     - 그 외 bgm 하위 키: owner/GM만
+   - `bgm/playlist`, `bgm/currentTrack`: owner/GM 또는 manageBgm.
+   - `bgm/mapBackground`, `mapObjects`, `mapLayerState` 등 맵세팅 키: owner/GM 또는 manageMap.
+   - 그 외 bgm 하위 키: owner/GM만.
+   - 현재 BGM 기능은 미구축이라 manageBgm 실제 테스트는 보류.
 
 4. Tokens
    - owner/GM은 전체 가능.
    - createToken: 새 토큰 생성.
-   - moveToken: x/y 좌표 이동만 가능.
-   - editToken: 토큰 편집/삭제 가능.
+   - moveToken: x/y 좌표 이동.
+   - editToken: 토큰 편집/삭제.
 
 5. Journals / Handouts
    - 현재 코드는 전체 read 후 프론트 필터링 구조다.
    - 이번 단계에서는 read를 엄격하게 막지 않는다.
    - write는 기존 코드 기준에 맞춰 제한한다.
 
-콘솔 적용 전 필수 백업
----------------------
-1. Firebase Console > Realtime Database > Rules에서 현재 Rules 전체 복사.
-2. 별도 메모장 또는 database.rules.json과 비교 가능한 위치에 백업.
-3. database.rules.console-candidate.json을 붙여넣기 전, 반드시 백업이 있는지 확인.
+결과
+----
+- Firebase Console 적용 완료.
+- GM/플레이어 2계정 Stage 4 테스트 통과.
+- 운영 기준 Rules는 `database.rules.json`으로 승격됨.
 
-권장 콘솔 테스트 순서
--------------------
-1. 테스트 방 하나를 새로 만든다.
-2. Firebase Console Rules 화면에 database.rules.console-candidate.json 내용을 붙여넣는다.
-3. Publish 전에 에디터 오류가 없는지 확인한다.
-4. Publish 후 GM 계정/플레이어 계정 2개로 테스트한다.
-5. 아래 테스트에서 Permission denied가 발생하면 즉시 database.rules.json 기준으로 롤백한다.
-
-필수 테스트
------------
-[ ] GM 방 생성 가능
-[ ] 플레이어 방 코드 입장 가능
-[ ] 플레이어 방 나가기 가능
-[ ] 플레이어가 나가도 방 전체 삭제되지 않음
-[ ] GM/owner 방 종료 또는 로비 삭제 가능
-[ ] 플레이어가 자기 role을 gm으로 변경 불가
-[ ] 플레이어가 자기 permissions 직접 추가/수정 불가
-[ ] GM이 플레이어 permissions 부여/회수 가능
-[ ] 권한 없는 플레이어 토큰 생성 불가
-[ ] createToken 권한 플레이어 토큰 생성 가능
-[ ] moveToken 권한 플레이어 토큰 이동 가능
-[ ] editToken 권한 플레이어 토큰 편집/삭제 가능
-[ ] GM 맵세팅 ZIP 업로드 가능
-[ ] GM 맵세팅 레이어 숨김/표시/순서/삭제 가능
-[ ] 장면 전환 저장/복제/순서 변경 가능
-[ ] 일반 채팅/desc/이미지/DM/팝아웃 정상
-[ ] 저널/핸드아웃 기존 기능 회귀 없음
-
-BGM 테스트 메모
---------------
-현재 BGM 기능이 실제 사이트에서 아직 완전히 구축/사용되지 않는다면, manageBgm 권한 테스트는 보류한다.
-다만 Rules 후보에서는 BGM 권한과 맵세팅 권한을 분리해두었으므로, 추후 BGM 기능을 활성화할 때 아래를 확인한다.
-
-[ ] GM은 BGM playlist/currentTrack 수정 가능
-[ ] manageBgm 권한 플레이어는 BGM playlist/currentTrack 수정 가능
-[ ] manageBgm 권한만 있는 플레이어가 mapBackground/mapObjects/mapLayerState를 수정할 수 없음
-
-롤백 기준
+후속 작업
 ---------
-다음 중 하나라도 발생하면 즉시 database.rules.json 기준으로 콘솔 Rules를 되돌린다.
-
-- 방 생성/입장 실패
-- GM 방 삭제 실패
-- 채팅 전송 실패
-- 토큰 생성/이동/편집이 권한 기준과 다르게 동작
-- 맵세팅 ZIP 업로드 Permission denied
-- 장면 전환 저장 Permission denied
-- 저널/핸드아웃 저장 실패
-
-현재 상태
----------
-- database.rules.console-candidate.json은 콘솔 적용 후보로 준비됨.
-- 아직 자동 적용하지 않음.
-- 실제 콘솔 반영은 사용자 수동 작업 필요.
+- 권한 UI가 없거나 부족한 기능은 클라이언트 UX를 별도로 정리한다.
+- journals/handouts per-item read 하드닝은 별도 로드맵으로 진행한다.

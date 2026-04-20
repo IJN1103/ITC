@@ -5,15 +5,13 @@ Firebase Rules 롤백 가이드
 ----
 Firebase Console Rules 강화 적용 후 문제가 생겼을 때 즉시 이전 Rules로 되돌리는 절차를 고정한다.
 
-롤백 파일
----------
-- `database.rules.rollback-current.json`
+현재 파일 기준
+--------------
+- `database.rules.json`: 현재 운영 적용 Rules.
+- `database.rules.rollback-current.json`: 하드닝 적용 전 기존 Rules 백업.
 
-이 파일은 Stage 4 적용 직전 기준의 기존 콘솔 Rules 백업이다.
-운영 콘솔 Rules 적용 후 문제가 생기면 이 파일 내용을 그대로 Firebase Console Rules에 다시 붙여넣는다.
-
-즉시 롤백해야 하는 경우
----------------------
+롤백해야 하는 경우
+-----------------
 - 방 생성/입장/재입장이 막힘
 - 일반 채팅/잡담/DM 전송이 막힘
 - GM이 방 종료/삭제를 할 수 없음
@@ -30,7 +28,7 @@ Firebase Console Rules 강화 적용 후 문제가 생겼을 때 즉시 이전 R
 3. Firebase Console > Realtime Database > Rules로 이동한다.
 4. 현재 Rules 전체를 지우고 복사한 내용을 붙여넣는다.
 5. Publish 한다.
-6. 브라우저를 새로고침한다.
+6. GM/플레이어 양쪽 브라우저를 모두 새로고침한다.
 7. 아래 최소 기능을 확인한다.
    - 방 입장
    - 채팅 전송
@@ -43,7 +41,8 @@ Firebase Console Rules 강화 적용 후 문제가 생겼을 때 즉시 이전 R
 ----
 - 롤백 후에도 클라이언트 캐시나 열린 탭 상태 때문에 잠시 오류가 남을 수 있다.
 - 롤백 후에는 GM/플레이어 양쪽 브라우저를 모두 새로고침한다.
-- 문제가 해결되면 강화 Rules는 다시 바로 적용하지 말고, 어떤 경로에서 막혔는지 먼저 기록한다.
+- 문제가 해결되면 강화 Rules를 다시 바로 적용하지 말고, 어떤 경로에서 막혔는지 먼저 기록한다.
+- 하드닝 Rules가 다시 필요하면 `database.rules.json`을 기준으로 수정한다.
 
 문제 기록 양식
 -------------
