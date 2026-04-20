@@ -1,4 +1,3 @@
-
 let _tokenMemoBubbleEl = null;
 let _tokenMemoBubbleTokenId = null;
 
@@ -115,6 +114,48 @@ function addToken() {
   document.getElementById('token-name').value = '';
 }
 
+function addPanelToken() {
+  if (!hasPerm('createToken')) { showToast('토큰 생성 권한이 없어요.'); return; }
+  const input = document.getElementById('panel-token-name');
+  const name = String(input?.value ?? '').trim();
+  const id = genId();
+  const token = {
+    id,
+    name,
+    type: 'panel',
+    tokenCategory: 'panel',
+    panelToken: true,
+    x: 50,
+    y: 50,
+    rotation: 0,
+    ownerId: St.myId || '',
+    ownerName: St.myName || '',
+    createdBy: St.myId || '',
+    createdByName: St.myName || '',
+    panelFace: 'front',
+    panelImage: '',
+    panelBackImage: '',
+    panelWidth: 240,
+    panelHeight: 135,
+    panelPriority: 1,
+    panelLockPosition: false,
+    panelLockSize: false,
+    panelActionType: 'none',
+    panelActionText: '',
+  };
+  St.tokens[id] = token;
+  renderAllTokens(St.tokens);
+  if (window._FB?.CONFIGURED) {
+    const { db, ref, set } = window._FB;
+    set(ref(db, `rooms/${St.roomCode}/tokens/${id}`), token).catch((err) => {
+      console.error('panel token create failed', err);
+      showToast('패널 토큰 생성에 실패했어요.');
+    });
+  }
+  closeModal('modal-panel-token');
+  if (input) input.value = '';
+}
+
 function renderAllTokens(tokens) {
   /* 드래그 중이면 전체 re-render를 보류 (드래그 끝나면 자동 실행) */
   if (_activeDragSession) {
@@ -131,6 +172,7 @@ function renderAllTokens(tokens) {
   renderMapStatusPanel(tokens);
   /* 게임 화면 진입 후 맵 크기가 정상 반영되도록 보장 */
   applyMapTransform();
+  if (Object.values(tokens || {}).some(isImportedMapSettingToken)) requestImportedMapLayerStateApply();
 }
 
 /* ── Firebase onChild* 용 개별 토큰 업데이트 ── */
@@ -140,11 +182,23 @@ function getTokenRenderSignature(token) {
     name: String(token?.name || ''),
     tokenImg: String(token?.tokenImg || ''),
     type: String(token?.type || ''),
+    tokenCategory: String(token?.tokenCategory || ''),
+    panelToken: !!token?.panelToken,
     tokenSize: Number(token?.tokenSize || 1),
     rotation: Number(token?.rotation || 0),
     memo: String(token?.memo || ''),
     standingAsToken: !!token?.standingAsToken,
     standingsKey: _standingsKey(token),
+    panelFace: String(token?.panelFace || ''),
+    panelImage: String(token?.panelImage || ''),
+    panelBackImage: String(token?.panelBackImage || ''),
+    panelWidth: Number(token?.panelWidth || 0),
+    panelHeight: Number(token?.panelHeight || 0),
+    panelPriority: Number(token?.panelPriority || 0),
+    panelActionType: String(token?.panelActionType || ''),
+    panelActionText: String(token?.panelActionText || ''),
+    importedMapObjectHidden: !!token?.importedMapObjectHidden,
+    importedLayoutKey: JSON.stringify(token?.importedMapObjectMeta?.layoutPct || null),
   });
 }
 
@@ -201,6 +255,7 @@ function addOrUpdateSingleToken(id, data) {
       }
       refreshTokenLiveSnapshot(existing, data);
       if (_teTokenId === id) refreshTokenOwnerBar(data);
+      requestImportedMapLayerStateApplyForToken(data);
       return;
     }
   }
@@ -209,6 +264,7 @@ function addOrUpdateSingleToken(id, data) {
   if (data) {
     createTokenEl(data);
     syncMapStatusCard(data, St.tokens);
+    requestImportedMapLayerStateApplyForToken(data);
     if (_teTokenId === id) refreshTokenOwnerBar(data);
   } else {
     removeMapStatusCard(id, St.tokens);
@@ -224,6 +280,8 @@ function _standingsKey(t) {
 }
 
 function removeSingleToken(id) {
+  cancelPanelTokenClickAction(id);
+  if (_pteTokenId === id) closePanelTokenEdit();
   if (_activeDragSession && _activeDragSession.targetIds.includes(id)) {
     _pendingTokenRender = true;
     return;
@@ -237,8 +295,88 @@ function removeSingleToken(id) {
 let _activeDragCleanup = null;
 
 
+function isTrueLike(value) {
+  return value === true || value === 1 || value === '1' || String(value).toLowerCase() === 'true';
+}
+
+function getTokenIdFromElement(el) {
+  const rawId = String(el?.id || '');
+  return rawId ? rawId.replace(/^tok-/, '') : '';
+}
+
+function getTokenFromElement(el) {
+  const tokenId = getTokenIdFromElement(el);
+  return tokenId ? (St.tokens?.[tokenId] || null) : null;
+}
+
+function isImportedMapSettingToken(token) {
+  if (!token) return false;
+  if (token.importedMapObject === true) return true;
+  if (token.importedMapObjectMeta && typeof token.importedMapObjectMeta === 'object') return true;
+  const mapLayerId = String(token.mapLayerId || '').trim();
+  if (mapLayerId.startsWith('object:')) return true;
+  return false;
+}
+
+function isTokenPositionLocked(token) {
+  if (!token) return false;
+  const sourceMeta = token.importedMapObjectMeta?.sourceMeta || {};
+  return !!(
+    isTrueLike(token.panelLockPosition) ||
+    isTrueLike(token.lockPosition) ||
+    isTrueLike(token.positionLocked) ||
+    isTrueLike(token.locked) ||
+    isTrueLike(sourceMeta.locked) ||
+    isTrueLike(sourceMeta.freezed)
+  );
+}
+
+function shouldPanMapFromLockedMapSettingToken(token) {
+  return isImportedMapSettingToken(token) && isTokenPositionLocked(token);
+}
+
+function shouldShowLockedTokenToast(token) {
+  return isTokenPositionLocked(token) && !shouldPanMapFromLockedMapSettingToken(token);
+}
+
+let _mapLayerStateApplyHandle = null;
+function requestImportedMapLayerStateApply() {
+  const root = typeof window !== 'undefined' ? window : globalThis;
+  const applyFn = root?.applyMapLayerState || (typeof applyMapLayerState === 'function' ? applyMapLayerState : null);
+  if (typeof applyFn !== 'function') return;
+  if (_mapLayerStateApplyHandle !== null) return;
+
+  const run = () => {
+    _mapLayerStateApplyHandle = null;
+    const latestApplyFn = root?.applyMapLayerState || (typeof applyMapLayerState === 'function' ? applyMapLayerState : null);
+    if (typeof latestApplyFn !== 'function') return;
+    try {
+      latestApplyFn();
+    } catch (err) {
+      console.warn('applyMapLayerState after imported token render failed', err);
+    }
+  };
+
+  if (typeof root?.requestAnimationFrame === 'function') {
+    _mapLayerStateApplyHandle = root.requestAnimationFrame(run);
+  } else if (typeof root?.setTimeout === 'function') {
+    _mapLayerStateApplyHandle = root.setTimeout(run, 0);
+  }
+}
+
+function requestImportedMapLayerStateApplyForToken(token) {
+  if (!isImportedMapSettingToken(token)) return;
+  requestImportedMapLayerStateApply();
+}
+
 function isPanelToken(token) {
-  return String(token?.type || token?.tokenCategory || '').trim() === 'panel';
+  if (!token) return false;
+  const type = String(token.type || '').trim();
+  const category = String(token.tokenCategory || '').trim();
+  if (type === 'panel' || category === 'panel' || token.panelToken === true) return true;
+  if (token.importedMapObject === true) return true;
+  if (token.panelImage || token.panelBackImage || token.panelWidth || token.panelHeight || token.panelFace) return true;
+  return false;
 }
 
 function getPanelTokenImageSource(token) {
@@ -246,6 +384,143 @@ function getPanelTokenImageSource(token) {
   const face = String(token?.panelFace || 'front').trim() || 'front';
   if (face === 'back' && token?.panelBackImage) return String(token.panelBackImage || '').trim();
   return String(token?.panelImage || token?.panelBackImage || '').trim();
+}
+
+
+const PANEL_TOKEN_CLICK_DELAY_MS = 320;
+let _panelTokenClickTimers = new Map();
+
+function normalizePanelTokenActionType(value) {
+  const type = String(value || 'none').trim().toLowerCase();
+  return (type === 'chat' || type === 'macro') ? type : 'none';
+}
+
+function getPanelTokenAction(token) {
+  const type = normalizePanelTokenActionType(token?.panelActionType);
+  const text = String(token?.panelActionText || '').trim();
+  if (type === 'none') return { type: 'none', text: '' };
+  return { type, text };
+}
+
+function validatePanelTokenActionConfig(type, text, options = {}) {
+  const silent = !!options.silent;
+  const normalizedType = normalizePanelTokenActionType(type);
+  const raw = String(text || '').trim();
+
+  if (normalizedType === 'none') return true;
+  if (!raw) {
+    if (!silent) showToast('클릭 액션 내용을 입력해 주세요.');
+    return false;
+  }
+  if (normalizedType === 'chat' && raw.startsWith('/')) {
+    if (!silent) showToast('채팅 보내기에는 /로 시작하는 매크로를 넣을 수 없어요.');
+    return false;
+  }
+  if (normalizedType === 'macro' && !raw.startsWith('/')) {
+    if (!silent) showToast('매크로는 /로 시작해야 해요. 예: /1d10, /choice(a,b)');
+    return false;
+  }
+  return true;
+}
+
+function cancelPanelTokenClickAction(tokenId) {
+  const key = String(tokenId || '');
+  if (!key) return;
+  const timer = _panelTokenClickTimers.get(key);
+  if (timer) clearTimeout(timer);
+  _panelTokenClickTimers.delete(key);
+}
+
+function markSuppressPanelTokenClick(tokenId, ms = 420) {
+  const el = getTokenEl(tokenId);
+  if (el) el._suppressPanelClickUntil = Date.now() + ms;
+  cancelPanelTokenClickAction(tokenId);
+}
+
+function markSuppressPanelTokenClicks(tokenIds, ms = 420) {
+  (tokenIds || []).forEach((id) => markSuppressPanelTokenClick(id, ms));
+}
+
+async function sendPanelTokenChatMessage(text) {
+  const raw = String(text || '').trim();
+  if (!raw) return;
+
+  if (St.speakAsJournalId && typeof loadJournals === 'function' && typeof saSendMessage === 'function') {
+    const journal = loadJournals().find((j) => j.id === St.speakAsJournalId);
+    if (journal) {
+      await saSendMessage(journal, raw);
+      return;
+    }
+    St.speakAsJournalId = null;
+    if (typeof saRefreshBtn === 'function') saRefreshBtn();
+  }
+
+  if (typeof sendMessage === 'function') {
+    await sendMessage(St.myName, raw, 'normal');
+    return;
+  }
+  showToast('채팅 전송 함수를 찾지 못했어요.');
+}
+
+async function executePanelTokenAction(tokenId) {
+  const token = St.tokens?.[tokenId];
+  if (!isPanelToken(token)) return;
+  if (St.tool === 'erase') return;
+
+  const action = getPanelTokenAction(token);
+  if (action.type === 'none') return;
+  if (!validatePanelTokenActionConfig(action.type, action.text)) return;
+
+  if (action.type === 'chat') {
+    await sendPanelTokenChatMessage(action.text);
+    return;
+  }
+
+  if (action.type === 'macro') {
+    const choiceMatch = action.text.match(/^\/choice\s*[\(\（](.+)[\)\）]$/i);
+    if (choiceMatch) {
+      const options = choiceMatch[1].split(',').map((item) => item.trim()).filter(Boolean);
+      if (options.length < 2) {
+        showToast('choice 선택지를 2개 이상 입력해 주세요.');
+        return;
+      }
+      const picked = options[Math.floor(Math.random() * options.length)];
+      await sendPanelTokenChatMessage(`🎯 Choice [${options.join(', ')}] → ${picked}`);
+      return;
+    }
+
+    const diceMatch = action.text.match(/^\/(\d*d\d+.*)$/i);
+    if (diceMatch && typeof rollFromFormula === 'function') {
+      rollFromFormula(diceMatch[1].trim());
+      return;
+    }
+
+    showToast('지원하지 않는 매크로예요. 예: /1d10, /choice(a,b)');
+  }
+}
+
+function schedulePanelTokenClickAction(tokenId, event) {
+  const key = String(tokenId || '');
+  if (!key) return;
+  if (event && event.button != null && event.button !== 0) return;
+
+  const token = St.tokens?.[key];
+  if (!isPanelToken(token)) return;
+  const action = getPanelTokenAction(token);
+  if (action.type === 'none') return;
+
+  const el = getTokenEl(key);
+  if (el && Date.now() < Number(el._suppressPanelClickUntil || 0)) return;
+
+  cancelPanelTokenClickAction(key);
+  const timer = setTimeout(() => {
+    _panelTokenClickTimers.delete(key);
+    executePanelTokenAction(key).catch((err) => {
+      console.error('panel token action failed', err);
+      showToast('패널 토큰 액션 실행에 실패했어요.');
+    });
+  }, PANEL_TOKEN_CLICK_DELAY_MS);
+  _panelTokenClickTimers.set(key, timer);
 }
 
 function applyPanelTokenSize(el, token) {
@@ -272,8 +547,13 @@ function createTokenEl(t) {
   const inner = document.getElementById('map-inner');
   const el = document.createElement('div');
   const isPanel = isPanelToken(t);
-  el.className = `map-token ${isPanel ? 'panel-token' : ''} ${t.type==='enemy'?'enemy':t.type==='npc'?'npc':''}`.trim();
+  el.className = `map-token ${isPanel ? 'panel-token' : ''} ${(!isPanel && t.type==='enemy')?'enemy':(!isPanel && t.type==='npc')?'npc':''}`.trim();
   el.id = 'tok-' + t.id;
+  if (isPanel) {
+    const priority = Number(t.panelPriority || 1);
+    el.style.zIndex = String(Number.isFinite(priority) ? Math.max(1, priority) : 1);
+    if (t.importedMapObjectHidden) el.style.display = 'none';
+  }
   el.style.left = storedTokenPercentToDisplay(t.x, 'x') + '%'; el.style.top = storedTokenPercentToDisplay(t.y, 'y') + '%';
   if (t.rotation) el.style.transform = `translate(-50%,-50%) rotate(${t.rotation}deg)`;
   const sz = (t.tokenSize || 1);
@@ -309,14 +589,17 @@ function createTokenEl(t) {
     el.appendChild(img);
     if (isPanel) {
       if (!t.importedMapObject) {
-        const nameLabel = document.createElement('span');
-        nameLabel.className = 'token-name-label';
-        nameLabel.textContent = t.name || '';
-        el.appendChild(nameLabel);
+        const panelName = String(t.name || '').trim();
+        if (panelName) {
+          const nameLabel = document.createElement('span');
+          nameLabel.className = 'token-name-label';
+          nameLabel.textContent = panelName;
+          el.appendChild(nameLabel);
+        }
       }
     }
   } else {
-    el.textContent = t.name;
+    el.textContent = isPanel ? String(t.name || '').trim() : t.name;
     if (isPanel) {
       applyPanelTokenSize(el, t);
     } else if (sz > 1) {
@@ -334,15 +617,31 @@ function createTokenEl(t) {
       if (_tokenMemoBubbleTokenId === t.id) hideTokenMemoBubble();
     });
   }
-  el.addEventListener('dblclick', e => { e.preventDefault(); e.stopPropagation(); hideTokenMemoBubble(); if (typeof openTokenEdit === 'function') openTokenEdit(t.id); });
-  el.addEventListener('contextmenu', e => { e.preventDefault(); e.stopPropagation(); hideTokenMemoBubble(); showTokenCtx(e, t.id); });
+  el.addEventListener('click', e => {
+    if (!isPanelToken(t)) return;
+    schedulePanelTokenClickAction(t.id, e);
+  });
+  el.addEventListener('dblclick', e => {
+    e.preventDefault();
+    e.stopPropagation();
+    cancelPanelTokenClickAction(t.id);
+    hideTokenMemoBubble();
+    if (isPanelToken(t) && t.panelImage && t.panelBackImage) {
+      togglePanelTokenFace(t.id);
+      return;
+    }
+    if (typeof openTokenEdit === 'function') openTokenEdit(t.id);
+  });
+  el.addEventListener('contextmenu', e => { e.preventDefault(); e.stopPropagation(); cancelPanelTokenClickAction(t.id); hideTokenMemoBubble(); showTokenCtx(e, t.id); });
   makeDraggable(el, t.id);
   refreshTokenLiveSnapshot(el, t);
   inner.appendChild(el);
+  requestImportedMapLayerStateApplyForToken(t);
 }
 
 function makeDraggable(el, tokenId) {
   el.addEventListener('mousedown', e => {
+    cancelPanelTokenClickAction(tokenId);
     if (e.button === 1) {
       e.preventDefault();
       e.stopPropagation();
@@ -351,8 +650,16 @@ function makeDraggable(el, tokenId) {
     }
 
     if (e.button !== 0) return;
+    const dragToken = St.tokens[tokenId];
+    if (shouldPanMapFromLockedMapSettingToken(dragToken)) {
+      return;
+    }
     if (!hasPerm('moveToken')) { showToast('토큰 이동 권한이 없어요.'); return; }
     if (St.tool === 'erase') { removeToken(tokenId); return; }
+    if (shouldShowLockedTokenToast(dragToken)) {
+      showToast('위치가 고정된 패널 토큰이에요.');
+      return;
+    }
 
     e.preventDefault();
     e.stopPropagation();
@@ -364,7 +671,11 @@ function makeDraggable(el, tokenId) {
     const dragSession = buildTokenDragSession(tokenId, e);
     _activeDragSession = dragSession;
 
+    let didMove = false;
     const onMove = ev => {
+      if (!didMove && (Math.abs(ev.clientX - dragSession.startClientX) > 3 || Math.abs(ev.clientY - dragSession.startClientY) > 3)) {
+        didMove = true;
+      }
       applyTokenDragSession(dragSession, ev);
     };
 
@@ -377,7 +688,8 @@ function makeDraggable(el, tokenId) {
       if (_activeDragCleanup === finalizeDrag) _activeDragCleanup = null;
 
       const shouldSave = options.save !== false;
-      const patch = shouldSave ? collectDraggedTokenPositions(dragSession.targetIds) : null;
+      if (didMove) markSuppressPanelTokenClicks(dragSession.targetIds);
+      const patch = (shouldSave && didMove) ? collectDraggedTokenPositions(dragSession.targetIds) : null;
       _activeDragSession = null;
 
       if (patch && Object.keys(patch).length) saveTokenPositionPatch(patch);
@@ -398,6 +710,7 @@ function makeDraggable(el, tokenId) {
 }
 
 function removeToken(tokenId) {
+  cancelPanelTokenClickAction(tokenId);
   if (!hasPerm('editToken')) { showToast('토큰 편집 권한이 없어요.'); return; }
   setMultiTokenSelection(_multiSelectedTokenIds.filter((id) => id !== tokenId));
   const el = getTokenEl(tokenId);
@@ -444,7 +757,8 @@ function tokCtxAction(action) {
 
   switch (action) {
     case 'edit':
-      openTokenEdit(id);
+      if (isPanelToken(t)) openPanelTokenEdit(id);
+      else openTokenEdit(id);
       break;
     case 'rotate': {
       t.rotation = ((t.rotation || 0) + 45) % 360;

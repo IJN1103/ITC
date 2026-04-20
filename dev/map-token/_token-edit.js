@@ -2,9 +2,13 @@ let _teTokenId = null;
 let _teTokenImgData = null;
 
 function openTokenEdit(tokenId) {
-  _teTokenId = tokenId;
   const t = St.tokens[tokenId];
   if (!t) return;
+  if (isPanelToken(t)) {
+    openPanelTokenEdit(tokenId);
+    return;
+  }
+  _teTokenId = tokenId;
 
   refreshTokenOwnerBar(t);
 
@@ -278,6 +282,215 @@ function deleteTokenFromEdit() {
   if (window._FB?.CONFIGURED) {
     const { db, ref, remove } = window._FB;
     remove(ref(db, `rooms/${St.roomCode}/tokens/${delId}`));
+  }
+}
+
+
+let _pteTokenId = null;
+let _pteFrontData = null;
+let _pteBackData = null;
+let _pteFrontBlob = null;
+let _pteBackBlob = null;
+let _panelTokenAdvancedOpen = true;
+
+function cleanupPanelTokenEditPendingAssets() {
+  revokeTokenPreviewUrl(_pteFrontData);
+  revokeTokenPreviewUrl(_pteBackData);
+  _pteFrontData = null;
+  _pteBackData = null;
+  _pteFrontBlob = null;
+  _pteBackBlob = null;
+}
+
+function setPanelTokenPreview(previewId, url, emptyText, clearFnName) {
+  const wrap = document.getElementById(previewId);
+  if (!wrap) return;
+  wrap.classList.toggle('has-image', !!url);
+  if (url) {
+    wrap.innerHTML = `<img src="${esc(url)}" alt=""><button class="panel-token-preview-delete" type="button" onclick="event.stopPropagation(); ${clearFnName}()">×</button>`;
+  } else {
+    wrap.textContent = emptyText;
+  }
+}
+
+function refreshPanelTokenPreviews() {
+  setPanelTokenPreview('pte-front-preview', _pteFrontData, '이미지 없음', 'clearPanelTokenFrontImg');
+  setPanelTokenPreview('pte-back-preview', _pteBackData, '뒷면 이미지 없음', 'clearPanelTokenBackImg');
+}
+
+function openPanelTokenEdit(tokenId) {
+  const t = St.tokens[tokenId];
+  if (!t) return;
+  _pteTokenId = tokenId;
+  cleanupPanelTokenEditPendingAssets();
+  _pteFrontData = t.panelImage || '';
+  _pteBackData = t.panelBackImage || '';
+
+  const setValue = (id, value) => { const el = document.getElementById(id); if (el) el.value = value; };
+  const setChecked = (id, value) => { const el = document.getElementById(id); if (el) el.checked = !!value; };
+  setValue('pte-name', t.name || '');
+  setValue('pte-width', Math.max(1, Number(t.panelWidth || 240) || 240));
+  setValue('pte-height', Math.max(1, Number(t.panelHeight || 135) || 135));
+  setValue('pte-priority', Math.max(1, Number(t.panelPriority || 1) || 1));
+  setValue('pte-memo', t.memo || '');
+  setChecked('pte-lock-pos', !!(t.panelLockPosition ?? t.lockPosition));
+  setChecked('pte-lock-size', !!(t.panelLockSize ?? t.lockSize));
+  setValue('pte-action-type', String(t.panelActionType || 'none'));
+  setValue('pte-action-text', String(t.panelActionText || ''));
+  refreshPanelTokenPreviews();
+  syncPanelTokenLockUi();
+  syncPanelTokenActionUi();
+  openModal('modal-panel-token-edit');
+}
+
+function closePanelTokenEdit() {
+  if (_pteTokenId) cancelPanelTokenClickAction(_pteTokenId);
+  cleanupPanelTokenEditPendingAssets();
+  _pteTokenId = null;
+  closeModal('modal-panel-token-edit');
+}
+
+function syncPanelTokenLockUi() {
+  const locked = !!document.getElementById('pte-lock-size')?.checked;
+  ['pte-width', 'pte-height'].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = locked;
+  });
+}
+
+function syncPanelTokenActionUi() {
+  const type = String(document.getElementById('pte-action-type')?.value || 'none');
+  const wrap = document.getElementById('pte-action-text-wrap');
+  const help = document.getElementById('pte-action-help');
+  const label = document.getElementById('pte-action-text-label');
+  if (wrap) wrap.style.display = type === 'none' ? 'none' : '';
+  if (label) label.textContent = type === 'macro' ? 'Macro to run' : 'Text to be sent';
+  if (help) {
+    help.textContent = type === 'macro'
+      ? '패널 클릭 시 매크로/다이스 명령을 실행합니다.'
+      : type === 'chat'
+        ? '패널 클릭 시 입력한 문장을 채팅으로 보냅니다.'
+        : '패널 클릭 시 별도 동작을 하지 않습니다.';
+  }
+}
+
+function togglePanelTokenAdvanced() {
+  _panelTokenAdvancedOpen = !_panelTokenAdvancedOpen;
+  const body = document.getElementById('panel-token-advanced-body');
+  const arrow = document.getElementById('panel-token-advanced-arrow');
+  if (body) body.style.display = _panelTokenAdvancedOpen ? '' : 'none';
+  if (arrow) arrow.textContent = _panelTokenAdvancedOpen ? '▴' : '▾';
+}
+
+async function preparePanelTokenImage(input, side) {
+  const file = input.files?.[0];
+  if (!file) return;
+  if (file.size > 5 * 1024 * 1024) { showToast('이미지는 5MB 이하만 가능해요.'); input.value = ''; return; }
+  try {
+    const blob = await makeTokenImageBlob(file, 1600);
+    const previewUrl = URL.createObjectURL(blob);
+    if (side === 'front') {
+      revokeTokenPreviewUrl(_pteFrontData);
+      _pteFrontBlob = blob;
+      _pteFrontData = previewUrl;
+    } else {
+      revokeTokenPreviewUrl(_pteBackData);
+      _pteBackBlob = blob;
+      _pteBackData = previewUrl;
+    }
+    refreshPanelTokenPreviews();
+  } catch (err) {
+    console.error('panel token image prepare failed', err);
+    showToast('패널 이미지를 준비하지 못했어요. 다시 시도해 주세요.');
+  } finally {
+    input.value = '';
+  }
+}
+
+function handlePanelTokenFrontImg(input) { preparePanelTokenImage(input, 'front'); }
+function handlePanelTokenBackImg(input) { preparePanelTokenImage(input, 'back'); }
+function clearPanelTokenFrontImg() { revokeTokenPreviewUrl(_pteFrontData); _pteFrontData = ''; _pteFrontBlob = null; refreshPanelTokenPreviews(); }
+function clearPanelTokenBackImg() { revokeTokenPreviewUrl(_pteBackData); _pteBackData = ''; _pteBackBlob = null; refreshPanelTokenPreviews(); }
+
+async function savePanelTokenEdit() {
+  if (!_pteTokenId) return;
+  const t = St.tokens[_pteTokenId];
+  if (!t) return;
+  const name = String(document.getElementById('pte-name')?.value ?? '').trim();
+  const width = Math.max(1, Number(document.getElementById('pte-width')?.value || t.panelWidth || 240) || 240);
+  const height = Math.max(1, Number(document.getElementById('pte-height')?.value || t.panelHeight || 135) || 135);
+  const priority = Math.max(1, Number(document.getElementById('pte-priority')?.value || t.panelPriority || 1) || 1);
+  let frontUrl = _pteFrontData || '';
+  let backUrl = _pteBackData || '';
+
+  try {
+    if (_pteFrontBlob) frontUrl = await uploadTokenBlobToCloudinary(_pteFrontBlob, `itc/panels/${St.roomCode}`);
+    else if (frontUrl.startsWith('blob:')) frontUrl = t.panelImage || '';
+    if (_pteBackBlob) backUrl = await uploadTokenBlobToCloudinary(_pteBackBlob, `itc/panels/${St.roomCode}`);
+    else if (backUrl.startsWith('blob:')) backUrl = t.panelBackImage || '';
+  } catch (err) {
+    console.error('panel token image upload failed', err);
+    showToast('패널 이미지 업로드에 실패했어요.');
+    return;
+  }
+
+  const actionType = normalizePanelTokenActionType(document.getElementById('pte-action-type')?.value || 'none');
+  const actionText = String(document.getElementById('pte-action-text')?.value || '').trim();
+  if (!validatePanelTokenActionConfig(actionType, actionText)) return;
+
+  const next = {
+    ...t,
+    name,
+    type: 'panel',
+    tokenCategory: 'panel',
+    panelToken: true,
+    memo: document.getElementById('pte-memo')?.value || '',
+    panelWidth: width,
+    panelHeight: height,
+    panelPriority: priority,
+    panelImage: frontUrl,
+    panelBackImage: backUrl,
+    panelFace: (t.panelFace === 'back' && backUrl) ? 'back' : 'front',
+    panelLockPosition: !!document.getElementById('pte-lock-pos')?.checked,
+    panelLockSize: !!document.getElementById('pte-lock-size')?.checked,
+    panelActionType: actionType,
+    panelActionText: actionType === 'none' ? '' : actionText,
+  };
+
+  St.tokens[_pteTokenId] = next;
+  addOrUpdateSingleToken(_pteTokenId, next);
+  if (window._FB?.CONFIGURED) {
+    const { db, ref, set } = window._FB;
+    try {
+      await set(ref(db, `rooms/${St.roomCode}/tokens/${_pteTokenId}`), next);
+    } catch (err) {
+      console.error('panel token save failed', err);
+      showToast('패널 토큰 저장에 실패했어요.');
+      return;
+    }
+  }
+  cleanupPanelTokenEditPendingAssets();
+  _pteFrontData = next.panelImage || '';
+  _pteBackData = next.panelBackImage || '';
+  showToast('패널 토큰이 저장됐어요.');
+}
+
+function deletePanelTokenFromEdit() {
+  if (!_pteTokenId || !confirm('이 패널 토큰을 삭제할까요?')) return;
+  const id = _pteTokenId;
+  closePanelTokenEdit();
+  removeToken(id);
+}
+
+function togglePanelTokenFace(tokenId) {
+  const t = St.tokens[tokenId];
+  if (!isPanelToken(t) || !t.panelBackImage) return;
+  const nextFace = String(t.panelFace || 'front') === 'back' ? 'front' : 'back';
+  t.panelFace = nextFace;
+  addOrUpdateSingleToken(tokenId, t);
+  if (window._FB?.CONFIGURED) {
+    const { db, ref, update } = window._FB;
+    update(ref(db, `rooms/${St.roomCode}/tokens/${tokenId}`), { panelFace: nextFace }).catch((err) => console.error('panel face update failed', err));
   }
 }
 

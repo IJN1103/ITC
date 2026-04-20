@@ -5,6 +5,39 @@ const COC_STATS = [
   { key:'siz', name:'체격(SIZ)' }, { key:'int', name:'지능(INT)' },
 ];
 
+const COC_STAT_LABEL_MAP = {
+  '근력': 'str',
+  '건강': 'con',
+  '크기': 'siz',
+  '민첩성': 'dex',
+  '외모': 'app',
+  '지능': 'int',
+  '지능(아이디어)': 'int',
+  '정신력': 'pow',
+  '교육': 'edu',
+  '이성': 'san',
+  '행운': 'luck',
+};
+
+const COC_SKILL_IMPORT_ALIAS = {
+  '근접전:격투': '근접전(격투)',
+  '사격(라/산)': '사격(라이플/산탄)',
+  '매혹': '마호',
+  '일본어': '언어(모국어)',
+};
+
+const COC_RESOURCE_LABEL_MAP = {
+  'HP': ['hp', 'hp_max'],
+  'MP': ['mp', 'mp_max'],
+  '이성': ['san', 'san_max'],
+  '행운': ['luck', null],
+};
+
+const COC_PARAM_LABEL_MAP = {
+  'DB': 'db',
+  '체구': 'build',
+};
+
 const COC_SKILLS = [
   { name:'감정', base:5 },    { name:'고고학', base:1 },
   { name:'관찰력', base:25 }, { name:'근접전(격투)', base:25 },
@@ -29,11 +62,202 @@ const COC_SKILLS = [
   { name:'회피', base:0 },    { name:'언어(다른언어)', base:1 },
 ];
 
+function normalizeImportedCocSkillName(name = '') {
+  const raw = String(name || '').trim();
+  return COC_SKILL_IMPORT_ALIAS[raw] || raw;
+}
+
+function buildEmptyImportedCocSheet() {
+  return {
+    name: '', player: '', job: '', age: '', height: '', sex: '', nationality: '', residence: '', birthplace: '', first_language: '',
+    str: 0, con: 0, siz: 0, dex: 0, app: 0, int: 0, pow: 0, edu: 0,
+    hp: '', hp_max: '', san: '', san_max: '', mp: '', mp_max: '', luck: '', db: '', build: '',
+    status_temp_insane: false, status_indefinite: false, status_major_wound: false, status_dying: false,
+    skills: COC_SKILLS.map(sk => ({ checked: false, val: sk.base, half: Math.floor(sk.base / 2) })),
+    unarmed_skill: '근접전(격투)',
+    unarmed_dmg: '1d3+db',
+    combat_rows: [],
+    equipment: '', spending: '', cash: '', assets: '', notes: '',
+    bs_appearance: '', bs_personality: '', bs_ideology: '', bs_wounds: '', bs_people: '',
+    bs_phobias: '', bs_places: '', bs_tomes: '', bs_treasures: '', bs_encounters: '',
+  };
+}
+
+function extractCcfoliaCharacterPayload(rawText = '') {
+  const raw = String(rawText || '').trim();
+  if (!raw) return null;
+  const start = raw.indexOf('{');
+  const end = raw.lastIndexOf('}');
+  if (start < 0 || end <= start) return null;
+  const candidate = raw.slice(start, end + 1).replace(/[“”]/g, '"');
+  try {
+    const parsed = JSON.parse(candidate);
+    if (parsed?.kind === 'character' && parsed?.data && typeof parsed.data === 'object') return parsed;
+  } catch (e) {}
+  return null;
+}
+
+function buildJournalFromCcfoliaCharacter(parsed) {
+  const data = parsed?.data;
+  if (!data || typeof data !== 'object') return null;
+
+  const sheet = buildEmptyImportedCocSheet();
+  const skillIndexMap = new Map(COC_SKILLS.map((sk, i) => [normalizeImportedCocSkillName(sk.name), i]));
+  const unmappedCommands = [];
+
+  sheet.name = String(data.name || '').trim();
+  sheet.player = String(data.memo || '').trim();
+
+  (Array.isArray(data.status) ? data.status : []).forEach((entry) => {
+    const label = String(entry?.label || '').trim();
+    const mapped = COC_RESOURCE_LABEL_MAP[label];
+    if (!mapped) return;
+    const [curKey, maxKey] = mapped;
+    if (curKey) sheet[curKey] = entry?.value ?? '';
+    if (maxKey) sheet[maxKey] = entry?.max ?? entry?.value ?? '';
+  });
+
+  (Array.isArray(data.params) ? data.params : []).forEach((entry) => {
+    const label = String(entry?.label || '').trim();
+    const mapped = COC_PARAM_LABEL_MAP[label];
+    if (mapped) sheet[mapped] = String(entry?.value ?? '').trim();
+  });
+
+  const commands = String(data.commands || '').replace(/\r/g, '');
+  commands.split('\n').map(line => line.trim()).filter(Boolean).forEach((line) => {
+    const check = line.match(/^CC<=\{?([^}\s]+)\}?\s+(.+)$/i);
+    if (check) {
+      const targetToken = String(check[1] || '').trim();
+      const label = String(check[2] || '').trim();
+      const numericTarget = /^\d+$/.test(targetToken) ? parseInt(targetToken, 10) : null;
+      const statKey = COC_STAT_LABEL_MAP[label];
+      if (statKey && numericTarget !== null) {
+        sheet[statKey] = numericTarget;
+        if (statKey === 'san' && !sheet.san_max) sheet.san_max = numericTarget;
+        if (statKey === 'luck' && !sheet.luck) sheet.luck = numericTarget;
+        return;
+      }
+      const normalizedSkillName = normalizeImportedCocSkillName(label);
+      const skillIndex = skillIndexMap.get(normalizedSkillName);
+      if (skillIndex !== undefined && numericTarget !== null) {
+        sheet.skills[skillIndex] = {
+          checked: sheet.skills[skillIndex]?.checked || false,
+          val: numericTarget,
+          half: Math.floor(numericTarget / 2),
+          fifth: Math.floor(numericTarget / 5),
+        };
+        return;
+      }
+      if (label && numericTarget !== null) unmappedCommands.push(`${label}=${numericTarget}`);
+      return;
+    }
+
+    const weapon = line.match(/^(.+?)\s+(.+)$/);
+    if (weapon && /\d+d\d+/i.test(weapon[1])) {
+      const dmg = weapon[1].trim();
+      const name = weapon[2].trim();
+      if (/비무장/.test(name)) {
+        sheet.unarmed_dmg = dmg;
+      } else {
+        sheet.combat_rows.push({ name, skill: '', dmg, range: '', atk: '', ammo: '', mal: '' });
+      }
+    }
+  });
+
+  if (!sheet.san && sheet.san_max) sheet.san = sheet.san_max;
+  if (!sheet.hp && sheet.hp_max) sheet.hp = sheet.hp_max;
+  if (!sheet.mp && sheet.mp_max) sheet.mp = sheet.mp_max;
+
+  if (unmappedCommands.length) {
+    sheet.notes = `가져오지 못한 판정 항목: ${unmappedCommands.join(', ')}`;
+  }
+
+  const titleBase = sheet.name || String(data.name || '가져온 저널').trim() || '가져온 저널';
+  const id = `j_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+  return {
+    id,
+    title: titleBase,
+    body: '',
+    ownerId: St.myId,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    assignedTo: [],
+    assignedTokenId: null,
+    nameColor: '',
+    sheet,
+  };
+}
+
+async function importCcfoliaApiToJournal(rawText = '') {
+  const parsed = extractCcfoliaCharacterPayload(rawText);
+  if (!parsed) return { handled: false, created: false };
+  const journal = buildJournalFromCcfoliaCharacter(parsed);
+  if (!journal) {
+    showToast('CCFOLIA API 데이터를 해석하지 못했어요.');
+    return { handled: true, created: false };
+  }
+  saveJournalFB(journal);
+  try { await loadJournalsFB(); } catch (e) {}
+  if (typeof renderJournalList === 'function') renderJournalList();
+  if (typeof saRefreshToolbar === 'function') saRefreshToolbar();
+  showToast(`저널 '${journal.title}'을(를) 가져왔어요.`);
+  return { handled: true, created: true, journalId: journal.id, title: journal.title };
+}
+
 let _sheetJournalId = null;
 
-function canEditJournalEntry(journal) {
-  if (!journal) return false;
-  return !!St.isGM || String(journal.ownerId || '') === String(St.myId || '') || (Array.isArray(journal.assignedTo) && journal.assignedTo.includes(St.myId));
+function bindStatRollInteractions(grid) {
+  if (!grid || grid.dataset.rollBound === '1') return;
+  grid.dataset.rollBound = '1';
+  grid.addEventListener('click', (event) => {
+    const trigger = event.target.closest('.stat-roll-trigger');
+    if (!trigger || !grid.contains(trigger)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const key = trigger.dataset.statKey || '';
+    const name = trigger.dataset.statName || '특성치';
+    const input = document.getElementById('sh-' + key);
+    const value = input ? parseInt(input.value, 10) || 0 : 0;
+    if (typeof window.rollJournalSheetSkillCheck === 'function') {
+      window.rollJournalSheetSkillCheck(name, value);
+    }
+  });
+}
+
+function bindResourceRollInteractions() {
+  document.querySelectorAll('.resource-roll-trigger').forEach(btn => {
+    if (btn.dataset.rollBound === '1') return;
+    btn.dataset.rollBound = '1';
+    btn.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const inputId = btn.dataset.rollInput || '';
+      const name = btn.dataset.rollName || '판정';
+      const input = inputId ? document.getElementById(inputId) : null;
+      const value = input ? parseInt(input.value, 10) || 0 : 0;
+      if (typeof window.rollJournalSheetSkillCheck === 'function') {
+        window.rollJournalSheetSkillCheck(name, value);
+      }
+    });
+  });
+}
+
+function bindSheetSkillRollInteractions(wrap) {
+  if (!wrap || wrap.dataset.rollBound === '1') return;
+  wrap.dataset.rollBound = '1';
+  wrap.addEventListener('click', (event) => {
+    const trigger = event.target.closest('.skill-roll-trigger');
+    if (!trigger || !wrap.contains(trigger)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const index = trigger.dataset.skillIndex;
+    const name = trigger.dataset.skillName || trigger.textContent || '기능치';
+    const input = index !== undefined ? document.getElementById(`sk-val-${index}`) : null;
+    const value = input ? parseInt(input.value, 10) || 0 : 0;
+    if (typeof window.rollJournalSheetSkillCheck === 'function') {
+      window.rollJournalSheetSkillCheck(name, value);
+    }
+  });
 }
 
 function initSheetUI() {
@@ -42,21 +266,23 @@ function initSheetUI() {
     COC_STATS.forEach(s => {
       const div = document.createElement('div');
       div.className = 'stat-card';
-      div.innerHTML = `<div class="stat-name">${s.name}</div>
+      div.innerHTML = `<button type="button" class="stat-name stat-roll-trigger" data-stat-key="${s.key}" data-stat-name="${s.name}" title="${s.name} 판정">${s.name}</button>
         <input class="stat-val" id="sh-${s.key}" type="number" min="0" max="99" placeholder="0" oninput="updateStatHalf('${s.key}')">
         <div class="stat-half" id="sh-${s.key}-half">½ — / ⅕ —</div>`;
       grid.appendChild(div);
     });
+    bindStatRollInteractions(grid);
   }
 
   const wrap = document.getElementById('sh-skills-wrap');
   if (!wrap) return;
   wrap.innerHTML = '';
+  bindSheetSkillRollInteractions(wrap);
 
   const colHead = () => {
     const h = document.createElement('div');
     h.className = 'skill-col-head';
-    h.innerHTML = '<span></span><span>기능명</span><span>기본</span><span>현재</span><span>½값</span>';
+    h.innerHTML = '<span></span><span>기능명</span><span>현재</span><span>½값</span><span>⅕값</span>';
     return h;
   };
 
@@ -71,14 +297,23 @@ function initSheetUI() {
       row.className = 'skill-row';
       row.innerHTML = `
         <input type="checkbox" class="skill-check" id="sk-check-${i}">
-        <span class="skill-name" title="${sk.name}">${sk.name}</span>
-        <span class="skill-base">${sk.base}</span>
-        <input class="skill-input" id="sk-val-${i}" type="number" min="0" max="99" value="${sk.base}">
-        <input class="skill-input half-val" id="sk-half-${i}" type="number" min="0" max="99" value="${Math.floor(sk.base / 2)}">`;
+        <button type="button" class="skill-name skill-roll-trigger" title="${sk.name} 판정" data-skill-index="${i}" data-skill-name="${sk.name}">${sk.name}</button>
+        <input class="skill-input" id="sk-val-${i}" type="number" min="0" max="99" value="${sk.base}" oninput="updateSkillFractions(${i})">
+        <input class="skill-input half-val" id="sk-half-${i}" type="number" min="0" max="99" value="${Math.floor(sk.base / 2)}" readonly>
+        <input class="skill-input half-val" id="sk-fifth-${i}" type="number" min="0" max="99" value="${Math.floor(sk.base / 5)}" readonly>`;
       col.appendChild(row);
     });
     wrap.appendChild(col);
   });
+  bindResourceRollInteractions();
+}
+
+function updateSkillFractions(index) {
+  const current = parseInt(document.getElementById(`sk-val-${index}`)?.value, 10) || 0;
+  const halfEl = document.getElementById(`sk-half-${index}`);
+  const fifthEl = document.getElementById(`sk-fifth-${index}`);
+  if (halfEl) halfEl.value = Math.floor(current / 2);
+  if (fifthEl) fifthEl.value = Math.floor(current / 5);
 }
 
 function updateStatHalf(key) {
@@ -163,6 +398,43 @@ function clampQuickSheetRect(x, y, width, height) {
   };
 }
 
+function getDefaultQuickSheetRect() {
+  const pad = 16;
+  const gap = 24;
+  const chatPanel = document.getElementById('panel-right');
+  const chatRect = chatPanel?.getBoundingClientRect();
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+  const baseHeight = Math.round((chatRect?.height || viewportHeight) * 0.6);
+  const targetHeight = Math.max(320, Math.min(baseHeight, viewportHeight - pad * 2));
+  let targetWidth = Math.round(targetHeight * 1.18);
+
+  if (chatRect && chatRect.left > pad + 280) {
+    const availableWidth = Math.max(420, chatRect.left - gap - pad * 2);
+    targetWidth = Math.min(targetWidth, availableWidth);
+  } else {
+    targetWidth = Math.min(targetWidth, viewportWidth - pad * 2);
+  }
+
+  targetWidth = Math.max(420, Math.min(targetWidth, 760, viewportWidth - pad * 2));
+
+  let x;
+  if (chatRect && chatRect.left > pad + 280) {
+    x = chatRect.left - targetWidth - gap;
+  } else {
+    x = viewportWidth - targetWidth - pad;
+  }
+
+  let y;
+  if (chatRect) {
+    y = chatRect.top + Math.max(16, Math.round((chatRect.height - targetHeight) / 2));
+  } else {
+    y = Math.max(pad, Math.round((viewportHeight - targetHeight) / 2));
+  }
+
+  return clampQuickSheetRect(x, y, targetWidth, targetHeight);
+}
+
 function applyQuickSheetState() {
   const overlay = document.getElementById('sheet-overlay');
   const modal = getQuickSheetModalEl();
@@ -198,6 +470,17 @@ function resetQuickSheetStateFromLayout() {
   modal.style.bottom = '';
   modal.style.width = '';
   modal.style.height = '';
+
+  if (_sheetQuickViewMode) {
+    const preferred = getDefaultQuickSheetRect();
+    _quickSheetState.x = preferred.x;
+    _quickSheetState.y = preferred.y;
+    _quickSheetState.width = preferred.width;
+    _quickSheetState.height = preferred.height;
+    applyQuickSheetState();
+    return;
+  }
+
   const rect = modal.getBoundingClientRect();
   _quickSheetState.x = rect.left;
   _quickSheetState.y = rect.top;
@@ -405,7 +688,7 @@ function openSheet(journalId) {
   const j    = list.find(x => x.id === journalId);
   const data = j?.sheet || {};
 
-  ['name','player','job','age','residence','birthplace'].forEach(k => {
+  ['name','player','job','age','height','sex','nationality','residence','birthplace','first_language'].forEach(k => {
     const el = document.getElementById('sh-'+k);
     if (el) el.value = data[k] || '';
   });
@@ -420,14 +703,21 @@ function openSheet(journalId) {
     if (el) el.value = data[k.replace('-','_')] || '';
   });
 
+  ['status-temp-insane','status-indefinite','status-major-wound','status-dying'].forEach(k => {
+    const el = document.getElementById('sh-'+k);
+    if (el) el.checked = !!data[k.replace(/-/g, '_')];
+  });
+
   COC_SKILLS.forEach((sk, i) => {
     const ck  = document.getElementById('sk-check-'+i);
     const val = document.getElementById('sk-val-'+i);
     const hlf = document.getElementById('sk-half-'+i);
+    const fif = document.getElementById('sk-fifth-'+i);
     const d   = data.skills?.[i] || {};
     if (ck)  ck.checked    = d.checked || false;
     if (val) val.value     = d.val  !== undefined ? d.val  : sk.base;
-    if (hlf) hlf.value     = d.half !== undefined ? d.half : Math.floor(sk.base/2);
+    if (hlf) hlf.value     = d.half !== undefined ? d.half : Math.floor((d.val !== undefined ? d.val : sk.base)/2);
+    if (fif) fif.value     = d.fifth !== undefined ? d.fifth : Math.floor((d.val !== undefined ? d.val : sk.base)/5);
   });
 
   const notes = document.getElementById('sh-notes');
@@ -620,7 +910,7 @@ async function saveSheet() {
   const targetAssignedTo = Array.isArray(_sheetAssignedTo) ? [..._sheetAssignedTo] : (_sheetAssignedTo || []);
   const data = {};
 
-  ['name','player','job','age','residence','birthplace'].forEach(k => {
+  ['name','player','job','age','height','sex','nationality','residence','birthplace','first_language'].forEach(k => {
     data[k] = document.getElementById('sh-'+k)?.value || '';
   });
 
@@ -639,10 +929,15 @@ async function saveSheet() {
     data[key] = document.getElementById('sh-'+k)?.value || '';
   });
 
+  ['status-temp-insane','status-indefinite','status-major-wound','status-dying'].forEach(k => {
+    data[k.replace(/-/g, '_')] = !!document.getElementById('sh-'+k)?.checked;
+  });
+
   data.skills = COC_SKILLS.map((sk, i) => ({
     checked: document.getElementById('sk-check-'+i)?.checked || false,
-    val:  parseInt(document.getElementById('sk-val-'+i)?.value)  ?? sk.base,
-    half: parseInt(document.getElementById('sk-half-'+i)?.value) ?? Math.floor(sk.base/2),
+    val: parseInt(document.getElementById('sk-val-'+i)?.value, 10) || sk.base,
+    half: parseInt(document.getElementById('sk-half-'+i)?.value, 10) || Math.floor((parseInt(document.getElementById('sk-val-'+i)?.value, 10) || sk.base)/2),
+    fifth: parseInt(document.getElementById('sk-fifth-'+i)?.value, 10) || Math.floor((parseInt(document.getElementById('sk-val-'+i)?.value, 10) || sk.base)/5),
   }));
 
   data.unarmed_skill = document.getElementById('sh-unarmed-skill')?.value || '';
@@ -742,3 +1037,40 @@ async function saveSheet() {
   closeSheet();
 }
 
+
+window.importCcfoliaApiToJournal = importCcfoliaApiToJournal;
+
+function openJournalApiImportModal() {
+  if (!St.roomCode) { showToast('방에 입장한 상태에서만 가져올 수 있어요.'); return; }
+  const overlay = document.getElementById('journal-api-overlay');
+  const input = document.getElementById('journal-api-input');
+  if (!overlay || !input) return;
+  overlay.classList.add('open');
+  setTimeout(() => { if (input && input.isConnected) input.focus(); }, 20);
+}
+
+function closeJournalApiImportModal() {
+  const overlay = document.getElementById('journal-api-overlay');
+  const input = document.getElementById('journal-api-input');
+  if (overlay) overlay.classList.remove('open');
+  if (input) input.value = '';
+}
+
+async function submitJournalApiImport() {
+  const input = document.getElementById('journal-api-input');
+  if (!input) return;
+  const raw = input.value.trim();
+  if (!raw) { showToast('API 코드를 붙여넣어 주세요.'); input.focus(); return; }
+  const result = await importCcfoliaApiToJournal(raw);
+  if (!result?.handled) {
+    showToast('올바른 CCFOLIA character API 코드가 아니에요.');
+    input.focus();
+    return;
+  }
+  if (!result?.created) return;
+  closeJournalApiImportModal();
+}
+
+window.openJournalApiImportModal = openJournalApiImportModal;
+window.closeJournalApiImportModal = closeJournalApiImportModal;
+window.submitJournalApiImport = submitJournalApiImport;

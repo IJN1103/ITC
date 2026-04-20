@@ -1,4 +1,3 @@
-
 function getChatImageClassName(imageWide = false) {
   return imageWide ? 'msg-image is-wide' : 'msg-image';
 }
@@ -479,16 +478,18 @@ async function sendPreparedChatImage(preparedOrDataUrl, imageWide = false, image
       time: Date.now(),
       speakAsAvatar: saAvatar,
       speakAsJournalId: saJId,
+      nameColor: saJournal.nameColor || '',
       imageWide: !!imageWide,
       hideImageMeta: !!hideImageMeta,
       imageMeta: normalizedMeta,
       imageStoragePath: storageMeta?.path || '',
       imageContentType: storageMeta?.contentType || inferStorageContentTypeFromDataUrl(dataUrl),
     };
+    const currentChannelKey = String(window._itcActiveChatChannelKey || (typeof getCurrentDmChannelKey === 'function' ? getCurrentDmChannelKey() : 'global') || 'global').trim() || 'global';
     if (window._FB?.CONFIGURED) {
       const { db, ref, push } = window._FB;
       if (!St.roomCode) throw new Error('roomCode missing');
-      return push(ref(db, `rooms/${St.roomCode}/chat`), { ...msg, time: getChatServerTimestamp() });
+      return push(ref(db, `rooms/${St.roomCode}/chat`), { ...msg, dmChannelKey: currentChannelKey || 'global', time: getChatServerTimestamp() });
     }
     appendChatMsg({ name: msg.name, text: finalSrc, type: 'speak-as-image', uid: St.myId, timestamp: msg.time, speakAsAvatar: saAvatar, speakAsJournalId: saJId, channel: 'chat', imageWide: !!imageWide, imageMeta: normalizedMeta, hideImageMeta: !!hideImageMeta });
     return Promise.resolve();
@@ -538,4 +539,5 @@ function initChatImageComposer() {
   bindMessageViewport('chat');
   bindMessageViewport('casual');
 }
+
 

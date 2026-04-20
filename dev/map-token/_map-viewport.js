@@ -336,7 +336,7 @@ function getRenderableStatuses(token) {
 }
 
 function shouldShowTokenInStatusPanel(token) {
-  if (!token || token.hideList) return false;
+  if (!token || isPanelToken(token) || token.hideList) return false;
   if (hasVisibleTokenInitiative(token)) return true;
   if (getRenderableStatuses(token).length > 0) return true;
   return false;
@@ -549,7 +549,10 @@ document.addEventListener('DOMContentLoaded', () => {
   const finishTransientMapInteractions = (options = {}) => {
     if (_tokenSelectionState.active) finishTokenSelection();
     if (isPanning) {
+      if (panMoved && panSourceTokenId) markSuppressPanelTokenClick(panSourceTokenId);
       isPanning = false;
+      panSourceTokenId = '';
+      panMoved = false;
       mapEl.classList.remove('panning');
     }
     if (options.flushDrag !== false && typeof _activeDragCleanup === 'function') {
@@ -582,6 +585,8 @@ document.addEventListener('DOMContentLoaded', () => {
   }, { passive: false });
 
   let isPanning = false, panStartX, panStartY, panOriginX, panOriginY;
+  let panSourceTokenId = '';
+  let panMoved = false;
 
   mapEl.addEventListener('mousedown', e => {
     if (e.target.closest('.map-zoom') || e.target.closest('.map-add-token') || e.target.closest('.vn-dialog')) return;
@@ -598,7 +603,8 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    if (e.target.closest('.map-token')) return;
+    const mapTokenEl = e.target.closest('.map-token');
+    if (mapTokenEl && !shouldPanMapFromLockedMapSettingToken(getTokenFromElement(mapTokenEl))) return;
     if (e.button !== 0) return;
 
     hideTokenMemoBubble();
@@ -606,6 +612,8 @@ document.addEventListener('DOMContentLoaded', () => {
     isPanning = true;
     panStartX = e.clientX; panStartY = e.clientY;
     panOriginX = _mapPanX; panOriginY = _mapPanY;
+    panSourceTokenId = mapTokenEl ? getTokenIdFromElement(mapTokenEl) : '';
+    panMoved = false;
     mapEl.classList.add('panning');
     e.preventDefault();
   });
@@ -619,6 +627,9 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
     if (!isPanning) return;
+    if (!panMoved && (Math.abs(e.clientX - panStartX) > 3 || Math.abs(e.clientY - panStartY) > 3)) {
+      panMoved = true;
+    }
     _mapPanX = roundMapNumber(panOriginX + (e.clientX - panStartX));
     _mapPanY = roundMapNumber(panOriginY + (e.clientY - panStartY));
     applyMapTransform();
@@ -626,7 +637,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
   document.addEventListener('mouseup', () => {
     if (_tokenSelectionState.active) finishTokenSelection();
-    if (isPanning) { isPanning = false; mapEl.classList.remove('panning'); }
+    if (isPanning) {
+      if (panMoved && panSourceTokenId) markSuppressPanelTokenClick(panSourceTokenId);
+      isPanning = false;
+      panSourceTokenId = '';
+      panMoved = false;
+      mapEl.classList.remove('panning');
+    }
   });
 
   document.addEventListener('keydown', e => {
@@ -640,3 +657,4 @@ document.addEventListener('DOMContentLoaded', () => {
     if (e.button === 1) e.preventDefault();
   });
 });
+

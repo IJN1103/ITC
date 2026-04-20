@@ -222,3 +222,21 @@ styles/all.css          — 통합 CSS
   - 가능한 경우 DOM 추출보다 getChatRenderSnapshot() 기반 메시지 스냅샷을 우선 사용
   - DOM 추출은 fallback으로만 사용
 - 다음 채팅/팝아웃 관련 수정 시, desc 스타일 / 이미지 렌더 / @ 명령어 숨김 / 이전 채팅 로딩 / DM / 잡담 탭을 함께 회귀 테스트해야 한다.
+
+[2026-04-20] dev/src 빌드 동기화 안정화
+- 최신 src 기준으로 dev 분할 파일을 다시 동기화했다.
+- 이제 bash build.sh를 실행해도 아래 src 파일들이 최신 안정화 내용을 유지해야 한다.
+  - src/modules/chat-v1/chat.js
+  - src/modules/map-token/map-token.js
+  - src/modules/journal-v1/journal.js
+- build.sh 정상 출력 기준:
+  - chat.js 2145 lines
+  - map-token.js 1989 lines
+  - journal.js 2402 lines
+- src만 직접 수정하면 build.sh 실행 시 회귀될 수 있으므로, src 수정 시 dev에도 반드시 같은 내용을 반영해야 한다.
+- dev만 수정한 경우 build.sh를 실행해 src를 갱신해야 한다.
+- 관련 문서: docs/DEV_SRC_BUILD_SYNC_CHECKLIST.txt
+- 다음 단계 후보:
+  1. Firebase Rules 현재본 확인 및 database.rules.json 프로젝트 포함 여부 정리
+  2. 최종 통합 회귀 테스트
+  3. 이후 큰 기능 추가 여부 결정

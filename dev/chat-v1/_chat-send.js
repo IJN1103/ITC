@@ -1,9 +1,10 @@
-
 async function sendChat() {
   const inp = document.getElementById('chat-input');
   if (!inp) return;
   const raw = inp.value.trim();
   const hasImages = _pendingChatImages.length > 0;
+  const currentChannelKey = String(window._itcActiveChatChannelKey || (typeof getCurrentDmChannelKey === 'function' ? getCurrentDmChannelKey() : 'global') || 'global').trim() || 'global';
+  const isDmChannel = String(currentChannelKey || 'global').trim() !== 'global';
   if (!raw && !hasImages) return;
 
   const restoreInput = () => {
@@ -44,6 +45,10 @@ async function sendChat() {
 
     const wm = raw.match(/^\/w\s+(\S+)\s+([\s\S]+)$/i);
     if (wm) {
+      if (isDmChannel) {
+        showToast('DM 채널에서는 귓말을 사용할 수 없어요.');
+        return;
+      }
       if (hasImages) {
         showToast('귓말과 이미지는 함께 보낼 수 없어요.');
         return;
@@ -96,6 +101,10 @@ async function sendChat() {
     }
 
     if (St.whisperTo) {
+      if (isDmChannel) {
+        showToast('DM 채널에서는 귓말을 사용할 수 없어요.');
+        return;
+      }
       if (hasImages) {
         showToast('귓말 상태에서는 이미지를 함께 보낼 수 없어요.');
         return;
@@ -139,12 +148,13 @@ async function sendChat() {
 function sendMessage(name, text, type = 'normal', extra = null) {
   const localTime = Date.now();
   const msg = { name, text, type, uid: St.myId, time: localTime };
-  if ((type === 'normal' || type === 'desc') && St.myNameColor) msg.nameColor = St.myNameColor;
+  if (St.myNameColor) msg.nameColor = St.myNameColor;
   if (extra && typeof extra === 'object') Object.assign(msg, extra);
+  const currentChannelKey = String(window._itcActiveChatChannelKey || (typeof getCurrentDmChannelKey === 'function' ? getCurrentDmChannelKey() : 'global') || 'global').trim() || 'global';
   if (window._FB?.CONFIGURED) {
     const { db, ref, push } = window._FB;
     if (!St.roomCode) return Promise.reject(new Error('roomCode missing'));
-    return push(ref(db, `rooms/${St.roomCode}/chat`), { ...msg, time: getChatServerTimestamp() });
+    return push(ref(db, `rooms/${St.roomCode}/chat`), { ...msg, dmChannelKey: currentChannelKey || 'global', time: getChatServerTimestamp() });
   }
   appendChatMsg({ name, text, type, uid: St.myId, timestamp: msg.time, nameColor: msg.nameColor || null, channel: 'chat', imageWide: !!msg.imageWide, imageMeta: msg.imageMeta || null, hideImageMeta: !!msg.hideImageMeta });
   return Promise.resolve();
@@ -491,14 +501,15 @@ function buildChatMsgElement(msg = {}) {
     return div;
   }
 
-  const avatarHtml = getAvatarHtml(name, uid || (name === St.myName ? St.myId : null));
+  const defaultAvatarHtml = getAvatarHtml(name, uid || (name === St.myName ? St.myId : null));
+  const nameStyle = nameColor ? ` style="color:${nameColor}"` : '';
 
   if (type === 'image') {
     const div = document.createElement('div');
     div.className = `chat-msg msg-image-msg${imageWide ? ' msg-image-wide-row' : ''}${hideImageMeta ? ' msg-image-hide-meta' : ''}`;
     div.dataset.avatarUid = uid || '';
     div.dataset.avatarName = name || '';
-    div.innerHTML = buildStandardChatImageSection(name, time, text, avatarHtml, !!imageWide, imageMeta, '', '', !!hideImageMeta);
+    div.innerHTML = buildStandardChatImageSection(name, time, text, defaultAvatarHtml, !!imageWide, imageMeta, '', nameStyle, !!hideImageMeta);
     addMsgActions(div, uid, msgKey, channel || 'chat', text, type);
     return div;
   }
@@ -507,22 +518,60 @@ function buildChatMsgElement(msg = {}) {
   div.className = `chat-msg msg-${type}`;
   div.dataset.avatarUid = uid || '';
   div.dataset.avatarName = name || '';
-  const nameStyle = nameColor ? ` style="color:${nameColor}"` : '';
   if (type === 'dice') {
     const diceMatch = text.match(/🎲\s*(.+?)\s*→\s*(\d+)\s*\(([^)]+)\)/);
     if (diceMatch) {
       const formula = diceMatch[1].trim();
       const result = diceMatch[2];
-      const rolls = diceMatch[3].trim();
-      div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name"${nameStyle}>${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-text">${fmtText(text)}</div><div class="dice-card"><div class="dice-card-formula">${esc(formula)}</div><div class="dice-card-result">${esc(result)}</div><div class="dice-card-rolls">${esc(rolls)}</div></div></div>`;
+      const rawRolls = diceMatch[3].trim();
+      const rollParts = rawRolls.split('||').map(part => part.trim()).filter(Boolean);
+      const rolls = rollParts[0] || rawRolls;
+      const judgmentMeta = getDiceJudgmentMeta(rollParts[1] || rawRolls);
+      const judgmentHtml = judgmentMeta ? `<div class="dice-card-judgment roll-judgment ${judgmentMeta.className}">${esc(judgmentMeta.label)}</div>` : '';
+      const skillCheckClass = formula.endsWith('판정') ? ' dice-card-skill-check' : '';
+      const isSpeakAsDice = !!speakAsJournalId;
+      const r = St.avatarShape === 'circle' ? '50%' : '6px';
+      const sc = St.avatarShape === 'circle' ? 'shape-circle' : 'shape-rounded';
+      const finalAvatar = speakAsAvatar || (speakAsJournalId ? saGetAvatar(speakAsJournalId) : null);
+      const diceAvatarHtml = isSpeakAsDice
+        ? (finalAvatar
+            ? `<div class="msg-avatar ${sc} sa-avatar"><img src="${esc(finalAvatar)}" alt="" style="width:38px;height:38px;object-fit:cover;border-radius:${r};display:block"></div>`
+            : `<div class="msg-avatar ${sc} sa-avatar"><div class="msg-avatar-inner" style="border-radius:${r}">${esc((name || '?')[0].toUpperCase())}</div></div>`)
+        : defaultAvatarHtml;
+      const diceNameColor = isSpeakAsDice ? (nameColor || (_allJournals.find(x => x.id === speakAsJournalId)?.nameColor || '')) : nameColor;
+      const diceNameStyle = diceNameColor ? ` style="color:${diceNameColor}"` : '';
+      div.innerHTML = `${diceAvatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name${isSpeakAsDice ? ' sa-msg-name' : ''}"${diceNameStyle}>${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-text">${fmtText(text)}</div><div class="dice-card${skillCheckClass}"><div class="dice-card-formula">${esc(formula)}</div><div class="dice-card-result">${esc(result)}</div>${judgmentHtml}<div class="dice-card-rolls">${esc(rolls)}</div></div></div>`;
     } else {
-      div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name"${nameStyle}>${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-text">${fmtText(text)}</div></div>`;
+      div.innerHTML = `${defaultAvatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name"${nameStyle}>${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-text">${fmtText(text)}</div></div>`;
     }
   } else {
-    div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name"${nameStyle}>${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-text">${fmtText(text)}</div></div>`;
+    div.innerHTML = `${defaultAvatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name"${nameStyle}>${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-text">${fmtText(text)}</div></div>`;
   }
   addMsgActions(div, uid, msgKey, channel || 'chat', text, type);
   return div;
+}
+
+function getDiceJudgmentMeta(text = '') {
+  const normalized = String(text || '').trim();
+  if (!normalized) return null;
+  if (normalized.includes('크리티컬')) return { label: '크리티컬', className: 'j-crit' };
+  if (normalized.includes('펌블')) return { label: '펌블', className: 'j-fumb' };
+  if (normalized.includes('극단적 성공')) return { label: '극단적 성공', className: 'j-succ' };
+  if (normalized.includes('어려운 성공')) return { label: '어려운 성공', className: 'j-succ' };
+  if (normalized.includes('보통 성공')) return { label: '보통 성공', className: 'j-succ' };
+  if (normalized.includes('실패')) return { label: '실패', className: 'j-fail' };
+  return null;
+}
+
+function formatDiceDialogueText(text = '') {
+  const match = String(text || '').match(/🎲\s*(.+?)\s*→\s*(\d+)\s*\(([^)]+)\)/);
+  if (!match) return String(text || '').trim();
+  const formula = match[1].trim();
+  const result = match[2].trim();
+  const rawRolls = match[3].trim();
+  const parts = rawRolls.split('||').map(part => part.trim()).filter(Boolean);
+  const judgment = parts[1] || '';
+  return `${formula} ${result}${judgment ? ` (${judgment})` : ''}`.trim();
 }
 
 function appendChatMsg(msg = {}) {
@@ -538,8 +587,9 @@ function appendChatMsg(msg = {}) {
   bindMessageViewport(actualChannel);
   const div = buildChatMsgElement({ ...msg, msgKey: safeKey, channel: actualChannel });
   queueMessageRender(actualChannel, div, safeKey, true);
-  if (msg.type === 'speak-as' && (!msg.timestamp || Date.now() - msg.timestamp < 5000)) {
-    showDialogueBoxFromMsg(msg.name, msg.text, msg.speakAsJournalId, msg.standingImg, msg.tokenId, msg.standingLabel);
+  if ((msg.type === 'speak-as' || (msg.type === 'dice' && msg.speakAsJournalId)) && (!msg.timestamp || Date.now() - msg.timestamp < 5000)) {
+    const dialogueText = msg.type === 'dice' ? formatDiceDialogueText(msg.text) : msg.text;
+    showDialogueBoxFromMsg(msg.name, dialogueText, msg.speakAsJournalId, msg.standingImg, msg.tokenId, msg.standingLabel);
   }
 }
 
@@ -582,8 +632,15 @@ window.queueMessageRender = queueMessageRender;
 window.replaceRenderedMessage = replaceRenderedMessage;
 window.removeRenderedMessage = removeRenderedMessage;
 window.resetRenderedMessages = resetRenderedMessages;
+window.activateChatRenderChannel = activateChatRenderChannel;
 window.storeMessageRecord = storeMessageRecord;
 window.prependStoredWindow = prependStoredWindow;
 window.configureHistoryPaging = configureHistoryPaging;
+window.requestOlderHistory = requestOlderHistory;
+window.prependStoredWindow = prependStoredWindow;
+window.seedChatHistoryStore = seedChatHistoryStore;
+window.getOldestStoredMessageKey = getOldestStoredMessageKey;
+window.getNewestStoredMessageKey = getNewestStoredMessageKey;
+window.getChatRenderSnapshot = getChatRenderSnapshot;
 window.getChatImageClassName = getChatImageClassName;
 window.getChatImageInlineStyle = getChatImageInlineStyle;

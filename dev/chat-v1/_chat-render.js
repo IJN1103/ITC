@@ -32,6 +32,7 @@ function refreshChatActionButtons() {
   const clearBtn = document.getElementById('chat-clear-btn');
   if (popoutBtn) popoutBtn.style.display = visible ? '' : 'none';
   if (clearBtn) clearBtn.style.display = (visible && !!St.isGM) ? '' : 'none';
+  if (typeof refreshDmChannelButtons === 'function') refreshDmChannelButtons();
 }
 
 async function clearAllChatHistory() {
@@ -77,7 +78,7 @@ const _renderState = {
     queue: [],
     map: new Map(),
     max: 120,
-    maxMemory: 360,
+    maxMemory: 1200,
     loadStep: 28,
     storeOrder: [],
     storeMap: new Map(),
@@ -107,7 +108,7 @@ const _renderState = {
     queue: [],
     map: new Map(),
     max: 140,
-    maxMemory: 260,
+    maxMemory: 700,
     loadStep: 36,
     storeOrder: [],
     storeMap: new Map(),
@@ -133,8 +134,47 @@ const _renderState = {
   },
 };
 
+function ensureChatRenderState(channel = 'chat') {
+  const safeChannel = String(channel || 'chat').trim() || 'chat';
+  if (_renderState[safeChannel]) return _renderState[safeChannel];
+  const base = _renderState.chat;
+  _renderState[safeChannel] = {
+    containerId: 'chat-messages',
+    raf: 0,
+    queue: [],
+    map: new Map(),
+    max: base.max,
+    maxMemory: base.maxMemory,
+    loadStep: base.loadStep,
+    storeOrder: [],
+    storeMap: new Map(),
+    scrollBound: false,
+    scrollTick: 0,
+    stickyToBottom: true,
+    pendingBottomNotice: 0,
+    virtualEnabled: base.virtualEnabled,
+    virtualRaf: 0,
+    virtualDirty: false,
+    virtualForceStickBottom: false,
+    topSpacer: null,
+    bottomSpacer: null,
+    renderedStart: 0,
+    renderedEnd: 0,
+    avgItemHeight: base.avgItemHeight,
+    itemHeights: new Map(),
+    overscan: base.overscan,
+    minWindow: base.minWindow,
+    historyLoader: null,
+    historyLoading: false,
+    historyExhausted: true,
+  };
+  return _renderState[safeChannel];
+}
+
 function getRenderState(channel = 'chat') {
-  return _renderState[channel] || _renderState.chat;
+  const safeChannel = String(channel || 'chat').trim() || 'chat';
+  if (safeChannel === 'casual') return _renderState.casual;
+  return ensureChatRenderState(safeChannel);
 }
 
 function getRenderContainer(channel = 'chat') {
@@ -414,6 +454,60 @@ function storeMessageRecord(channel = 'chat', record = {}, key = '', options = {
 }
 
 
+function coerceHistoryRecordForStore(record = {}) {
+  return {
+    name: record.name,
+    text: record.text,
+    type: record.type,
+    uid: record.uid,
+    timestamp: record.timestamp || record.time,
+    speakAsAvatar: record.speakAsAvatar,
+    speakAsJournalId: record.speakAsJournalId,
+    whisperTo: record.whisperTo,
+    whisperToName: record.whisperToName,
+    nameColor: record.nameColor,
+    standingImg: record.standingImg,
+    tokenId: record.tokenId,
+    standingLabel: record.standingLabel,
+    imageWide: !!record.imageWide,
+    hideImageMeta: !!record.hideImageMeta,
+    imageMeta: normalizeChatImageMeta(record.imageMeta),
+  };
+}
+
+function seedChatHistoryStore(channel = 'chat', records = [], options = {}) {
+  const list = Array.isArray(records) ? records : [];
+  if (!list.length) return 0;
+  const position = options?.position === 'prepend' ? 'prepend' : 'append';
+  const ordered = list
+    .map((record) => ({ ...(record || {}), _key: String(record?._key || record?.msgKey || '').trim() }))
+    .filter((record) => !!record._key)
+    .sort((a, b) => {
+      const at = Number(a.time || a.timestamp || 0);
+      const bt = Number(b.time || b.timestamp || 0);
+      if (at && bt && at !== bt) return at - bt;
+      return String(a._key).localeCompare(String(b._key));
+    });
+  const applyList = position === 'prepend' ? ordered.slice().reverse() : ordered;
+  let count = 0;
+  applyList.forEach((record) => {
+    storeMessageRecord(channel, coerceHistoryRecordForStore(record), record._key, { position });
+    count += 1;
+  });
+  return count;
+}
+
+function getOldestStoredMessageKey(channel = 'chat') {
+  const state = getRenderState(channel);
+  return state.storeOrder[0] || '';
+}
+
+function getNewestStoredMessageKey(channel = 'chat') {
+  const state = getRenderState(channel);
+  return state.storeOrder[state.storeOrder.length - 1] || '';
+}
+
+
 function removeStoredMessage(channel = 'chat', key) {
   const state = getRenderState(channel);
   if (!key) return;
@@ -427,6 +521,45 @@ function getStoredRecord(channel = 'chat', key) {
   return state.storeMap.get(key) || null;
 }
 
+function normalizeStoredRecordForSnapshot(channel = 'chat', key = '', record = {}) {
+  const safeChannel = String(channel || 'chat').trim() || 'chat';
+  const safeType = safeChannel === 'casual' ? 'normal' : (record.type || 'normal');
+  return {
+    _key: key || record._key || record.msgKey || '',
+    name: record.name || '',
+    text: record.text || '',
+    type: safeType,
+    uid: record.uid || '',
+    timestamp: record.timestamp || record.time || 0,
+    time: record.timestamp || record.time || 0,
+    speakAsAvatar: record.speakAsAvatar || '',
+    speakAsJournalId: record.speakAsJournalId || '',
+    whisperTo: record.whisperTo || '',
+    whisperToName: record.whisperToName || '',
+    nameColor: record.nameColor || '',
+    standingImg: record.standingImg || '',
+    tokenId: record.tokenId || '',
+    standingLabel: record.standingLabel || '',
+    imageWide: !!record.imageWide,
+    hideImageMeta: !!record.hideImageMeta,
+    imageMeta: normalizeChatImageMeta(record.imageMeta),
+    channel: safeChannel,
+  };
+}
+
+function getChatRenderSnapshot(channel = 'chat', options = {}) {
+  const state = getRenderState(channel);
+  const limit = Math.max(0, Number(options?.limit || 0) || 0);
+  const keys = limit > 0 ? state.storeOrder.slice(-limit) : state.storeOrder.slice();
+  return keys
+    .map((key) => {
+      const record = state.storeMap.get(key);
+      if (!record) return null;
+      return normalizeStoredRecordForSnapshot(channel, key, record);
+    })
+    .filter(Boolean);
+}
+
 function buildMessageNodeFromRecord(channel = 'chat', record) {
   if (!record) return null;
   if (channel === 'casual') {
@@ -435,17 +568,23 @@ function buildMessageNodeFromRecord(channel = 'chat', record) {
   return buildChatMsgElement({ ...record, msgKey: record._key, channel });
 }
 
-function trimRenderedMessages(channel = 'chat') {
+function trimRenderedMessages(channel = 'chat', direction = 'top') {
   const state = getRenderState(channel);
   const el = getRenderContainer(channel);
   if (!el) return;
   if (state.virtualEnabled) return;
+  const trimFromBottom = direction === 'bottom';
   while (el.children.length > state.max) {
-    let removable = el.firstElementChild;
-    if (removable && removable.classList.contains('chat-history-notice')) {
-      removable = removable.nextElementSibling;
+    let removable = trimFromBottom ? el.lastElementChild : el.firstElementChild;
+    if (!removable) break;
+    if (removable.classList.contains('chat-history-notice')) {
+      removable = trimFromBottom ? removable.previousElementSibling : removable.nextElementSibling;
     }
     if (!removable) break;
+    if (!removable.classList.contains('chat-msg')) {
+      removable = trimFromBottom ? removable.previousElementSibling : removable.nextElementSibling;
+      if (!removable) break;
+    }
     const key = removable.dataset.msgKey || '';
     if (key) state.map.delete(key);
     removable.remove();
@@ -510,7 +649,7 @@ function prependStoredWindow(channel = 'chat', count = 0) {
     el.prepend(frag);
   }
 
-  trimRenderedMessages(channel);
+  trimRenderedMessages(channel, 'bottom');
   primeDeferredChatImages(el);
   const nextHeight = el.scrollHeight;
   el.scrollTop = prevTop + (nextHeight - prevHeight);
@@ -773,3 +912,45 @@ function resetRenderedMessages(channel = 'chat') {
   ensureHistoryNotice(channel);
   syncStickyState(channel, el);
 }
+
+function activateChatRenderChannel(channel = 'chat') {
+  const safeChannel = String(channel || 'chat').trim() || 'chat';
+  const el = document.getElementById('chat-messages');
+  if (!el) return;
+
+  Object.keys(_renderState).forEach((key) => {
+    if (key === 'casual') return;
+    const state = getRenderState(key);
+    if (state.raf) {
+      cancelAnimationFrame(state.raf);
+      state.raf = 0;
+    }
+    if (state.scrollTick) {
+      cancelAnimationFrame(state.scrollTick);
+      state.scrollTick = 0;
+    }
+    if (state.virtualRaf) {
+      cancelAnimationFrame(state.virtualRaf);
+      state.virtualRaf = 0;
+    }
+    state.queue = [];
+    state.map.clear();
+    state.topSpacer = null;
+    state.bottomSpacer = null;
+  });
+
+  const state = getRenderState(safeChannel);
+  el.innerHTML = '';
+  if (state.virtualEnabled) {
+    ensureVirtualElements(safeChannel);
+    scheduleVirtualRender(safeChannel, { forceStickBottom: true });
+  } else {
+    ensureHistoryNotice(safeChannel);
+    appendStoredWindow(safeChannel, Math.max(state.loadStep, state.storeOrder.length || 0));
+    requestAnimationFrame(() => {
+      scrollToBottom(el);
+      syncStickyState(safeChannel, el);
+    });
+  }
+}
+
