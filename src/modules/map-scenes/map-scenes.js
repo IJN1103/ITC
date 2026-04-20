@@ -825,7 +825,7 @@
     const ctx = document.getElementById('map-scene-ctx');
     if (!ctx) return;
     ctx.style.left = Math.min(x, window.innerWidth - 160) + 'px';
-    ctx.style.top = Math.min(y, window.innerHeight - 120) + 'px';
+    ctx.style.top = Math.min(y, window.innerHeight - 170) + 'px';
     ctx.style.display = 'flex';
   }
 
@@ -833,6 +833,73 @@
     const ctx = document.getElementById('map-scene-ctx');
     if (ctx) ctx.style.display = 'none';
     _ctxTargetId = '';
+  }
+
+
+  function makeDuplicateSceneName(sourceName){
+    const base = String(sourceName || '무제 씬').trim() || '무제 씬';
+    const existingNames = new Set((state.scenes || []).map(function(scene){ return String(scene?.name || '').trim(); }).filter(Boolean));
+    for (let i = 1; i <= 99; i += 1) {
+      const suffix = i === 1 ? ' 복제' : ' 복제 ' + i;
+      const maxBaseLen = Math.max(1, 40 - suffix.length);
+      const candidate = (base.length > maxBaseLen ? base.slice(0, maxBaseLen).trim() : base) + suffix;
+      if (!existingNames.has(candidate)) return candidate;
+    }
+    return (base.slice(0, 35).trim() || '무제 씬') + ' 복제';
+  }
+
+  function buildDuplicatedScene(sourceScene){
+    const source = sourceScene ? deepCopy(sourceScene) : null;
+    if (!source || typeof source !== 'object') return null;
+    const now = Date.now();
+    const nextId = makeSceneId();
+    source.id = nextId;
+    source.name = makeDuplicateSceneName(source.name || '무제 씬');
+    source.createdAt = now;
+    source.updatedAt = now;
+    return normalizeScene(source, nextId);
+  }
+
+  function insertSceneAfterSource(list, sourceId, duplicatedScene){
+    if (!Array.isArray(list) || !duplicatedScene) return;
+    if (list.some(function(scene){ return scene?.id === duplicatedScene.id; })) return;
+    const idx = list.findIndex(function(scene){ return scene?.id === sourceId; });
+    if (idx >= 0) list.splice(idx + 1, 0, duplicatedScene);
+    else list.push(duplicatedScene);
+  }
+
+  async function duplicateSceneById(sceneId){
+    if (!ROOT.St?.isGM) { ROOT.showToast('GM만 씬을 복제할 수 있어요.'); return; }
+    if (!ROOT._FB?.CONFIGURED || !ROOT.St?.roomCode) {
+      ROOT.showToast('방에 입장한 상태에서만 씬을 복제할 수 있어요.');
+      return;
+    }
+    const sourceId = String(sceneId || '').trim();
+    if (!sourceId) return;
+    const sourceScene = state.scenes.find(function(scene){ return scene.id === sourceId; })
+      || state.remoteScenes.find(function(scene){ return scene.id === sourceId; });
+    if (!sourceScene) {
+      ROOT.showToast('복제할 씬 정보를 찾을 수 없어요.');
+      return;
+    }
+    const duplicatedScene = buildDuplicatedScene(sourceScene);
+    if (!duplicatedScene) {
+      ROOT.showToast('씬을 복제할 수 없어요.');
+      return;
+    }
+    const roomCode = String(ROOT.St.roomCode || '').trim();
+    try {
+      const { db, ref, set } = ROOT._FB;
+      await set(ref(db, `rooms/${roomCode}/mapScenes/${duplicatedScene.id}`), duplicatedScene);
+      insertSceneAfterSource(state.scenes, sourceId, duplicatedScene);
+      insertSceneAfterSource(state.remoteScenes, sourceId, deepCopy(duplicatedScene));
+      state.selectedSceneId = duplicatedScene.id;
+      renderSceneList();
+      ROOT.showToast('씬을 복제했어요.');
+    } catch (e) {
+      console.warn('duplicateSceneById failed', e);
+      ROOT.showToast('씬 복제 실패: ' + (e?.message || e));
+    }
   }
 
   function handleCtxAction(action){
@@ -847,6 +914,11 @@
       }).catch(function(e){
         ROOT.showToast('현재 맵 저장 실패: ' + (e?.message || e));
       });
+      return;
+    }
+
+    if (action === 'duplicate') {
+      duplicateSceneById(sceneId);
       return;
     }
 
