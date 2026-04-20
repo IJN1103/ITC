@@ -9,6 +9,8 @@ let _chatMessageSignaturesByChannel = new Map();
 let _chatRecordsByChannel = new Map();
 let _activeChatChannelKey = 'global';
 let _activeChatChannelUnsubs = [];
+let _chatHistoryCursorByChannel = new Map();
+let _casualHistoryCursor = '';
 let _processedCasualKeys = new Set();
 let _firebaseUnsubs = [];
 let _playerDigest = '';
@@ -98,6 +100,8 @@ function cleanupFirebaseListeners() {
   try { if (typeof window.cleanupDmUnreadListener === 'function') window.cleanupDmUnreadListener(); } catch (e) {}
   _processedChatKeys.clear();
   _processedCasualKeys.clear();
+  _chatHistoryCursorByChannel.clear();
+  _casualHistoryCursor = '';
   _processedChatKeysByChannel = new Map();
   _chatMessageSignaturesByChannel = new Map();
   _chatRecordsByChannel = new Map();
@@ -188,9 +192,37 @@ function rebuildChatRecordCacheFromRaw(rawMessages = {}) {
   });
 }
 
-function cacheChannelMessages(channelKey = 'global', records = []) {
+function sortChatRecordsChronologically(records = []) {
+  return (Array.isArray(records) ? records : []).slice().sort((a, b) => {
+    const at = Number(a?.time || a?.timestamp || 0);
+    const bt = Number(b?.time || b?.timestamp || 0);
+    if (at && bt && at !== bt) return at - bt;
+    return String(a?._key || '').localeCompare(String(b?._key || ''));
+  });
+}
+
+function cacheChannelMessages(channelKey = 'global', records = [], options = {}) {
   const safeKey = String(channelKey || 'global').trim() || 'global';
-  _chatRecordsByChannel.set(safeKey, (Array.isArray(records) ? records : []).map((record) => ({ ...record })));
+  const incoming = (Array.isArray(records) ? records : []).map((record) => ({ ...record }));
+  let next = incoming;
+  if (options?.merge) {
+    const merged = new Map();
+    const previous = Array.isArray(_chatRecordsByChannel.get(safeKey)) ? _chatRecordsByChannel.get(safeKey) : [];
+    previous.forEach((record) => {
+      const key = String(record?._key || '').trim();
+      if (key) merged.set(key, { ...record });
+    });
+    incoming.forEach((record) => {
+      const key = String(record?._key || '').trim();
+      if (key) merged.set(key, { ...record });
+    });
+    next = Array.from(merged.values());
+  }
+  const sorted = sortChatRecordsChronologically(next);
+  _chatRecordsByChannel.set(safeKey, sorted);
+  if (options?.seed !== false && safeKey === String(window._itcActiveChatChannelKey || 'global') && typeof window.seedChatHistoryStore === 'function') {
+    try { window.seedChatHistoryStore('chat', sorted, { position: 'append' }); } catch (e) {}
+  }
 }
 
 window.getChatRecordsForChannel = function(channelKey = 'global') {
@@ -199,18 +231,69 @@ window.getChatRecordsForChannel = function(channelKey = 'global') {
   return records.map((record) => ({ ...record }));
 };
 
+function normalizeChatRecordForRender(key, m = {}) {
+  return {
+    ...(m || {}),
+    _key: key,
+    name: m.name,
+    text: m.text,
+    type: m.type || 'normal',
+    uid: m.uid,
+    time: m.time || m.timestamp || 0,
+    speakAsAvatar: m.speakAsAvatar,
+    speakAsJournalId: m.speakAsJournalId,
+    whisperTo: m.whisperTo,
+    whisperToName: m.whisperToName,
+    nameColor: m.nameColor,
+    standingImg: m.standingImg,
+    tokenId: m.tokenId,
+    standingLabel: m.standingLabel,
+    imageWide: !!m.imageWide,
+    hideImageMeta: !!m.hideImageMeta,
+    imageMeta: m.imageMeta || null,
+    dmChannelKey: m.dmChannelKey || 'global',
+  };
+}
+
+function makeChatRenderPayloadFromRecord(record = {}) {
+  return {
+    name: record.name,
+    text: record.text,
+    type: record.type || 'normal',
+    uid: record.uid,
+    timestamp: record.time || record.timestamp,
+    speakAsAvatar: record.speakAsAvatar,
+    speakAsJournalId: record.speakAsJournalId,
+    whisperTo: record.whisperTo,
+    whisperToName: record.whisperToName,
+    nameColor: record.nameColor,
+    msgKey: record._key,
+    channel: 'chat',
+    standingImg: record.standingImg,
+    tokenId: record.tokenId,
+    standingLabel: record.standingLabel,
+    imageWide: !!record.imageWide,
+    imageMeta: record.imageMeta,
+    hideImageMeta: !!record.hideImageMeta,
+  };
+}
+
 function restoreCachedChannelMessages(channelKey = 'global') {
   const safeKey = String(channelKey || 'global').trim() || 'global';
   const records = Array.isArray(_chatRecordsByChannel.get(safeKey)) ? _chatRecordsByChannel.get(safeKey) : [];
   if (typeof resetRenderedMessages === 'function') resetRenderedMessages('chat');
+  if (typeof window.seedChatHistoryStore === 'function') {
+    try { window.seedChatHistoryStore('chat', records, { position: 'append' }); } catch (e) {}
+  }
   const processed = getProcessedChatKeySet(safeKey);
   const signatures = getChatMessageSignatureStore(safeKey);
   processed.clear();
   signatures.clear();
-  records.forEach((record) => {
+  const visibleRecords = records.slice(-300);
+  visibleRecords.forEach((record) => {
     const key = String(record?._key || '').trim();
     if (!key) return;
-    appendChatMsg({ name: record.name, text: record.text, type: record.type || 'normal', uid: record.uid, timestamp: record.time, speakAsAvatar: record.speakAsAvatar, speakAsJournalId: record.speakAsJournalId, whisperTo: record.whisperTo, whisperToName: record.whisperToName, nameColor: record.nameColor, msgKey: key, channel: 'chat', standingImg: record.standingImg, tokenId: record.tokenId, standingLabel: record.standingLabel, imageWide: !!record.imageWide, imageMeta: record.imageMeta, hideImageMeta: !!record.hideImageMeta });
+    appendChatMsg(makeChatRenderPayloadFromRecord({ ...record, _key: key }));
     processed.add(key);
     signatures.set(key, buildChatMessageSignature(record));
   });
@@ -280,6 +363,96 @@ function syncAvailableDmChannels(entries = []) {
   if (typeof refreshDmChannelButtons === 'function') refreshDmChannelButtons();
 }
 
+function getOldestCachedChatKey(channelKey = 'global') {
+  const safeKey = String(channelKey || 'global').trim() || 'global';
+  const records = Array.isArray(_chatRecordsByChannel.get(safeKey)) ? _chatRecordsByChannel.get(safeKey) : [];
+  return records[0]?._key || '';
+}
+
+async function loadOlderChatHistoryForChannel(channelKey = 'global') {
+  if (!window._FB?.CONFIGURED || !St.roomCode) return { count: 0, exhausted: true };
+  const { db, ref, get, query, orderByKey, endBefore, limitToLast } = window._FB;
+  if (!db || !ref || !get || !query || !orderByKey || !endBefore || !limitToLast) return { count: 0, exhausted: true };
+
+  const safeKey = String(channelKey || 'global').trim() || 'global';
+  let cursorKey = _chatHistoryCursorByChannel.get(safeKey) || '';
+  if (!cursorKey && safeKey === String(window._itcActiveChatChannelKey || 'global')) {
+    try { cursorKey = typeof window.getOldestStoredMessageKey === 'function' ? window.getOldestStoredMessageKey('chat') : ''; } catch (e) {}
+  }
+  if (!cursorKey) cursorKey = getOldestCachedChatKey(safeKey);
+  if (!cursorKey) return { count: 0, exhausted: true };
+
+  const pageLimit = 120;
+  const collected = [];
+  let exhausted = false;
+  let guard = 0;
+
+  while (guard < 4 && collected.length < 50 && cursorKey) {
+    guard += 1;
+    const snap = await get(query(ref(db, `rooms/${St.roomCode}/chat`), orderByKey(), endBefore(cursorKey), limitToLast(pageLimit)));
+    const raw = snap.val() || {};
+    const entries = Object.entries(raw).sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+    if (!entries.length) {
+      exhausted = true;
+      break;
+    }
+    cursorKey = entries[0][0];
+    _chatHistoryCursorByChannel.set(safeKey, cursorKey);
+    const matched = entries
+      .map(([key, value]) => normalizeChatRecordForRender(key, value || {}))
+      .filter((record) => shouldShowChatMessageForChannel(safeKey, record));
+    collected.push(...matched);
+    if (entries.length < pageLimit) {
+      exhausted = true;
+      break;
+    }
+    if (matched.length > 0) break;
+  }
+
+  if (!collected.length) return { count: 0, exhausted };
+  const ordered = sortChatRecordsChronologically(collected);
+  cacheChannelMessages(safeKey, ordered, { merge: true, seed: false });
+  if (safeKey === String(window._itcActiveChatChannelKey || 'global') && typeof window.seedChatHistoryStore === 'function') {
+    window.seedChatHistoryStore('chat', ordered, { position: 'prepend' });
+  }
+  return { count: ordered.length, exhausted };
+}
+
+async function loadOlderCasualHistory() {
+  if (!window._FB?.CONFIGURED || !St.roomCode) return { count: 0, exhausted: true };
+  const { db, ref, get, query, orderByKey, endBefore, limitToLast } = window._FB;
+  if (!db || !ref || !get || !query || !orderByKey || !endBefore || !limitToLast) return { count: 0, exhausted: true };
+
+  let cursorKey = _casualHistoryCursor || '';
+  if (!cursorKey) {
+    try { cursorKey = typeof window.getOldestStoredMessageKey === 'function' ? window.getOldestStoredMessageKey('casual') : ''; } catch (e) {}
+  }
+  if (!cursorKey) return { count: 0, exhausted: true };
+
+  const pageLimit = 80;
+  const snap = await get(query(ref(db, `rooms/${St.roomCode}/casual`), orderByKey(), endBefore(cursorKey), limitToLast(pageLimit)));
+  const entries = Object.entries(snap.val() || {}).sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+  if (!entries.length) return { count: 0, exhausted: true };
+  _casualHistoryCursor = entries[0][0];
+  const records = entries.map(([key, value]) => ({ ...(value || {}), _key: key, timestamp: value?.time || value?.timestamp || 0 }));
+  if (typeof window.seedChatHistoryStore === 'function') {
+    window.seedChatHistoryStore('casual', records, { position: 'prepend' });
+  }
+  return { count: records.length, exhausted: entries.length < pageLimit };
+}
+
+window.loadOlderMessagesForPopout = async function(channel = 'chat', channelKey = 'global') {
+  const safeChannel = String(channel || 'chat').trim() || 'chat';
+  if (safeChannel === 'casual') {
+    const result = await loadOlderCasualHistory();
+    if (result.count > 0 && typeof window.prependStoredWindow === 'function') {
+      try { window.prependStoredWindow('casual', result.count); } catch (e) {}
+    }
+    return result;
+  }
+  return loadOlderChatHistoryForChannel(channelKey || 'global');
+};
+
 function switchActiveChatChannel(channelKey = 'global') {
   if (!window._FB?.CONFIGURED || !St.roomCode) return;
   const safeChannelKey = String(channelKey || 'global').trim() || 'global';
@@ -287,7 +460,11 @@ function switchActiveChatChannel(channelKey = 'global') {
   cleanupActiveChatChannelListeners();
   _activeChatChannelKey = safeChannelKey;
   window._itcActiveChatChannelKey = safeChannelKey;
+  _chatHistoryCursorByChannel.delete(safeChannelKey);
   restoreCachedChannelMessages(safeChannelKey);
+  if (typeof configureHistoryPaging === 'function') {
+    configureHistoryPaging('chat', { loadOlder: () => loadOlderChatHistoryForChannel(safeChannelKey), exhausted: false });
+  }
   try {
     document.dispatchEvent(new CustomEvent('itc:dm-active-channel-applied', {
       detail: { channelKey: safeChannelKey }
@@ -319,7 +496,7 @@ function switchActiveChatChannel(channelKey = 'global') {
       .filter((m) => shouldShowChatMessage(m))
       .sort((a, b) => (a.time || 0) - (b.time || 0));
 
-    cacheChannelMessages(safeChannelKey, filtered);
+    cacheChannelMessages(safeChannelKey, filtered, { merge: true });
     const nextKeys = new Set(filtered.map((m) => m._key));
     Array.from(processed).forEach((key) => {
       if (!nextKeys.has(key)) {
@@ -413,6 +590,9 @@ function setupFirebaseListeners() {
   if (typeof resetRenderedMessages === 'function') {
     resetRenderedMessages('chat');
     resetRenderedMessages('casual');
+  }
+  if (typeof configureHistoryPaging === 'function') {
+    configureHistoryPaging('casual', { loadOlder: loadOlderCasualHistory, exhausted: false });
   }
 
   trackFirebaseListener(onValue(ref(db, `rooms/${code}/players`), snap => {

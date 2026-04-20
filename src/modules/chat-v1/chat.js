@@ -78,7 +78,7 @@ const _renderState = {
     queue: [],
     map: new Map(),
     max: 120,
-    maxMemory: 360,
+    maxMemory: 1200,
     loadStep: 28,
     storeOrder: [],
     storeMap: new Map(),
@@ -108,7 +108,7 @@ const _renderState = {
     queue: [],
     map: new Map(),
     max: 140,
-    maxMemory: 260,
+    maxMemory: 700,
     loadStep: 36,
     storeOrder: [],
     storeMap: new Map(),
@@ -451,6 +451,60 @@ function storeMessageRecord(channel = 'chat', record = {}, key = '', options = {
     hideImageMeta: record.hideImageMeta,
     imageMeta: normalizeChatImageMeta(record.imageMeta),
   }, options);
+}
+
+
+function coerceHistoryRecordForStore(record = {}) {
+  return {
+    name: record.name,
+    text: record.text,
+    type: record.type,
+    uid: record.uid,
+    timestamp: record.timestamp || record.time,
+    speakAsAvatar: record.speakAsAvatar,
+    speakAsJournalId: record.speakAsJournalId,
+    whisperTo: record.whisperTo,
+    whisperToName: record.whisperToName,
+    nameColor: record.nameColor,
+    standingImg: record.standingImg,
+    tokenId: record.tokenId,
+    standingLabel: record.standingLabel,
+    imageWide: !!record.imageWide,
+    hideImageMeta: !!record.hideImageMeta,
+    imageMeta: normalizeChatImageMeta(record.imageMeta),
+  };
+}
+
+function seedChatHistoryStore(channel = 'chat', records = [], options = {}) {
+  const list = Array.isArray(records) ? records : [];
+  if (!list.length) return 0;
+  const position = options?.position === 'prepend' ? 'prepend' : 'append';
+  const ordered = list
+    .map((record) => ({ ...(record || {}), _key: String(record?._key || record?.msgKey || '').trim() }))
+    .filter((record) => !!record._key)
+    .sort((a, b) => {
+      const at = Number(a.time || a.timestamp || 0);
+      const bt = Number(b.time || b.timestamp || 0);
+      if (at && bt && at !== bt) return at - bt;
+      return String(a._key).localeCompare(String(b._key));
+    });
+  const applyList = position === 'prepend' ? ordered.slice().reverse() : ordered;
+  let count = 0;
+  applyList.forEach((record) => {
+    storeMessageRecord(channel, coerceHistoryRecordForStore(record), record._key, { position });
+    count += 1;
+  });
+  return count;
+}
+
+function getOldestStoredMessageKey(channel = 'chat') {
+  const state = getRenderState(channel);
+  return state.storeOrder[0] || '';
+}
+
+function getNewestStoredMessageKey(channel = 'chat') {
+  const state = getRenderState(channel);
+  return state.storeOrder[state.storeOrder.length - 1] || '';
 }
 
 
@@ -2042,5 +2096,10 @@ window.activateChatRenderChannel = activateChatRenderChannel;
 window.storeMessageRecord = storeMessageRecord;
 window.prependStoredWindow = prependStoredWindow;
 window.configureHistoryPaging = configureHistoryPaging;
+window.requestOlderHistory = requestOlderHistory;
+window.prependStoredWindow = prependStoredWindow;
+window.seedChatHistoryStore = seedChatHistoryStore;
+window.getOldestStoredMessageKey = getOldestStoredMessageKey;
+window.getNewestStoredMessageKey = getNewestStoredMessageKey;
 window.getChatImageClassName = getChatImageClassName;
 window.getChatImageInlineStyle = getChatImageInlineStyle;
