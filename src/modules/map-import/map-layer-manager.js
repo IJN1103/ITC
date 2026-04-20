@@ -483,7 +483,10 @@
   }
 
   function openMapLayerManager() {
-    if (typeof requireGM === 'function' && !requireGM('map layer manager')) return;
+    if (typeof hasPerm === 'function' && !(hasPerm('manageMap') && hasPerm('editToken'))) {
+      if (typeof showToast === 'function') showToast('맵세팅 레이어 관리 권한이 없어요. 맵 관리 + 토큰 편집 권한이 필요해요.');
+      return;
+    }
     refreshMapLayerManager();
     if (typeof openModal === 'function') openModal('modal-map-layers');
   }

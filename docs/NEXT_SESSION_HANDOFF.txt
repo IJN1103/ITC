@@ -286,3 +286,16 @@ styles/all.css          — 통합 CSS
 - BGM 기능은 아직 미구축 상태라 manageBgm은 실제 테스트 보류다.
 - manageMap은 Rules에는 존재하지만, 맵세팅/레이어/장면전환 UI와의 권한 연결은 별도 단계로 분리한다.
 - 관련 테스트 문서: docs/TOKEN_PERMISSION_UI_CHECKLIST.txt
+
+[2026-04-20] 권한 없는 플레이어 UI 정리 1차
+------------------------------------------------
+- 권한 없는 플레이어에게 위험한 조작 버튼이 보이지 않도록 UI를 정리했다.
+- `+ 캐릭터 토큰`, `+ 패널 토큰`은 createToken 권한 기준으로 표시한다.
+- `+ 맵세팅`은 manageMap + createToken + editToken 권한이 모두 있어야 표시한다.
+  - 맵세팅 ZIP 적용은 imported panel token 생성/편집을 동반하므로 manageMap 단독으로 열면 Firebase Rules와 충돌할 수 있다.
+- 맵세팅 레이어 버튼은 manageMap + editToken 권한 기준으로 표시한다.
+- `+ 장면 전환`은 계속 GM 전용이다.
+- `+ BGM`과 BGM 재생/이전/다음 버튼은 manageBgm 기준으로 표시한다.
+- desc 버튼은 sendDesc 기준으로 표시한다.
+- `openModal`, `openMapImportModal`, `openMapLayerManagerModal`에도 같은 권한 가드를 추가해 숨겨진 버튼을 우회해도 막히도록 했다.
+- 관련 테스트 문서: docs/TOKEN_PERMISSION_UI_CHECKLIST.txt
