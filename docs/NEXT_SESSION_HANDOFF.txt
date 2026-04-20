@@ -287,3 +287,13 @@ styles/all.css          — 통합 CSS
 - manageMap을 켜면 `+ 맵세팅`과 맵세팅 레이어 버튼이 표시된다. 장면 전환은 계속 GM 전용이다.
 - manageMap 권한자는 importedMapObject 패널 토큰 생성/수정/삭제가 가능하도록 database.rules.json에도 반영했다. Firebase Console Rules도 같은 기준으로 갱신해야 한다.
 - 관련 테스트 문서: docs/TOKEN_PERMISSION_UI_CHECKLIST.txt
+
+[2026-04-20] 저널 / 핸드아웃 권한 1차 안정화
+- 저널 권한 판정을 위해 `assignedTo` 배열과 함께 `assignedMap` 객체를 저장한다.
+- Firebase Rules는 `assignedMap/{uid} === true`를 기준으로 권한 받은 플레이어의 저널 수정을 허용한다.
+- 권한 받은 플레이어가 저널 권한 목록(`assignedTo`, `assignedMap`)을 직접 바꾸지 못하도록 Rules에서 고정했다.
+- 저널 삭제는 GM만 가능하도록 UI와 클라이언트 가드를 맞췄다.
+- 핸드아웃은 `allowedTo` 배열과 함께 `allowedMap` 객체를 저장한다.
+- 플레이어의 핸드아웃 수정/삭제 UI는 보이지 않도록 정리했다.
+- `database.rules.json`을 Firebase Console Rules에 다시 적용해야 이 권한 기준이 Rules 레벨까지 반영된다.
+- 테스트 문서: `docs/JOURNAL_HANDOUT_PERMISSION_CHECKLIST.txt`

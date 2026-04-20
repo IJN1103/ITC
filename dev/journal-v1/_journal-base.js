@@ -102,13 +102,36 @@ function sanitizeStoredJournalValue(value, path = []) {
   return value;
 }
 
+function normalizeUidList(listValue, mapValue) {
+  const out = [];
+  if (Array.isArray(listValue)) {
+    listValue.forEach(v => {
+      const uid = String(v || '').trim();
+      if (uid) out.push(uid);
+    });
+  }
+  if (mapValue && typeof mapValue === 'object' && !Array.isArray(mapValue)) {
+    Object.entries(mapValue).forEach(([uid, enabled]) => {
+      const safeUid = String(uid || '').trim();
+      if (safeUid && enabled === true) out.push(safeUid);
+    });
+  }
+  return [...new Set(out)];
+}
+
+function buildUidBoolMap(ids) {
+  const out = {};
+  normalizeUidList(ids, null).forEach(uid => { out[uid] = true; });
+  return out;
+}
+
 function normalizeJournal(raw, idOverride) {
   const id = String(idOverride || raw?.id || '').trim();
   if (!id) return null;
 
   const createdAt = Number(raw?.createdAt || Date.now()) || Date.now();
   const updatedAt = Number(raw?.updatedAt || createdAt) || createdAt;
-  const assignedTo = [...new Set((Array.isArray(raw?.assignedTo) ? raw.assignedTo : []).map(v => String(v || '').trim()).filter(Boolean))];
+  const assignedTo = normalizeUidList(raw?.assignedTo, raw?.assignedMap);
   const assignedTokenId = String(raw?.assignedTokenId || '').trim();
   const avatar = getSharedJournalAvatarRuntime().sanitizePersistentAvatarSrc(
     raw?.avatar || raw?.sheet?.avatar || ''
@@ -128,6 +151,7 @@ function normalizeJournal(raw, idOverride) {
     updatedAt,
     assignedTokenId: assignedTokenId || null,
     assignedTo,
+    assignedMap: buildUidBoolMap(assignedTo),
     avatar,
     nameColor,
     sheet: safeSheet && typeof safeSheet === 'object' ? safeSheet : {},
@@ -145,6 +169,7 @@ function buildJournalStoragePayload(journal) {
     updatedAt: normalized.updatedAt,
     assignedTokenId: normalized.assignedTokenId,
     assignedTo: normalized.assignedTo,
+    assignedMap: buildUidBoolMap(normalized.assignedTo),
     nameColor: normalized.nameColor,
     sheet: normalized.sheet || {},
   };
@@ -158,8 +183,8 @@ function buildJournalStoragePayload(journal) {
 function sanitizeJournalMetaPatch(metaPatch = {}, currentJournal = null) {
   const current = currentJournal && typeof currentJournal === 'object' ? currentJournal : null;
   const assignedTo = metaPatch.assignedTo !== undefined
-    ? [...new Set((Array.isArray(metaPatch.assignedTo) ? metaPatch.assignedTo : []).map(v => String(v || '').trim()).filter(Boolean))]
-    : (current?.assignedTo || []);
+    ? normalizeUidList(metaPatch.assignedTo, metaPatch.assignedMap)
+    : normalizeUidList(current?.assignedTo || [], current?.assignedMap);
   const assignedTokenId = metaPatch.assignedTokenId !== undefined
     ? (String(metaPatch.assignedTokenId || '').trim() || null)
     : (current?.assignedTokenId || null);
@@ -183,6 +208,7 @@ function sanitizeJournalMetaPatch(metaPatch = {}, currentJournal = null) {
     createdAt,
     assignedTokenId,
     assignedTo,
+    assignedMap: buildUidBoolMap(assignedTo),
     nameColor,
   };
   if (avatar) safe.avatar = avatar;
@@ -208,7 +234,8 @@ function normalizeHandout(raw, idOverride) {
     title: String(raw?.title || '무제 핸드아웃').trim() || '무제 핸드아웃',
     contentHtml: sanitizeHandoutHtml(raw?.contentHtml || ''),
     ownerId: String(raw?.ownerId || St.myId || '').trim(),
-    allowedTo: [...new Set((Array.isArray(raw?.allowedTo) ? raw.allowedTo : []).map(v => String(v || '').trim()).filter(Boolean))],
+    allowedTo: normalizeUidList(raw?.allowedTo, raw?.allowedMap),
+    allowedMap: buildUidBoolMap(normalizeUidList(raw?.allowedTo, raw?.allowedMap)),
     createdAt: Number(raw?.createdAt || Date.now()),
     updatedAt: Number(raw?.updatedAt || Date.now()),
   };
@@ -277,7 +304,7 @@ function migrateLocalHandouts() {
   if (!local.length) return;
   const { db, ref, update } = window._FB;
   const payload = {};
-  local.forEach(h => { payload[h.id] = { title: h.title, contentHtml: h.contentHtml, ownerId: h.ownerId, allowedTo: h.allowedTo, createdAt: h.createdAt, updatedAt: h.updatedAt }; });
+  local.forEach(h => { payload[h.id] = { title: h.title, contentHtml: h.contentHtml, ownerId: h.ownerId, allowedTo: h.allowedTo, allowedMap: buildUidBoolMap(h.allowedTo), createdAt: h.createdAt, updatedAt: h.updatedAt }; });
   update(ref(db, `rooms/${St.roomCode}/handouts`), payload).then(() => {
     try { localStorage.removeItem(handoutKey()); } catch (e) {}
   }).catch(err => console.error('handout local migration failed', err));
@@ -397,7 +424,7 @@ function renderHandoutList() {
     div.onclick = () => openHandoutEditor(h.id);
     const d = new Date(h.updatedAt || h.createdAt || Date.now());
     const preview = stripHandoutText(h.contentHtml || '').slice(0, 80) || '내용 없음';
-    const canEdit = St.isGM || h.ownerId === St.myId;
+    const canEdit = !!St.isGM;
     const allowed = (h.allowedTo || []).map(uid => St.players?.[uid]?.name).filter(Boolean);
     div.innerHTML = `<div class="handout-icon">📄</div><div class="handout-item-body"><div class="handout-item-title">${esc(h.title || '무제 핸드아웃')}${canEdit ? '<span class="handout-item-badge">편집 가능</span>' : ''}</div><div class="handout-item-preview">${esc(preview)}${stripHandoutText(h.contentHtml || '').length > 80 ? '…' : ''}</div><div class="handout-item-meta"><span>${allowed.length ? '열람: ' + esc(allowed.join(', ')) : 'GM 전용'}</span><span>${(d.getMonth()+1)}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}</span></div></div>`;
     container.appendChild(div);
@@ -445,7 +472,7 @@ function openHandoutEditor(id) {
     renderHandoutAccessList(handout.allowedTo || []);
     const d = new Date(handout.updatedAt || handout.createdAt || Date.now());
     metaEl.textContent = `마지막 수정: ${d.getFullYear()}.${d.getMonth()+1}.${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
-    setHandoutEditorMode(St.isGM || handout.ownerId === St.myId);
+    setHandoutEditorMode(!!St.isGM);
   } else {
     if (!requireGM()) return;
     _currentHandoutId = 'h_' + Date.now();
@@ -689,6 +716,7 @@ async function saveHandoutFB(handout) {
     contentHtml: normalized.contentHtml,
     ownerId: normalized.ownerId,
     allowedTo: normalized.allowedTo,
+    allowedMap: buildUidBoolMap(normalized.allowedTo),
     createdAt: normalized.createdAt,
     updatedAt: normalized.updatedAt,
   };

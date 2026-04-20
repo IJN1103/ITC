@@ -92,3 +92,14 @@ Stage 4 적용 결과
 - 이후 새 Firebase 경로를 추가하는 작업은 반드시 Rules 필요 여부를 먼저 확인한다.
 - journals/handouts read 하드닝은 코드 로딩 구조 변경 없이 바로 적용하지 않는다.
 - 문제가 생기면 `database.rules.rollback-current.json`을 Firebase Console에 다시 붙여넣어 롤백한다.
+
+저널 / 핸드아웃 1차 권한 안정화 추가 기준
+-----------------------------------------
+- 저널은 기존 `assignedTo` 배열만으로는 Firebase Rules에서 특정 uid 포함 여부를 안정적으로 판정하기 어렵다.
+- 따라서 `assignedMap/{uid}: true`를 함께 저장한다.
+- GM/owner는 모든 저널을 수정할 수 있다.
+- 플레이어는 본인 소유 저널 또는 `assignedMap/{uid} === true`인 저널만 수정할 수 있다.
+- 플레이어는 저널의 `ownerId`, `assignedTo`, `assignedMap`을 직접 변경할 수 없다.
+- 저널 삭제는 GM/owner만 허용한다.
+- 핸드아웃은 GM/owner만 수정/삭제할 수 있다.
+- 핸드아웃은 향후 per-item read 하드닝을 위해 `allowedMap/{uid}: true`를 함께 저장한다.
