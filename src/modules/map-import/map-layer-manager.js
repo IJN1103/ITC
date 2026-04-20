@@ -282,7 +282,7 @@
     }
     const objectCount = Array.isArray(entries) ? entries.filter((entry) => canDeleteLayer(entry)).length : 0;
     bar.innerHTML = objectCount > 0
-      ? '<button type="button" id="map-layer-delete-all" class="map-layer-bulk-delete">오브젝트 전체삭제</button>'
+      ? '<button type="button" id="map-layer-delete-all" class="map-layer-bulk-delete">전체 삭제</button>'
       : '';
     const btn = document.getElementById('map-layer-delete-all');
     btn?.addEventListener('click', (e) => {
