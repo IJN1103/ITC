@@ -129,9 +129,9 @@ textarea:focus{border-color:#b89a60}
 textarea::-webkit-scrollbar{width:3px}
 textarea::-webkit-scrollbar-thumb{background:#2e2e2e;border-radius:2px}
 .sb{width:34px;height:34px;background:#b89a60;border:none;border-radius:6px;color:#080808;cursor:pointer;font-size:15px;flex-shrink:0}
-.dsec{justify-content:center;margin:6px 0}
-.dsec .mb{display:block;text-align:center;flex:none;width:100%}
-.dsec-text{font-size:15px;font-weight:600;color:#e8e3da;font-style:normal;line-height:1.9;letter-spacing:.02em;border:0;padding:4px 12px;margin:0;display:block;text-align:center}
+.dsec{justify-content:center}
+.dsec .mb{text-align:center}
+.dsec-text{font-size:14.5px;color:#8c8882;font-style:italic;line-height:1.65;border-top:1px solid #1f1f1f;border-bottom:1px solid #1f1f1f;padding:10px 0;margin:6px 0}
 .sa-btn{display:inline-flex;align-items:center;gap:6px;background:none;border:none;border-radius:6px;color:#5a5751;font-family:inherit;font-size:12.5px;padding:4px 6px;cursor:pointer;transition:.18s ease;letter-spacing:.03em;max-width:180px}
 .sa-btn:hover{color:#8c8882}
 .sa-btn.active{color:#7c9ece}
@@ -213,7 +213,7 @@ L.push('window.renderDmBar=renderDmBar;');
   L.push('window.addMsg=function(name,text,type,ch,nc,av,ts,fhtml){');
   L.push('type=normalizeMsgType(type);ch=ch||"chat";var c=document.getElementById("pm-"+ch)||document.getElementById("pm-chat");');
   L.push('var row=document.createElement("div");var isSys=type==="sys"||type==="system"||type==="desc";');
-  L.push('if(type==="desc"){row.className="cm dsec";var mb=document.createElement("div");mb.className="mb";var mt=document.createElement("div");mt.className="mt dsec-text";mt.innerHTML=safeMsgHtml(text,fhtml);mb.appendChild(mt);row.appendChild(mb);c.appendChild(row);if(!window._popoutSuppressAutoscroll)c.scrollTop=c.scrollHeight;return}');
+  L.push('if(type==="desc"){row.className="cm dsec";var mb=document.createElement("div");mb.className="mb";mb.style.textAlign="center";var mt=document.createElement("div");mt.className="mt dsec-text";mt.innerHTML=safeMsgHtml(text,fhtml);mb.appendChild(mt);row.appendChild(mb);c.appendChild(row);c.scrollTop=c.scrollHeight;return}');
   L.push('row.className="cm"+(isSys?" ms":"");');
   L.push('if(!isSys){var avD=document.createElement("div");avD.className="av";if(av){var img=document.createElement("img");img.src=av;avD.appendChild(img)}else{avD.textContent=(name||"?")[0].toUpperCase()}row.appendChild(avD)}');
   L.push('var mb=document.createElement("div");mb.className="mb";');
@@ -221,9 +221,8 @@ L.push('window.renderDmBar=renderDmBar;');
   L.push('var mt=document.createElement("div");mt.className="mt";mt.innerHTML=safeMsgHtml(text,fhtml);mb.appendChild(mt);');
   // dice card
   L.push('if(type==="dice"){var dm=text.match(/[\\u{1F3B2}\\u{1F3AF}]\\s*(.+?)\\s*\\u2192\\s*(\\d+)\\s*\\(([^)]+)\\)/u);if(dm){mt.style.display="none";var dc=document.createElement("div");dc.className="dc";["dc-f","dc-r","dc-d"].forEach(function(cls,i){var d=document.createElement("div");d.className=cls;d.textContent=dm[i+1];dc.appendChild(d)});mb.appendChild(dc)}}');
-  L.push('row.appendChild(mb);c.appendChild(row);if(!window._popoutSuppressAutoscroll)c.scrollTop=c.scrollHeight};');
-  L.push('window.setMessages=function(ch,list){ch=ch||"chat";var c=document.getElementById("pm-"+ch)||document.getElementById("pm-chat");if(!c)return;var nearBottom=(c.scrollHeight-c.scrollTop-c.clientHeight)<=56;var prevHeight=c.scrollHeight;var prevTop=c.scrollTop;window._popoutSuppressAutoscroll=true;c.innerHTML="";(Array.isArray(list)?list:[]).forEach(function(item){window.addMsg(item.name,item.text,normalizeMsgType(item.type),item.channel||ch,item.nameColor||"",item.avatar||"",item.time||"",item.fhtml||"")});window._popoutSuppressAutoscroll=false;if(nearBottom||prevHeight===0)c.scrollTop=c.scrollHeight;else c.scrollTop=prevTop+(c.scrollHeight-prevHeight)};');
-  L.push('var _popOlderLoading={chat:false,casual:false};function bindOlderScroll(ch){var c=document.getElementById("pm-"+ch)||document.getElementById("pm-chat");if(!c||c.dataset.olderScrollBound==="1")return;c.dataset.olderScrollBound="1";c.addEventListener("scroll",function(){if(c.scrollTop>28||_popOlderLoading[ch])return;var op=getOpenerState();if(!op||typeof op.loadOlderMessagesForPopout!=="function")return;_popOlderLoading[ch]=true;var prevHeight=c.scrollHeight;var prevTop=c.scrollTop;Promise.resolve(op.loadOlderMessagesForPopout(ch,ch==="chat"?getCurrentDmChannelKey():"casual")).then(function(){try{if(op.forcePopoutSync)op.forcePopoutSync()}catch(e){}setTimeout(function(){if(c.scrollHeight>prevHeight)c.scrollTop=prevTop+(c.scrollHeight-prevHeight)},120)}).finally(function(){_popOlderLoading[ch]=false})},{passive:true})}bindOlderScroll("chat");bindOlderScroll("casual");');
+  L.push('row.appendChild(mb);c.appendChild(row);c.scrollTop=c.scrollHeight};');
+  L.push('window.setMessages=function(ch,list){ch=ch||"chat";var c=document.getElementById("pm-"+ch)||document.getElementById("pm-chat");if(!c)return;c.innerHTML="";(Array.isArray(list)?list:[]).forEach(function(item){window.addMsg(item.name,item.text,normalizeMsgType(item.type),item.channel||ch,item.nameColor||"",item.avatar||"",item.time||"",item.fhtml||"")})};');
 
   // setJournals
   L.push('window.setJournals=function(list){journals=list;var c=document.getElementById("pm-journal");c.innerHTML="";list.forEach(function(j){var d=document.createElement("div");d.className="j-item";var b=document.createElement("b");b.textContent=j.title||"\\uBB34\\uC81C";var s=document.createElement("span");s.textContent=(j.body||"").slice(0,40)||"\\uB0B4\\uC6A9 \\uC5C6\\uC74C";d.appendChild(b);d.appendChild(s);c.appendChild(d)})};');
