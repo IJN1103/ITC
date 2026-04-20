@@ -5,9 +5,14 @@
     isBusy: false,
   };
 
-  function requireMapImportAccess() {
-    if (typeof hasPerm === 'function' && hasPerm('manageMap') && hasPerm('createToken') && hasPerm('editToken')) return true;
-    if (typeof showToast === 'function') showToast('맵세팅 적용 권한이 없어요. 맵 관리 + 토큰 생성/편집 권한이 필요해요.');
+  function canManageMapImport() {
+    if (typeof hasPerm === 'function') return !!hasPerm('manageMap');
+    return !!window.St?.isGM;
+  }
+
+  function requireMapImportPermission() {
+    if (canManageMapImport()) return true;
+    if (typeof showToast === 'function') showToast('맵 관리 권한이 없어요.');
     return false;
   }
 
@@ -40,7 +45,7 @@
   }
 
   function openMapImportModal() {
-    if (!requireMapImportAccess()) return;
+    if (!requireMapImportPermission()) return;
     resetMapImportUi();
     if (typeof openModal === 'function') openModal('modal-map-import');
   }
@@ -530,7 +535,7 @@
   }
 
   async function handleMapImportFile(input) {
-    if (!requireMapImportAccess()) {
+    if (!requireMapImportPermission()) {
       if (input) input.value = '';
       return;
     }
@@ -562,7 +567,7 @@
   }
 
   async function applyValidatedMapBackground() {
-    if (!requireMapImportAccess()) return;
+    if (!requireMapImportPermission()) return;
     if (IMPORT_STATE.isBusy) return;
     const pendingFile = IMPORT_STATE.pendingFile;
     const validated = IMPORT_STATE.lastValidated;

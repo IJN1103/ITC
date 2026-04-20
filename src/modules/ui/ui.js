@@ -4,19 +4,7 @@
  */
 
 function openModal(id) {
-  if ((id === 'modal-token' || id === 'modal-panel-token') && !requirePerm('createToken', '토큰 생성 권한이 없어요.')) return;
-  if (id === 'modal-map-import' && !(hasPerm('manageMap') && hasPerm('createToken') && hasPerm('editToken'))) {
-    if (typeof showToast === 'function') showToast('맵세팅 적용 권한이 없어요. 맵 관리 + 토큰 생성/편집 권한이 필요해요.');
-    return;
-  }
-  if (id === 'modal-map-layers' && !(hasPerm('manageMap') && hasPerm('editToken'))) {
-    if (typeof showToast === 'function') showToast('맵세팅 레이어 관리 권한이 없어요. 맵 관리 + 토큰 편집 권한이 필요해요.');
-    return;
-  }
-  if (id === 'modal-bgm' && !requirePerm('manageBgm', 'BGM 관리 권한이 없어요.')) return;
-  const modal = document.getElementById(id);
-  if (!modal) return;
-  modal.classList.add('open');
+  document.getElementById(id).classList.add('open');
   if (id === 'modal-settings') renderSettingsModal();
   if (id === 'modal-profile')  initProfileModal();
 }
@@ -25,7 +13,7 @@ const PERMS = [
   { key: 'moveToken',   label: '토큰 이동',   desc: '맵에서 토큰을 드래그하여 이동' },
   { key: 'createToken', label: '토큰 생성',   desc: '맵에 새 토큰을 추가' },
   { key: 'editToken',   label: '토큰 편집',   desc: '토큰 우클릭 편집/삭제/복제/회전' },
-  { key: 'manageMap',   label: '맵 관리',     desc: '맵 배경/레이어 관리. 맵세팅 오브젝트 작업은 토큰 생성/편집 권한도 필요' },
+  { key: 'manageMap',   label: '맵 관리',     desc: '맵세팅/레이어 관리. 장면 전환은 GM 전용' },
   { key: 'manageBgm',   label: 'BGM 관리',    desc: 'BGM 추가/삭제/변경' },
   { key: 'sendDesc',    label: 'desc 입력',   desc: '/desc 지문 명령어 사용' },
 ];
@@ -79,12 +67,6 @@ function hasPerm(key) {
   return !!_myPerms[key];
 }
 
-function requirePerm(key, message) {
-  if (hasPerm(key)) return true;
-  if (typeof showToast === 'function') showToast(message || '권한이 없어요.');
-  return false;
-}
-
 function refreshMyPerms() {
   if (St.isGM) { _myPerms = {}; return; }
   const me = St.players?.[St.myId];
@@ -92,50 +74,21 @@ function refreshMyPerms() {
 }
 
 function refreshPermUI() {
-  const canCreateToken = hasPerm('createToken');
-  const canEditToken = hasPerm('editToken');
-  const canManageMap = hasPerm('manageMap');
-  const canImportMapSetting = canManageMap && canCreateToken && canEditToken;
-  const canManageMapLayers = canManageMap && canEditToken;
-  const canManageBgm = hasPerm('manageBgm');
-
   const addToken = document.getElementById('map-add-token');
-  if (addToken) addToken.style.display = canCreateToken ? '' : 'none';
-
+  if (addToken) addToken.style.display = hasPerm('createToken') ? '' : 'none';
   const addPanelToken = document.getElementById('map-add-panel-token');
-  if (addPanelToken) addPanelToken.style.display = canCreateToken ? '' : 'none';
-
+  if (addPanelToken) addPanelToken.style.display = hasPerm('createToken') ? '' : 'none';
   const mapImportTrigger = document.getElementById('map-import-trigger');
-  if (mapImportTrigger) mapImportTrigger.style.display = canImportMapSetting ? '' : 'none';
-
+  if (mapImportTrigger) mapImportTrigger.style.display = hasPerm('manageMap') ? '' : 'none';
   const mapLayerTrigger = document.getElementById('map-layer-trigger');
-  if (mapLayerTrigger) mapLayerTrigger.style.display = canManageMapLayers ? '' : 'none';
-
+  if (mapLayerTrigger) mapLayerTrigger.style.display = hasPerm('manageMap') ? '' : 'none';
   const mapSceneTrigger = document.getElementById('map-scene-trigger');
   if (mapSceneTrigger) mapSceneTrigger.style.display = St.isGM ? '' : 'none';
-
-  const eraseBtn = document.getElementById('tool-erase');
-  if (eraseBtn) eraseBtn.style.display = canEditToken ? '' : 'none';
-  if (!canEditToken && St.tool === 'erase' && typeof setTool === 'function') {
-    try { setTool('select'); } catch (err) { St.tool = 'select'; }
-  }
-
-  document.querySelectorAll('.bgm-add').forEach(el => { el.style.display = canManageBgm ? '' : 'none'; });
-  document.querySelectorAll('.bgm-ctrl .bgm-btn').forEach(el => {
-    el.style.display = canManageBgm ? '' : 'none';
-  });
-
+  document.querySelectorAll('.bgm-add').forEach(el => { el.style.display = hasPerm('manageBgm') ? '' : 'none'; });
   const descBtn = document.getElementById('desc-toggle-btn');
-  if (descBtn) {
-    descBtn.style.display = hasPerm('sendDesc') ? '' : 'none';
-    if (!hasPerm('sendDesc') && St.descMode && typeof toggleDescMode === 'function') {
-      try { toggleDescMode(); } catch (err) { St.descMode = false; }
-    }
-  }
-
+  if (descBtn) descBtn.style.display = hasPerm('sendDesc') ? '' : 'none';
   const endBtn = document.getElementById('btn-end-room');
   if (endBtn) endBtn.style.display = St.isGM ? '' : 'none';
-
   const gmMgmt = document.getElementById('gm-player-mgmt');
   if (gmMgmt) gmMgmt.style.display = St.isGM ? 'block' : 'none';
 }

@@ -482,9 +482,14 @@
     });
   }
 
+  function canManageMapLayers() {
+    if (typeof hasPerm === 'function') return !!hasPerm('manageMap');
+    return !!getStateRoot().isGM;
+  }
+
   function openMapLayerManager() {
-    if (typeof hasPerm === 'function' && !(hasPerm('manageMap') && hasPerm('editToken'))) {
-      if (typeof showToast === 'function') showToast('맵세팅 레이어 관리 권한이 없어요. 맵 관리 + 토큰 편집 권한이 필요해요.');
+    if (!canManageMapLayers()) {
+      if (typeof showToast === 'function') showToast('맵 관리 권한이 없어요.');
       return;
     }
     refreshMapLayerManager();
