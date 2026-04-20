@@ -261,8 +261,8 @@
     const objectPart = count > 0 ? `오브젝트 레이어 ${count}개` : '';
     const bgPart = hasBackground ? '배경 이미지' : '';
     const targetLabel = [objectPart, bgPart].filter(Boolean).join('와 ');
-    const ok = window.confirm(`맵세팅 ${targetLabel || '레이어'}를 전체 삭제할까요?
-연결된 맵세팅 패널도 함께 삭제됩니다.`);
+    const panelLine = count > 0 ? '\n연결된 맵세팅 패널도 함께 삭제됩니다.' : '';
+    const ok = window.confirm(`맵세팅 ${targetLabel || '레이어'}를 전체 삭제할까요?${panelLine}`);
     if (!ok) return;
     deleteAllObjectLayers()
       .then(() => { if (typeof showToast === 'function') showToast('맵세팅 레이어와 배경 이미지를 모두 삭제했어요.'); })
@@ -283,8 +283,10 @@
       bar.className = 'map-layer-bulk-actions';
       list.parentNode?.insertBefore(bar, list);
     }
-    const objectCount = Array.isArray(entries) ? entries.filter((entry) => canDeleteLayer(entry)).length : 0;
-    bar.innerHTML = objectCount > 0
+    const safeEntries = Array.isArray(entries) ? entries : [];
+    const objectCount = safeEntries.filter((entry) => canDeleteLayer(entry)).length;
+    const hasBackground = safeEntries.some((entry) => String(entry?.id || '') === 'background');
+    bar.innerHTML = (objectCount > 0 || hasBackground)
       ? '<button type="button" id="map-layer-delete-all" class="map-layer-bulk-delete">전체 삭제</button>'
       : '';
     const btn = document.getElementById('map-layer-delete-all');
