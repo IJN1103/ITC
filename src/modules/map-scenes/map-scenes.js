@@ -342,6 +342,41 @@
   }
 
   /* ── apply helpers ── */
+  let _sceneLayerRefreshHandle = null;
+
+  function requestSceneLayerRefresh(reason){
+    const root = ROOT || (typeof window !== 'undefined' ? window : globalThis);
+    if (!root) return;
+    if (_sceneLayerRefreshHandle !== null) return;
+
+    const run = function(){
+      _sceneLayerRefreshHandle = null;
+      try {
+        if (typeof root.applyMapLayerState === 'function') root.applyMapLayerState();
+        else if (typeof applyMapLayerState === 'function') applyMapLayerState();
+      } catch (e) {
+        console.warn('scene layer state apply failed', reason || '', e);
+      }
+      try {
+        if (typeof root.refreshMapLayerManager === 'function') root.refreshMapLayerManager();
+      } catch (e) {
+        console.warn('scene layer manager refresh failed', reason || '', e);
+      }
+    };
+
+    if (typeof root.requestAnimationFrame === 'function') {
+      _sceneLayerRefreshHandle = root.requestAnimationFrame(function(){
+        if (typeof root.requestAnimationFrame === 'function') {
+          _sceneLayerRefreshHandle = root.requestAnimationFrame(run);
+        } else {
+          run();
+        }
+      });
+    } else if (typeof root.setTimeout === 'function') {
+      _sceneLayerRefreshHandle = root.setTimeout(run, 0);
+    }
+  }
+
   function applyMapPartToRuntime(scene){
     if (!scene) return;
     ROOT.St.mapState = {
@@ -351,7 +386,7 @@
     };
     ROOT.St.mapLayerState = scene.layerState ? deepCopy(scene.layerState) : null;
     if (typeof ROOT.applyImportedMapState === 'function') ROOT.applyImportedMapState(ROOT.St.mapState);
-    if (typeof ROOT.refreshMapLayerManager === 'function') ROOT.refreshMapLayerManager();
+    requestSceneLayerRefresh('map-part');
   }
 
   function buildSceneBgmPayload(scene){
@@ -420,6 +455,9 @@
     // isEmpty 플래그가 있으면 tokens가 누락됐더라도 "명시적 빈 씬"으로 간주한다.
     // 플레이어도 로컬 화면은 즉시 비우고, GM만 rooms/{code}/tokens 경로를 동기화한다.
     await applySceneTokensToRuntime(scene, { syncRoomTokens: options.syncRoomBgm === true });
+    // 씬 전환은 mapState -> token DOM 순서로 적용되므로, imported panel token DOM이 생성된 뒤
+    // 레이어 표시/숨김/겹침 순서를 한 번 더 맞춘다.
+    requestSceneLayerRefresh('scene-apply');
     if (options.syncRoomBgm === true) {
       await syncSceneMapToRoomBgm(scene);
     }
