@@ -240,3 +240,28 @@ styles/all.css          — 통합 CSS
   1. Firebase Rules 현재본 확인 및 database.rules.json 프로젝트 포함 여부 정리
   2. 최종 통합 회귀 테스트
   3. 이후 큰 기능 추가 여부 결정
+
+[2026-04-20] Firebase Rules 권한 안정화 1단계 추가
+- 사용자가 현재 Firebase Console Rules 전체를 공유했다.
+- 해당 현재본을 `database.rules.json`으로 프로젝트에 보관했다.
+- 콘솔 적용 전 검토용 초안으로 `database.rules.hardening-draft.json`을 추가했다.
+- 실제 Firebase Console Rules는 아직 변경하지 않았다. 다음 세션에서 임의로 콘솔 적용했다고 말하면 안 된다.
+- 확정된 권한 정책:
+  - 방 전체 삭제는 GM/owner만 가능.
+  - 일반 플레이어가 마지막으로 방을 나가도 rooms/{roomCode}를 직접 삭제하지 않는다.
+  - BGM은 GM/owner 기본 권한이며, `players/{uid}/permissions/manageBgm === true`인 플레이어만 예외적으로 수정 가능.
+  - 토큰은 GM/owner 기본 권한이며, 플레이어는 `createToken`, `moveToken`, `editToken` 권한을 받은 만큼만 활동 가능.
+  - Journals는 현재 `ownerId`, `assignedTo` 기반으로 프론트에서 권한 필터링 중이다.
+  - Handouts는 현재 `ownerId`, `allowedTo` 기반으로 프론트에서 권한 필터링 중이다.
+- 중요 주의:
+  - journals/handouts는 현재 전체 목록을 읽은 뒤 프론트에서 필터링하므로, Rules에서 per-item read를 바로 엄격하게 걸면 기능이 깨질 수 있다.
+  - dmChats는 코드에서 사용하는 경로다. 상위 rooms write를 좁히려면 dmChats 명시 규칙이 필요하다.
+  - `database.rules.hardening-draft.json`은 초안이다. 운영 콘솔에 바로 붙여넣지 말고 테스트 방에서 검증해야 한다.
+- 클라이언트 방어 코드:
+  - `src/modules/game/game.js`의 leaveRoom에서 일반 플레이어가 마지막으로 나가도 room 전체 삭제를 하지 않도록 수정했다.
+- 다음 권장 작업:
+  1. `database.rules.hardening-draft.json` 초안 검토
+  2. 테스트 방에서 Firebase Console Rules 임시 적용 여부를 사용자에게 확인
+  3. GM/플레이어 2계정으로 권한 테스트
+  4. Permission denied 발생 지점 보정
+  5. 통과 후에만 운영 Rules 반영
