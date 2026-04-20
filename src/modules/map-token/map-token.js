@@ -832,6 +832,7 @@ function renderAllTokens(tokens) {
   renderMapStatusPanel(tokens);
   /* 게임 화면 진입 후 맵 크기가 정상 반영되도록 보장 */
   applyMapTransform();
+  if (Object.values(tokens || {}).some(isImportedMapSettingToken)) requestImportedMapLayerStateApply();
 }
 
 /* ── Firebase onChild* 용 개별 토큰 업데이트 ── */
@@ -914,6 +915,7 @@ function addOrUpdateSingleToken(id, data) {
       }
       refreshTokenLiveSnapshot(existing, data);
       if (_teTokenId === id) refreshTokenOwnerBar(data);
+      requestImportedMapLayerStateApplyForToken(data);
       return;
     }
   }
@@ -922,6 +924,7 @@ function addOrUpdateSingleToken(id, data) {
   if (data) {
     createTokenEl(data);
     syncMapStatusCard(data, St.tokens);
+    requestImportedMapLayerStateApplyForToken(data);
     if (_teTokenId === id) refreshTokenOwnerBar(data);
   } else {
     removeMapStatusCard(id, St.tokens);
@@ -994,6 +997,36 @@ function shouldPanMapFromLockedMapSettingToken(token) {
 
 function shouldShowLockedTokenToast(token) {
   return isTokenPositionLocked(token) && !shouldPanMapFromLockedMapSettingToken(token);
+}
+
+let _mapLayerStateApplyHandle = null;
+function requestImportedMapLayerStateApply() {
+  const root = typeof window !== 'undefined' ? window : globalThis;
+  const applyFn = root?.applyMapLayerState || (typeof applyMapLayerState === 'function' ? applyMapLayerState : null);
+  if (typeof applyFn !== 'function') return;
+  if (_mapLayerStateApplyHandle !== null) return;
+
+  const run = () => {
+    _mapLayerStateApplyHandle = null;
+    const latestApplyFn = root?.applyMapLayerState || (typeof applyMapLayerState === 'function' ? applyMapLayerState : null);
+    if (typeof latestApplyFn !== 'function') return;
+    try {
+      latestApplyFn();
+    } catch (err) {
+      console.warn('applyMapLayerState after imported token render failed', err);
+    }
+  };
+
+  if (typeof root?.requestAnimationFrame === 'function') {
+    _mapLayerStateApplyHandle = root.requestAnimationFrame(run);
+  } else if (typeof root?.setTimeout === 'function') {
+    _mapLayerStateApplyHandle = root.setTimeout(run, 0);
+  }
+}
+
+function requestImportedMapLayerStateApplyForToken(token) {
+  if (!isImportedMapSettingToken(token)) return;
+  requestImportedMapLayerStateApply();
 }
 
 function isPanelToken(token) {
@@ -1263,6 +1296,7 @@ function createTokenEl(t) {
   makeDraggable(el, t.id);
   refreshTokenLiveSnapshot(el, t);
   inner.appendChild(el);
+  requestImportedMapLayerStateApplyForToken(t);
 }
 
 function makeDraggable(el, tokenId) {

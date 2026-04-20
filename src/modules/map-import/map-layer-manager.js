@@ -80,6 +80,23 @@
     return position === 'after' ? targetIndex + 1 : targetIndex;
   }
 
+  function getLayerZIndex(layerId, orderIndex) {
+    const id = String(layerId || '');
+    if (id === 'background') return 0;
+    return Math.max(1, Number(orderIndex || 0));
+  }
+
+  function syncImportedPanelTokenLocalState(entry, visible, zIndex) {
+    const panelTokenId = String(entry?.panelTokenId || '').trim();
+    if (!panelTokenId) return;
+    const stateRoot = getStateRoot();
+    if (!stateRoot.tokens || typeof stateRoot.tokens !== 'object') return;
+    const token = stateRoot.tokens[panelTokenId];
+    if (!token) return;
+    token.panelPriority = zIndex;
+    token.importedMapObjectHidden = !visible;
+  }
+
   function resolveLayerElement(entry) {
     if (!entry?.target) return null;
     if (entry.target.startsWith('[')) return document.querySelector(entry.target);
@@ -280,13 +297,11 @@
     const objects = Array.isArray(state.objects) ? state.objects : [];
     const objectMap = new Map(objects.map((item) => [String(item?.layerId || ''), item]));
     const payload = {};
-    let nextPriority = 1000;
-    order.forEach((layerId) => {
+    order.forEach((layerId, index) => {
       const item = objectMap.get(String(layerId || ''));
       const panelTokenId = String(item?.panelTokenId || '').trim();
       if (!panelTokenId) return;
-      payload[`${panelTokenId}/panelPriority`] = nextPriority;
-      nextPriority += 1;
+      payload[`${panelTokenId}/panelPriority`] = getLayerZIndex(layerId, index);
     });
     return payload;
   }
@@ -329,10 +344,13 @@
     stateRoot.mapLayerState = normalized;
     normalized.order.forEach((id, index) => {
       const entry = entryMap.get(id);
+      const visible = normalized.visible[id] !== false;
+      const zIndex = getLayerZIndex(id, index);
+      syncImportedPanelTokenLocalState(entry, visible, zIndex);
       const el = resolveLayerElement(entry);
       if (!el) return;
-      el.style.display = normalized.visible[id] === false ? 'none' : '';
-      el.style.zIndex = String(index);
+      el.style.display = visible ? '' : 'none';
+      el.style.zIndex = String(zIndex);
     });
   }
 
