@@ -12,8 +12,8 @@ function openModal(id) {
 const PERMS = [
   { key: 'moveToken',   label: '토큰 이동',   desc: '맵에서 토큰을 드래그하여 이동' },
   { key: 'createToken', label: '토큰 생성',   desc: '맵에 새 토큰을 추가' },
-  { key: 'editToken',   label: '토큰 편집',   desc: '토큰 우클릭 편집/삭제' },
-  { key: 'manageMap',   label: '맵 관리',     desc: '맵 배경 업로드 및 변경' },
+  { key: 'editToken',   label: '토큰 편집',   desc: '토큰 우클릭 편집/삭제/복제/회전' },
+  { key: 'manageMap',   label: '맵 관리',     desc: '맵세팅/레이어 관리. 장면 전환은 GM 전용' },
   { key: 'manageBgm',   label: 'BGM 관리',    desc: 'BGM 추가/삭제/변경' },
   { key: 'sendDesc',    label: 'desc 입력',   desc: '/desc 지문 명령어 사용' },
 ];
@@ -24,6 +24,17 @@ const ALL_PLAYER_PERMS = PERMS.reduce((acc, pm) => {
   acc[pm.key] = true;
   return acc;
 }, {});
+
+const TOKEN_PERMISSION_KEYS = ['moveToken', 'createToken', 'editToken'];
+
+function buildPermissionPayload(keys, enabled) {
+  const payload = {};
+  (Array.isArray(keys) ? keys : []).forEach((key) => {
+    if (!key) return;
+    payload[key] = enabled ? true : null;
+  });
+  return payload;
+}
 
 function getStoredChatFontSize() {
   const raw = parseFloat(localStorage.getItem('itc_chat_font_size') || '14.5');
@@ -51,15 +62,18 @@ function setChatFontSize(size) {
   applyChatFontSize(size);
 }
 
-async function setPlayerPermPreset(uid, enabled) {
+async function setPlayerPermPreset(uid, enabled, keys = null) {
   if (!St.isGM || !window._FB?.CONFIGURED) return;
   const { db, ref, update } = window._FB;
-  const payload = {};
-  Object.keys(ALL_PLAYER_PERMS).forEach((key) => {
-    payload[key] = enabled ? true : null;
-  });
+  const targetKeys = Array.isArray(keys) && keys.length ? keys : Object.keys(ALL_PLAYER_PERMS);
+  const payload = buildPermissionPayload(targetKeys, enabled);
+  if (!Object.keys(payload).length) return;
   await update(ref(db, `rooms/${St.roomCode}/players/${uid}/permissions`), payload);
   renderSettingsModal();
+}
+
+async function setPlayerTokenPermPreset(uid, enabled) {
+  await setPlayerPermPreset(uid, enabled, TOKEN_PERMISSION_KEYS);
 }
 
 function hasPerm(key) {
@@ -156,22 +170,48 @@ function renderSettingsModal() {
         card.appendChild(allPerms);
       } else {
         if (St.isGM) {
+          const tokenBulkRow = document.createElement('div');
+          tokenBulkRow.style.cssText = 'display:flex;gap:6px;margin-top:2px;margin-bottom:6px';
+
+          const grantTokenBtn = document.createElement('button');
+          grantTokenBtn.style.cssText = 'flex:1;font:inherit;font-size:10px;padding:5px 8px;border-radius:6px;cursor:pointer;transition:.15s ease;border:1px solid rgba(90,158,114,.35);background:rgba(90,158,114,.10);color:var(--green)';
+          grantTokenBtn.textContent = '토큰 권한 부여';
+          grantTokenBtn.title = '토큰 이동/생성/편집 권한만 부여합니다.';
+          grantTokenBtn.onclick = () => setPlayerTokenPermPreset(uid, true);
+          tokenBulkRow.appendChild(grantTokenBtn);
+
+          const revokeTokenBtn = document.createElement('button');
+          revokeTokenBtn.style.cssText = 'flex:1;font:inherit;font-size:10px;padding:5px 8px;border-radius:6px;cursor:pointer;transition:.15s ease;border:1px solid rgba(200,92,92,.28);background:rgba(200,92,92,.08);color:var(--red)';
+          revokeTokenBtn.textContent = '토큰 권한 회수';
+          revokeTokenBtn.title = '토큰 이동/생성/편집 권한만 회수합니다.';
+          revokeTokenBtn.onclick = () => setPlayerTokenPermPreset(uid, false);
+          tokenBulkRow.appendChild(revokeTokenBtn);
+
+          card.appendChild(tokenBulkRow);
+
           const bulkRow = document.createElement('div');
-          bulkRow.style.cssText = 'display:flex;gap:6px;margin-top:2px;margin-bottom:6px';
+          bulkRow.style.cssText = 'display:flex;gap:6px;margin-top:0;margin-bottom:6px';
 
           const grantBtn = document.createElement('button');
-          grantBtn.style.cssText = 'flex:1;font:inherit;font-size:10px;padding:5px 8px;border-radius:6px;cursor:pointer;transition:.15s ease;border:1px solid rgba(90,158,114,.35);background:rgba(90,158,114,.10);color:var(--green)';
-          grantBtn.textContent = '권한 모두 부여';
+          grantBtn.style.cssText = 'flex:1;font:inherit;font-size:10px;padding:5px 8px;border-radius:6px;cursor:pointer;transition:.15s ease;border:1px solid rgba(184,154,96,.35);background:rgba(184,154,96,.10);color:var(--accent)';
+          grantBtn.textContent = '전체 권한 부여';
+          grantBtn.title = '토큰, 맵, BGM, desc 권한을 모두 부여합니다.';
           grantBtn.onclick = () => setPlayerPermPreset(uid, true);
           bulkRow.appendChild(grantBtn);
 
           const revokeBtn = document.createElement('button');
           revokeBtn.style.cssText = 'flex:1;font:inherit;font-size:10px;padding:5px 8px;border-radius:6px;cursor:pointer;transition:.15s ease;border:1px solid rgba(200,92,92,.28);background:rgba(200,92,92,.08);color:var(--red)';
-          revokeBtn.textContent = '권한 모두 회수';
+          revokeBtn.textContent = '전체 권한 회수';
+          revokeBtn.title = '모든 보조 권한을 회수합니다.';
           revokeBtn.onclick = () => setPlayerPermPreset(uid, false);
           bulkRow.appendChild(revokeBtn);
 
           card.appendChild(bulkRow);
+
+          const permHint = document.createElement('div');
+          permHint.style.cssText = 'font-size:10px;line-height:1.45;color:var(--dim);margin:-2px 0 6px';
+          permHint.textContent = '토큰 권한은 이동/생성/편집만 빠르게 조정합니다. 맵/BGM/desc는 아래 개별 버튼으로 조정하는 것을 권장합니다.';
+          card.appendChild(permHint);
         }
 
         const permWrap = document.createElement('div');
