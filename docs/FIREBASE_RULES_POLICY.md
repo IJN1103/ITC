@@ -116,3 +116,11 @@ Stage 3 보강 내용
    - 그 외 `bgm` 하위 키: owner/GM만.
 3. 현재 사이트에서 BGM 기능이 완전히 구축되어 있지 않다면 `manageBgm` 실제 동작 테스트는 보류한다.
 4. 단, BGM 권한자가 맵세팅 데이터를 수정할 수 없도록 Rules 후보에서 미리 분리해둔다.
+
+Stage 4 콘솔 적용 준비
+---------------------
+- `database.rules.console-candidate.json`은 Firebase Console 적용 후보 Rules다.
+- `database.rules.rollback-current.json`은 적용 직전 기준 롤백용 Rules다.
+- Stage 4부터는 Firebase Console에서 사용자가 직접 Rules를 변경해야 한다.
+- 적용 전 현재 콘솔 Rules를 반드시 별도 백업한다.
+- 문제가 생기면 `database.rules.rollback-current.json`으로 즉시 롤백한다.

@@ -104,3 +104,14 @@ Firebase Rules 하드닝 체크리스트
 [ ] BGM 기능이 아직 구축되지 않은 경우 manageBgm 실제 기능 테스트는 보류로 표시
 [ ] 콘솔 적용 후 테스트 방에서 2계정 테스트 진행
 [ ] 문제가 있으면 database.rules.json 기준으로 즉시 롤백
+
+10. Stage 4 콘솔 적용 준비
+------------------------
+[ ] `database.rules.console-candidate.json` 생성 확인
+[ ] `database.rules.rollback-current.json` 생성 확인
+[ ] 현재 Firebase Console Rules 별도 백업 완료
+[ ] `docs/FIREBASE_RULES_STAGE4_CONSOLE_TEST_CHECKLIST.txt` 확인
+[ ] `docs/FIREBASE_RULES_ROLLBACK_GUIDE.txt` 확인
+[ ] 테스트 방 / GM 계정 / 플레이어 계정 준비
+[ ] 콘솔 적용 후 필수 테스트 진행
+[ ] 문제 발생 시 즉시 rollback-current 기준으로 롤백

@@ -302,3 +302,16 @@ Rules 핵심 기준:
 1. 사용자가 원하면 database.rules.console-candidate.json을 Firebase Console에 수동 적용.
 2. 테스트 방에서 2계정으로 Stage 3 테스트 진행.
 3. 문제가 있으면 database.rules.json 기준으로 즉시 롤백.
+
+[2026-04-20] Firebase Rules Stage 4 콘솔 적용 준비
+-------------------------------------------------
+- `database.rules.console-candidate.json`을 Firebase Console 적용 후보 Rules로 추가했다.
+- `database.rules.rollback-current.json`을 적용 직전 롤백용 Rules로 추가했다.
+- `database.rules.hardening-draft.json`은 console candidate와 같은 기준으로 맞췄다.
+- `docs/FIREBASE_RULES_STAGE4_CONSOLE_TEST_CHECKLIST.txt`를 추가했다.
+- `docs/FIREBASE_RULES_ROLLBACK_GUIDE.txt`를 추가했다.
+- 이 단계부터는 사용자가 Firebase Console에서 직접 Rules를 바꿔야 한다.
+- 적용 전 현재 콘솔 Rules를 반드시 별도 백업해야 한다.
+- 문제가 생기면 `database.rules.rollback-current.json`으로 즉시 롤백한다.
+- BGM 기능은 아직 구축되지 않았으므로 manageBgm 테스트는 보류 항목이다.
+- 다음 단계는 사용자가 Console에 `database.rules.console-candidate.json`을 적용한 뒤, Stage 4 체크리스트를 GM/플레이어 2계정으로 테스트하는 것이다.
