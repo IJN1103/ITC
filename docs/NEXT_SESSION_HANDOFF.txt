@@ -276,3 +276,29 @@ Firebase Rules Stage 2 상태
   - BGM 삭제/선택도 manageBgm 권한을 확인.
 - 다음 단계는 Firebase Console에서 `database.rules.hardening-draft.json`을 테스트 방 기준으로 검증하는 것이다.
 - 운영 콘솔에 적용하기 전 반드시 `database.rules.json` 백업 기준으로 롤백 준비를 한다.
+
+
+[Firebase Rules Stage 3]
+------------------------
+현재 상태:
+- Stage 1: 현재 콘솔 Rules를 database.rules.json에 보관 완료.
+- Stage 2: 클라이언트 방 삭제/BGM 권한 방어 및 hardening draft 정리 완료.
+- Stage 3: database.rules.console-candidate.json 콘솔 적용 후보 준비.
+
+중요:
+- 아직 Firebase Console Rules를 자동으로 바꾸지 않았다.
+- 다음 AI는 사용자에게 콘솔 수동 적용 여부를 반드시 먼저 확인해야 한다.
+- 적용 전 현재 콘솔 Rules 백업이 필수다.
+
+Rules 핵심 기준:
+- 방 전체 삭제: owner/GM만.
+- players role/permissions: owner/GM만 수정.
+- BGM playlist/currentTrack: owner/GM 또는 manageBgm.
+- 맵세팅 관련 bgm 하위 키(mapBackground/mapObjects/mapLayerState 등): owner/GM 또는 manageMap.
+- Tokens: createToken/moveToken/editToken 기준.
+- Journals/Handouts read 하드닝은 아직 보류. 현재 코드는 전체 read 후 프론트 필터링 구조이기 때문.
+
+다음 단계:
+1. 사용자가 원하면 database.rules.console-candidate.json을 Firebase Console에 수동 적용.
+2. 테스트 방에서 2계정으로 Stage 3 테스트 진행.
+3. 문제가 있으면 database.rules.json 기준으로 즉시 롤백.

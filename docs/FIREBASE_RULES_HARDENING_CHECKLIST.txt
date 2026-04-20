@@ -92,3 +92,15 @@ Firebase Rules 하드닝 체크리스트
 [ ] moveToken 권한은 토큰 x/y 이동만 가능
 [ ] editToken 권한이 있어야 토큰 편집/삭제 가능
 [ ] dmChats meta 생성은 GM/owner만 가능
+
+10. Stage 3 콘솔 적용 후보 확인
+------------------------------
+[ ] database.rules.console-candidate.json 파일이 존재함
+[ ] database.rules.console-candidate.json JSON 문법 검사 통과
+[ ] Firebase Console 현재 Rules 백업 완료
+[ ] BGM 권한과 맵세팅 권한이 분리되어 있음
+[ ] manageBgm 권한은 playlist/currentTrack에만 적용됨
+[ ] mapBackground/mapObjects/mapLayerState는 owner/GM 또는 manageMap 기준임
+[ ] BGM 기능이 아직 구축되지 않은 경우 manageBgm 실제 기능 테스트는 보류로 표시
+[ ] 콘솔 적용 후 테스트 방에서 2계정 테스트 진행
+[ ] 문제가 있으면 database.rules.json 기준으로 즉시 롤백

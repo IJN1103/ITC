@@ -106,3 +106,13 @@ Stage 2 보강 내용
 ----
 Stage 2 초안은 운영 콘솔에 바로 반영하기 전 테스트 방에서 확인해야 한다.
 특히 joinRoom, reserveSeatAndJoinRoom, BGM, token 권한은 Rules 적용 후 반드시 2계정으로 검증한다.
+
+Stage 3 보강 내용
+-----------------
+1. `database.rules.console-candidate.json`을 추가해 실제 콘솔 적용 후보를 별도 파일로 분리했다.
+2. BGM 권한과 맵세팅 권한을 분리했다.
+   - `bgm/playlist`, `bgm/currentTrack`: owner/GM 또는 `manageBgm`.
+   - `bgm/mapBackground`, `bgm/mapObjects`, `bgm/mapLayerState` 등 맵세팅 키: owner/GM 또는 `manageMap`.
+   - 그 외 `bgm` 하위 키: owner/GM만.
+3. 현재 사이트에서 BGM 기능이 완전히 구축되어 있지 않다면 `manageBgm` 실제 동작 테스트는 보류한다.
+4. 단, BGM 권한자가 맵세팅 데이터를 수정할 수 없도록 Rules 후보에서 미리 분리해둔다.
