@@ -8,7 +8,7 @@ Firebase Console Rules 강화 적용 후 문제가 생겼을 때 즉시 이전 R
 현재 파일 기준
 --------------
 - `database.rules.json`: 현재 운영 적용 Rules.
-- `database.rules.rollback-current.json`: 하드닝 적용 전 기존 Rules 백업.
+- `firebase-rules/database.rules.rollback-current.json`: 하드닝 적용 전 기존 Rules 백업.
 
 롤백해야 하는 경우
 -----------------
@@ -23,7 +23,7 @@ Firebase Console Rules 강화 적용 후 문제가 생겼을 때 즉시 이전 R
 
 롤백 순서
 --------
-1. `database.rules.rollback-current.json`을 연다.
+1. `firebase-rules/database.rules.rollback-current.json`을 연다.
 2. 파일 전체 내용을 복사한다.
 3. Firebase Console > Realtime Database > Rules로 이동한다.
 4. 현재 Rules 전체를 지우고 복사한 내용을 붙여넣는다.

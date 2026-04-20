@@ -4,14 +4,14 @@ Firebase Rules 권한 정책 정리
 목적
 ----
 이 문서는 현재 운영 Firebase Realtime Database Rules의 권한 기준을 고정하기 위한 문서다.
-2026-04-20 기준으로 `database.rules.console-candidate.json`을 Firebase Console에 적용했고, GM/플레이어 2계정 Stage 4 테스트를 통과했다.
+2026-04-20 기준으로 `firebase-rules/database.rules.console-candidate.json`을 Firebase Console에 적용했고, GM/플레이어 2계정 Stage 4 테스트를 통과했다.
 
 현재 파일 기준
 --------------
 - `database.rules.json`: 현재 Firebase Console에 적용된 운영 기준 Rules.
-- `database.rules.console-candidate.json`: Stage 4에서 검증 후 운영 반영된 동일 Rules 후보본.
-- `database.rules.hardening-draft.json`: 현재는 운영 기준과 동일하게 맞춰 둔 검토용 파일.
-- `database.rules.rollback-current.json`: 하드닝 적용 전 기존 Rules 롤백본.
+- `firebase-rules/database.rules.console-candidate.json`: Stage 4에서 검증 후 운영 반영된 동일 Rules 후보본.
+- `firebase-rules/database.rules.hardening-draft.json`: 현재는 운영 기준과 동일하게 맞춰 둔 검토용 파일.
+- `firebase-rules/database.rules.rollback-current.json`: 하드닝 적용 전 기존 Rules 롤백본.
 
 운영 확정된 권한 기준
 --------------------
@@ -78,7 +78,7 @@ Firebase Rules 권한 정책 정리
 
 Stage 4 적용 결과
 ----------------
-사용자가 Firebase Console에 `database.rules.console-candidate.json`을 적용했고, GM/플레이어 2계정으로 주요 테스트를 통과했다.
+사용자가 Firebase Console에 `firebase-rules/database.rules.console-candidate.json`을 적용했고, GM/플레이어 2계정으로 주요 테스트를 통과했다.
 
 확인된 것:
 - GM/owner 기능이 막히지 않음.
@@ -91,15 +91,4 @@ Stage 4 적용 결과
 --------
 - 이후 새 Firebase 경로를 추가하는 작업은 반드시 Rules 필요 여부를 먼저 확인한다.
 - journals/handouts read 하드닝은 코드 로딩 구조 변경 없이 바로 적용하지 않는다.
-- 문제가 생기면 `database.rules.rollback-current.json`을 Firebase Console에 다시 붙여넣어 롤백한다.
-
-저널 / 핸드아웃 1차 권한 안정화 추가 기준
------------------------------------------
-- 저널은 기존 `assignedTo` 배열만으로는 Firebase Rules에서 특정 uid 포함 여부를 안정적으로 판정하기 어렵다.
-- 따라서 `assignedMap/{uid}: true`를 함께 저장한다.
-- GM/owner는 모든 저널을 수정할 수 있다.
-- 플레이어는 본인 소유 저널 또는 `assignedMap/{uid} === true`인 저널만 수정할 수 있다.
-- 플레이어는 저널의 `ownerId`, `assignedTo`, `assignedMap`을 직접 변경할 수 없다.
-- 저널 삭제는 GM/owner만 허용한다.
-- 핸드아웃은 GM/owner만 수정/삭제할 수 있다.
-- 핸드아웃은 향후 per-item read 하드닝을 위해 `allowedMap/{uid}: true`를 함께 저장한다.
+- 문제가 생기면 `firebase-rules/database.rules.rollback-current.json`을 Firebase Console에 다시 붙여넣어 롤백한다.

@@ -3,14 +3,14 @@ Firebase Rules Stage 3 콘솔 적용 기록
 
 현재 상태
 ---------
-Stage 3에서 준비한 `database.rules.console-candidate.json`은 Stage 4에서 Firebase Console에 적용되었고, GM/플레이어 2계정 테스트를 통과했다.
+Stage 3에서 준비한 `firebase-rules/database.rules.console-candidate.json`은 Stage 4에서 Firebase Console에 적용되었고, GM/플레이어 2계정 테스트를 통과했다.
 
 사용 파일
 ---------
 - 현재 운영 기준: `database.rules.json`
-- 적용 후보 기록: `database.rules.console-candidate.json`
-- 검토용 초안: `database.rules.hardening-draft.json`
-- 롤백용 기존 Rules: `database.rules.rollback-current.json`
+- 적용 후보 기록: `firebase-rules/database.rules.console-candidate.json`
+- 검토용 초안: `firebase-rules/database.rules.hardening-draft.json`
+- 롤백용 기존 Rules: `firebase-rules/database.rules.rollback-current.json`
 
 적용된 핵심 변경점
 -----------------

@@ -3,10 +3,10 @@ Firebase Rules Stage 4 콘솔 적용 테스트 체크리스트
 
 현재 상태
 ---------
-- Firebase Console에 `database.rules.console-candidate.json` 적용 완료.
+- Firebase Console에 `firebase-rules/database.rules.console-candidate.json` 적용 완료.
 - GM/플레이어 2계정 테스트 통과.
 - `database.rules.json`은 현재 운영 적용 Rules 기준으로 승격됨.
-- `database.rules.rollback-current.json`은 하드닝 전 기존 Rules 롤백본으로 유지.
+- `firebase-rules/database.rules.rollback-current.json`은 하드닝 전 기존 Rules 롤백본으로 유지.
 
 적용 후 통과 확인
 ----------------
@@ -46,7 +46,7 @@ Firebase Rules Stage 4 콘솔 적용 테스트 체크리스트
 
 롤백 방법
 --------
-1. `database.rules.rollback-current.json` 내용을 연다.
+1. `firebase-rules/database.rules.rollback-current.json` 내용을 연다.
 2. Firebase Console > Realtime Database > Rules에 전체 붙여넣기 한다.
 3. Publish 한다.
 4. GM/플레이어 양쪽 브라우저를 새로고침한다.

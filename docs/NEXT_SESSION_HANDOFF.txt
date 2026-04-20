@@ -246,9 +246,9 @@ styles/all.css          — 통합 CSS
 현재 상태:
 - 사용자가 Firebase Console에 강화 Rules를 적용했고, GM/플레이어 2계정 Stage 4 테스트를 통과했다.
 - `database.rules.json`은 현재 운영 적용 Rules 기준이다.
-- `database.rules.console-candidate.json`은 적용 후보 기록본이다.
-- `database.rules.hardening-draft.json`은 현재 운영 기준과 동일하게 맞춰 둔 검토용 파일이다.
-- `database.rules.rollback-current.json`은 하드닝 적용 전 기존 Rules 롤백본이다.
+- `firebase-rules/database.rules.console-candidate.json`은 적용 후보 기록본이다.
+- `firebase-rules/database.rules.hardening-draft.json`은 현재 운영 기준과 동일하게 맞춰 둔 검토용 파일이다.
+- `firebase-rules/database.rules.rollback-current.json`은 하드닝 적용 전 기존 Rules 롤백본이다.
 
 확정된 권한 정책:
 - 방 전체 삭제는 GM/owner만 가능하다.
@@ -269,7 +269,7 @@ styles/all.css          — 통합 CSS
 - 새 Firebase 경로를 추가하는 작업은 반드시 Rules 필요 여부를 작업 전에 사용자에게 안내한다.
 - journals/handouts를 Rules에서 per-item read로 바로 잠그면 현재 로딩 구조가 깨질 수 있다.
 - 권한 UI가 없는 상태에서 Rules만 세분화되어 있으므로, 권한 부여/회수 UI는 별도 작업으로 다룬다.
-- 문제가 생기면 `database.rules.rollback-current.json`을 Firebase Console에 붙여넣어 즉시 롤백한다.
+- 문제가 생기면 `firebase-rules/database.rules.rollback-current.json`을 Firebase Console에 붙여넣어 즉시 롤백한다.
 
 다음 권장 작업:
 1. 토큰 권한 UI 구현 여부 검토
@@ -287,15 +287,3 @@ styles/all.css          — 통합 CSS
 - manageMap을 켜면 `+ 맵세팅`과 맵세팅 레이어 버튼이 표시된다. 장면 전환은 계속 GM 전용이다.
 - manageMap 권한자는 importedMapObject 패널 토큰 생성/수정/삭제가 가능하도록 database.rules.json에도 반영했다. Firebase Console Rules도 같은 기준으로 갱신해야 한다.
 - 관련 테스트 문서: docs/TOKEN_PERMISSION_UI_CHECKLIST.txt
-
-[2026-04-20] 저널 / 핸드아웃 권한 1차 안정화
-- 저널 권한 판정을 위해 `assignedTo` 배열과 함께 `assignedMap` 객체를 저장한다.
-- Firebase Rules는 `assignedMap/{uid} === true`를 기준으로 권한 받은 플레이어의 저널 수정을 허용한다.
-- 권한 받은 플레이어가 저널 권한 목록(`assignedTo`, `assignedMap`)을 직접 바꾸지 못하도록 Rules에서 고정했다.
-- 저널 삭제는 GM만 가능하도록 UI와 클라이언트 가드를 맞췄다.
-- 권한 받은 플레이어에게는 저널 목록 / 기본 저널 편집창 / 캐릭터 시트 창의 삭제 버튼이 표시되면 안 된다.
-- 삭제 함수는 권한 확인을 먼저 하고, 권한이 없으면 확인창을 띄우지 않는다.
-- 핸드아웃은 `allowedTo` 배열과 함께 `allowedMap` 객체를 저장한다.
-- 플레이어의 핸드아웃 수정/삭제 UI는 보이지 않도록 정리했다.
-- `database.rules.json`을 Firebase Console Rules에 다시 적용해야 이 권한 기준이 Rules 레벨까지 반영된다.
-- 테스트 문서: `docs/JOURNAL_HANDOUT_PERMISSION_CHECKLIST.txt`
