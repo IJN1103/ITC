@@ -188,3 +188,37 @@ styles/all.css          — 통합 CSS
 - 위치고정 imported panel token은 좌클릭 드래그만 맵 팬으로 넘긴다.
 - 위치고정 imported panel token의 더블클릭 앞/뒷면 전환, 우클릭 편집창, 클릭 액션은 막지 않는다.
 - 다음 세션에서 이 기준을 바꾸려면 작업 전에 사용자에게 먼저 확인해야 한다.
+
+[2026-04-20] 채팅 / 팝아웃 렌더 안정화 기준 추가
+- 채팅/팝아웃 쪽은 회귀 가능성이 중간 이상이므로, 수정 후 docs/CHAT_POPOUT_REGRESSION_CHECKLIST.txt를 기준으로 확인한다.
+- popout.js는 기본창과 별도 렌더 경로를 가지므로, desc / image / speak-as / history paging이 쉽게 회귀할 수 있다.
+- 팝아웃 메시지 타입 정규화 기준:
+  - desc / dsec / msg-dsec → desc 계열
+  - image / speak-as-image → image 계열
+  - 그 외 system / dice / normal 계열은 기존 기준 유지
+- 팝아웃 렌더 분기 권장 순서:
+  1. desc
+  2. image / speak-as-image
+  3. system
+  4. dice
+  5. normal
+- desc 메시지 기준:
+  - 기본창과 팝아웃 모두 흰색 계열 볼드 지문 형태
+  - 기울기 없음
+  - 위아래 줄 없음
+  - 이름/아바타/시간 없음
+- 이미지 메시지 기준:
+  - 팝아웃에서 URL 텍스트 채팅으로 노출되면 실패
+  - type이 흔들려도 Cloudinary 이미지 URL / imageMeta / imageWide 등이 있으면 image 렌더로 처리되어야 함
+  - speak-as 이미지도 저널 이름 / 아바타 / nameColor를 유지해야 함
+- speak-as 스탠딩 변경 @ 명령어 기준:
+  - 기본창과 팝아웃 모두 화면 표시 텍스트에서 @스탠딩이름 / @(스탠딩이름)을 숨김
+  - 스탠딩 변경 기능 자체는 유지
+- 이전 채팅 로딩 기준:
+  - 기본창 맨 위 스크롤 → Firebase 이전 메시지 로딩
+  - 팝아웃 맨 위 스크롤 → opener에 이전 메시지 로딩 요청 후 재동기화
+  - 이전 메시지가 즉시 trim되어 사라지면 실패
+- 팝아웃 동기화 기준:
+  - 가능한 경우 DOM 추출보다 getChatRenderSnapshot() 기반 메시지 스냅샷을 우선 사용
+  - DOM 추출은 fallback으로만 사용
+- 다음 채팅/팝아웃 관련 수정 시, desc 스타일 / 이미지 렌더 / @ 명령어 숨김 / 이전 채팅 로딩 / DM / 잡담 탭을 함께 회귀 테스트해야 한다.
