@@ -710,8 +710,7 @@ function setupFirebaseListeners() {
     const bgm = snap.val() || {};
     if (bgm.playlist) { St.playlist = bgm.playlist; renderPlaylist(); }
     if (bgm.currentTrack !== undefined && bgm.currentTrack !== St.currentTrack) {
-      St.currentTrack = bgm.currentTrack;
-      playTrack(St.currentTrack);
+      playTrack(bgm.currentTrack, { fromRemote: true });
     }
     St.mapState = {
       background: bgm.mapBackground ? {
@@ -1052,13 +1051,8 @@ async function leaveRoom() {
   if (typeof clearTypingState === 'function') clearTypingState();
   cleanupFirebaseListeners();
   if (window._FB?.CONFIGURED) {
-    const { db, ref, remove, get } = window._FB;
+    const { db, ref, remove } = window._FB;
     await remove(ref(db, `rooms/${St.roomCode}/players/${St.myId}`));
-    const snap = await get(ref(db, `rooms/${St.roomCode}/players`));
-    const remaining = snap.exists() ? Object.values(snap.val()).filter(p => p.online !== false) : [];
-    if (remaining.length === 0) {
-      await remove(ref(db, `rooms/${St.roomCode}`));
-    }
   }
   sessionStorage.removeItem('itc_session_code');
   sessionStorage.removeItem('itc_session_sys');

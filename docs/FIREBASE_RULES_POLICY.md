@@ -90,3 +90,19 @@ Firebase Rules 권한 정책 정리
    - create/move/edit 권한별 토큰 기능 확인
    - 저널/핸드아웃 기존 기능 회귀 여부 확인
 5. 문제가 없을 때만 실제 운영 Rules로 반영.
+
+Stage 2 보강 내용
+-----------------
+1. 일반 플레이어가 방을 나갈 때 클라이언트에서 방 전체를 삭제하지 않도록 `leaveRoom()`을 보강한다.
+2. BGM은 원격 수신 재생과 직접 수정 재생을 분리한다.
+   - 원격 수신: 권한 없이도 화면/재생 상태 반영.
+   - 직접 수정: `manageBgm` 권한 필요.
+3. `database.rules.hardening-draft.json`에서 room meta read는 방 참가 전 코드 입력 흐름을 위해 `auth != null`로 유지한다.
+4. `players` read는 입장 인원 확인 흐름 때문에 일단 `auth != null`로 유지한다.
+5. 토큰 권한은 create/move/edit을 분리하되, moveToken은 x/y 좌표 쓰기만 허용하는 방향으로 초안을 보강한다.
+6. dmChats meta 생성은 owner/GM 기준으로 제한한다.
+
+주의
+----
+Stage 2 초안은 운영 콘솔에 바로 반영하기 전 테스트 방에서 확인해야 한다.
+특히 joinRoom, reserveSeatAndJoinRoom, BGM, token 권한은 Rules 적용 후 반드시 2계정으로 검증한다.

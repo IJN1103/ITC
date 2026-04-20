@@ -265,3 +265,14 @@ styles/all.css          — 통합 CSS
   3. GM/플레이어 2계정으로 권한 테스트
   4. Permission denied 발생 지점 보정
   5. 통과 후에만 운영 Rules 반영
+
+Firebase Rules Stage 2 상태
+--------------------------
+- 현재 콘솔 Rules 원본은 `database.rules.json`에 보관되어 있다.
+- 강화 초안은 `database.rules.hardening-draft.json`에 있다.
+- Stage 2에서 클라이언트 방어도 일부 보강했다.
+  - 일반 플레이어 leaveRoom이 방 전체를 삭제하지 않게 수정.
+  - BGM 직접 수정과 원격 수신 재생을 분리.
+  - BGM 삭제/선택도 manageBgm 권한을 확인.
+- 다음 단계는 Firebase Console에서 `database.rules.hardening-draft.json`을 테스트 방 기준으로 검증하는 것이다.
+- 운영 콘솔에 적용하기 전 반드시 `database.rules.json` 백업 기준으로 롤백 준비를 한다.

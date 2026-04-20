@@ -1,0 +1,63 @@
+Firebase Rules Stage 2 테스트 계획
+=================================
+
+목적
+----
+Stage 2는 실제 콘솔 Rules 적용 전에, 코드와 Rules 초안의 권한 기준을 한 번 더 맞추는 단계다.
+`database.rules.hardening-draft.json`은 아직 운영 콘솔에 바로 적용하지 않는다.
+
+이번 단계에서 정리된 기준
+----------------------
+1. 방 전체 삭제
+   - owner 또는 GM만 가능.
+   - 일반 플레이어가 마지막으로 방을 나가도 `rooms/{roomCode}`를 삭제하지 않는다.
+
+2. players 권한
+   - 신규 플레이어는 자기 player 노드 생성 가능.
+   - 기존 플레이어는 자기 표시 정보/온라인 상태 갱신 가능.
+   - 플레이어 본인이 `role` 또는 `permissions`를 직접 상승시키는 것은 금지.
+   - owner/GM은 player 권한/role 관리 가능.
+
+3. BGM 권한
+   - owner/GM은 수정 가능.
+   - `players/{uid}/permissions/manageBgm === true`인 플레이어만 BGM 수정 가능.
+   - 권한 없는 플레이어가 BGM 항목을 클릭해도 Firebase write가 발생하지 않도록 클라이언트도 보강한다.
+   - 원격으로 수신된 BGM 재생 변경은 권한 없는 플레이어 화면에서도 재생 반영되어야 한다.
+
+4. Token 권한
+   - owner/GM은 전체 가능.
+   - `createToken`: 새 토큰 생성.
+   - `moveToken`: x/y 좌표 이동만 허용.
+   - `editToken`: 편집/삭제/전체 갱신 허용.
+   - 맵세팅 ZIP imported panel token은 GM 기능으로 정상 생성되어야 한다.
+
+5. Journals / Handouts
+   - 현재 코드는 전체 read 후 프론트 필터링 구조다.
+   - 따라서 read 권한은 이번 단계에서 엄격하게 막지 않는다.
+   - Journals write는 기존 `ownerId` / `assignedTo` 구조를 유지한다.
+   - Handouts write는 owner/GM 기준으로 제한하는 초안이다.
+
+6. DM
+   - 현재 실제 메시지는 주로 `rooms/{roomCode}/chat` + `dmChannelKey`로 동작한다.
+   - `dmChats`는 meta 보조 경로로 쓰인다.
+   - dmChats meta 생성/수정은 owner/GM만 허용하는 초안이다.
+
+콘솔 적용 전 확인
+----------------
+[ ] Stage 2 패치 파일 덮어쓰기
+[ ] 일반 플레이어 방 나가기 테스트
+[ ] GM 방 종료 테스트
+[ ] BGM 권한 없는 플레이어 클릭 시 write/Permission denied가 발생하지 않는지 확인
+[ ] BGM 권한 있는 플레이어는 수정 가능한지 확인
+[ ] Token 권한 UI와 실제 동작이 맞는지 확인
+[ ] `database.rules.hardening-draft.json` 문법을 Firebase Console Rules 화면에서 검증만 진행
+[ ] 운영 방이 아닌 테스트 방에서만 임시 적용
+
+권장 콘솔 테스트 순서
+-------------------
+1. 현재 운영 Rules를 별도로 백업한다.
+2. `database.rules.hardening-draft.json` 내용을 Firebase Console Rules에 붙여넣는다.
+3. Publish 전 Rules 편집기 오류가 없는지 확인한다.
+4. 가능하면 테스트 프로젝트/테스트 방에서 먼저 Publish한다.
+5. 문제가 있으면 즉시 `database.rules.json` 기준으로 롤백한다.
+

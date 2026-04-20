@@ -12,7 +12,7 @@ window.onYouTubeIframeAPIReady = () => {
     playerVars: { autoplay:0, controls:0 },
     events: {
       onReady: () => { if (ytPlayer) ytPlayer.setVolume(60); },
-      onStateChange: e => { if (e.data === YT.PlayerState.ENDED) bgmNext(); },
+      onStateChange: e => { if (e.data === YT.PlayerState.ENDED && hasPerm('manageBgm')) bgmNext(); },
     }
   });
 };
@@ -53,16 +53,17 @@ function renderPlaylist() {
     </div>`).join('');
 }
 
-function playTrack(idx) {
+function playTrack(idx, options = {}) {
+  const fromRemote = options && options.fromRemote === true;
+  if (!fromRemote && !hasPerm('manageBgm')) { showToast('BGM 관리 권한이 없어요.'); return; }
   if (idx < 0 || idx >= St.playlist.length) return;
   St.currentTrack = idx;
   const t = St.playlist[idx];
   document.getElementById('bgm-title').textContent = t.name;
   if (ytReady && ytPlayer) { ytPlayer.loadVideoById(t.videoId); ytPlayer.playVideo(); St.isPlaying = true; updatePlayBtn(); }
   renderPlaylist();
-  if (window._FB?.CONFIGURED) { const { db, ref, set } = window._FB; set(ref(db, `rooms/${St.roomCode}/bgm/currentTrack`), idx); }
+  if (!fromRemote && window._FB?.CONFIGURED) { const { db, ref, set } = window._FB; set(ref(db, `rooms/${St.roomCode}/bgm/currentTrack`), idx); }
 }
-
 function bgmToggle() {
   if (!hasPerm('manageBgm')) { showToast('BGM 관리 권한이 없어요.'); return; }
   if (!ytReady || !ytPlayer) { loadYTApi(); return; }
@@ -84,6 +85,7 @@ function bgmNext() { if (!hasPerm('manageBgm')) { showToast('BGM 관리 권한�
 function bgmPrev() { if (!hasPerm('manageBgm')) { showToast('BGM 관리 권한이 없어요.'); return; } if (St.playlist.length) playTrack(St.currentTrack<=0 ? St.playlist.length-1 : St.currentTrack-1); }
 function setVolume(v) { if (ytReady && ytPlayer) ytPlayer.setVolume(parseInt(v)); }
 function removeTrack(i) {
+  if (!hasPerm('manageBgm')) { showToast('BGM 관리 권한이 없어요.'); return; }
   St.playlist.splice(i,1);
   if (St.currentTrack >= i) St.currentTrack = Math.max(-1, St.currentTrack-1);
   renderPlaylist();
