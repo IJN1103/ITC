@@ -777,7 +777,7 @@ function addToken() {
 function addPanelToken() {
   if (!hasPerm('createToken')) { showToast('토큰 생성 권한이 없어요.'); return; }
   const input = document.getElementById('panel-token-name');
-  const name = input?.value.trim() || '패널';
+  const name = String(input?.value ?? '').trim();
   const id = genId();
   const token = {
     id,
@@ -1216,14 +1216,17 @@ function createTokenEl(t) {
     el.appendChild(img);
     if (isPanel) {
       if (!t.importedMapObject) {
-        const nameLabel = document.createElement('span');
-        nameLabel.className = 'token-name-label';
-        nameLabel.textContent = t.name || '';
-        el.appendChild(nameLabel);
+        const panelName = String(t.name || '').trim();
+        if (panelName) {
+          const nameLabel = document.createElement('span');
+          nameLabel.className = 'token-name-label';
+          nameLabel.textContent = panelName;
+          el.appendChild(nameLabel);
+        }
       }
     }
   } else {
-    el.textContent = t.name;
+    el.textContent = isPanel ? String(t.name || '').trim() : t.name;
     if (isPanel) {
       applyPanelTokenSize(el, t);
     } else if (sz > 1) {
@@ -1773,7 +1776,7 @@ function openPanelTokenEdit(tokenId) {
 
   const setValue = (id, value) => { const el = document.getElementById(id); if (el) el.value = value; };
   const setChecked = (id, value) => { const el = document.getElementById(id); if (el) el.checked = !!value; };
-  setValue('pte-name', t.name || '패널');
+  setValue('pte-name', t.name || '');
   setValue('pte-width', Math.max(1, Number(t.panelWidth || 240) || 240));
   setValue('pte-height', Math.max(1, Number(t.panelHeight || 135) || 135));
   setValue('pte-priority', Math.max(1, Number(t.panelPriority || 1) || 1));
@@ -1861,7 +1864,7 @@ async function savePanelTokenEdit() {
   if (!_pteTokenId) return;
   const t = St.tokens[_pteTokenId];
   if (!t) return;
-  const name = document.getElementById('pte-name')?.value?.trim() || '패널';
+  const name = String(document.getElementById('pte-name')?.value ?? '').trim();
   const width = Math.max(1, Number(document.getElementById('pte-width')?.value || t.panelWidth || 240) || 240);
   const height = Math.max(1, Number(document.getElementById('pte-height')?.value || t.panelHeight || 135) || 135);
   const priority = Math.max(1, Number(document.getElementById('pte-priority')?.value || t.panelPriority || 1) || 1);
