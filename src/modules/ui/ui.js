@@ -25,17 +25,6 @@ const ALL_PLAYER_PERMS = PERMS.reduce((acc, pm) => {
   return acc;
 }, {});
 
-const TOKEN_PERMISSION_KEYS = ['moveToken', 'createToken', 'editToken'];
-
-function buildPermissionPayload(keys, enabled) {
-  const payload = {};
-  (Array.isArray(keys) ? keys : []).forEach((key) => {
-    if (!key) return;
-    payload[key] = enabled ? true : null;
-  });
-  return payload;
-}
-
 function getStoredChatFontSize() {
   const raw = parseFloat(localStorage.getItem('itc_chat_font_size') || '14.5');
   if (!Number.isFinite(raw)) return 14.5;
@@ -62,18 +51,15 @@ function setChatFontSize(size) {
   applyChatFontSize(size);
 }
 
-async function setPlayerPermPreset(uid, enabled, keys = null) {
+async function setPlayerPermPreset(uid, enabled) {
   if (!St.isGM || !window._FB?.CONFIGURED) return;
   const { db, ref, update } = window._FB;
-  const targetKeys = Array.isArray(keys) && keys.length ? keys : Object.keys(ALL_PLAYER_PERMS);
-  const payload = buildPermissionPayload(targetKeys, enabled);
-  if (!Object.keys(payload).length) return;
+  const payload = {};
+  Object.keys(ALL_PLAYER_PERMS).forEach((key) => {
+    payload[key] = enabled ? true : null;
+  });
   await update(ref(db, `rooms/${St.roomCode}/players/${uid}/permissions`), payload);
   renderSettingsModal();
-}
-
-async function setPlayerTokenPermPreset(uid, enabled) {
-  await setPlayerPermPreset(uid, enabled, TOKEN_PERMISSION_KEYS);
 }
 
 function hasPerm(key) {
@@ -170,27 +156,9 @@ function renderSettingsModal() {
         card.appendChild(allPerms);
       } else {
         if (St.isGM) {
-          const tokenBulkRow = document.createElement('div');
-          tokenBulkRow.style.cssText = 'display:flex;gap:6px;margin-top:2px;margin-bottom:6px';
-
-          const grantTokenBtn = document.createElement('button');
-          grantTokenBtn.style.cssText = 'flex:1;font:inherit;font-size:10px;padding:5px 8px;border-radius:6px;cursor:pointer;transition:.15s ease;border:1px solid rgba(90,158,114,.35);background:rgba(90,158,114,.10);color:var(--green)';
-          grantTokenBtn.textContent = '토큰 권한 부여';
-          grantTokenBtn.title = '토큰 이동/생성/편집 권한만 부여합니다.';
-          grantTokenBtn.onclick = () => setPlayerTokenPermPreset(uid, true);
-          tokenBulkRow.appendChild(grantTokenBtn);
-
-          const revokeTokenBtn = document.createElement('button');
-          revokeTokenBtn.style.cssText = 'flex:1;font:inherit;font-size:10px;padding:5px 8px;border-radius:6px;cursor:pointer;transition:.15s ease;border:1px solid rgba(200,92,92,.28);background:rgba(200,92,92,.08);color:var(--red)';
-          revokeTokenBtn.textContent = '토큰 권한 회수';
-          revokeTokenBtn.title = '토큰 이동/생성/편집 권한만 회수합니다.';
-          revokeTokenBtn.onclick = () => setPlayerTokenPermPreset(uid, false);
-          tokenBulkRow.appendChild(revokeTokenBtn);
-
-          card.appendChild(tokenBulkRow);
 
           const bulkRow = document.createElement('div');
-          bulkRow.style.cssText = 'display:flex;gap:6px;margin-top:0;margin-bottom:6px';
+          bulkRow.style.cssText = 'display:flex;gap:6px;margin-top:2px;margin-bottom:6px';
 
           const grantBtn = document.createElement('button');
           grantBtn.style.cssText = 'flex:1;font:inherit;font-size:10px;padding:5px 8px;border-radius:6px;cursor:pointer;transition:.15s ease;border:1px solid rgba(184,154,96,.35);background:rgba(184,154,96,.10);color:var(--accent)';
@@ -207,11 +175,6 @@ function renderSettingsModal() {
           bulkRow.appendChild(revokeBtn);
 
           card.appendChild(bulkRow);
-
-          const permHint = document.createElement('div');
-          permHint.style.cssText = 'font-size:10px;line-height:1.45;color:var(--dim);margin:-2px 0 6px';
-          permHint.textContent = '토큰 권한은 이동/생성/편집만 빠르게 조정합니다. 맵/BGM/desc는 아래 개별 버튼으로 조정하는 것을 권장합니다.';
-          card.appendChild(permHint);
         }
 
         const permWrap = document.createElement('div');

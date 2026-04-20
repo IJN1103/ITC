@@ -279,10 +279,10 @@ styles/all.css          — 통합 CSS
 
 [2026-04-20] 토큰 권한 UI 1차 안정화
 ------------------------------------------------
-- 방 설정 > 플레이어 관리에서 토큰 권한 빠른 부여/회수 버튼을 분리했다.
-- `토큰 권한 부여`는 moveToken / createToken / editToken만 켠다.
-- `토큰 권한 회수`는 moveToken / createToken / editToken만 끈다.
+- 방 설정 > 플레이어 관리에서 `토큰 권한 부여` / `토큰 권한 회수` 빠른 버튼은 제거했다.
+- 토큰 권한은 moveToken / createToken / editToken 개별 권한 버튼으로 조정한다.
 - `전체 권한 부여`는 manageMap / manageBgm / sendDesc까지 포함하므로 신중하게 사용한다.
+- 방 설정 안의 채팅 글자 크기 조절 UI를 복구했다. `--chat-font-size` CSS 변수와 `itc_chat_font_size` localStorage 값을 사용한다.
 - BGM 기능은 아직 미구축 상태라 manageBgm은 실제 테스트 보류다.
 - manageMap은 Rules에는 존재하지만, 맵세팅/레이어/장면전환 UI와의 권한 연결은 별도 단계로 분리한다.
 - 관련 테스트 문서: docs/TOKEN_PERMISSION_UI_CHECKLIST.txt
