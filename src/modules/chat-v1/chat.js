@@ -521,6 +521,45 @@ function getStoredRecord(channel = 'chat', key) {
   return state.storeMap.get(key) || null;
 }
 
+function normalizeStoredRecordForSnapshot(channel = 'chat', key = '', record = {}) {
+  const safeChannel = String(channel || 'chat').trim() || 'chat';
+  const safeType = safeChannel === 'casual' ? 'normal' : (record.type || 'normal');
+  return {
+    _key: key || record._key || record.msgKey || '',
+    name: record.name || '',
+    text: record.text || '',
+    type: safeType,
+    uid: record.uid || '',
+    timestamp: record.timestamp || record.time || 0,
+    time: record.timestamp || record.time || 0,
+    speakAsAvatar: record.speakAsAvatar || '',
+    speakAsJournalId: record.speakAsJournalId || '',
+    whisperTo: record.whisperTo || '',
+    whisperToName: record.whisperToName || '',
+    nameColor: record.nameColor || '',
+    standingImg: record.standingImg || '',
+    tokenId: record.tokenId || '',
+    standingLabel: record.standingLabel || '',
+    imageWide: !!record.imageWide,
+    hideImageMeta: !!record.hideImageMeta,
+    imageMeta: normalizeChatImageMeta(record.imageMeta),
+    channel: safeChannel,
+  };
+}
+
+function getChatRenderSnapshot(channel = 'chat', options = {}) {
+  const state = getRenderState(channel);
+  const limit = Math.max(0, Number(options?.limit || 0) || 0);
+  const keys = limit > 0 ? state.storeOrder.slice(-limit) : state.storeOrder.slice();
+  return keys
+    .map((key) => {
+      const record = state.storeMap.get(key);
+      if (!record) return null;
+      return normalizeStoredRecordForSnapshot(channel, key, record);
+    })
+    .filter(Boolean);
+}
+
 function buildMessageNodeFromRecord(channel = 'chat', record) {
   if (!record) return null;
   if (channel === 'casual') {
@@ -2101,5 +2140,6 @@ window.prependStoredWindow = prependStoredWindow;
 window.seedChatHistoryStore = seedChatHistoryStore;
 window.getOldestStoredMessageKey = getOldestStoredMessageKey;
 window.getNewestStoredMessageKey = getNewestStoredMessageKey;
+window.getChatRenderSnapshot = getChatRenderSnapshot;
 window.getChatImageClassName = getChatImageClassName;
 window.getChatImageInlineStyle = getChatImageInlineStyle;

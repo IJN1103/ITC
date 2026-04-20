@@ -358,31 +358,53 @@ function popoutChat() {
     return String(date.getHours()).padStart(2, '0') + ':' + String(date.getMinutes()).padStart(2, '0');
   };
 
+  const normalizePopoutTransferRecord = (m = {}, fallbackChannel = 'chat') => {
+    const msgType = m.type || 'normal';
+    const isImage = msgType === 'image' || msgType === 'speak-as-image';
+    return {
+      name: m.name || '',
+      text: m.text || '',
+      type: msgType,
+      channel: fallbackChannel,
+      nameColor: m.nameColor || '',
+      avatar: m.speakAsAvatar || m.avatar || getPopoutAvatarUrl(m.name, m.uid),
+      time: formatPopoutMessageTime(m.time || m.timestamp),
+      fhtml: isImage ? '' : (typeof fmtText === 'function' ? fmtText(m.text || '') : ''),
+      imageWide: !!m.imageWide,
+      hideImageMeta: !!m.hideImageMeta,
+      imageMeta: m.imageMeta || null,
+    };
+  };
+
+  const getStoredSnapshotForPopout = (channel = 'chat') => {
+    if (typeof window.getChatRenderSnapshot !== 'function') return [];
+    try {
+      const list = window.getChatRenderSnapshot(channel, { limit: 0 });
+      return Array.isArray(list) ? list : [];
+    } catch (e) {
+      return [];
+    }
+  };
+
   const syncPopoutWindow = (targetWin) => {
     if (!targetWin || targetWin.closed || !targetWin._popReady) return;
     try {
       const channelKey = typeof targetWin.getCurrentDmChannelKey === 'function' ? targetWin.getCurrentDmChannelKey() : (typeof getCurrentDmChannelKey === 'function' ? getCurrentDmChannelKey() : 'global');
       const records = typeof window.getChatRecordsForChannel === 'function' ? window.getChatRecordsForChannel(channelKey) : [];
-      const list = Array.isArray(records) ? records.map((m) => {
-        const msgType = m.type || 'normal';
-        const isImage = msgType === 'image' || msgType === 'speak-as-image';
-        return {
-          name: m.name || '',
-          text: m.text || '',
-          type: msgType,
-          channel: 'chat',
-          nameColor: m.nameColor || '',
-          avatar: m.speakAsAvatar || getPopoutAvatarUrl(m.name, m.uid),
-          time: formatPopoutMessageTime(m.time),
-          fhtml: isImage ? '' : (typeof fmtText === 'function' ? fmtText(m.text || '') : ''),
-          imageWide: !!m.imageWide,
-          hideImageMeta: !!m.hideImageMeta,
-          imageMeta: m.imageMeta || null,
-        };
-      }) : getPaneSnapshot('#chat-messages > div', 'chat');
+      const list = Array.isArray(records)
+        ? records.map((m) => normalizePopoutTransferRecord(m, 'chat'))
+        : getPaneSnapshot('#chat-messages > div', 'chat');
       if (targetWin.setMessages) targetWin.setMessages('chat', list);
     } catch (e) {}
-    try { if (targetWin.setMessages) targetWin.setMessages('casual', getPaneSnapshot('#casual-messages > div', 'casual')); } catch (e) {}
+    try {
+      if (targetWin.setMessages) {
+        const casualSnapshot = getStoredSnapshotForPopout('casual');
+        const casualList = casualSnapshot.length
+          ? casualSnapshot.map((m) => normalizePopoutTransferRecord(m, 'casual'))
+          : getPaneSnapshot('#casual-messages > div', 'casual');
+        targetWin.setMessages('casual', casualList);
+      }
+    } catch (e) {}
     try { targetWin.setJournals(loadJournals()); } catch(e){}
     try {
       const avMap = {}, ncMap = {};
