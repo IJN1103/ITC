@@ -475,17 +475,23 @@ function buildMessageNodeFromRecord(channel = 'chat', record) {
   return buildChatMsgElement({ ...record, msgKey: record._key, channel });
 }
 
-function trimRenderedMessages(channel = 'chat') {
+function trimRenderedMessages(channel = 'chat', direction = 'top') {
   const state = getRenderState(channel);
   const el = getRenderContainer(channel);
   if (!el) return;
   if (state.virtualEnabled) return;
+  const trimFromBottom = direction === 'bottom';
   while (el.children.length > state.max) {
-    let removable = el.firstElementChild;
-    if (removable && removable.classList.contains('chat-history-notice')) {
-      removable = removable.nextElementSibling;
+    let removable = trimFromBottom ? el.lastElementChild : el.firstElementChild;
+    if (!removable) break;
+    if (removable.classList.contains('chat-history-notice')) {
+      removable = trimFromBottom ? removable.previousElementSibling : removable.nextElementSibling;
     }
     if (!removable) break;
+    if (!removable.classList.contains('chat-msg')) {
+      removable = trimFromBottom ? removable.previousElementSibling : removable.nextElementSibling;
+      if (!removable) break;
+    }
     const key = removable.dataset.msgKey || '';
     if (key) state.map.delete(key);
     removable.remove();
@@ -550,7 +556,7 @@ function prependStoredWindow(channel = 'chat', count = 0) {
     el.prepend(frag);
   }
 
-  trimRenderedMessages(channel);
+  trimRenderedMessages(channel, 'bottom');
   primeDeferredChatImages(el);
   const nextHeight = el.scrollHeight;
   el.scrollTop = prevTop + (nextHeight - prevHeight);
