@@ -18,6 +18,7 @@ const DICE_CONFIGS = {
 
 function renderDiceButtons(sys) {
   const container = document.getElementById('dice-btns');
+  if (!container) return;
   const cfgs = DICE_CONFIGS[sys] || DICE_CONFIGS.coc7;
   container.innerHTML = cfgs.map((d, i) => `
     <button class="dice-btn" onclick="rollDice(${i})" id="dBtn-${i}">
@@ -29,8 +30,11 @@ function renderDiceButtons(sys) {
 function rollDice(ci) {
   const cfgs = DICE_CONFIGS[St.system] || DICE_CONFIGS.coc7;
   const d = cfgs[ci];
-  const count = parseInt(document.getElementById('dice-count').value) || 1;
-  const isSecret = document.getElementById('secret-roll').checked;
+  if (!d) return;
+  const countEl = document.getElementById('dice-count');
+  const secretEl = document.getElementById('secret-roll');
+  const count = parseInt(countEl?.value, 10) || 1;
+  const isSecret = !!secretEl?.checked;
 
   const btn = document.getElementById('dBtn-' + ci);
   if (btn) {

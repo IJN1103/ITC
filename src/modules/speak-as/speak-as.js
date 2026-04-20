@@ -446,7 +446,7 @@ function renderWhisperDropdown() {
 
   const clear = document.createElement('div');
   clear.className = 'w-dd-item' + (!St.whisperTo ? ' selected' : '');
-  clear.innerHTML = `<span>🔊 일반 채팅</span>`;
+  clear.innerHTML = `<span>일반 채팅</span>`;
   clear.onclick = (e) => { e.stopPropagation(); clearWhisper(); dd.classList.remove('open'); };
   dd.appendChild(clear);
 
@@ -456,7 +456,7 @@ function renderWhisperDropdown() {
     const roleTag = p.role === 'gm' ? '<span class="w-dd-role">GM</span>' : '';
     const item = document.createElement('div');
     item.className = 'w-dd-item' + (St.whisperTo === id && !St.whisperToJournal ? ' selected' : '');
-    item.innerHTML = `<span>🔒 ${esc(p.name)}에게 귓말</span>${roleTag}`;
+    item.innerHTML = `<span>${esc(p.name)}에게 귓말</span>${roleTag}`;
     item.onclick = (e) => { e.stopPropagation(); selectWhisperTarget(id, p.name, null); dd.classList.remove('open'); };
     dd.appendChild(item);
 
@@ -464,7 +464,7 @@ function renderWhisperDropdown() {
       const jItem = document.createElement('div');
       jItem.className = 'w-dd-item' + (St.whisperTo === id && St.whisperToJournal === p.currentJournalId ? ' selected' : '');
       jItem.style.paddingLeft = '24px';
-      jItem.innerHTML = `<span>🔒 ${esc(p.currentJournalName)}에게 귓말</span><span class="w-dd-role">${esc(p.name)}</span>`;
+      jItem.innerHTML = `<span>${esc(p.currentJournalName)}에게 귓말</span><span class="w-dd-role">${esc(p.name)}</span>`;
       jItem.onclick = (e) => { e.stopPropagation(); selectWhisperTarget(id, p.currentJournalName, p.currentJournalId); dd.classList.remove('open'); };
       dd.appendChild(jItem);
     }
