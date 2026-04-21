@@ -620,6 +620,21 @@ function closeQuickJournalMenu() {
   menu.innerHTML = '';
 }
 
+function getQuickJournalAvatarHtml(journal) {
+  const title = String(journal?.title || '무제 저널').trim() || '무제 저널';
+  const fallback = title[0]?.toUpperCase() || '?';
+  const avatarSrc = getSharedJournalAvatarRuntime().sanitizePersistentAvatarSrc(
+    (typeof saGetAvatar === 'function' ? saGetAvatar(journal.id) : '')
+    || journal?.avatar
+    || journal?.sheet?.avatar
+    || ''
+  );
+  if (avatarSrc) {
+    return `<span class="map-quick-journal-avatar" aria-hidden="true"><img src="${esc(avatarSrc)}" alt=""></span>`;
+  }
+  return `<span class="map-quick-journal-avatar fallback" aria-hidden="true">${esc(fallback)}</span>`;
+}
+
 function renderQuickJournalMenu() {
   const menu = getQuickJournalMenuEl();
   if (!menu) return;
@@ -629,7 +644,10 @@ function renderQuickJournalMenu() {
     menu.style.display = 'block';
     return;
   }
-  menu.innerHTML = list.map(j => `<button type="button" class="map-quick-journal-item" data-jid="${esc(j.id)}">${esc(j.title || '무제 저널')}</button>`).join('');
+  menu.innerHTML = list.map(j => {
+    const title = String(j?.title || '무제 저널').trim() || '무제 저널';
+    return `<button type="button" class="map-quick-journal-item" data-jid="${esc(j.id)}">${getQuickJournalAvatarHtml(j)}<span class="map-quick-journal-name">${esc(title)}</span></button>`;
+  }).join('');
   menu.querySelectorAll('.map-quick-journal-item').forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.preventDefault();
