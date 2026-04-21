@@ -12,6 +12,8 @@ let _bgmProgressTimer = null;
 let _bgmProgressUserSeeking = false;
 let _bgmProgressPreviewTimer = null;
 let _lastAppliedBgmSeekAt = 0;
+let _lastAppliedBgmPlaybackAt = 0;
+let _bgmPendingStartSeconds = null;
 let _bgmExpanded = false;
 let _bgmDragFromIndex = null;
 let _bgmSuppressPlaylistClickUntil = 0;
@@ -65,12 +67,6 @@ function syncBgmPermissionUI() {
     el.style.display = canControl ? '' : 'none';
   });
   updateBgmProgressAccess();
-  renderBgmControlSensitiveLists();
-}
-
-function renderBgmControlSensitiveLists() {
-  // 권한 변경 직후에도 플레이리스트의 삭제/드래그/선택 UI가 즉시 갱신되도록 분리합니다.
-  renderPlaylist();
 }
 
 function loadYTApi() {
@@ -145,6 +141,39 @@ function getBgmCurrentTime() {
   } catch (_) {
     return 0;
   }
+}
+
+function normalizeBgmSeconds(value) {
+  const seconds = Number(value);
+  if (!Number.isFinite(seconds) || seconds < 0) return 0;
+  return Math.round(seconds * 10) / 10;
+}
+
+function makeBgmPlaybackAnchor(seconds, isPlaying) {
+  const now = Date.now();
+  return {
+    playbackPosition: normalizeBgmSeconds(seconds),
+    playbackStartedAt: isPlaying ? now : 0,
+    playbackUpdatedAt: now,
+    playbackBy: St.myId || '',
+  };
+}
+
+function getRemoteBgmPlaybackSeconds(bgm = {}) {
+  let seconds = normalizeBgmSeconds(bgm.playbackPosition || 0);
+  const startedAt = Number(bgm.playbackStartedAt || 0);
+  const isPlaying = bgm.isPlaying === true;
+  if (isPlaying && startedAt > 0) {
+    seconds += Math.max(0, Date.now() - startedAt) / 1000;
+  }
+  return normalizeBgmSeconds(seconds);
+}
+
+function shouldApplyRemoteBgmPlayback(bgm = {}) {
+  const updatedAt = Number(bgm.playbackUpdatedAt || 0);
+  if (!updatedAt || updatedAt <= _lastAppliedBgmPlaybackAt) return false;
+  _lastAppliedBgmPlaybackAt = updatedAt;
+  return true;
 }
 
 function updateBgmProgressAccess() {
@@ -229,7 +258,10 @@ async function commitBgmSeek(value) {
   _bgmProgressUserSeeking = false;
   _lastAppliedBgmSeekAt = updatedAt;
   seekBgmPlayer(seconds);
-  await writeBgmState({ seek: { seconds: Math.round(seconds * 10) / 10, updatedAt, by: St.myId || '' } });
+  await writeBgmState({
+    seek: { seconds: normalizeBgmSeconds(seconds), updatedAt, by: St.myId || '' },
+    ...makeBgmPlaybackAnchor(seconds, St.isPlaying),
+  });
 }
 
 async function writeBgmState(payload) {
@@ -324,9 +356,10 @@ function getLoadedYoutubeVideoId() {
   }
 }
 
-function ensureYoutubeReadyForTrack(idx, shouldPlay) {
+function ensureYoutubeReadyForTrack(idx, shouldPlay, startSeconds = null) {
   _bgmPendingTrackIndex = idx;
   _bgmPendingShouldPlay = !!shouldPlay;
+  _bgmPendingStartSeconds = startSeconds;
   loadYTApi();
 }
 
@@ -334,26 +367,36 @@ function flushPendingBgmTrack() {
   if (_bgmPendingTrackIndex === null) return;
   const idx = _bgmPendingTrackIndex;
   const shouldPlay = _bgmPendingShouldPlay;
+  const startSeconds = _bgmPendingStartSeconds;
   _bgmPendingTrackIndex = null;
   _bgmPendingShouldPlay = false;
-  playTrack(idx, { fromRemote: true, shouldPlay });
+  _bgmPendingStartSeconds = null;
+  playTrack(idx, { fromRemote: true, shouldPlay, startSeconds });
 }
 
-function applyBgmPlayerState(track, shouldPlay) {
+function applyBgmPlayerState(track, shouldPlay, startSeconds = null) {
   if (!track?.videoId) return;
+  const safeStart = Number.isFinite(Number(startSeconds)) && Number(startSeconds) > 0
+    ? normalizeBgmSeconds(startSeconds)
+    : null;
+
   if (!ytReady || !ytPlayer) {
-    ensureYoutubeReadyForTrack(St.currentTrack, shouldPlay);
+    ensureYoutubeReadyForTrack(St.currentTrack, shouldPlay, safeStart);
     return;
   }
+
   const loadedId = getLoadedYoutubeVideoId();
   try {
     if (loadedId !== track.videoId) {
-      if (shouldPlay) ytPlayer.loadVideoById(track.videoId);
-      else ytPlayer.cueVideoById(track.videoId);
-    } else if (shouldPlay) {
-      ytPlayer.playVideo();
+      const loadArg = safeStart !== null
+        ? { videoId: track.videoId, startSeconds: safeStart }
+        : track.videoId;
+      if (shouldPlay) ytPlayer.loadVideoById(loadArg);
+      else ytPlayer.cueVideoById(loadArg);
     } else {
-      ytPlayer.pauseVideo();
+      if (safeStart !== null) ytPlayer.seekTo(safeStart, true);
+      if (shouldPlay) ytPlayer.playVideo();
+      else ytPlayer.pauseVideo();
     }
   } catch (err) {
     console.warn('bgm player state failed', err);
@@ -416,6 +459,7 @@ async function addBgmTrack(source = 'modal') {
       currentTrack: nextIndex,
       isPlaying: true,
       seek: { seconds: 0, updatedAt: Date.now(), by: St.myId || '' },
+      ...makeBgmPlaybackAnchor(0, true),
     });
     playTrack(nextIndex, { fromRemote: true, shouldPlay: true });
 
@@ -445,14 +489,15 @@ function renderPlaylist() {
     setBgmTitle(null);
     return;
   }
-  const canEdit = canControlBgm();
+  const canDrag = canControlBgm();
   listEl.innerHTML = list.map((t, i) => `
-    <div class="pl-item ${i === St.currentTrack ? 'current' : ''} ${canEdit ? 'draggable editable' : ''}"
+    <div class="pl-item ${i === St.currentTrack ? 'current' : ''} ${canDrag ? 'draggable' : ''}"
       data-bgm-track-index="${i}"
-      draggable="${canEdit ? 'true' : 'false'}"
-      ${canEdit ? `onclick="selectBgmPlaylistTrack(${i})" ondragstart="beginBgmPlaylistDrag(event, ${i})" ondragover="overBgmPlaylistDrag(event)" ondrop="dropBgmPlaylistTrack(event, ${i})" ondragend="endBgmPlaylistDrag(event)"` : ''}>
+      draggable="${canDrag ? 'true' : 'false'}"
+      onclick="selectBgmPlaylistTrack(${i})"
+      ${canDrag ? `ondragstart="beginBgmPlaylistDrag(event, ${i})" ondragover="overBgmPlaylistDrag(event)" ondrop="dropBgmPlaylistTrack(event, ${i})" ondragend="endBgmPlaylistDrag(event)"` : ''}>
       <span class="pl-name">${esc(t.name || `BGM ${i + 1}`)}</span>
-      ${canEdit ? `<button class="pl-del" onclick="event.stopPropagation();removeTrack(${i})" title="삭제" draggable="false">✕</button>` : ''}
+      <button class="pl-del" onclick="event.stopPropagation();removeTrack(${i})" title="삭제" draggable="false">✕</button>
     </div>`).join('');
 }
 
@@ -464,6 +509,7 @@ function selectBgmPlaylistTrack(index) {
 async function playTrack(idx, options = {}) {
   const fromRemote = options && options.fromRemote === true;
   const shouldPlay = options.shouldPlay !== false;
+  const startSeconds = Number.isFinite(Number(options.startSeconds)) ? Number(options.startSeconds) : null;
   const list = getBgmPlaylist();
   if (!fromRemote && !canControlBgm()) { showToast(BGM_CONTROL_DENIED_MESSAGE); return; }
   if (idx < 0 || idx >= list.length) return;
@@ -474,7 +520,7 @@ async function playTrack(idx, options = {}) {
   setBgmTitle(track);
   renderPlaylist();
   updatePlayBtn();
-  applyBgmPlayerState(track, shouldPlay);
+  applyBgmPlayerState(track, shouldPlay, startSeconds);
 
   updateBgmProgressAccess();
   updateBgmProgressUI();
@@ -484,12 +530,14 @@ async function playTrack(idx, options = {}) {
       currentTrack: idx,
       isPlaying: !!shouldPlay,
       seek: { seconds: 0, updatedAt: Date.now(), by: St.myId || '' },
+      ...makeBgmPlaybackAnchor(0, !!shouldPlay),
     });
   }
 }
 
 async function setBgmPlaying(playing, options = {}) {
   const fromRemote = options && options.fromRemote === true;
+  const remoteStartSeconds = Number.isFinite(Number(options.startSeconds)) ? Number(options.startSeconds) : null;
   if (!fromRemote && !canControlBgm()) { showToast(BGM_CONTROL_DENIED_MESSAGE); return; }
   const track = getCurrentBgmTrack();
   if (!track) {
@@ -500,12 +548,18 @@ async function setBgmPlaying(playing, options = {}) {
     return;
   }
 
+  const anchorSeconds = remoteStartSeconds !== null ? remoteStartSeconds : getBgmCurrentTime();
   St.isPlaying = !!playing;
   setBgmTitle(track);
   updatePlayBtn();
   updateBgmProgressAccess();
-  applyBgmPlayerState(track, St.isPlaying);
-  if (!fromRemote) await writeBgmState({ isPlaying: St.isPlaying });
+  applyBgmPlayerState(track, St.isPlaying, remoteStartSeconds);
+  if (!fromRemote) {
+    await writeBgmState({
+      isPlaying: St.isPlaying,
+      ...makeBgmPlaybackAnchor(anchorSeconds, St.isPlaying),
+    });
+  }
 }
 
 async function bgmToggle() {
@@ -696,6 +750,7 @@ async function removeTrack(i) {
   if (!confirm('이 BGM을 삭제할까요?')) return;
 
   const removingCurrent = i === St.currentTrack;
+  const currentSeconds = getBgmCurrentTime();
   const nextPlaylist = list.slice();
   nextPlaylist.splice(i, 1);
 
@@ -726,6 +781,7 @@ async function removeTrack(i) {
     currentTrack: nextTrack,
     isPlaying: nextPlaying,
     seek: { seconds: 0, updatedAt: Date.now(), by: St.myId || '' },
+    ...makeBgmPlaybackAnchor(removingCurrent ? 0 : currentSeconds, nextPlaying),
   });
 }
 
@@ -736,6 +792,8 @@ function syncBgmRemoteState(bgm = {}) {
   const nextPlaying = hasRemotePlaying ? bgm.isPlaying === true : nextTrack >= 0;
   const nextRepeat = BGM_REPEAT_MODES.includes(bgm.repeatMode) ? bgm.repeatMode : 'off';
   const remoteSeek = bgm.seek && typeof bgm.seek === 'object' ? bgm.seek : null;
+  const remotePlaybackSeconds = getRemoteBgmPlaybackSeconds(bgm);
+  const shouldApplyPlayback = shouldApplyRemoteBgmPlayback(bgm);
 
   St.playlist = nextPlaylist;
   St.repeatMode = nextRepeat;
@@ -760,11 +818,16 @@ function syncBgmRemoteState(bgm = {}) {
   updateRepeatBtn();
 
   if (changedTrack) {
-    playTrack(nextTrack, { fromRemote: true, shouldPlay: nextPlaying });
+    playTrack(nextTrack, { fromRemote: true, shouldPlay: nextPlaying, startSeconds: remotePlaybackSeconds });
   } else {
-    setBgmPlaying(nextPlaying, { fromRemote: true });
+    setBgmPlaying(nextPlaying, {
+      fromRemote: true,
+      startSeconds: shouldApplyPlayback ? remotePlaybackSeconds : null,
+    });
   }
-  if (remoteSeek) applyRemoteBgmSeek(remoteSeek);
+  const seekUpdatedAt = Number(remoteSeek?.updatedAt || 0);
+  const playbackUpdatedAt = Number(bgm.playbackUpdatedAt || 0);
+  if (remoteSeek && seekUpdatedAt > playbackUpdatedAt) applyRemoteBgmSeek(remoteSeek);
   updateBgmProgressAccess();
   updateBgmProgressUI();
 }
