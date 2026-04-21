@@ -356,6 +356,35 @@ function getLoadedYoutubeVideoId() {
   }
 }
 
+function ensureBgmPlaybackStarted(track, startSeconds = null, tries = 0) {
+  if (!St.isPlaying || !track?.videoId) return;
+  if (!ytReady || !ytPlayer) {
+    if (tries < 10) setTimeout(() => ensureBgmPlaybackStarted(track, startSeconds, tries + 1), 300);
+    return;
+  }
+
+  try {
+    const loadedId = getLoadedYoutubeVideoId();
+    const state = ytPlayer.getPlayerState?.();
+    const safeStart = Number.isFinite(Number(startSeconds)) && Number(startSeconds) > 0
+      ? normalizeBgmSeconds(startSeconds)
+      : null;
+
+    if (loadedId && loadedId !== track.videoId) return;
+    if (state === YT.PlayerState.PLAYING) return;
+
+    if (safeStart !== null && tries <= 2) {
+      ytPlayer.seekTo(safeStart, true);
+    }
+    ytPlayer.playVideo();
+    updateBgmProgressUI();
+  } catch (err) {
+    if (tries >= 10) console.warn('bgm resume after refresh failed', err);
+  }
+
+  if (tries < 10) setTimeout(() => ensureBgmPlaybackStarted(track, startSeconds, tries + 1), 450);
+}
+
 function ensureYoutubeReadyForTrack(idx, shouldPlay, startSeconds = null) {
   _bgmPendingTrackIndex = idx;
   _bgmPendingShouldPlay = !!shouldPlay;
@@ -398,8 +427,10 @@ function applyBgmPlayerState(track, shouldPlay, startSeconds = null) {
       if (shouldPlay) ytPlayer.playVideo();
       else ytPlayer.pauseVideo();
     }
+    if (shouldPlay) ensureBgmPlaybackStarted(track, safeStart, 0);
   } catch (err) {
     console.warn('bgm player state failed', err);
+    if (shouldPlay) ensureBgmPlaybackStarted(track, safeStart, 1);
   }
 }
 
