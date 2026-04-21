@@ -792,6 +792,10 @@ window._FB = {
           <div>플레이리스트</div>
           <span id="bgm-expanded-count">0곡</span>
         </div>
+        <div class="bgm-expanded-add bgm-gm-control" style="display:none">
+          <input type="text" id="bgm-expanded-url-input" placeholder="YouTube URL 또는 영상 ID" aria-label="BGM YouTube URL 또는 영상 ID">
+          <button type="button" id="bgm-expanded-add-btn" onclick="addBgmTrack('expanded')">추가</button>
+        </div>
         <div class="bgm-expanded-playlist" id="bgm-expanded-playlist">
           <div class="bgm-expanded-empty">재생되고 있는 BGM이 없어요.</div>
         </div>

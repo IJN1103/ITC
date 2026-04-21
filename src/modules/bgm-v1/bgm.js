@@ -273,14 +273,15 @@ function renderBgmExpandedPlaylist() {
     return;
   }
 
-  const canDrag = canControlBgm();
+  const canEdit = canControlBgm();
   listEl.innerHTML = list.map((track, i) => `
-    <div class="bgm-expanded-track ${i === St.currentTrack ? 'current' : ''} ${canDrag ? 'draggable' : ''}"
+    <div class="bgm-expanded-track ${i === St.currentTrack ? 'current' : ''} ${canEdit ? 'draggable editable' : ''}"
       data-bgm-track-index="${i}"
-      draggable="${canDrag ? 'true' : 'false'}"
-      ${canDrag ? `ondragstart="beginBgmPlaylistDrag(event, ${i})" ondragover="overBgmPlaylistDrag(event)" ondrop="dropBgmPlaylistTrack(event, ${i})" ondragend="endBgmPlaylistDrag(event)"` : ''}>
+      draggable="${canEdit ? 'true' : 'false'}"
+      ${canEdit ? `onclick="selectBgmPlaylistTrack(${i})" ondragstart="beginBgmPlaylistDrag(event, ${i})" ondragover="overBgmPlaylistDrag(event)" ondrop="dropBgmPlaylistTrack(event, ${i})" ondragend="endBgmPlaylistDrag(event)"` : ''}>
       <div class="bgm-expanded-track-index">${i + 1}</div>
       <div class="bgm-expanded-track-title">${esc(track?.name || `BGM ${i + 1}`)}</div>
+      ${canEdit ? `<button class="bgm-expanded-track-del" onclick="event.stopPropagation();removeTrack(${i})" title="삭제" draggable="false">✕</button>` : ''}
     </div>`).join('');
 }
 
@@ -361,12 +362,18 @@ function applyStoredBgmVolume() {
   if (ytReady && ytPlayer) ytPlayer.setVolume(volume);
 }
 
-async function addBgmTrack() {
+function getBgmAddElements(source = 'modal') {
+  const useExpanded = source === 'expanded';
+  const urlEl = document.getElementById(useExpanded ? 'bgm-expanded-url-input' : 'yt-url-input');
+  const btn = document.getElementById(useExpanded ? 'bgm-expanded-add-btn' : 'bgm-add-track-btn');
+  return { urlEl, btn, label: useExpanded ? '추가' : '+ BGM 추가' };
+}
+
+async function addBgmTrack(source = 'modal') {
   if (!canControlBgm()) { showToast('BGM은 GM만 조작할 수 있어요.'); return; }
   if (_bgmAddBusy) return;
 
-  const urlEl = document.getElementById('yt-url-input');
-  const btn = document.getElementById('bgm-add-track-btn');
+  const { urlEl, btn, label } = getBgmAddElements(source);
   const urlInp = urlEl?.value?.trim() || '';
   const vid = extractVideoId(urlInp);
   if (!vid) { alert('올바른 YouTube URL 또는 영상 ID를 입력해 주세요.'); return; }
@@ -380,7 +387,7 @@ async function addBgmTrack() {
   _bgmAddBusy = true;
   if (btn) {
     btn.disabled = true;
-    btn.textContent = '제목 불러오는 중...';
+    btn.textContent = '불러오는 중...';
   }
 
   try {
@@ -414,7 +421,7 @@ async function addBgmTrack() {
     _bgmAddBusy = false;
     if (btn) {
       btn.disabled = false;
-      btn.textContent = '+ BGM 추가';
+      btn.textContent = label;
     }
   }
 }
