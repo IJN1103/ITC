@@ -90,15 +90,13 @@ function showTokenMemoBubble(tokenEl, memo, tokenId) {
   _tokenMemoBubbleTokenId = tokenId || null;
 }
 
-function addToken() {
+function createCharacterToken(name, type, options = {}) {
   if (!hasPerm('createToken')) { showToast('토큰 생성 권한이 없어요.'); return; }
-  const name = document.getElementById('token-name').value.trim() || '?';
-  const type = document.getElementById('token-type').value;
   const id = genId();
   const token = {
     id,
-    name,
-    type,
+    name: String(name || '?').trim() || '?',
+    type: String(type || 'pc').trim() || 'pc',
     x: 48 + Math.random()*12,
     y: 48 + Math.random()*12,
     ownerId: St.myId || '',
@@ -109,9 +107,23 @@ function addToken() {
   if (window._FB?.CONFIGURED) {
     const { db, ref, set } = window._FB;
     set(ref(db, `rooms/${St.roomCode}/tokens/${id}`), token);
-  } else { St.tokens[id] = token; renderAllTokens(St.tokens); }
-  closeModal('modal-token');
-  document.getElementById('token-name').value = '';
+  } else {
+    St.tokens[id] = token;
+    renderAllTokens(St.tokens);
+  }
+  if (options.closeModal !== false) closeModal('modal-token');
+  const nameInput = document.getElementById('token-name');
+  if (nameInput) nameInput.value = '';
+}
+
+function addBlankCharacterToken() {
+  createCharacterToken('?', 'pc', { closeModal: false });
+}
+
+function addToken() {
+  const nameInput = document.getElementById('token-name');
+  const typeInput = document.getElementById('token-type');
+  createCharacterToken(nameInput?.value || '?', typeInput?.value || 'pc');
 }
 
 function addPanelToken() {
