@@ -65,6 +65,12 @@ function syncBgmPermissionUI() {
     el.style.display = canControl ? '' : 'none';
   });
   updateBgmProgressAccess();
+  renderBgmControlSensitiveLists();
+}
+
+function renderBgmControlSensitiveLists() {
+  // 권한 변경 직후에도 플레이리스트의 삭제/드래그/선택 UI가 즉시 갱신되도록 분리합니다.
+  renderPlaylist();
 }
 
 function loadYTApi() {
@@ -439,15 +445,14 @@ function renderPlaylist() {
     setBgmTitle(null);
     return;
   }
-  const canDrag = canControlBgm();
+  const canEdit = canControlBgm();
   listEl.innerHTML = list.map((t, i) => `
-    <div class="pl-item ${i === St.currentTrack ? 'current' : ''} ${canDrag ? 'draggable' : ''}"
+    <div class="pl-item ${i === St.currentTrack ? 'current' : ''} ${canEdit ? 'draggable editable' : ''}"
       data-bgm-track-index="${i}"
-      draggable="${canDrag ? 'true' : 'false'}"
-      onclick="selectBgmPlaylistTrack(${i})"
-      ${canDrag ? `ondragstart="beginBgmPlaylistDrag(event, ${i})" ondragover="overBgmPlaylistDrag(event)" ondrop="dropBgmPlaylistTrack(event, ${i})" ondragend="endBgmPlaylistDrag(event)"` : ''}>
+      draggable="${canEdit ? 'true' : 'false'}"
+      ${canEdit ? `onclick="selectBgmPlaylistTrack(${i})" ondragstart="beginBgmPlaylistDrag(event, ${i})" ondragover="overBgmPlaylistDrag(event)" ondrop="dropBgmPlaylistTrack(event, ${i})" ondragend="endBgmPlaylistDrag(event)"` : ''}>
       <span class="pl-name">${esc(t.name || `BGM ${i + 1}`)}</span>
-      <button class="pl-del" onclick="event.stopPropagation();removeTrack(${i})" title="삭제" draggable="false">✕</button>
+      ${canEdit ? `<button class="pl-del" onclick="event.stopPropagation();removeTrack(${i})" title="삭제" draggable="false">✕</button>` : ''}
     </div>`).join('');
 }
 
