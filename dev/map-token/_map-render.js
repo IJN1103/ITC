@@ -263,6 +263,9 @@ function addOrUpdateSingleToken(id, data) {
 
   if (data && !shouldRenderTokenForCurrentUser(data)) {
     if (existing) existing.remove();
+    if (typeof cancelPanelTokenClickAction === 'function') cancelPanelTokenClickAction(id);
+    if (typeof _teTokenId !== 'undefined' && _teTokenId === id && typeof closeTokenEdit === 'function') closeTokenEdit();
+    if (typeof _pteTokenId !== 'undefined' && _pteTokenId === id && typeof closePanelTokenEdit === 'function') closePanelTokenEdit();
     removeMapStatusCard(id, St.tokens);
     syncMultiTokenSelectionWithTokens(St.tokens);
     updateMultiTokenSelectionUI();
