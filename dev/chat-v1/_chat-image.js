@@ -252,6 +252,41 @@ async function canvasToJpegBlob(canvas, quality = 0.84) {
   return _itcCanvasToBlob(canvas, 'image/jpeg', quality);
 }
 
+function isChatImageAlphaCapableMime(mime = '') {
+  return /^image\/(png|webp)$/i.test(String(mime || '').trim());
+}
+
+function getChatImageUploadExtension(mime = '') {
+  const safeMime = String(mime || '').toLowerCase();
+  if (safeMime === 'image/png') return 'png';
+  if (safeMime === 'image/webp') return 'webp';
+  if (safeMime === 'image/gif') return 'gif';
+  return 'jpg';
+}
+
+function makeChatImageUploadFileName(originalName = '', mime = 'image/jpeg') {
+  const ext = getChatImageUploadExtension(mime);
+  const fallbackBase = `chat_${Date.now()}`;
+  const rawBase = String(originalName || fallbackBase).replace(/\.[^\/.]+$/, '').trim() || fallbackBase;
+  return `${rawBase}.${ext}`;
+}
+
+async function canvasToChatImageBlob(canvas, mime = 'image/jpeg', quality = 0.84) {
+  const safeMime = String(mime || '').toLowerCase();
+  if (safeMime === 'image/png') {
+    return _itcCanvasToBlob(canvas, 'image/png');
+  }
+  if (safeMime === 'image/webp') {
+    try {
+      return await _itcCanvasToBlob(canvas, 'image/webp', quality);
+    } catch (err) {
+      console.warn('webp 변환 실패: png로 대체합니다.', err);
+      return _itcCanvasToBlob(canvas, 'image/png');
+    }
+  }
+  return canvasToJpegBlob(canvas, quality);
+}
+
 function makePreparedChatImageBase(meta = {}) {
   return {
     id: makePendingChatImageId(),
@@ -302,16 +337,19 @@ async function fileToPreparedChatImage(file) {
   }
 
   const maxEdge = 1280;
+  const fileMime = String(file.type || '').toLowerCase();
+  const alphaCapable = isChatImageAlphaCapableMime(fileMime);
   const needsResize = rawMeta.width > maxEdge || rawMeta.height > maxEdge;
-  const needsCompress = file.type !== 'image/jpeg' || file.size > 900 * 1024 || needsResize;
+  const needsTransform = needsResize || (!alphaCapable && (fileMime !== 'image/jpeg' || file.size > 900 * 1024));
 
-  if (!needsCompress) {
+  if (!needsTransform) {
+    const uploadMime = fileMime || 'image/jpeg';
     return makePreparedChatImageBase({
       previewUrl: URL.createObjectURL(file),
       previewKind: 'object-url',
       uploadBlob: file,
-      uploadMime: file.type || 'image/jpeg',
-      uploadFileName: file.name || `chat_${Date.now()}.jpg`,
+      uploadMime,
+      uploadFileName: file.name || makeChatImageUploadFileName('', uploadMime),
       isGif: false,
       width: rawMeta.width,
       height: rawMeta.height,
@@ -319,6 +357,7 @@ async function fileToPreparedChatImage(file) {
   }
 
   const dataUrl = await fileToDataUrl(file);
+  const outputMime = alphaCapable ? fileMime : 'image/jpeg';
   const compressed = await new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = async () => {
@@ -339,9 +378,10 @@ async function fileToPreparedChatImage(file) {
           return;
         }
         ctx.drawImage(img, 0, 0, w, h);
-        const blob = await canvasToJpegBlob(canvas, 0.84);
+        const blob = await canvasToChatImageBlob(canvas, outputMime, 0.84);
         resolve({
           blob,
+          mime: blob.type || outputMime,
           width: w,
           height: h,
           previewUrl: URL.createObjectURL(blob),
@@ -354,13 +394,14 @@ async function fileToPreparedChatImage(file) {
     img.src = dataUrl;
   });
 
+  const uploadMime = compressed.mime || compressed.blob?.type || outputMime || 'image/jpeg';
   return makePreparedChatImageBase({
     previewUrl: compressed.previewUrl,
     previewKind: 'object-url',
     dataUrl,
     uploadBlob: compressed.blob,
-    uploadMime: 'image/jpeg',
-    uploadFileName: `chat_${Date.now()}.jpg`,
+    uploadMime,
+    uploadFileName: makeChatImageUploadFileName(file.name, uploadMime),
     isGif: false,
     width: compressed.width || rawMeta.width || 0,
     height: compressed.height || rawMeta.height || 0,
