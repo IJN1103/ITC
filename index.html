@@ -1198,9 +1198,11 @@ window._FB = {
       </div>
     </div>
     <div class="te-footer">
-      <button class="te-del-btn" onclick="deleteTokenFromEdit()">🗑 삭제</button>
       <span class="te-hint" id="te-hint"></span>
-      <button class="btn-primary" style="padding:6px 18px;font-size:12px" onclick="saveTokenEdit()">저장</button>
+      <div class="te-footer-actions">
+        <button class="te-del-btn" onclick="deleteTokenFromEdit()">삭제</button>
+        <button class="btn-primary te-save-btn" onclick="saveTokenEdit()">저장</button>
+      </div>
     </div>
   </div>
 </div>
