@@ -13,6 +13,8 @@ let _bgmProgressUserSeeking = false;
 let _bgmProgressPreviewTimer = null;
 let _lastAppliedBgmSeekAt = 0;
 let _bgmExpanded = false;
+let _bgmDragFromIndex = null;
+let _bgmSuppressPlaylistClickUntil = 0;
 
 const BGM_EMPTY_TITLE = '재생되고 있는 BGM이 없어요.';
 const BGM_REPEAT_MODES = ['off', 'one', 'all'];
@@ -271,8 +273,12 @@ function renderBgmExpandedPlaylist() {
     return;
   }
 
+  const canDrag = canControlBgm();
   listEl.innerHTML = list.map((track, i) => `
-    <div class="bgm-expanded-track ${i === St.currentTrack ? 'current' : ''}">
+    <div class="bgm-expanded-track ${i === St.currentTrack ? 'current' : ''} ${canDrag ? 'draggable' : ''}"
+      data-bgm-track-index="${i}"
+      draggable="${canDrag ? 'true' : 'false'}"
+      ${canDrag ? `ondragstart="beginBgmPlaylistDrag(event, ${i})" ondragover="overBgmPlaylistDrag(event)" ondrop="dropBgmPlaylistTrack(event, ${i})" ondragend="endBgmPlaylistDrag(event)"` : ''}>
       <div class="bgm-expanded-track-index">${i + 1}</div>
       <div class="bgm-expanded-track-title">${esc(track?.name || `BGM ${i + 1}`)}</div>
     </div>`).join('');
@@ -425,11 +431,21 @@ function renderPlaylist() {
     setBgmTitle(null);
     return;
   }
+  const canDrag = canControlBgm();
   listEl.innerHTML = list.map((t, i) => `
-    <div class="pl-item ${i === St.currentTrack ? 'current' : ''}" onclick="playTrack(${i})">
+    <div class="pl-item ${i === St.currentTrack ? 'current' : ''} ${canDrag ? 'draggable' : ''}"
+      data-bgm-track-index="${i}"
+      draggable="${canDrag ? 'true' : 'false'}"
+      onclick="selectBgmPlaylistTrack(${i})"
+      ${canDrag ? `ondragstart="beginBgmPlaylistDrag(event, ${i})" ondragover="overBgmPlaylistDrag(event)" ondrop="dropBgmPlaylistTrack(event, ${i})" ondragend="endBgmPlaylistDrag(event)"` : ''}>
       <span class="pl-name">${esc(t.name || `BGM ${i + 1}`)}</span>
-      <button class="pl-del" onclick="event.stopPropagation();removeTrack(${i})" title="삭제">✕</button>
+      <button class="pl-del" onclick="event.stopPropagation();removeTrack(${i})" title="삭제" draggable="false">✕</button>
     </div>`).join('');
+}
+
+function selectBgmPlaylistTrack(index) {
+  if (Date.now() < _bgmSuppressPlaylistClickUntil) return;
+  playTrack(index);
 }
 
 async function playTrack(idx, options = {}) {
@@ -566,6 +582,98 @@ function setVolume(v) {
   const volume = Number.isFinite(parsed) ? Math.max(0, Math.min(100, parsed)) : 60;
   localStorage.setItem('itc_bgm_volume', String(volume));
   if (ytReady && ytPlayer) ytPlayer.setVolume(volume);
+}
+
+function clearBgmPlaylistDragClasses() {
+  document.querySelectorAll('.pl-item.dragging, .pl-item.drag-over, .bgm-expanded-track.dragging, .bgm-expanded-track.drag-over').forEach(el => {
+    el.classList.remove('dragging', 'drag-over', 'drop-before', 'drop-after');
+  });
+}
+
+function beginBgmPlaylistDrag(event, index) {
+  if (!canControlBgm()) {
+    event.preventDefault();
+    return;
+  }
+  _bgmDragFromIndex = Number(index);
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', String(_bgmDragFromIndex));
+  }
+  event.currentTarget?.classList?.add('dragging');
+}
+
+function overBgmPlaylistDrag(event) {
+  if (!canControlBgm()) return;
+  const item = event.currentTarget;
+  if (!item) return;
+  event.preventDefault();
+  if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+
+  document.querySelectorAll('.pl-item.drag-over, .bgm-expanded-track.drag-over').forEach(el => {
+    if (el !== item) el.classList.remove('drag-over', 'drop-before', 'drop-after');
+  });
+
+  const rect = item.getBoundingClientRect();
+  const after = event.clientY > rect.top + rect.height / 2;
+  item.classList.add('drag-over');
+  item.classList.toggle('drop-before', !after);
+  item.classList.toggle('drop-after', after);
+}
+
+function endBgmPlaylistDrag() {
+  _bgmDragFromIndex = null;
+  clearBgmPlaylistDragClasses();
+}
+
+async function dropBgmPlaylistTrack(event, targetIndex) {
+  if (!canControlBgm()) return;
+  event.preventDefault();
+  event.stopPropagation();
+
+  const rawFrom = event.dataTransfer?.getData('text/plain');
+  const parsedFrom = rawFrom !== undefined && rawFrom !== null && rawFrom !== '' ? Number(rawFrom) : NaN;
+  const fromIndex = Number.isInteger(parsedFrom) ? parsedFrom : _bgmDragFromIndex;
+  const target = event.currentTarget;
+  const rect = target?.getBoundingClientRect?.();
+  const insertAfterTarget = rect ? event.clientY > rect.top + rect.height / 2 : false;
+  const insertIndex = Number(targetIndex) + (insertAfterTarget ? 1 : 0);
+
+  _bgmDragFromIndex = null;
+  _bgmSuppressPlaylistClickUntil = Date.now() + 350;
+  clearBgmPlaylistDragClasses();
+  await reorderBgmPlaylist(fromIndex, insertIndex);
+}
+
+async function reorderBgmPlaylist(fromIndex, insertIndex) {
+  if (!canControlBgm()) { showToast('BGM은 GM만 조작할 수 있어요.'); return; }
+  const list = getBgmPlaylist();
+  const from = Number(fromIndex);
+  let to = Number(insertIndex);
+  if (!Number.isInteger(from) || from < 0 || from >= list.length) return;
+  if (!Number.isInteger(to)) return;
+  to = Math.max(0, Math.min(list.length, to));
+  if (from < to) to -= 1;
+  if (from === to) return;
+
+  const currentTrack = getCurrentBgmTrack();
+  const nextPlaylist = list.slice();
+  const [moved] = nextPlaylist.splice(from, 1);
+  nextPlaylist.splice(to, 0, moved);
+
+  const nextTrack = currentTrack ? nextPlaylist.indexOf(currentTrack) : -1;
+  St.playlist = nextPlaylist;
+  St.currentTrack = nextTrack;
+  renderPlaylist();
+  setBgmTitle(getCurrentBgmTrack());
+  updatePlayBtn();
+
+  await writeBgmState({
+    playlist: nextPlaylist,
+    currentTrack: nextTrack,
+    playlistUpdatedAt: Date.now(),
+  });
+  showToast('플레이리스트 순서를 변경했어요.');
 }
 
 async function removeTrack(i) {
