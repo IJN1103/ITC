@@ -774,9 +774,34 @@ window._FB = {
   </div>
 </div>
 
+  <!-- BGM 펼치기 패널 -->
+  <div class="bgm-expanded-panel" id="bgm-expanded-panel" aria-hidden="true">
+    <div class="bgm-expanded-inner">
+      <section class="bgm-expanded-current" aria-label="현재 재생 중인 BGM">
+        <div class="bgm-expanded-kicker">Now Playing</div>
+        <div class="bgm-expanded-thumb empty" id="bgm-expanded-thumb" aria-hidden="true">
+          <span>NO BGM</span>
+        </div>
+        <div class="bgm-expanded-current-info">
+          <div class="bgm-expanded-current-title" id="bgm-expanded-current-title">재생되고 있는 BGM이 없어요.</div>
+          <div class="bgm-expanded-current-state" id="bgm-expanded-current-state">대기 중</div>
+        </div>
+      </section>
+      <section class="bgm-expanded-list" aria-label="BGM 플레이리스트">
+        <div class="bgm-expanded-list-head">
+          <div>플레이리스트</div>
+          <span id="bgm-expanded-count">0곡</span>
+        </div>
+        <div class="bgm-expanded-playlist" id="bgm-expanded-playlist">
+          <div class="bgm-expanded-empty">재생되고 있는 BGM이 없어요.</div>
+        </div>
+      </section>
+    </div>
+  </div>
+
   <!-- BGM 바 -->
   <div class="bgm-bar" id="bgm-bar">
-    <button class="bgm-toggle-btn" id="bgm-expand-btn" onclick="toggleBgmExpanded()" title="BGM 펼치기/접기">▲</button>
+    <button class="bgm-toggle-btn" id="bgm-expand-btn" onclick="toggleBgmExpanded()" title="BGM 펼치기/접기" aria-expanded="false">▲</button>
     <div class="bgm-info">
       <div class="bgm-np">Now Playing</div>
       <div class="bgm-title" id="bgm-title">재생되고 있는 BGM이 없어요.</div>

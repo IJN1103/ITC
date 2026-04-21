@@ -12,6 +12,7 @@ let _bgmProgressTimer = null;
 let _bgmProgressUserSeeking = false;
 let _bgmProgressPreviewTimer = null;
 let _lastAppliedBgmSeekAt = 0;
+let _bgmExpanded = false;
 
 const BGM_EMPTY_TITLE = '재생되고 있는 BGM이 없어요.';
 const BGM_REPEAT_MODES = ['off', 'one', 'all'];
@@ -108,6 +109,11 @@ function getCurrentBgmTrack() {
   const list = getBgmPlaylist();
   const idx = Number.isInteger(St.currentTrack) ? St.currentTrack : -1;
   return idx >= 0 && idx < list.length ? list[idx] : null;
+}
+
+function getBgmThumbnailUrl(track) {
+  const videoId = track?.videoId ? String(track.videoId) : '';
+  return videoId ? `https://img.youtube.com/vi/${encodeURIComponent(videoId)}/hqdefault.jpg` : '';
 }
 
 function getBgmRepeatMode() {
@@ -225,8 +231,74 @@ async function writeBgmState(payload) {
 
 function setBgmTitle(track) {
   const titleEl = document.getElementById('bgm-title');
-  if (!titleEl) return;
-  titleEl.textContent = track?.name || BGM_EMPTY_TITLE;
+  if (titleEl) titleEl.textContent = track?.name || BGM_EMPTY_TITLE;
+  renderBgmExpandedNowPlaying(track);
+}
+
+function renderBgmExpandedNowPlaying(track = getCurrentBgmTrack()) {
+  const safeTrack = track || null;
+  const titleEl = document.getElementById('bgm-expanded-current-title');
+  const stateEl = document.getElementById('bgm-expanded-current-state');
+  const thumbEl = document.getElementById('bgm-expanded-thumb');
+
+  if (titleEl) titleEl.textContent = safeTrack?.name || BGM_EMPTY_TITLE;
+  if (stateEl) stateEl.textContent = safeTrack ? (St.isPlaying ? '재생 중' : '일시정지') : '대기 중';
+
+  if (!thumbEl) return;
+  const thumbUrl = getBgmThumbnailUrl(safeTrack);
+  if (thumbUrl) {
+    thumbEl.classList.remove('empty');
+    thumbEl.style.backgroundImage = `url("${thumbUrl}")`;
+    thumbEl.innerHTML = '';
+  } else {
+    thumbEl.classList.add('empty');
+    thumbEl.style.backgroundImage = '';
+    thumbEl.innerHTML = '<span>NO BGM</span>';
+  }
+}
+
+function renderBgmExpandedPlaylist() {
+  const listEl = document.getElementById('bgm-expanded-playlist');
+  const countEl = document.getElementById('bgm-expanded-count');
+  if (!listEl && !countEl) return;
+
+  const list = getBgmPlaylist();
+  if (countEl) countEl.textContent = `${list.length}곡`;
+  if (!listEl) return;
+
+  if (!list.length) {
+    listEl.innerHTML = `<div class="bgm-expanded-empty">${esc(BGM_EMPTY_TITLE)}</div>`;
+    return;
+  }
+
+  listEl.innerHTML = list.map((track, i) => `
+    <div class="bgm-expanded-track ${i === St.currentTrack ? 'current' : ''}">
+      <div class="bgm-expanded-track-index">${i + 1}</div>
+      <div class="bgm-expanded-track-title">${esc(track?.name || `BGM ${i + 1}`)}</div>
+    </div>`).join('');
+}
+
+function syncBgmExpandedPanelState() {
+  const panel = document.getElementById('bgm-expanded-panel');
+  const bar = document.getElementById('bgm-bar');
+  const btn = document.getElementById('bgm-expand-btn');
+
+  if (panel) {
+    panel.classList.toggle('open', _bgmExpanded);
+    panel.setAttribute('aria-hidden', _bgmExpanded ? 'false' : 'true');
+  }
+  if (bar) bar.classList.toggle('expanded', _bgmExpanded);
+  if (btn) {
+    btn.textContent = _bgmExpanded ? '▼' : '▲';
+    btn.setAttribute('aria-expanded', _bgmExpanded ? 'true' : 'false');
+    btn.title = _bgmExpanded ? 'BGM 접기' : 'BGM 펼치기';
+  }
+}
+
+function renderBgmExpandedUI() {
+  renderBgmExpandedNowPlaying();
+  renderBgmExpandedPlaylist();
+  syncBgmExpandedPanelState();
 }
 
 function getLoadedYoutubeVideoId() {
@@ -343,8 +415,11 @@ async function addBgmTrack() {
 
 function renderPlaylist() {
   const listEl = document.getElementById('playlist');
-  if (!listEl) return;
   const list = getBgmPlaylist();
+  renderBgmExpandedPlaylist();
+  renderBgmExpandedNowPlaying();
+
+  if (!listEl) return;
   if (!list.length) {
     listEl.innerHTML = `<div class="pl-empty">${esc(BGM_EMPTY_TITLE)}</div>`;
     setBgmTitle(null);
@@ -420,9 +495,11 @@ async function bgmToggle() {
 
 function updatePlayBtn() {
   const btn = document.getElementById('bgm-playbtn');
-  if (!btn) return;
-  btn.textContent = St.isPlaying ? 'Ⅱ' : '▶';
-  btn.classList.toggle('playing', !!St.isPlaying);
+  if (btn) {
+    btn.textContent = St.isPlaying ? 'Ⅱ' : '▶';
+    btn.classList.toggle('playing', !!St.isPlaying);
+  }
+  renderBgmExpandedNowPlaying();
 }
 
 function updateRepeatBtn() {
@@ -572,7 +649,8 @@ function syncBgmRemoteState(bgm = {}) {
 }
 
 function toggleBgmExpanded() {
-  showToast('BGM 펼치기 화면은 다음 단계에서 작업할 예정입니다.');
+  _bgmExpanded = !_bgmExpanded;
+  renderBgmExpandedUI();
 }
 
 // 초기 UI 안전 반영
@@ -583,5 +661,6 @@ setTimeout(() => {
   syncBgmPermissionUI();
   startBgmProgressTimer();
   updateBgmProgressUI();
+  renderBgmExpandedUI();
   if (!getCurrentBgmTrack()) setBgmTitle(null);
 }, 0);
