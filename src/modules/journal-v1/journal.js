@@ -136,7 +136,7 @@ function normalizeJournal(raw, idOverride) {
   const avatar = getSharedJournalAvatarRuntime().sanitizePersistentAvatarSrc(
     raw?.avatar || raw?.sheet?.avatar || ''
   );
-  const nameColor = String(raw?.nameColor || '').trim();
+  const nameColor = String(raw?.nameColor || raw?.sheet?.nameColor || '').trim();
   const safeSheet = sanitizeStoredJournalValue(raw?.sheet || {}, ['sheet']);
 
   if (avatar) safeSheet.avatar = avatar;
@@ -173,6 +173,9 @@ function buildJournalStoragePayload(journal) {
     nameColor: normalized.nameColor,
     sheet: normalized.sheet || {},
   };
+  if (normalized.nameColor && payload.sheet && typeof payload.sheet === 'object') {
+    payload.sheet.nameColor = normalized.nameColor;
+  }
   if (normalized.avatar) {
     payload.avatar = normalized.avatar;
     if (payload.sheet && typeof payload.sheet === 'object') payload.sheet.avatar = normalized.avatar;
@@ -198,9 +201,9 @@ function sanitizeJournalMetaPatch(metaPatch = {}, currentJournal = null) {
     ? String(metaPatch.ownerId || St.myId || '').trim()
     : String(current?.ownerId || St.myId || '').trim();
   const createdAt = Number(metaPatch.createdAt || current?.createdAt || Date.now()) || Date.now();
-  const nameColor = metaPatch.nameColor !== undefined
-    ? String(metaPatch.nameColor || '').trim()
-    : String(current?.nameColor || '').trim();
+  const hasNameColorPatch = Object.prototype.hasOwnProperty.call(metaPatch, 'nameColor');
+  const patchNameColor = hasNameColorPatch ? String(metaPatch.nameColor || '').trim() : '';
+  const currentNameColor = String(current?.nameColor || '').trim();
 
   const safe = {
     title,
@@ -209,10 +212,34 @@ function sanitizeJournalMetaPatch(metaPatch = {}, currentJournal = null) {
     assignedTokenId,
     assignedTo,
     assignedMap: buildUidBoolMap(assignedTo),
-    nameColor,
   };
+  if (hasNameColorPatch) safe.nameColor = patchNameColor;
+  else if (currentNameColor) safe.nameColor = currentNameColor;
   if (avatar) safe.avatar = avatar;
   return safe;
+}
+
+function syncJournalRuntimeCache(journal) {
+  if (!journal || !journal.id) return;
+  const safeAvatar = getSharedJournalAvatarRuntime().sanitizePersistentAvatarSrc(journal.avatar || journal.sheet?.avatar || '');
+  if (safeAvatar && typeof saSetAvatar === 'function') {
+    saSetAvatar(journal.id, safeAvatar);
+  }
+}
+
+function normalizeIncomingJournal(raw, idOverride) {
+  const normalized = normalizeJournal(raw, idOverride);
+  if (normalized) syncJournalRuntimeCache(normalized);
+  return normalized;
+}
+
+function upsertLocalJournal(normalizedJournal) {
+  const normalized = normalizeIncomingJournal(normalizedJournal, normalizedJournal?.id);
+  if (!normalized) return null;
+  const idx = _allJournals.findIndex(j => j.id === normalized.id);
+  if (idx >= 0) _allJournals[idx] = normalized;
+  else _allJournals.push(normalized);
+  return normalized;
 }
 
 let _currentHandoutId = null;
@@ -830,7 +857,7 @@ function fetchJournalsFromFB() {
     const data = snap.val() || {};
     _allJournals = [];
     Object.entries(data).forEach(([id, j]) => {
-      const normalized = normalizeJournal(j, id);
+      const normalized = normalizeIncomingJournal(j, id);
       if (normalized) _allJournals.push(normalized);
     });
     renderJournalList();
@@ -864,11 +891,10 @@ function saveJournalFB(journal) {
     const remotePayload = { ...payload };
     if (!remotePayload.createdAt) remotePayload.createdAt = getJournalServerTimestamp();
     remotePayload.updatedAt = getJournalServerTimestamp();
+    upsertLocalJournal({ ...normalized, updatedAt: Date.now() });
     update(ref(db, `rooms/${St.roomCode}/journals/${normalized.id}`), remotePayload);
   } else {
-    const idx = _allJournals.findIndex(j => j.id === normalized.id);
-    if (idx >= 0) _allJournals[idx] = normalized;
-    else _allJournals.push(normalized);
+    upsertLocalJournal(normalized);
     localStorage.setItem(journalKey(), JSON.stringify(_allJournals));
   }
 }
@@ -891,19 +917,26 @@ function saveJournalSheetFB(journalId, sheetData, metaPatch = {}) {
     if (!remoteMetaPatch.createdAt && !currentJournal?.createdAt) {
       remoteMetaPatch.createdAt = getJournalServerTimestamp();
     }
-    update(ref(db, `rooms/${St.roomCode}/journals/${journalId}`), remoteMetaPatch);
-    set(ref(db, `rooms/${St.roomCode}/journals/${journalId}/sheet`), safeSheetData);
-  } else {
-    const nextJournal = normalizeJournal({
+    const nextJournal = upsertLocalJournal({
       ...(currentJournal || {}),
       id: journalId,
       ...safeMetaPatch,
       sheet: safeSheetData,
-    }, journalId);
-    const idx = _allJournals.findIndex(j => j.id === journalId);
-    if (idx >= 0) _allJournals[idx] = nextJournal;
-    else _allJournals.push(nextJournal);
-    localStorage.setItem(journalKey(), JSON.stringify(_allJournals));
+    });
+    if (nextJournal) {
+      renderJournalList();
+      saRefreshToolbar();
+    }
+    update(ref(db, `rooms/${St.roomCode}/journals/${journalId}`), remoteMetaPatch);
+    set(ref(db, `rooms/${St.roomCode}/journals/${journalId}/sheet`), safeSheetData);
+  } else {
+    const nextJournal = upsertLocalJournal({
+      ...(currentJournal || {}),
+      id: journalId,
+      ...safeMetaPatch,
+      sheet: safeSheetData,
+    });
+    if (nextJournal) localStorage.setItem(journalKey(), JSON.stringify(_allJournals));
   }
 }
 

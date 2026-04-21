@@ -35,7 +35,7 @@ function fetchJournalsFromFB() {
     const data = snap.val() || {};
     _allJournals = [];
     Object.entries(data).forEach(([id, j]) => {
-      const normalized = normalizeJournal(j, id);
+      const normalized = normalizeIncomingJournal(j, id);
       if (normalized) _allJournals.push(normalized);
     });
     renderJournalList();
@@ -69,11 +69,10 @@ function saveJournalFB(journal) {
     const remotePayload = { ...payload };
     if (!remotePayload.createdAt) remotePayload.createdAt = getJournalServerTimestamp();
     remotePayload.updatedAt = getJournalServerTimestamp();
+    upsertLocalJournal({ ...normalized, updatedAt: Date.now() });
     update(ref(db, `rooms/${St.roomCode}/journals/${normalized.id}`), remotePayload);
   } else {
-    const idx = _allJournals.findIndex(j => j.id === normalized.id);
-    if (idx >= 0) _allJournals[idx] = normalized;
-    else _allJournals.push(normalized);
+    upsertLocalJournal(normalized);
     localStorage.setItem(journalKey(), JSON.stringify(_allJournals));
   }
 }
@@ -96,19 +95,26 @@ function saveJournalSheetFB(journalId, sheetData, metaPatch = {}) {
     if (!remoteMetaPatch.createdAt && !currentJournal?.createdAt) {
       remoteMetaPatch.createdAt = getJournalServerTimestamp();
     }
-    update(ref(db, `rooms/${St.roomCode}/journals/${journalId}`), remoteMetaPatch);
-    set(ref(db, `rooms/${St.roomCode}/journals/${journalId}/sheet`), safeSheetData);
-  } else {
-    const nextJournal = normalizeJournal({
+    const nextJournal = upsertLocalJournal({
       ...(currentJournal || {}),
       id: journalId,
       ...safeMetaPatch,
       sheet: safeSheetData,
-    }, journalId);
-    const idx = _allJournals.findIndex(j => j.id === journalId);
-    if (idx >= 0) _allJournals[idx] = nextJournal;
-    else _allJournals.push(nextJournal);
-    localStorage.setItem(journalKey(), JSON.stringify(_allJournals));
+    });
+    if (nextJournal) {
+      renderJournalList();
+      saRefreshToolbar();
+    }
+    update(ref(db, `rooms/${St.roomCode}/journals/${journalId}`), remoteMetaPatch);
+    set(ref(db, `rooms/${St.roomCode}/journals/${journalId}/sheet`), safeSheetData);
+  } else {
+    const nextJournal = upsertLocalJournal({
+      ...(currentJournal || {}),
+      id: journalId,
+      ...safeMetaPatch,
+      sheet: safeSheetData,
+    });
+    if (nextJournal) localStorage.setItem(journalKey(), JSON.stringify(_allJournals));
   }
 }
 

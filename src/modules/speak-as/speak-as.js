@@ -399,8 +399,10 @@ function setNameColor(color) {
     const j = _allJournals.find(x => x.id === jId);
     if (!j) return;
     j.nameColor = color;
+    if (j.sheet && typeof j.sheet === 'object') j.sheet.nameColor = color;
     saveJournalFB(j);
-    saRefreshBtn();
+    saRefreshToolbar();
+    if (typeof renderJournalList === 'function') renderJournalList();
   } else {
     St.myNameColor = color;
     try { localStorage.setItem('itc_name_color_' + St.myId, color); } catch(e) {}

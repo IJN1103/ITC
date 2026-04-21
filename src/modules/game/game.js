@@ -701,24 +701,22 @@ function setupFirebaseListeners() {
   /* ── 저널: 개별 변경 감지 ── */
   _allJournals = [];
   const journalsRef = ref(db, `rooms/${code}/journals`);
-  trackFirebaseListener(onChildAdded(journalsRef, snap => {
+  const upsertJournalFromSnapshot = (snap) => {
     const id = snap.key;
-    const j = snap.val() || {};
-    j.id = id;
+    const raw = snap.val() || {};
+    const normalized = typeof normalizeIncomingJournal === 'function'
+      ? normalizeIncomingJournal(raw, id)
+      : (typeof normalizeJournal === 'function' ? normalizeJournal(raw, id) : { ...raw, id });
+    if (!normalized) return;
     const idx = _allJournals.findIndex(x => x.id === id);
-    if (idx >= 0) _allJournals[idx] = j; else _allJournals.push(j);
+    if (idx >= 0) _allJournals[idx] = normalized;
+    else _allJournals.push(normalized);
     if (typeof syncJournalListItem === 'function') syncJournalListItem(id);
     else { renderJournalList(); saRefreshToolbar(); }
-  }));
-  trackFirebaseListener(onChildChanged(journalsRef, snap => {
-    const id = snap.key;
-    const j = snap.val() || {};
-    j.id = id;
-    const idx = _allJournals.findIndex(x => x.id === id);
-    if (idx >= 0) _allJournals[idx] = j; else _allJournals.push(j);
-    if (typeof syncJournalListItem === 'function') syncJournalListItem(id);
-    else { renderJournalList(); saRefreshToolbar(); }
-  }));
+    if (String(St.speakAsJournalId || '') === String(id) && typeof saRefreshBtn === 'function') saRefreshBtn();
+  };
+  trackFirebaseListener(onChildAdded(journalsRef, upsertJournalFromSnapshot));
+  trackFirebaseListener(onChildChanged(journalsRef, upsertJournalFromSnapshot));
   trackFirebaseListener(onChildRemoved(journalsRef, snap => {
     _allJournals = _allJournals.filter(x => x.id !== snap.key);
     if (typeof removeJournalListItem === 'function') removeJournalListItem(snap.key);
