@@ -671,9 +671,24 @@ function getQuickStandingCurrentLabel(journal, token, standings) {
   return normalizeQuickStandingLabel(first?.label || '');
 }
 
+function bindQuickStandingMenuScrollGuard(menu) {
+  if (!menu || menu.dataset.scrollGuardBound === '1') return;
+  menu.dataset.scrollGuardBound = '1';
+  menu.addEventListener('wheel', (e) => {
+    e.stopPropagation();
+  }, { passive: true });
+  menu.addEventListener('mousedown', (e) => {
+    e.stopPropagation();
+  });
+  menu.addEventListener('pointerdown', (e) => {
+    e.stopPropagation();
+  });
+}
+
 function renderQuickStandingMenu() {
   const menu = getQuickStandingMenuEl();
   if (!menu) return;
+  bindQuickStandingMenuScrollGuard(menu);
   const ctx = getSelectedQuickStandingContext();
   getQuickStandingButtonEl()?.classList.add('is-open');
   if (ctx.error) {
