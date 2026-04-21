@@ -443,6 +443,7 @@ function storeMessageRecord(channel = 'chat', record = {}, key = '', options = {
     speakAsJournalId: record.speakAsJournalId,
     whisperTo: record.whisperTo,
     whisperToName: record.whisperToName,
+    whisperToJournal: record.whisperToJournal,
     nameColor: record.nameColor,
     standingImg: record.standingImg,
     tokenId: record.tokenId,
@@ -465,6 +466,7 @@ function coerceHistoryRecordForStore(record = {}) {
     speakAsJournalId: record.speakAsJournalId,
     whisperTo: record.whisperTo,
     whisperToName: record.whisperToName,
+    whisperToJournal: record.whisperToJournal,
     nameColor: record.nameColor,
     standingImg: record.standingImg,
     tokenId: record.tokenId,
@@ -536,6 +538,7 @@ function normalizeStoredRecordForSnapshot(channel = 'chat', key = '', record = {
     speakAsJournalId: record.speakAsJournalId || '',
     whisperTo: record.whisperTo || '',
     whisperToName: record.whisperToName || '',
+    whisperToJournal: record.whisperToJournal || '',
     nameColor: record.nameColor || '',
     standingImg: record.standingImg || '',
     tokenId: record.tokenId || '',
@@ -1559,14 +1562,14 @@ async function sendChat() {
       const target = Object.entries(players).find(([id, p]) => p.name === targetName);
       if (target) {
         inp.value = '';
-        await sendWhisperMessage(St.myName, whisperText, target[0], targetName);
+        await sendWhisperMessage(St.myName, whisperText, target[0], targetName, { targetJournalId: null });
         return;
       }
       const jTarget = _allJournals.find(j => (j.title || '') === targetName);
       if (jTarget && jTarget.ownerId) {
         inp.value = '';
         const senderName = St.speakAsJournalId ? (loadJournals().find(x=>x.id===St.speakAsJournalId)?.title||St.myName) : St.myName;
-        await sendWhisperMessage(senderName, whisperText, jTarget.ownerId, targetName);
+        await sendWhisperMessage(senderName, whisperText, jTarget.ownerId, targetName, { targetJournalId: jTarget.id });
         return;
       }
       showToast(`'${targetName}' 대상을 찾을 수 없어요.`);
@@ -1610,7 +1613,7 @@ async function sendChat() {
       }
       const senderName = St.speakAsJournalId ? (loadJournals().find(x=>x.id===St.speakAsJournalId)?.title || St.myName) : St.myName;
       inp.value = '';
-      await sendWhisperMessage(senderName, raw, St.whisperTo, St.whisperToName);
+      await sendWhisperMessage(senderName, raw, St.whisperTo, St.whisperToName, { targetJournalId: St.whisperToJournal || null });
       return;
     }
 
@@ -1854,19 +1857,55 @@ function removeCasualMsg(msgKey) {
   removeRenderedMessage('casual', msgKey);
 }
 
-function sendWhisperMessage(senderName, text, targetUid, targetName) {
+function sendWhisperMessage(senderName, text, targetUid, targetName, options = {}) {
   const localTime = Date.now();
+  const selectedJournalId = Object.prototype.hasOwnProperty.call(options || {}, 'speakAsJournalId')
+    ? options.speakAsJournalId
+    : St.speakAsJournalId;
+  const selectedJournal = selectedJournalId && typeof loadJournals === 'function'
+    ? loadJournals().find(x => x.id === selectedJournalId)
+    : null;
+  const speakContext = selectedJournal && typeof saBuildMessageContext === 'function'
+    ? saBuildMessageContext(selectedJournal, text)
+    : null;
+  const targetJournalId = options?.targetJournalId || St.whisperToJournal || null;
   const msg = {
-    name: senderName, text, type: 'whisper',
-    uid: St.myId, time: localTime,
-    whisperTo: targetUid, whisperToName: targetName
+    name: speakContext?.name || senderName,
+    text,
+    type: 'whisper',
+    uid: St.myId,
+    time: localTime,
+    whisperTo: targetUid,
+    whisperToName: targetName,
+    whisperToJournal: targetJournalId || null,
   };
+  if (speakContext) {
+    msg.speakAsAvatar = speakContext.speakAsAvatar || '';
+    msg.speakAsJournalId = speakContext.speakAsJournalId || '';
+    msg.nameColor = speakContext.nameColor || '';
+    if (speakContext.tokenId) msg.tokenId = speakContext.tokenId;
+    if (speakContext.standingLabel) msg.standingLabel = speakContext.standingLabel;
+  } else if (St.myNameColor) {
+    msg.nameColor = St.myNameColor;
+  }
   if (window._FB?.CONFIGURED) {
     const { db, ref, push } = window._FB;
     if (!St.roomCode) return Promise.reject(new Error('roomCode missing'));
-    return push(ref(db, `rooms/${St.roomCode}/chat`), { ...msg, time: getChatServerTimestamp() });
+    return push(ref(db, `rooms/${St.roomCode}/chat`), { ...msg, dmChannelKey: 'global', time: getChatServerTimestamp() });
   }
-  appendChatMsg({ name: msg.name, text, type: 'whisper', uid: St.myId, timestamp: msg.time, whisperTo: targetUid, whisperToName: targetName });
+  appendChatMsg({
+    name: msg.name,
+    text,
+    type: 'whisper',
+    uid: St.myId,
+    timestamp: msg.time,
+    whisperTo: targetUid,
+    whisperToName: targetName,
+    whisperToJournal: targetJournalId || null,
+    speakAsAvatar: msg.speakAsAvatar,
+    speakAsJournalId: msg.speakAsJournalId,
+    nameColor: msg.nameColor,
+  });
   return Promise.resolve();
 }
 
@@ -1958,14 +1997,22 @@ function buildChatMsgElement(msg = {}) {
   }
 
   if (type === 'whisper') {
-    const avatarHtml = getAvatarHtml(name, uid || (name === St.myName ? St.myId : null));
+    const r = St.avatarShape === 'circle' ? '50%' : '6px';
+    const sc = St.avatarShape === 'circle' ? 'shape-circle' : 'shape-rounded';
+    const finalAvatar = speakAsAvatar || (speakAsJournalId ? saGetAvatar(speakAsJournalId) : null);
+    const avatarHtml = finalAvatar
+      ? `<div class="msg-avatar ${sc} sa-avatar"><img src="${esc(finalAvatar)}" alt="" style="width:38px;height:38px;object-fit:cover;border-radius:${r};display:block"></div>`
+      : getAvatarHtml(name, uid || (name === St.myName ? St.myId : null));
     const isMine = uid === St.myId;
     const tagText = isMine ? `→ ${esc(whisperToName || '?')}에게 귓말` : `→ 나에게 귓말`;
+    const whisperNameColor = nameColor || (speakAsJournalId ? (_allJournals.find(x => x.id === speakAsJournalId)?.nameColor || '') : '');
+    const nameStyle = whisperNameColor ? ` style="color:${whisperNameColor}"` : '';
+    const nameClass = speakAsJournalId ? 'msg-name sa-msg-name' : 'msg-name';
     const div = document.createElement('div');
     div.className = 'chat-msg msg-whisper';
     div.dataset.avatarUid = uid || '';
     div.dataset.avatarName = name || '';
-    div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name">${esc(name)}</span><span class="whisper-tag">${tagText}</span><span class="msg-time">${time}</span></div><div class="msg-text">${fmtText(text)}</div></div>`;
+    div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="${nameClass}"${nameStyle}>${esc(name)}</span><span class="whisper-tag">${tagText}</span><span class="msg-time">${time}</span></div><div class="msg-text">${fmtText(text)}</div></div>`;
     addMsgActions(div, uid, msgKey, channel || 'chat', text, type);
     return div;
   }
@@ -2078,7 +2125,7 @@ function appendChatMsg(msg = {}) {
   const safeKey = upsertStoredMessage(actualChannel, msg.msgKey, {
     name: msg.name, text: msg.text, type: msg.type, uid: msg.uid, timestamp: msg.timestamp,
     speakAsAvatar: msg.speakAsAvatar, speakAsJournalId: msg.speakAsJournalId,
-    whisperTo: msg.whisperTo, whisperToName: msg.whisperToName, nameColor: msg.nameColor,
+    whisperTo: msg.whisperTo, whisperToName: msg.whisperToName, whisperToJournal: msg.whisperToJournal, nameColor: msg.nameColor,
     standingImg: msg.standingImg, tokenId: msg.tokenId, standingLabel: msg.standingLabel,
     imageWide: msg.imageWide, hideImageMeta: msg.hideImageMeta,
     imageMeta: normalizeChatImageMeta(msg.imageMeta)
@@ -2097,7 +2144,7 @@ function replaceChatMsg(msg = {}) {
   const safeKey = upsertStoredMessage(actualChannel, msg.msgKey, {
     name: msg.name, text: msg.text, type: msg.type, uid: msg.uid, timestamp: msg.timestamp,
     speakAsAvatar: msg.speakAsAvatar, speakAsJournalId: msg.speakAsJournalId,
-    whisperTo: msg.whisperTo, whisperToName: msg.whisperToName, nameColor: msg.nameColor,
+    whisperTo: msg.whisperTo, whisperToName: msg.whisperToName, whisperToJournal: msg.whisperToJournal, nameColor: msg.nameColor,
     standingImg: msg.standingImg, tokenId: msg.tokenId, standingLabel: msg.standingLabel,
     imageWide: msg.imageWide, hideImageMeta: msg.hideImageMeta,
     imageMeta: normalizeChatImageMeta(msg.imageMeta)

@@ -192,7 +192,7 @@ textarea.whisper-mode{border-color:#9b59b6;background:rgba(155,89,182,.05)}
   const pl = St.players || {};
   Object.entries(pl).forEach(([uid, p]) => {
     if (uid === St.myId) return;
-    playersObj[uid] = { name: p.name, role: p.role };
+    playersObj[uid] = { name: p.name, role: p.role, currentJournalId: p.currentJournalId || '', currentJournalName: p.currentJournalName || '' };
   });
   const playersJson = JSON.stringify(playersObj).replace(/</g, '\\x3c');
 
@@ -202,7 +202,7 @@ textarea.whisper-mode{border-color:#9b59b6;background:rgba(155,89,182,.05)}
 function buildPopoutScript(journalJson, playersJson) {
   var L = [];
   L.push('(function(){');
-  L.push('var aTab="chat",saJId=null,descMode=false,whisperUid=null,whisperName=null,popDmChannelKey="global";');
+  L.push('var aTab="chat",saJId=null,descMode=false,whisperUid=null,whisperName=null,whisperJournalId=null,popDmChannelKey="global";');
   L.push('var journals='+journalJson+',players='+playersJson+';');
   
   // switchTab
@@ -274,9 +274,9 @@ L.push('window.renderDmBar=renderDmBar;');
   L.push('window.popDesc=function(){descMode=!descMode;var btn=document.getElementById("pop-desc-btn");var inp=document.getElementById("pi");btn.classList.toggle("active",descMode);if(descMode){inp.placeholder="desc \\uC785\\uB825 \\uC911\\u2026 (Enter \\uC804\\uC1A1)";inp.classList.add("desc-mode")}else{inp.placeholder="\\uBA54\\uC2DC\\uC9C0 \\uC785\\uB825 (Enter \\uC804\\uC1A1)";inp.classList.remove("desc-mode")}};');
 
   // whisper toggle (local state + dropdown)
-  L.push('function toggleWhisperDD(){if(whisperUid){whisperUid=null;whisperName=null;refreshWhisperUI();return}var dd=document.getElementById("w-dd");if(dd.classList.contains("open")){dd.classList.remove("open");return}dd.innerHTML="";');
-  L.push('var clear=document.createElement("div");clear.className="sa-dd-item"+(whisperUid===null?" sel":"");clear.textContent="\\uD83D\\uDD0A \\uC77C\\uBC18 \\uCC44\\uD305";clear.onclick=function(){whisperUid=null;whisperName=null;refreshWhisperUI();dd.classList.remove("open")};dd.appendChild(clear);');
-  L.push('Object.keys(players).forEach(function(uid){var p=players[uid];if(p.isMe)return;var item=document.createElement("div");item.className="sa-dd-item"+(whisperUid===uid?" sel":"");item.textContent="\\uD83D\\uDD12 "+p.name+"\\uC5D0\\uAC8C \\uADC3\\uB9D0";item.onclick=function(){whisperUid=uid;whisperName=p.name;refreshWhisperUI();dd.classList.remove("open")};dd.appendChild(item)});');
+  L.push('function toggleWhisperDD(){if(whisperUid){whisperUid=null;whisperName=null;whisperJournalId=null;refreshWhisperUI();return}var dd=document.getElementById("w-dd");if(dd.classList.contains("open")){dd.classList.remove("open");return}dd.innerHTML="";');
+  L.push('var clear=document.createElement("div");clear.className="sa-dd-item"+(whisperUid===null?" sel":"");clear.textContent="\\uC77C\\uBC18 \\uCC44\\uD305";clear.onclick=function(){whisperUid=null;whisperName=null;whisperJournalId=null;refreshWhisperUI();dd.classList.remove("open")};dd.appendChild(clear);');
+  L.push('Object.keys(players).forEach(function(uid){var p=players[uid];if(p.isMe)return;var item=document.createElement("div");item.className="sa-dd-item"+(whisperUid===uid&&!whisperJournalId?" sel":"");item.textContent=p.name+"\\uC5D0\\uAC8C \\uADC3\\uB9D0";item.onclick=function(){whisperUid=uid;whisperName=p.name;whisperJournalId=null;refreshWhisperUI();dd.classList.remove("open")};dd.appendChild(item);if(p.currentJournalId&&p.currentJournalName){var jItem=document.createElement("div");jItem.className="sa-dd-item"+(whisperUid===uid&&whisperJournalId===p.currentJournalId?" sel":"");jItem.style.paddingLeft="24px";jItem.textContent=p.currentJournalName+"\\uC5D0\\uAC8C \\uADC3\\uB9D0 ("+p.name+")";jItem.onclick=function(){whisperUid=uid;whisperName=p.currentJournalName;whisperJournalId=p.currentJournalId;refreshWhisperUI();dd.classList.remove("open")};dd.appendChild(jItem)}});');
   L.push('dd.classList.add("open")}');
   L.push('window.toggleWhisperDD=toggleWhisperDD;');
 
@@ -285,7 +285,7 @@ L.push('window.renderDmBar=renderDmBar;');
   // send with desc/whisper awareness
   L.push('function send(){var i=document.getElementById("pi");var t=i.value.trim();if(!t)return;i.value="";if(!window.opener)return;');
   L.push('if(descMode){if(window.opener.sendDescFromPopout){window.opener.sendDescFromPopout(t,getCurrentDmChannelKey())}else{window.opener.sendMessage(window.opener.St.myName,t,"desc")}return}');
-  L.push('if(whisperUid){window.opener.sendWhisperMessage(saJId?(journals.find(function(j){return j.id===saJId})||{}).title||window.opener.St.myName:window.opener.St.myName,t,whisperUid,whisperName);return}');
+  L.push('if(whisperUid){window.opener.sendWhisperMessage(saJId?(journals.find(function(j){return j.id===saJId})||{}).title||window.opener.St.myName:window.opener.St.myName,t,whisperUid,whisperName,{targetJournalId:whisperJournalId||null,speakAsJournalId:saJId||null});return}');
   L.push('window.opener.sendChatFromPopout(t,aTab,getCurrentDmChannelKey())}');
 
   L.push('document.getElementById("sb").onclick=send;');

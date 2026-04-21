@@ -148,6 +148,7 @@ function buildChatMessageSignature(message = {}) {
     message?.speakAsJournalId || '',
     message?.whisperTo || '',
     message?.whisperToName || '',
+    message?.whisperToJournal || '',
     message?.nameColor || '',
     message?.standingImg || '',
     message?.tokenId || '',
@@ -244,6 +245,7 @@ function normalizeChatRecordForRender(key, m = {}) {
     speakAsJournalId: m.speakAsJournalId,
     whisperTo: m.whisperTo,
     whisperToName: m.whisperToName,
+    whisperToJournal: m.whisperToJournal,
     nameColor: m.nameColor,
     standingImg: m.standingImg,
     tokenId: m.tokenId,
@@ -266,6 +268,7 @@ function makeChatRenderPayloadFromRecord(record = {}) {
     speakAsJournalId: record.speakAsJournalId,
     whisperTo: record.whisperTo,
     whisperToName: record.whisperToName,
+    whisperToJournal: record.whisperToJournal,
     nameColor: record.nameColor,
     msgKey: record._key,
     channel: 'chat',
@@ -483,7 +486,7 @@ function switchActiveChatChannel(channelKey = 'global') {
   const makePayload = (key, m) => ({
     name: m.name, text: m.text, type: m.type || 'normal', uid: m.uid, timestamp: m.time,
     speakAsAvatar: m.speakAsAvatar, speakAsJournalId: m.speakAsJournalId,
-    whisperTo: m.whisperTo, whisperToName: m.whisperToName, nameColor: m.nameColor,
+    whisperTo: m.whisperTo, whisperToName: m.whisperToName, whisperToJournal: m.whisperToJournal, nameColor: m.nameColor,
     msgKey: key, channel: 'chat', standingImg: m.standingImg, tokenId: m.tokenId,
     standingLabel: m.standingLabel, imageWide: !!m.imageWide, imageMeta: m.imageMeta,
     hideImageMeta: !!m.hideImageMeta,
@@ -571,7 +574,17 @@ function trackFirebaseListener(unsub) {
 function digestPlayers(players) {
   return JSON.stringify(Object.keys(players || {}).sort().map(id => {
     const p = players[id] || {};
-    return [id, p.name || '', p.role || '', !!p.online, p.avatar || '', p.casualNick || '', p.nameColor || ''];
+    return [
+      id,
+      p.name || '',
+      p.role || '',
+      !!p.online,
+      p.avatar || '',
+      p.casualNick || '',
+      p.nameColor || '',
+      p.currentJournalId || '',
+      p.currentJournalName || '',
+    ];
   }));
 }
 
