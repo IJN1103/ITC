@@ -1107,3 +1107,15 @@ to{transform:translateX(0);opacity:1;}
 .map-quick-standing-fallback{font-size:22px;color:var(--muted);font-family:var(--font-mono);}
 .map-quick-standing-label{display:block;min-width:0;text-align:center;font-size:11px;line-height:1.25;color:inherit;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .map-quick-standing-empty{font-size:12px;line-height:1.5;color:var(--muted);padding:10px 12px;text-align:center;border:1px dashed var(--border);border-radius:10px;background:rgba(255,255,255,.02);}
+
+/* Token visibility segmented toggle */
+.token-visibility-toggle{flex:0 0 auto;display:inline-flex;align-items:center;gap:2px;padding:2px;border:1px solid var(--border);border-radius:999px;background:rgba(0,0,0,.14);color:var(--muted);font:inherit;font-size:10px;line-height:1;cursor:pointer;transition:var(--t);white-space:nowrap;user-select:none}
+.token-visibility-toggle:hover{border-color:var(--border2);background:rgba(255,255,255,.04);color:var(--text)}
+.token-visibility-toggle span{display:inline-flex;align-items:center;justify-content:center;min-width:44px;padding:5px 8px;border-radius:999px;transition:var(--t)}
+.token-visibility-toggle.is-private span[data-visibility-option="private"],
+.token-visibility-toggle.is-public span[data-visibility-option="public"]{background:var(--accent);color:#16130f;box-shadow:0 0 0 1px rgba(255,255,255,.08) inset;font-weight:700}
+.token-visibility-toggle.is-private span[data-visibility-option="public"],
+.token-visibility-toggle.is-public span[data-visibility-option="private"]{color:var(--muted)}
+.panel-token-edit-head{gap:8px}
+.panel-token-edit-head .modal-title{flex:1;min-width:0}
+.te-head .token-visibility-toggle{margin-left:auto}

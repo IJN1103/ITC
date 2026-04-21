@@ -11,6 +11,7 @@ function openTokenEdit(tokenId) {
   _teTokenId = tokenId;
 
   refreshTokenOwnerBar(t);
+  setTokenVisibilityToggleState('te-visibility-toggle', t.visibility || 'public');
 
   document.getElementById('te-name').value = t.name || '';
   document.getElementById('te-initiative').value = t.initiative || 0;
@@ -50,6 +51,28 @@ function closeTokenEdit() {
   refreshTokenOwnerBar(null);
   _teTokenId = null;
   _teTokenImgData = null;
+}
+
+function setTokenVisibilityToggleState(toggleId, visibility) {
+  const el = document.getElementById(toggleId);
+  if (!el) return;
+  const normalized = normalizeTokenVisibility(visibility);
+  el.dataset.visibility = normalized;
+  el.classList.toggle('is-private', normalized === 'private');
+  el.classList.toggle('is-public', normalized !== 'private');
+  el.style.display = St?.isGM ? 'inline-flex' : 'none';
+}
+
+function getTokenVisibilityToggleState(toggleId, fallback = 'public') {
+  const el = document.getElementById(toggleId);
+  return normalizeTokenVisibility(el?.dataset?.visibility || fallback);
+}
+
+function toggleTokenVisibilityDraft(kind) {
+  if (!St?.isGM) return;
+  const toggleId = kind === 'panel' ? 'pte-visibility-toggle' : 'te-visibility-toggle';
+  const current = getTokenVisibilityToggleState(toggleId, 'public');
+  setTokenVisibilityToggleState(toggleId, current === 'private' ? 'public' : 'private');
 }
 
 function teRefreshTokenImgPreview() {
@@ -231,6 +254,7 @@ async function saveTokenEdit() {
   nextToken.hideChat = document.getElementById('te-hide-chat').checked;
   nextToken.hideList = document.getElementById('te-hide-list').checked;
   nextToken.standingAsToken = document.getElementById('te-standing-as-token').checked;
+  nextToken.visibility = St?.isGM ? getTokenVisibilityToggleState('te-visibility-toggle', originalToken.visibility || 'public') : normalizeTokenVisibility(originalToken);
 
   const hint = document.getElementById('te-hint');
   if (hint) hint.textContent = '이미지를 업로드하는 중이에요…';
@@ -373,6 +397,7 @@ function openPanelTokenEdit(tokenId) {
   const t = St.tokens[tokenId];
   if (!t) return;
   _pteTokenId = tokenId;
+  setTokenVisibilityToggleState('pte-visibility-toggle', t.visibility || 'public');
   cleanupPanelTokenEditPendingAssets();
   _pteFrontData = t.panelImage || '';
   _pteBackData = t.panelBackImage || '';
@@ -496,6 +521,7 @@ async function savePanelTokenEdit() {
     tokenCategory: 'panel',
     panelToken: true,
     memo: document.getElementById('pte-memo')?.value || '',
+    visibility: St?.isGM ? getTokenVisibilityToggleState('pte-visibility-toggle', t.visibility || 'public') : normalizeTokenVisibility(t),
     panelWidth: width,
     panelHeight: height,
     panelPriority: priority,

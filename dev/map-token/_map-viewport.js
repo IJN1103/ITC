@@ -337,6 +337,7 @@ function getRenderableStatuses(token) {
 
 function shouldShowTokenInStatusPanel(token) {
   if (!token || isPanelToken(token) || token.hideList) return false;
+  if (!shouldRenderTokenForCurrentUser(token)) return false;
   if (hasVisibleTokenInitiative(token)) return true;
   if (getRenderableStatuses(token).length > 0) return true;
   return false;
@@ -365,6 +366,7 @@ function getTokenStatusPanelSignature(token) {
       cur: item?.cur ?? '',
       max: item?.max ?? '',
     })),
+    visibility: normalizeTokenVisibility(token),
   });
 }
 

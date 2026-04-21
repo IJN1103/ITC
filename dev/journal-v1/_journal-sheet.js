@@ -662,6 +662,7 @@ function getSelectedQuickStandingContext() {
   if (!tokenId) return { journal, error: '이 저널에 연결된 토큰이 없어요.' };
   const token = St.tokens?.[tokenId] || null;
   if (!token) return { journal, error: '연결된 토큰을 찾을 수 없어요.' };
+  if (typeof shouldRenderTokenForCurrentUser === 'function' && !shouldRenderTokenForCurrentUser(token)) return { journal, error: '이 저널에 연결된 토큰은 비공개 상태예요.' };
   const standings = Array.isArray(token.standings) ? token.standings.filter(s => s && (s.img || s.label)) : [];
   if (!standings.length) return { journal, token, error: '이 토큰에 등록된 스탠딩이 없어요.' };
   return { journal, token, standings };

@@ -989,8 +989,12 @@ window._FB = {
 
 <div class="overlay" id="modal-panel-token-edit">
   <div class="modal panel-token-edit-modal" style="width:min(460px,94vw)">
-    <div class="modal-row">
+    <div class="modal-row panel-token-edit-head">
       <div class="modal-title">스크린 패널 설정</div>
+      <button class="token-visibility-toggle" id="pte-visibility-toggle" type="button" onclick="toggleTokenVisibilityDraft('panel')" style="display:none" aria-label="토큰 공개 상태">
+        <span data-visibility-option="private">비공개</span>
+        <span data-visibility-option="public">전체 공개</span>
+      </button>
       <button class="modal-close" onclick="closePanelTokenEdit()">✕</button>
     </div>
     <div class="modal-field"><label>이름</label><input id="pte-name" placeholder="패널 이름"></div>
@@ -1124,6 +1128,10 @@ window._FB = {
   <div class="te-panel">
     <div class="te-head">
       <span class="te-head-title">토큰 편집</span>
+      <button class="token-visibility-toggle" id="te-visibility-toggle" type="button" onclick="toggleTokenVisibilityDraft('character')" style="display:none" aria-label="토큰 공개 상태">
+        <span data-visibility-option="private">비공개</span>
+        <span data-visibility-option="public">전체 공개</span>
+      </button>
       <button class="te-close" onclick="closeTokenEdit()">✕</button>
     </div>
     <div class="te-body" id="te-body">

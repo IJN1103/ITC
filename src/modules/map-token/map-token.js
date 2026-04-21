@@ -337,6 +337,7 @@ function getRenderableStatuses(token) {
 
 function shouldShowTokenInStatusPanel(token) {
   if (!token || isPanelToken(token) || token.hideList) return false;
+  if (!shouldRenderTokenForCurrentUser(token)) return false;
   if (hasVisibleTokenInitiative(token)) return true;
   if (getRenderableStatuses(token).length > 0) return true;
   return false;
@@ -365,6 +366,7 @@ function getTokenStatusPanelSignature(token) {
       cur: item?.cur ?? '',
       max: item?.max ?? '',
     })),
+    visibility: normalizeTokenVisibility(token),
   });
 }
 
@@ -763,6 +765,7 @@ function createCharacterToken(name, type, options = {}) {
     ownerName: St.myName || '',
     createdBy: St.myId || '',
     createdByName: St.myName || '',
+    visibility: 'public',
   };
   if (window._FB?.CONFIGURED) {
     const { db, ref, set } = window._FB;
@@ -804,6 +807,7 @@ function addPanelToken() {
     ownerName: St.myName || '',
     createdBy: St.myId || '',
     createdByName: St.myName || '',
+    visibility: 'public',
     panelFace: 'front',
     panelImage: '',
     panelBackImage: '',
@@ -839,7 +843,7 @@ function renderAllTokens(tokens) {
   const inner = document.getElementById('map-inner');
   if (inner) inner.querySelectorAll('.map-token').forEach(t => t.remove());
   syncMultiTokenSelectionWithTokens(tokens);
-  Object.values(tokens).forEach(t => createTokenEl(t));
+  Object.values(tokens).filter(shouldRenderTokenForCurrentUser).forEach(t => createTokenEl(t));
   updateMultiTokenSelectionUI();
   renderMapStatusPanel(tokens);
   /* 게임 화면 진입 후 맵 크기가 정상 반영되도록 보장 */
@@ -863,6 +867,7 @@ function getTokenRenderSignature(token) {
     standingAsToken: !!token?.standingAsToken,
     currentStandingLabel: String(token?.currentStandingLabel || ''),
     currentStandingJournalId: String(token?.currentStandingJournalId || ''),
+    visibility: normalizeTokenVisibility(token),
     standingsKey: _standingsKey(token),
     panelFace: String(token?.panelFace || ''),
     panelImage: String(token?.panelImage || ''),
@@ -917,6 +922,15 @@ function addOrUpdateSingleToken(id, data) {
   }
 
   const existing = getTokenEl(id);
+
+  if (data && !shouldRenderTokenForCurrentUser(data)) {
+    if (existing) existing.remove();
+    removeMapStatusCard(id, St.tokens);
+    syncMultiTokenSelectionWithTokens(St.tokens);
+    updateMultiTokenSelectionUI();
+    if (typeof refreshQuickStandingMenuForToken === 'function') refreshQuickStandingMenuForToken(id);
+    return;
+  }
 
   if (existing && data) {
     const prev = existing._tokenSnapshot || {};
@@ -1053,6 +1067,17 @@ function isPanelToken(token) {
   if (token.importedMapObject === true) return true;
   if (token.panelImage || token.panelBackImage || token.panelWidth || token.panelHeight || token.panelFace) return true;
   return false;
+}
+
+function normalizeTokenVisibility(tokenOrValue) {
+  const raw = typeof tokenOrValue === 'string' ? tokenOrValue : tokenOrValue?.visibility;
+  return String(raw || '').trim() === 'private' ? 'private' : 'public';
+}
+
+function shouldRenderTokenForCurrentUser(token) {
+  if (!token) return false;
+  if (St?.isGM) return true;
+  return normalizeTokenVisibility(token) !== 'private';
 }
 
 function getPanelTokenImageSource(token) {
@@ -1512,6 +1537,7 @@ function openTokenEdit(tokenId) {
   _teTokenId = tokenId;
 
   refreshTokenOwnerBar(t);
+  setTokenVisibilityToggleState('te-visibility-toggle', t.visibility || 'public');
 
   document.getElementById('te-name').value = t.name || '';
   document.getElementById('te-initiative').value = t.initiative || 0;
@@ -1551,6 +1577,28 @@ function closeTokenEdit() {
   refreshTokenOwnerBar(null);
   _teTokenId = null;
   _teTokenImgData = null;
+}
+
+function setTokenVisibilityToggleState(toggleId, visibility) {
+  const el = document.getElementById(toggleId);
+  if (!el) return;
+  const normalized = normalizeTokenVisibility(visibility);
+  el.dataset.visibility = normalized;
+  el.classList.toggle('is-private', normalized === 'private');
+  el.classList.toggle('is-public', normalized !== 'private');
+  el.style.display = St?.isGM ? 'inline-flex' : 'none';
+}
+
+function getTokenVisibilityToggleState(toggleId, fallback = 'public') {
+  const el = document.getElementById(toggleId);
+  return normalizeTokenVisibility(el?.dataset?.visibility || fallback);
+}
+
+function toggleTokenVisibilityDraft(kind) {
+  if (!St?.isGM) return;
+  const toggleId = kind === 'panel' ? 'pte-visibility-toggle' : 'te-visibility-toggle';
+  const current = getTokenVisibilityToggleState(toggleId, 'public');
+  setTokenVisibilityToggleState(toggleId, current === 'private' ? 'public' : 'private');
 }
 
 function teRefreshTokenImgPreview() {
@@ -1732,6 +1780,7 @@ async function saveTokenEdit() {
   nextToken.hideChat = document.getElementById('te-hide-chat').checked;
   nextToken.hideList = document.getElementById('te-hide-list').checked;
   nextToken.standingAsToken = document.getElementById('te-standing-as-token').checked;
+  nextToken.visibility = St?.isGM ? getTokenVisibilityToggleState('te-visibility-toggle', originalToken.visibility || 'public') : normalizeTokenVisibility(originalToken);
 
   const hint = document.getElementById('te-hint');
   if (hint) hint.textContent = '이미지를 업로드하는 중이에요…';
@@ -1874,6 +1923,7 @@ function openPanelTokenEdit(tokenId) {
   const t = St.tokens[tokenId];
   if (!t) return;
   _pteTokenId = tokenId;
+  setTokenVisibilityToggleState('pte-visibility-toggle', t.visibility || 'public');
   cleanupPanelTokenEditPendingAssets();
   _pteFrontData = t.panelImage || '';
   _pteBackData = t.panelBackImage || '';
@@ -1997,6 +2047,7 @@ async function savePanelTokenEdit() {
     tokenCategory: 'panel',
     panelToken: true,
     memo: document.getElementById('pte-memo')?.value || '',
+    visibility: St?.isGM ? getTokenVisibilityToggleState('pte-visibility-toggle', t.visibility || 'public') : normalizeTokenVisibility(t),
     panelWidth: width,
     panelHeight: height,
     panelPriority: priority,

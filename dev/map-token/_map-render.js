@@ -103,6 +103,7 @@ function createCharacterToken(name, type, options = {}) {
     ownerName: St.myName || '',
     createdBy: St.myId || '',
     createdByName: St.myName || '',
+    visibility: 'public',
   };
   if (window._FB?.CONFIGURED) {
     const { db, ref, set } = window._FB;
@@ -144,6 +145,7 @@ function addPanelToken() {
     ownerName: St.myName || '',
     createdBy: St.myId || '',
     createdByName: St.myName || '',
+    visibility: 'public',
     panelFace: 'front',
     panelImage: '',
     panelBackImage: '',
@@ -179,7 +181,7 @@ function renderAllTokens(tokens) {
   const inner = document.getElementById('map-inner');
   if (inner) inner.querySelectorAll('.map-token').forEach(t => t.remove());
   syncMultiTokenSelectionWithTokens(tokens);
-  Object.values(tokens).forEach(t => createTokenEl(t));
+  Object.values(tokens).filter(shouldRenderTokenForCurrentUser).forEach(t => createTokenEl(t));
   updateMultiTokenSelectionUI();
   renderMapStatusPanel(tokens);
   /* 게임 화면 진입 후 맵 크기가 정상 반영되도록 보장 */
@@ -203,6 +205,7 @@ function getTokenRenderSignature(token) {
     standingAsToken: !!token?.standingAsToken,
     currentStandingLabel: String(token?.currentStandingLabel || ''),
     currentStandingJournalId: String(token?.currentStandingJournalId || ''),
+    visibility: normalizeTokenVisibility(token),
     standingsKey: _standingsKey(token),
     panelFace: String(token?.panelFace || ''),
     panelImage: String(token?.panelImage || ''),
@@ -257,6 +260,15 @@ function addOrUpdateSingleToken(id, data) {
   }
 
   const existing = getTokenEl(id);
+
+  if (data && !shouldRenderTokenForCurrentUser(data)) {
+    if (existing) existing.remove();
+    removeMapStatusCard(id, St.tokens);
+    syncMultiTokenSelectionWithTokens(St.tokens);
+    updateMultiTokenSelectionUI();
+    if (typeof refreshQuickStandingMenuForToken === 'function') refreshQuickStandingMenuForToken(id);
+    return;
+  }
 
   if (existing && data) {
     const prev = existing._tokenSnapshot || {};
@@ -393,6 +405,17 @@ function isPanelToken(token) {
   if (token.importedMapObject === true) return true;
   if (token.panelImage || token.panelBackImage || token.panelWidth || token.panelHeight || token.panelFace) return true;
   return false;
+}
+
+function normalizeTokenVisibility(tokenOrValue) {
+  const raw = typeof tokenOrValue === 'string' ? tokenOrValue : tokenOrValue?.visibility;
+  return String(raw || '').trim() === 'private' ? 'private' : 'public';
+}
+
+function shouldRenderTokenForCurrentUser(token) {
+  if (!token) return false;
+  if (St?.isGM) return true;
+  return normalizeTokenVisibility(token) !== 'private';
 }
 
 function getPanelTokenImageSource(token) {
