@@ -589,7 +589,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let panMoved = false;
 
   mapEl.addEventListener('mousedown', e => {
-    if (e.target.closest('.map-zoom') || e.target.closest('.map-add-token') || e.target.closest('.map-layer-btn') || e.target.closest('.vn-dialog')) return;
+    if (e.target.closest('.map-zoom') || e.target.closest('.map-add-token') || e.target.closest('.map-layer-btn') || e.target.closest('.map-control-btn') || e.target.closest('.vn-dialog')) return;
 
     if (e.button === 1 && !e.target.closest('.map-token')) {
       const rect = mapEl.getBoundingClientRect();
