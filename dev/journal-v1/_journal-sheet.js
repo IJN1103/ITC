@@ -675,14 +675,22 @@ function bindQuickStandingMenuScrollGuard(menu) {
   if (!menu || menu.dataset.scrollGuardBound === '1') return;
   menu.dataset.scrollGuardBound = '1';
   menu.addEventListener('wheel', (e) => {
+    const grid = menu.querySelector('.map-quick-standing-grid');
+    if (grid && grid.scrollHeight > grid.clientHeight) {
+      grid.scrollTop += e.deltaY;
+      e.preventDefault();
+    }
     e.stopPropagation();
-  }, { passive: true });
+  }, { passive: false });
   menu.addEventListener('mousedown', (e) => {
     e.stopPropagation();
   });
   menu.addEventListener('pointerdown', (e) => {
     e.stopPropagation();
   });
+  menu.addEventListener('touchmove', (e) => {
+    e.stopPropagation();
+  }, { passive: true });
 }
 
 function renderQuickStandingMenu() {
@@ -693,7 +701,7 @@ function renderQuickStandingMenu() {
   getQuickStandingButtonEl()?.classList.add('is-open');
   if (ctx.error) {
     menu.innerHTML = getStandingQuickEmptyHtml(ctx.error);
-    menu.style.display = 'block';
+    menu.style.display = 'flex';
     return;
   }
   const { journal, token, standings } = ctx;
@@ -727,7 +735,7 @@ function renderQuickStandingMenu() {
       await selectQuickStanding(journal, token, standing);
     });
   });
-  menu.style.display = 'block';
+  menu.style.display = 'flex';
 }
 
 async function selectQuickStanding(journal, token, standing) {
@@ -811,7 +819,7 @@ function renderQuickJournalMenu() {
   const list = loadJournals();
   if (!list.length) {
     menu.innerHTML = '<div class="map-quick-journal-empty">열 수 있는 저널이 없어요.</div>';
-    menu.style.display = 'block';
+    menu.style.display = 'flex';
     return;
   }
   menu.innerHTML = list.map(j => {
@@ -826,7 +834,7 @@ function renderQuickJournalMenu() {
       openQuickJournalSheet(btn.dataset.jid || '');
     });
   });
-  menu.style.display = 'block';
+  menu.style.display = 'flex';
 }
 
 function openQuickJournalSheet(journalId) {
