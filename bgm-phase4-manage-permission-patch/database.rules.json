@@ -1,0 +1,167 @@
+{
+  "rules": {
+    "users": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid",
+        "rooms": {
+          "$roomCode": {
+            ".write": "auth != null && (auth.uid === $uid || root.child('rooms').child($roomCode).child('meta').child('ownerId').val() === auth.uid || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('role').val() === 'gm')"
+          }
+        }
+      }
+    },
+    "rooms": {
+      "$roomCode": {
+        ".write": "auth != null && !newData.exists() && (data.child('meta').child('ownerId').val() === auth.uid || data.child('players').child(auth.uid).child('role').val() === 'gm')",
+        "meta": {
+          ".read": "auth != null",
+          ".write": "auth != null && ((!data.exists() && newData.child('ownerId').val() === auth.uid) || data.child('ownerId').val() === auth.uid || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('role').val() === 'gm')"
+        },
+        "players": {
+          ".read": "auth != null",
+          "$uid": {
+            ".write": "auth != null && (root.child('rooms').child($roomCode).child('meta').child('ownerId').val() === auth.uid || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('role').val() === 'gm' || ($uid === auth.uid && !data.exists() && (newData.child('role').val() === 'player' || root.child('rooms').child($roomCode).child('meta').child('ownerId').val() === auth.uid) && !newData.child('permissions').exists()) || ($uid === auth.uid && data.exists() && !newData.exists()) || ($uid === auth.uid && data.exists() && newData.exists() && newData.child('role').val() === data.child('role').val() && newData.child('permissions').child('moveToken').val() === data.child('permissions').child('moveToken').val() && newData.child('permissions').child('createToken').val() === data.child('permissions').child('createToken').val() && newData.child('permissions').child('editToken').val() === data.child('permissions').child('editToken').val() && newData.child('permissions').child('manageMap').val() === data.child('permissions').child('manageMap').val() && newData.child('permissions').child('manageBgm').val() === data.child('permissions').child('manageBgm').val() && newData.child('permissions').child('sendDesc').val() === data.child('permissions').child('sendDesc').val()))",
+            "permissions": {
+              ".write": "auth != null && (root.child('rooms').child($roomCode).child('meta').child('ownerId').val() === auth.uid || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('role').val() === 'gm')"
+            },
+            "role": {
+              ".write": "auth != null && ((root.child('rooms').child($roomCode).child('meta').child('ownerId').val() === auth.uid || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('role').val() === 'gm') || ($uid === auth.uid && !data.exists() && newData.val() === 'player'))"
+            }
+          }
+        },
+        "typing": {
+          ".read": "auth != null && root.child('rooms').child($roomCode).child('players').child(auth.uid).exists()",
+          "$uid": {
+            ".write": "auth != null && $uid === auth.uid"
+          }
+        },
+        "avatars": {
+          ".read": "auth != null && root.child('rooms').child($roomCode).child('players').child(auth.uid).exists()",
+          "$uid": {
+            ".write": "auth != null && $uid === auth.uid"
+          }
+        },
+        "chat": {
+          ".read": "auth != null && root.child('rooms').child($roomCode).child('players').child(auth.uid).exists()",
+          ".write": "auth != null && (root.child('rooms').child($roomCode).child('meta').child('ownerId').val() === auth.uid || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('role').val() === 'gm')",
+          "$messageId": {
+            ".write": "auth != null && root.child('rooms').child($roomCode).child('players').child(auth.uid).exists()"
+          }
+        },
+        "casual": {
+          ".read": "auth != null && root.child('rooms').child($roomCode).child('players').child(auth.uid).exists()",
+          ".write": "auth != null && (root.child('rooms').child($roomCode).child('meta').child('ownerId').val() === auth.uid || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('role').val() === 'gm')",
+          "$messageId": {
+            ".write": "auth != null && root.child('rooms').child($roomCode).child('players').child(auth.uid).exists()"
+          }
+        },
+        "dmChats": {
+          ".read": "auth != null && root.child('rooms').child($roomCode).child('players').child(auth.uid).exists()",
+          "$channelKey": {
+            "meta": {
+              ".write": "auth != null && (root.child('rooms').child($roomCode).child('meta').child('ownerId').val() === auth.uid || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('role').val() === 'gm')"
+            },
+            "messages": {
+              "$messageId": {
+                ".write": "auth != null && root.child('rooms').child($roomCode).child('players').child(auth.uid).exists()"
+              }
+            }
+          }
+        },
+        "tokens": {
+          ".read": "auth != null && root.child('rooms').child($roomCode).child('players').child(auth.uid).exists()",
+          "$tokenId": {
+            ".write": "auth != null && ((root.child('rooms').child($roomCode).child('meta').child('ownerId').val() === auth.uid || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('role').val() === 'gm') || (!data.exists() && (root.child('rooms').child($roomCode).child('players').child(auth.uid).child('permissions').child('createToken').val() === true || (root.child('rooms').child($roomCode).child('players').child(auth.uid).child('permissions').child('manageMap').val() === true && newData.child('importedMapObject').val() === true))) || (data.exists() && newData.exists() && (root.child('rooms').child($roomCode).child('players').child(auth.uid).child('permissions').child('editToken').val() === true || (root.child('rooms').child($roomCode).child('players').child(auth.uid).child('permissions').child('manageMap').val() === true && (data.child('importedMapObject').val() === true || newData.child('importedMapObject').val() === true)))) || (!newData.exists() && (root.child('rooms').child($roomCode).child('players').child(auth.uid).child('permissions').child('editToken').val() === true || (root.child('rooms').child($roomCode).child('players').child(auth.uid).child('permissions').child('manageMap').val() === true && data.child('importedMapObject').val() === true))))",
+            "x": {
+              ".write": "auth != null && ((root.child('rooms').child($roomCode).child('meta').child('ownerId').val() === auth.uid || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('role').val() === 'gm') || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('permissions').child('moveToken').val() === true || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('permissions').child('editToken').val() === true)"
+            },
+            "y": {
+              ".write": "auth != null && ((root.child('rooms').child($roomCode).child('meta').child('ownerId').val() === auth.uid || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('role').val() === 'gm') || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('permissions').child('moveToken').val() === true || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('permissions').child('editToken').val() === true)"
+            }
+          }
+        },
+        "mapScenes": {
+          ".read": "auth != null && root.child('rooms').child($roomCode).child('players').child(auth.uid).exists()",
+          ".write": "auth != null && (root.child('rooms').child($roomCode).child('meta').child('ownerId').val() === auth.uid || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('role').val() === 'gm')"
+        },
+        "journals": {
+          ".read": "auth != null && root.child('rooms').child($roomCode).child('players').child(auth.uid).exists()",
+          "$journalId": {
+            ".write": "auth != null && ((root.child('rooms').child($roomCode).child('meta').child('ownerId').val() === auth.uid || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('role').val() === 'gm') || (newData.exists() && ((!data.exists() && newData.child('ownerId').val() === auth.uid && !newData.child('assignedMap').exists()) || (data.exists() && (data.child('ownerId').val() === auth.uid || data.child('assignedMap').child(auth.uid).val() === true) && newData.child('ownerId').val() === data.child('ownerId').val() && newData.child('assignedTo').val() === data.child('assignedTo').val() && newData.child('assignedMap').val() === data.child('assignedMap').val()))))"
+          }
+        },
+        "handouts": {
+          ".read": "auth != null && root.child('rooms').child($roomCode).child('players').child(auth.uid).exists()",
+          "$handoutId": {
+            ".write": "auth != null && (root.child('rooms').child($roomCode).child('meta').child('ownerId').val() === auth.uid || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('role').val() === 'gm')"
+          }
+        },
+        "characters": {
+          ".read": "auth != null && root.child('rooms').child($roomCode).child('players').child(auth.uid).exists()",
+          "$uid": {
+            ".write": "auth != null && ($uid === auth.uid || (root.child('rooms').child($roomCode).child('meta').child('ownerId').val() === auth.uid || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('role').val() === 'gm'))"
+          }
+        },
+        "bgm": {
+          ".read": "auth != null && root.child('rooms').child($roomCode).child('players').child(auth.uid).exists()",
+          "playlist": {
+            ".write": "auth != null && ((root.child('rooms').child($roomCode).child('meta').child('ownerId').val() === auth.uid || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('role').val() === 'gm') || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('permissions').child('manageBgm').val() === true)"
+          },
+          "currentTrack": {
+            ".write": "auth != null && ((root.child('rooms').child($roomCode).child('meta').child('ownerId').val() === auth.uid || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('role').val() === 'gm') || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('permissions').child('manageBgm').val() === true)"
+          },
+          "isPlaying": {
+            ".write": "auth != null && ((root.child('rooms').child($roomCode).child('meta').child('ownerId').val() === auth.uid || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('role').val() === 'gm') || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('permissions').child('manageBgm').val() === true)"
+          },
+          "repeatMode": {
+            ".write": "auth != null && ((root.child('rooms').child($roomCode).child('meta').child('ownerId').val() === auth.uid || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('role').val() === 'gm') || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('permissions').child('manageBgm').val() === true)"
+          },
+          "seek": {
+            ".write": "auth != null && ((root.child('rooms').child($roomCode).child('meta').child('ownerId').val() === auth.uid || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('role').val() === 'gm') || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('permissions').child('manageBgm').val() === true)"
+          },
+          "playlistUpdatedAt": {
+            ".write": "auth != null && ((root.child('rooms').child($roomCode).child('meta').child('ownerId').val() === auth.uid || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('role').val() === 'gm') || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('permissions').child('manageBgm').val() === true)"
+          },
+          "mapBackground": {
+            ".write": "auth != null && ((root.child('rooms').child($roomCode).child('meta').child('ownerId').val() === auth.uid || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('role').val() === 'gm') || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('permissions').child('manageMap').val() === true)"
+          },
+          "mapBackgroundFit": {
+            ".write": "auth != null && ((root.child('rooms').child($roomCode).child('meta').child('ownerId').val() === auth.uid || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('role').val() === 'gm') || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('permissions').child('manageMap').val() === true)"
+          },
+          "mapBackgroundSourceName": {
+            ".write": "auth != null && ((root.child('rooms').child($roomCode).child('meta').child('ownerId').val() === auth.uid || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('role').val() === 'gm') || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('permissions').child('manageMap').val() === true)"
+          },
+          "mapBackgroundImportedAt": {
+            ".write": "auth != null && ((root.child('rooms').child($roomCode).child('meta').child('ownerId').val() === auth.uid || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('role').val() === 'gm') || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('permissions').child('manageMap').val() === true)"
+          },
+          "mapForeground": {
+            ".write": "auth != null && ((root.child('rooms').child($roomCode).child('meta').child('ownerId').val() === auth.uid || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('role').val() === 'gm') || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('permissions').child('manageMap').val() === true)"
+          },
+          "mapForegroundFit": {
+            ".write": "auth != null && ((root.child('rooms').child($roomCode).child('meta').child('ownerId').val() === auth.uid || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('role').val() === 'gm') || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('permissions').child('manageMap').val() === true)"
+          },
+          "mapForegroundSourceName": {
+            ".write": "auth != null && ((root.child('rooms').child($roomCode).child('meta').child('ownerId').val() === auth.uid || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('role').val() === 'gm') || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('permissions').child('manageMap').val() === true)"
+          },
+          "mapForegroundImportedAt": {
+            ".write": "auth != null && ((root.child('rooms').child($roomCode).child('meta').child('ownerId').val() === auth.uid || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('role').val() === 'gm') || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('permissions').child('manageMap').val() === true)"
+          },
+          "mapObjects": {
+            ".write": "auth != null && ((root.child('rooms').child($roomCode).child('meta').child('ownerId').val() === auth.uid || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('role').val() === 'gm') || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('permissions').child('manageMap').val() === true)"
+          },
+          "mapLayerState": {
+            ".write": "auth != null && ((root.child('rooms').child($roomCode).child('meta').child('ownerId').val() === auth.uid || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('role').val() === 'gm') || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('permissions').child('manageMap').val() === true)"
+          },
+          "$other": {
+            ".write": "auth != null && (root.child('rooms').child($roomCode).child('meta').child('ownerId').val() === auth.uid || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('role').val() === 'gm')"
+          }
+        },
+        "lastRoll": {
+          ".read": "auth != null && root.child('rooms').child($roomCode).child('players').child(auth.uid).exists()",
+          ".write": "auth != null && root.child('rooms').child($roomCode).child('players').child(auth.uid).exists()"
+        }
+      }
+    }
+  }
+}
