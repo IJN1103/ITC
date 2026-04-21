@@ -1,6 +1,6 @@
 const St = {
   roomCode: '', system: 'coc7', myName: '', myId: '',
-  tokens: {}, playlist: [], currentTrack: -1, isPlaying: false,
+  tokens: {}, playlist: [], currentTrack: -1, isPlaying: false, repeatMode: 'off',
   tool: 'select', character: {}, recentRooms: [],
   selectedCharId: null,
   isGM: false,

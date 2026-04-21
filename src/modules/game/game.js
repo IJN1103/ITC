@@ -721,9 +721,13 @@ function setupFirebaseListeners() {
 
   trackFirebaseListener(onValue(ref(db, `rooms/${code}/bgm`), snap => {
     const bgm = snap.val() || {};
-    if (bgm.playlist) { St.playlist = bgm.playlist; renderPlaylist(); }
-    if (bgm.currentTrack !== undefined && bgm.currentTrack !== St.currentTrack) {
-      playTrack(bgm.currentTrack, { fromRemote: true });
+    if (typeof syncBgmRemoteState === 'function') {
+      syncBgmRemoteState(bgm);
+    } else {
+      if (Array.isArray(bgm.playlist)) { St.playlist = bgm.playlist; renderPlaylist(); }
+      if (bgm.currentTrack !== undefined && bgm.currentTrack !== St.currentTrack) {
+        playTrack(bgm.currentTrack, { fromRemote: true });
+      }
     }
     St.mapState = {
       background: bgm.mapBackground ? {

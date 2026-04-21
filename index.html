@@ -775,18 +775,20 @@ window._FB = {
 </div>
 
   <!-- BGM 바 -->
-  <div class="bgm-bar">
+  <div class="bgm-bar" id="bgm-bar">
+    <button class="bgm-toggle-btn" id="bgm-expand-btn" onclick="toggleBgmExpanded()" title="BGM 펼치기/접기">▲</button>
     <div class="bgm-info">
-      <div class="bgm-np">♪ Now Playing</div>
-      <div class="bgm-title" id="bgm-title">—</div>
+      <div class="bgm-np">Now Playing</div>
+      <div class="bgm-title" id="bgm-title">재생되고 있는 BGM이 없어요.</div>
     </div>
-    <div class="bgm-ctrl">
-      <button class="bgm-btn" onclick="bgmPrev()">◀◀</button>
-      <button class="bgm-btn" id="bgm-playbtn" onclick="bgmToggle()">▶</button>
-      <button class="bgm-btn" onclick="bgmNext()">▶▶</button>
+    <div class="bgm-ctrl bgm-gm-control" style="display:none">
+      <button class="bgm-btn" id="bgm-prev-btn" onclick="bgmPrev()" title="이전 곡">◀◀</button>
+      <button class="bgm-btn" id="bgm-playbtn" onclick="bgmToggle()" title="재생/일시정지">▶</button>
+      <button class="bgm-btn" id="bgm-next-btn" onclick="bgmNext()" title="다음 곡">▶▶</button>
+      <button class="bgm-btn bgm-repeat-btn" id="bgm-repeat-btn" onclick="toggleBgmRepeat()" title="반복 없음">↻</button>
     </div>
-    <div class="bgm-vol">🔊<input type="range" min="0" max="100" value="60" id="vol-slider" oninput="setVolume(this.value)"></div>
-    <button class="bgm-add gm-only" onclick="openModal('modal-bgm')" style="display:none">+ BGM</button>
+    <div class="bgm-vol"><span class="bgm-vol-label">음량</span><input type="range" min="0" max="100" value="60" id="vol-slider" oninput="setVolume(this.value)"></div>
+    <button class="bgm-add gm-only bgm-gm-control" onclick="openModal('modal-bgm')" style="display:none">+ BGM</button>
   </div>
 </div>
 
@@ -903,17 +905,16 @@ window._FB = {
 <div class="overlay" id="modal-bgm">
   <div class="modal">
     <div class="modal-row">
-      <div class="modal-title">🎵 YouTube BGM</div>
+      <div class="modal-title">YouTube BGM</div>
       <button class="modal-close" onclick="closeModal('modal-bgm')">✕</button>
     </div>
     <div class="modal-field"><label>YouTube URL 또는 영상 ID</label><input type="text" id="yt-url-input" placeholder="https://youtube.com/watch?v=..."></div>
-    <div class="modal-field"><label>트랙 이름 (선택)</label><input type="text" id="yt-name-input" placeholder="예: 전투 BGM"></div>
-    <button class="btn-primary" onclick="addBgmTrack()" style="margin-top:0">+ 플레이리스트에 추가</button>
+    <button class="btn-primary" id="bgm-add-track-btn" onclick="addBgmTrack()" style="margin-top:0">+ BGM 추가</button>
     <div style="border-top:1px solid var(--border);padding-top:10px">
       <div style="font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);margin-bottom:8px">플레이리스트</div>
       <div class="playlist" id="playlist"></div>
     </div>
-    <p class="modal-note">BGM은 방 안의 모든 플레이어에게 실시간으로 동기화됩니다.</p>
+    <p class="modal-note">YouTube 제목은 자동으로 불러옵니다. 추가한 BGM은 바로 현재 곡으로 재생됩니다.</p>
   </div>
 </div>
 

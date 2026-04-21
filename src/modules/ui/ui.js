@@ -84,7 +84,8 @@ function refreshPermUI() {
   if (mapLayerTrigger) mapLayerTrigger.style.display = hasPerm('manageMap') ? '' : 'none';
   const mapSceneTrigger = document.getElementById('map-scene-trigger');
   if (mapSceneTrigger) mapSceneTrigger.style.display = St.isGM ? '' : 'none';
-  document.querySelectorAll('.bgm-add').forEach(el => { el.style.display = hasPerm('manageBgm') ? '' : 'none'; });
+  if (typeof syncBgmPermissionUI === 'function') syncBgmPermissionUI();
+  else document.querySelectorAll('.bgm-add').forEach(el => { el.style.display = St.isGM ? '' : 'none'; });
   const descBtn = document.getElementById('desc-toggle-btn');
   if (descBtn) descBtn.style.display = hasPerm('sendDesc') ? '' : 'none';
   const endBtn = document.getElementById('btn-end-room');
