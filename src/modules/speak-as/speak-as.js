@@ -304,6 +304,7 @@ function saSetJournal(journalId) {
   St.speakAsJournalId = journalId;
   document.getElementById('speak-as-dropdown')?.classList.remove('open');
   saRefreshBtn();
+  if (typeof refreshQuickStandingMenuIfOpen === 'function') refreshQuickStandingMenuIfOpen();
   document.getElementById('chat-input')?.focus();
   if (window._FB?.CONFIGURED && St.roomCode) {
     const { db, ref, update } = window._FB;

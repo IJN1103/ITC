@@ -714,13 +714,16 @@ function setupFirebaseListeners() {
     if (typeof syncJournalListItem === 'function') syncJournalListItem(id);
     else { renderJournalList(); saRefreshToolbar(); }
     if (String(St.speakAsJournalId || '') === String(id) && typeof saRefreshBtn === 'function') saRefreshBtn();
+    if (String(St.speakAsJournalId || '') === String(id) && typeof refreshQuickStandingMenuIfOpen === 'function') refreshQuickStandingMenuIfOpen();
   };
   trackFirebaseListener(onChildAdded(journalsRef, upsertJournalFromSnapshot));
   trackFirebaseListener(onChildChanged(journalsRef, upsertJournalFromSnapshot));
   trackFirebaseListener(onChildRemoved(journalsRef, snap => {
+    const removedId = String(snap.key || '');
     _allJournals = _allJournals.filter(x => x.id !== snap.key);
     if (typeof removeJournalListItem === 'function') removeJournalListItem(snap.key);
     else { renderJournalList(); saRefreshToolbar(); }
+    if (String(St.speakAsJournalId || '') === removedId && typeof refreshQuickStandingMenuIfOpen === 'function') refreshQuickStandingMenuIfOpen();
   }));
 
   trackFirebaseListener(onValue(ref(db, `rooms/${code}/bgm`), snap => {

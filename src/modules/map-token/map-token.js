@@ -845,6 +845,7 @@ function renderAllTokens(tokens) {
   /* 게임 화면 진입 후 맵 크기가 정상 반영되도록 보장 */
   applyMapTransform();
   if (Object.values(tokens || {}).some(isImportedMapSettingToken)) requestImportedMapLayerStateApply();
+  if (typeof refreshQuickStandingMenuIfOpen === 'function') refreshQuickStandingMenuIfOpen();
 }
 
 /* ── Firebase onChild* 용 개별 토큰 업데이트 ── */
@@ -945,6 +946,7 @@ function addOrUpdateSingleToken(id, data) {
   }
   syncMultiTokenSelectionWithTokens(St.tokens);
   updateMultiTokenSelectionUI();
+  if (typeof refreshQuickStandingMenuForToken === 'function') refreshQuickStandingMenuForToken(id);
 }
 
 /* 스탠딩 배열의 fingerprint (변경 감지용) */

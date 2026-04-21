@@ -623,6 +623,23 @@ function closeQuickStandingMenu() {
   getQuickStandingButtonEl()?.classList.remove('is-open');
 }
 
+function isQuickStandingMenuOpen() {
+  const menu = getQuickStandingMenuEl();
+  return !!(menu && menu.style.display !== 'none' && menu.innerHTML.trim());
+}
+
+function refreshQuickStandingMenuIfOpen() {
+  if (!isQuickStandingMenuOpen()) return;
+  renderQuickStandingMenu();
+}
+
+function refreshQuickStandingMenuForToken(tokenId) {
+  if (!isQuickStandingMenuOpen()) return;
+  const ctx = getSelectedQuickStandingContext();
+  const currentTokenId = String(ctx?.token?.id || '');
+  if (!currentTokenId || currentTokenId === String(tokenId || '')) renderQuickStandingMenu();
+}
+
 function getStandingQuickEmptyHtml(message) {
   return `<div class="map-quick-standing-empty">${esc(message)}</div>`;
 }
@@ -877,6 +894,11 @@ document.addEventListener('click', (e) => {
 
 document.addEventListener('click', (e) => {
   if (e.target.closest('#map-quick-standing-btn') || e.target.closest('#map-quick-standing-menu')) return;
+  closeQuickStandingMenu();
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
   closeQuickStandingMenu();
 });
 
