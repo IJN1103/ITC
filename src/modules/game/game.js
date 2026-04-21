@@ -584,6 +584,12 @@ function digestPlayers(players) {
       p.nameColor || '',
       p.currentJournalId || '',
       p.currentJournalName || '',
+      !!p.permissions?.moveToken,
+      !!p.permissions?.createToken,
+      !!p.permissions?.editToken,
+      !!p.permissions?.manageMap,
+      !!p.permissions?.manageBgm,
+      !!p.permissions?.sendDesc,
     ];
   }));
 }

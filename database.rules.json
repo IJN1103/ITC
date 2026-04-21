@@ -111,6 +111,18 @@
           "currentTrack": {
             ".write": "auth != null && ((root.child('rooms').child($roomCode).child('meta').child('ownerId').val() === auth.uid || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('role').val() === 'gm') || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('permissions').child('manageBgm').val() === true)"
           },
+          "isPlaying": {
+            ".write": "auth != null && ((root.child('rooms').child($roomCode).child('meta').child('ownerId').val() === auth.uid || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('role').val() === 'gm') || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('permissions').child('manageBgm').val() === true)"
+          },
+          "repeatMode": {
+            ".write": "auth != null && ((root.child('rooms').child($roomCode).child('meta').child('ownerId').val() === auth.uid || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('role').val() === 'gm') || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('permissions').child('manageBgm').val() === true)"
+          },
+          "seek": {
+            ".write": "auth != null && ((root.child('rooms').child($roomCode).child('meta').child('ownerId').val() === auth.uid || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('role').val() === 'gm') || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('permissions').child('manageBgm').val() === true)"
+          },
+          "playlistUpdatedAt": {
+            ".write": "auth != null && ((root.child('rooms').child($roomCode).child('meta').child('ownerId').val() === auth.uid || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('role').val() === 'gm') || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('permissions').child('manageBgm').val() === true)"
+          },
           "mapBackground": {
             ".write": "auth != null && ((root.child('rooms').child($roomCode).child('meta').child('ownerId').val() === auth.uid || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('role').val() === 'gm') || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('permissions').child('manageMap').val() === true)"
           },

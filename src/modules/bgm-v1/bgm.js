@@ -28,6 +28,7 @@ const BGM_REPEAT_TITLE = {
   one: '현재 곡 반복',
   all: '플레이리스트 전체 반복',
 };
+const BGM_CONTROL_DENIED_MESSAGE = 'BGM은 GM 또는 BGM 관리 권한자만 조작할 수 있어요.';
 
 window.onYouTubeIframeAPIReady = () => {
   ytReady = true;
@@ -50,9 +51,9 @@ window.onYouTubeIframeAPIReady = () => {
 };
 
 function canControlBgm() {
-  // 1차 안정화 단계에서는 GM만 BGM 조작을 허용한다.
-  // manageBgm 권한자는 BGM 기능 안정화 후 별도 단계에서 연결한다.
-  return !!St.isGM;
+  if (St.isGM) return true;
+  const me = St.players?.[St.myId];
+  return !!me?.permissions?.manageBgm;
 }
 
 function syncBgmPermissionUI() {
@@ -370,7 +371,7 @@ function getBgmAddElements(source = 'modal') {
 }
 
 async function addBgmTrack(source = 'modal') {
-  if (!canControlBgm()) { showToast('BGM은 GM만 조작할 수 있어요.'); return; }
+  if (!canControlBgm()) { showToast(BGM_CONTROL_DENIED_MESSAGE); return; }
   if (_bgmAddBusy) return;
 
   const { urlEl, btn, label } = getBgmAddElements(source);
@@ -459,7 +460,7 @@ async function playTrack(idx, options = {}) {
   const fromRemote = options && options.fromRemote === true;
   const shouldPlay = options.shouldPlay !== false;
   const list = getBgmPlaylist();
-  if (!fromRemote && !canControlBgm()) { showToast('BGM은 GM만 조작할 수 있어요.'); return; }
+  if (!fromRemote && !canControlBgm()) { showToast(BGM_CONTROL_DENIED_MESSAGE); return; }
   if (idx < 0 || idx >= list.length) return;
 
   St.currentTrack = idx;
@@ -484,7 +485,7 @@ async function playTrack(idx, options = {}) {
 
 async function setBgmPlaying(playing, options = {}) {
   const fromRemote = options && options.fromRemote === true;
-  if (!fromRemote && !canControlBgm()) { showToast('BGM은 GM만 조작할 수 있어요.'); return; }
+  if (!fromRemote && !canControlBgm()) { showToast(BGM_CONTROL_DENIED_MESSAGE); return; }
   const track = getCurrentBgmTrack();
   if (!track) {
     St.isPlaying = false;
@@ -503,7 +504,7 @@ async function setBgmPlaying(playing, options = {}) {
 }
 
 async function bgmToggle() {
-  if (!canControlBgm()) { showToast('BGM은 GM만 조작할 수 있어요.'); return; }
+  if (!canControlBgm()) { showToast(BGM_CONTROL_DENIED_MESSAGE); return; }
   const list = getBgmPlaylist();
   if (St.currentTrack === -1 && list.length) {
     await playTrack(0, { shouldPlay: true });
@@ -536,7 +537,7 @@ function updateRepeatBtn() {
 }
 
 async function toggleBgmRepeat() {
-  if (!canControlBgm()) { showToast('BGM은 GM만 조작할 수 있어요.'); return; }
+  if (!canControlBgm()) { showToast(BGM_CONTROL_DENIED_MESSAGE); return; }
   const current = getBgmRepeatMode();
   const next = BGM_REPEAT_MODES[(BGM_REPEAT_MODES.indexOf(current) + 1) % BGM_REPEAT_MODES.length];
   St.repeatMode = next;
@@ -569,7 +570,7 @@ async function handleBgmEnded() {
 }
 
 async function bgmNext() {
-  if (!canControlBgm()) { showToast('BGM은 GM만 조작할 수 있어요.'); return; }
+  if (!canControlBgm()) { showToast(BGM_CONTROL_DENIED_MESSAGE); return; }
   const list = getBgmPlaylist();
   if (!list.length) { showToast(BGM_EMPTY_TITLE); return; }
   const nextIndex = St.currentTrack < 0 ? 0 : (St.currentTrack + 1) % list.length;
@@ -577,7 +578,7 @@ async function bgmNext() {
 }
 
 async function bgmPrev() {
-  if (!canControlBgm()) { showToast('BGM은 GM만 조작할 수 있어요.'); return; }
+  if (!canControlBgm()) { showToast(BGM_CONTROL_DENIED_MESSAGE); return; }
   const list = getBgmPlaylist();
   if (!list.length) { showToast(BGM_EMPTY_TITLE); return; }
   const prevIndex = St.currentTrack <= 0 ? list.length - 1 : St.currentTrack - 1;
@@ -653,7 +654,7 @@ async function dropBgmPlaylistTrack(event, targetIndex) {
 }
 
 async function reorderBgmPlaylist(fromIndex, insertIndex) {
-  if (!canControlBgm()) { showToast('BGM은 GM만 조작할 수 있어요.'); return; }
+  if (!canControlBgm()) { showToast(BGM_CONTROL_DENIED_MESSAGE); return; }
   const list = getBgmPlaylist();
   const from = Number(fromIndex);
   let to = Number(insertIndex);
@@ -684,7 +685,7 @@ async function reorderBgmPlaylist(fromIndex, insertIndex) {
 }
 
 async function removeTrack(i) {
-  if (!canControlBgm()) { showToast('BGM은 GM만 조작할 수 있어요.'); return; }
+  if (!canControlBgm()) { showToast(BGM_CONTROL_DENIED_MESSAGE); return; }
   const list = getBgmPlaylist();
   if (i < 0 || i >= list.length) return;
   if (!confirm('이 BGM을 삭제할까요?')) return;
