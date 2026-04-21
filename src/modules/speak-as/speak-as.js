@@ -109,6 +109,14 @@ function resolveStandingImage(journal, text) {
     }
   }
 
+  if (hasStandings && token.currentStandingLabel) {
+    const synced = standings.find(s => s.label === token.currentStandingLabel && s.img);
+    if (synced) {
+      _vnCurrentStanding[journal.id] = synced.label;
+      return synced.img;
+    }
+  }
+
   if (hasStandings && _vnCurrentStanding[journal.id]) {
     const prev = standings.find(s => s.label === _vnCurrentStanding[journal.id] && s.img);
     if (prev) return prev.img;
@@ -138,7 +146,7 @@ function updateTokenStandingOnMap(journalId) {
   if (!t || !t.standingAsToken) return;
   const el = document.getElementById('tok-' + t.id);
   if (!el) return;
-  const curLabel = _vnCurrentStanding[journalId];
+  const curLabel = String(t.currentStandingLabel || _vnCurrentStanding[journalId] || '').trim();
   const standings = t.standings || [];
   const curStanding = curLabel ? standings.find(s => s.label === curLabel && s.img) : null;
   const newSrc = curStanding ? curStanding.img : (standings.find(s => s.img)?.img || t.tokenImg || null);
@@ -201,14 +209,9 @@ function showDialogueBoxFromMsg(name, text, journalId, standingImg, tokenId, sta
   // 스탠딩 resolve: 3단계 fallback
   let finalStanding = null;
 
-  // 1단계: 저널 기반 resolve (발신자/수신자 공통)
-  if (journal) {
-    finalStanding = resolveStandingImage(journal, text);
-    updateTokenStandingOnMap(journal.id);
-  }
-
-  // 2단계: tokenId + standingLabel 기반 직접 resolve (수신자용)
-  if (!finalStanding && tokenId) {
+  // 1단계: 메시지에 저장된 tokenId + standingLabel을 먼저 사용한다.
+  // 수신자가 이후 다른 스탠딩을 선택해도 과거 메시지의 스탠딩이 바뀌어 보이지 않게 한다.
+  if (tokenId) {
     const token = St.tokens[tokenId];
     if (token) {
       const standings = token.standings || [];
@@ -216,12 +219,18 @@ function showDialogueBoxFromMsg(name, text, journalId, standingImg, tokenId, sta
         const found = standings.find(s => s.label === standingLabel && s.img);
         if (found) finalStanding = found.img;
       }
-      if (!finalStanding) {
+      if (!finalStanding && !standingLabel) {
         const first = standings.find(s => s.img);
         if (first) finalStanding = first.img;
       }
       if (!finalStanding && token.tokenImg) finalStanding = token.tokenImg;
     }
+  }
+
+  // 2단계: 현재 저널/토큰 상태 기반 resolve
+  if (!finalStanding && journal) {
+    finalStanding = resolveStandingImage(journal, text);
+    updateTokenStandingOnMap(journal.id);
   }
 
   // 3단계: 레거시 base64 fallback (이전 메시지 호환)

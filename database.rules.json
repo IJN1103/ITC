@@ -78,6 +78,12 @@
             },
             "y": {
               ".write": "auth != null && ((root.child('rooms').child($roomCode).child('meta').child('ownerId').val() === auth.uid || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('role').val() === 'gm') || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('permissions').child('moveToken').val() === true || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('permissions').child('editToken').val() === true)"
+            },
+            "currentStandingLabel": {
+              ".write": "auth != null && ((root.child('rooms').child($roomCode).child('meta').child('ownerId').val() === auth.uid || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('role').val() === 'gm') || data.parent().child('ownerId').val() === auth.uid || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('permissions').child('editToken').val() === true || (root.child('rooms').child($roomCode).child('journals').child(newData.parent().child('currentStandingJournalId').val()).child('assignedTokenId').val() === $tokenId && (root.child('rooms').child($roomCode).child('journals').child(newData.parent().child('currentStandingJournalId').val()).child('ownerId').val() === auth.uid || root.child('rooms').child($roomCode).child('journals').child(newData.parent().child('currentStandingJournalId').val()).child('assignedMap').child(auth.uid).val() === true)))"
+            },
+            "currentStandingJournalId": {
+              ".write": "auth != null && ((root.child('rooms').child($roomCode).child('meta').child('ownerId').val() === auth.uid || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('role').val() === 'gm') || data.parent().child('ownerId').val() === auth.uid || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('permissions').child('editToken').val() === true || (root.child('rooms').child($roomCode).child('journals').child(newData.val()).child('assignedTokenId').val() === $tokenId && (root.child('rooms').child($roomCode).child('journals').child(newData.val()).child('ownerId').val() === auth.uid || root.child('rooms').child($roomCode).child('journals').child(newData.val()).child('assignedMap').child(auth.uid).val() === true)))"
             }
           }
         },

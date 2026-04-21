@@ -612,6 +612,161 @@ function initQuickSheetInteractions() {
 
 function getQuickJournalMenuEl() { return document.getElementById('map-quick-journal-menu'); }
 function getQuickJournalButtonEl() { return document.getElementById('map-quick-journal-btn'); }
+function getQuickStandingMenuEl() { return document.getElementById('map-quick-standing-menu'); }
+function getQuickStandingButtonEl() { return document.getElementById('map-quick-standing-btn'); }
+
+function closeQuickStandingMenu() {
+  const menu = getQuickStandingMenuEl();
+  if (!menu) return;
+  menu.style.display = 'none';
+  menu.innerHTML = '';
+  getQuickStandingButtonEl()?.classList.remove('is-open');
+}
+
+function getStandingQuickEmptyHtml(message) {
+  return `<div class="map-quick-standing-empty">${esc(message)}</div>`;
+}
+
+function normalizeQuickStandingLabel(label) {
+  return String(label || '').trim();
+}
+
+function getQuickStandingDisplayLabel(label) {
+  const clean = normalizeQuickStandingLabel(label).replace(/^@+/, '').trim();
+  return '@' + (clean || '스탠딩');
+}
+
+function getSelectedQuickStandingContext() {
+  const journalId = String(St?.speakAsJournalId || '').trim();
+  if (!journalId) return { error: '먼저 저널을 선택해주세요.' };
+  const journal = loadJournals().find(j => String(j.id) === journalId);
+  if (!journal) return { error: '선택한 저널을 찾을 수 없어요.' };
+  const tokenId = String(journal.assignedTokenId || '').trim();
+  if (!tokenId) return { journal, error: '이 저널에 연결된 토큰이 없어요.' };
+  const token = St.tokens?.[tokenId] || null;
+  if (!token) return { journal, error: '연결된 토큰을 찾을 수 없어요.' };
+  const standings = Array.isArray(token.standings) ? token.standings.filter(s => s && (s.img || s.label)) : [];
+  if (!standings.length) return { journal, token, error: '이 토큰에 등록된 스탠딩이 없어요.' };
+  return { journal, token, standings };
+}
+
+function canChangeQuickStanding(journal, token) {
+  if (St.isGM) return true;
+  const myId = String(St.myId || '');
+  if (!myId || !journal || !token) return false;
+  if (String(token.ownerId || '') === myId) return true;
+  if (typeof hasPerm === 'function' && hasPerm('editToken')) return true;
+  if (String(journal.ownerId || '') === myId) return true;
+  if (Array.isArray(journal.assignedTo) && journal.assignedTo.map(String).includes(myId)) return true;
+  if (journal.assignedMap && journal.assignedMap[myId] === true) return true;
+  return false;
+}
+
+function getQuickStandingCurrentLabel(journal, token, standings) {
+  const current = normalizeQuickStandingLabel(token?.currentStandingLabel || '');
+  if (current && standings.some(s => normalizeQuickStandingLabel(s.label) === current)) return current;
+  const local = normalizeQuickStandingLabel((typeof _vnCurrentStanding !== 'undefined' ? _vnCurrentStanding : null)?.[journal.id] || '');
+  if (local && standings.some(s => normalizeQuickStandingLabel(s.label) === local)) return local;
+  const first = standings.find(s => s.img || s.label);
+  return normalizeQuickStandingLabel(first?.label || '');
+}
+
+function renderQuickStandingMenu() {
+  const menu = getQuickStandingMenuEl();
+  if (!menu) return;
+  const ctx = getSelectedQuickStandingContext();
+  getQuickStandingButtonEl()?.classList.add('is-open');
+  if (ctx.error) {
+    menu.innerHTML = getStandingQuickEmptyHtml(ctx.error);
+    menu.style.display = 'block';
+    return;
+  }
+  const { journal, token, standings } = ctx;
+  const canChange = canChangeQuickStanding(journal, token);
+  const currentLabel = getQuickStandingCurrentLabel(journal, token, standings);
+  const title = String(journal?.title || '무제 저널').trim() || '무제 저널';
+  menu.innerHTML = `
+    <div class="map-quick-standing-head">
+      <span>${esc(title)} 스탠딩</span>
+      ${canChange ? '' : '<em>보기 전용</em>'}
+    </div>
+    <div class="map-quick-standing-grid">
+      ${standings.map((standing, index) => {
+        const label = normalizeQuickStandingLabel(standing.label || '');
+        const active = currentLabel && label === currentLabel;
+        const src = String(standing.img || '').trim();
+        const displayLabel = getQuickStandingDisplayLabel(label);
+        return `<button type="button" class="map-quick-standing-card${active ? ' active' : ''}${canChange ? '' : ' disabled'}" data-standing-index="${index}" ${canChange ? '' : 'disabled'}>
+          <span class="map-quick-standing-thumb">${src ? `<img src="${esc(src)}" alt="">` : '<span class="map-quick-standing-fallback">?</span>'}</span>
+          <span class="map-quick-standing-label">${esc(displayLabel)}</span>
+        </button>`;
+      }).join('')}
+    </div>`;
+  menu.querySelectorAll('.map-quick-standing-card').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const idx = Number(btn.dataset.standingIndex);
+      const standing = standings[idx];
+      if (!standing || !canChange) return;
+      await selectQuickStanding(journal, token, standing);
+    });
+  });
+  menu.style.display = 'block';
+}
+
+async function selectQuickStanding(journal, token, standing) {
+  if (!journal?.id || !token?.id || !standing) return;
+  if (!canChangeQuickStanding(journal, token)) {
+    showToast('스탠딩 변경 권한이 없어요.');
+    return;
+  }
+  const label = normalizeQuickStandingLabel(standing.label || '');
+  if (!label) {
+    showToast('이름이 없는 스탠딩은 선택할 수 없어요.');
+    return;
+  }
+  const patch = {
+    currentStandingLabel: label,
+    currentStandingJournalId: journal.id,
+  };
+  const prevLabel = token.currentStandingLabel || '';
+  const prevJournalId = token.currentStandingJournalId || '';
+  try {
+    token.currentStandingLabel = label;
+    token.currentStandingJournalId = journal.id;
+    if ((typeof _vnCurrentStanding !== 'undefined' ? _vnCurrentStanding : null)) (typeof _vnCurrentStanding !== 'undefined' ? _vnCurrentStanding : null)[journal.id] = label;
+    if (window._FB?.CONFIGURED && St.roomCode) {
+      const { db, ref, update } = window._FB;
+      await update(ref(db, `rooms/${St.roomCode}/tokens/${token.id}`), patch);
+    } else {
+      St.tokens[token.id] = { ...token };
+    }
+    if (typeof addOrUpdateSingleToken === 'function') addOrUpdateSingleToken(token.id, St.tokens[token.id] || token);
+    else if (typeof renderAllTokens === 'function') renderAllTokens(St.tokens);
+    if (typeof saRefreshToolbar === 'function') saRefreshToolbar();
+    renderQuickStandingMenu();
+    showToast(`${getQuickStandingDisplayLabel(label)} 스탠딩으로 변경했어요.`);
+  } catch (err) {
+    token.currentStandingLabel = prevLabel;
+    token.currentStandingJournalId = prevJournalId;
+    if (typeof addOrUpdateSingleToken === 'function') addOrUpdateSingleToken(token.id, St.tokens[token.id] || token);
+    console.error('standing quick select failed', err);
+    showToast('스탠딩 변경에 실패했어요.');
+  }
+}
+
+function toggleQuickStandingView(event) {
+  if (event) { event.preventDefault(); event.stopPropagation(); }
+  const menu = getQuickStandingMenuEl();
+  if (menu && menu.style.display !== 'none' && menu.innerHTML.trim()) {
+    closeQuickStandingMenu();
+    return;
+  }
+  closeQuickJournalMenu();
+  renderQuickStandingMenu();
+}
+
 
 function closeQuickJournalMenu() {
   const menu = getQuickJournalMenuEl();
@@ -673,6 +828,7 @@ function openQuickJournalSheet(journalId) {
 
 function toggleQuickJournalView(event) {
   if (event) { event.preventDefault(); event.stopPropagation(); }
+  closeQuickStandingMenu();
   const overlay = document.getElementById('sheet-overlay');
   const menu = getQuickJournalMenuEl();
   const isQuickOpen = !!(overlay && overlay.classList.contains('open') && overlay.classList.contains('quick-view'));
@@ -694,6 +850,11 @@ function toggleQuickJournalView(event) {
 document.addEventListener('click', (e) => {
   if (e.target.closest('#map-quick-journal-btn') || e.target.closest('#map-quick-journal-menu')) return;
   closeQuickJournalMenu();
+});
+
+document.addEventListener('click', (e) => {
+  if (e.target.closest('#map-quick-standing-btn') || e.target.closest('#map-quick-standing-menu')) return;
+  closeQuickStandingMenu();
 });
 
 function openSheet(journalId) {
@@ -804,6 +965,7 @@ function closeSheet() {
     modal.style.height = '';
   }
   closeQuickJournalMenu();
+  closeQuickStandingMenu();
   const quickBtn = getQuickJournalButtonEl();
   if (quickBtn) quickBtn.classList.remove('is-open');
   _sheetQuickViewMode = false;

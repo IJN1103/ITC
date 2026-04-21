@@ -860,6 +860,8 @@ function getTokenRenderSignature(token) {
     rotation: Number(token?.rotation || 0),
     memo: String(token?.memo || ''),
     standingAsToken: !!token?.standingAsToken,
+    currentStandingLabel: String(token?.currentStandingLabel || ''),
+    currentStandingJournalId: String(token?.currentStandingJournalId || ''),
     standingsKey: _standingsKey(token),
     panelFace: String(token?.panelFace || ''),
     panelImage: String(token?.panelImage || ''),
@@ -1234,9 +1236,12 @@ function createTokenEl(t) {
     tokenImgSrc = getPanelTokenImageSource(t);
   } else if (t.standingAsToken && t.standings && t.standings.length > 0) {
     const jForToken = _allJournals.find(j => j.assignedTokenId === t.id);
-    const curLabel = jForToken ? _vnCurrentStanding[jForToken.id] : null;
+    const syncedLabel = String(t.currentStandingLabel || '').trim();
+    const localLabel = jForToken ? String((typeof _vnCurrentStanding !== 'undefined' ? _vnCurrentStanding : null)?.[jForToken.id] || '').trim() : '';
+    const curLabel = syncedLabel || localLabel;
     const curStanding = curLabel ? t.standings.find(s => s.label === curLabel && s.img) : null;
     tokenImgSrc = curStanding ? curStanding.img : (t.standings.find(s => s.img)?.img || t.tokenImg || null);
+    if (jForToken && syncedLabel && (typeof _vnCurrentStanding !== 'undefined' ? _vnCurrentStanding : null)) (typeof _vnCurrentStanding !== 'undefined' ? _vnCurrentStanding : null)[jForToken.id] = syncedLabel;
   } else {
     tokenImgSrc = t.tokenImg || '';
   }
