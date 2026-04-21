@@ -8,6 +8,10 @@ let ytReady = false;
 let _bgmPendingTrackIndex = null;
 let _bgmPendingShouldPlay = false;
 let _bgmAddBusy = false;
+let _bgmProgressTimer = null;
+let _bgmProgressUserSeeking = false;
+let _bgmProgressPreviewTimer = null;
+let _lastAppliedBgmSeekAt = 0;
 
 const BGM_EMPTY_TITLE = '재생되고 있는 BGM이 없어요.';
 const BGM_REPEAT_MODES = ['off', 'one', 'all'];
@@ -32,6 +36,8 @@ window.onYouTubeIframeAPIReady = () => {
       onReady: () => {
         applyStoredBgmVolume();
         flushPendingBgmTrack();
+        startBgmProgressTimer();
+        updateBgmProgressUI();
       },
       onStateChange: e => {
         if (e.data === YT.PlayerState.ENDED && canControlBgm()) handleBgmEnded();
@@ -54,6 +60,7 @@ function syncBgmPermissionUI() {
   document.querySelectorAll('.bgm-add').forEach(el => {
     el.style.display = canControl ? '' : 'none';
   });
+  updateBgmProgressAccess();
 }
 
 function loadYTApi() {
@@ -105,6 +112,109 @@ function getCurrentBgmTrack() {
 
 function getBgmRepeatMode() {
   return BGM_REPEAT_MODES.includes(St.repeatMode) ? St.repeatMode : 'off';
+}
+
+function getBgmDuration() {
+  try {
+    const duration = ytPlayer?.getDuration?.();
+    return Number.isFinite(duration) && duration > 0 ? duration : 0;
+  } catch (_) {
+    return 0;
+  }
+}
+
+function getBgmCurrentTime() {
+  try {
+    const current = ytPlayer?.getCurrentTime?.();
+    return Number.isFinite(current) && current >= 0 ? current : 0;
+  } catch (_) {
+    return 0;
+  }
+}
+
+function updateBgmProgressAccess() {
+  const slider = document.getElementById('bgm-progress-slider');
+  if (!slider) return;
+  const canSeek = canControlBgm() && !!getCurrentBgmTrack();
+  slider.disabled = !canSeek;
+  slider.title = canSeek ? '재생 위치 이동' : '재생 위치 보기';
+}
+
+function setBgmProgressValue(current, duration) {
+  const slider = document.getElementById('bgm-progress-slider');
+  if (!slider || _bgmProgressUserSeeking) return;
+  const ratio = duration > 0 ? Math.max(0, Math.min(1, current / duration)) : 0;
+  slider.value = String(Math.round(ratio * 1000));
+}
+
+function updateBgmProgressUI() {
+  const track = getCurrentBgmTrack();
+  if (!track || !ytReady || !ytPlayer) {
+    setBgmProgressValue(0, 0);
+    updateBgmProgressAccess();
+    return;
+  }
+  setBgmProgressValue(getBgmCurrentTime(), getBgmDuration());
+  updateBgmProgressAccess();
+}
+
+function startBgmProgressTimer() {
+  if (_bgmProgressTimer) return;
+  _bgmProgressTimer = setInterval(updateBgmProgressUI, 700);
+}
+
+function seekBgmPlayer(seconds, tries = 0) {
+  const safeSeconds = Math.max(0, Number(seconds) || 0);
+  if (!ytReady || !ytPlayer) {
+    loadYTApi();
+    if (tries < 8) setTimeout(() => seekBgmPlayer(safeSeconds, tries + 1), 250);
+    return;
+  }
+  try {
+    ytPlayer.seekTo(safeSeconds, true);
+    if (St.isPlaying) ytPlayer.playVideo();
+    updateBgmProgressUI();
+  } catch (err) {
+    if (tries < 8) setTimeout(() => seekBgmPlayer(safeSeconds, tries + 1), 250);
+    else console.warn('bgm seek failed', err);
+  }
+}
+
+function applyRemoteBgmSeek(seek) {
+  const updatedAt = Number(seek?.updatedAt || 0);
+  const seconds = Number(seek?.seconds || 0);
+  if (!updatedAt || updatedAt <= _lastAppliedBgmSeekAt) return;
+  _lastAppliedBgmSeekAt = updatedAt;
+  setTimeout(() => seekBgmPlayer(seconds), 180);
+}
+
+function previewBgmSeek(value) {
+  if (!canControlBgm()) return;
+  const slider = document.getElementById('bgm-progress-slider');
+  if (!slider || slider.disabled) return;
+  _bgmProgressUserSeeking = true;
+  slider.value = String(Math.max(0, Math.min(1000, Number(value) || 0)));
+  clearTimeout(_bgmProgressPreviewTimer);
+  _bgmProgressPreviewTimer = setTimeout(() => {
+    _bgmProgressUserSeeking = false;
+    updateBgmProgressUI();
+  }, 1800);
+}
+
+async function commitBgmSeek(value) {
+  if (!canControlBgm()) { updateBgmProgressUI(); return; }
+  const slider = document.getElementById('bgm-progress-slider');
+  if (!slider || slider.disabled || !getCurrentBgmTrack()) { updateBgmProgressUI(); return; }
+  const duration = getBgmDuration();
+  if (!duration) { updateBgmProgressUI(); return; }
+  const ratio = Math.max(0, Math.min(1000, Number(value) || 0)) / 1000;
+  const seconds = Math.max(0, Math.min(duration, duration * ratio));
+  const updatedAt = Date.now();
+  clearTimeout(_bgmProgressPreviewTimer);
+  _bgmProgressUserSeeking = false;
+  _lastAppliedBgmSeekAt = updatedAt;
+  seekBgmPlayer(seconds);
+  await writeBgmState({ seek: { seconds: Math.round(seconds * 10) / 10, updatedAt, by: St.myId || '' } });
 }
 
 async function writeBgmState(payload) {
@@ -213,6 +323,7 @@ async function addBgmTrack() {
       playlist: nextPlaylist,
       currentTrack: nextIndex,
       isPlaying: true,
+      seek: { seconds: 0, updatedAt: Date.now(), by: St.myId || '' },
     });
     playTrack(nextIndex, { fromRemote: true, shouldPlay: true });
 
@@ -261,8 +372,15 @@ async function playTrack(idx, options = {}) {
   updatePlayBtn();
   applyBgmPlayerState(track, shouldPlay);
 
+  updateBgmProgressAccess();
+  updateBgmProgressUI();
+
   if (!fromRemote) {
-    await writeBgmState({ currentTrack: idx, isPlaying: !!shouldPlay });
+    await writeBgmState({
+      currentTrack: idx,
+      isPlaying: !!shouldPlay,
+      seek: { seconds: 0, updatedAt: Date.now(), by: St.myId || '' },
+    });
   }
 }
 
@@ -281,6 +399,7 @@ async function setBgmPlaying(playing, options = {}) {
   St.isPlaying = !!playing;
   setBgmTitle(track);
   updatePlayBtn();
+  updateBgmProgressAccess();
   applyBgmPlayerState(track, St.isPlaying);
   if (!fromRemote) await writeBgmState({ isPlaying: St.isPlaying });
 }
@@ -401,10 +520,14 @@ async function removeTrack(i) {
     try { ytPlayer?.pauseVideo?.(); } catch (_) {}
   }
 
+  updateBgmProgressAccess();
+  updateBgmProgressUI();
+
   await writeBgmState({
     playlist: nextPlaylist,
     currentTrack: nextTrack,
     isPlaying: nextPlaying,
+    seek: { seconds: 0, updatedAt: Date.now(), by: St.myId || '' },
   });
 }
 
@@ -414,6 +537,7 @@ function syncBgmRemoteState(bgm = {}) {
   const hasRemotePlaying = Object.prototype.hasOwnProperty.call(bgm, 'isPlaying');
   const nextPlaying = hasRemotePlaying ? bgm.isPlaying === true : nextTrack >= 0;
   const nextRepeat = BGM_REPEAT_MODES.includes(bgm.repeatMode) ? bgm.repeatMode : 'off';
+  const remoteSeek = bgm.seek && typeof bgm.seek === 'object' ? bgm.seek : null;
 
   St.playlist = nextPlaylist;
   St.repeatMode = nextRepeat;
@@ -425,6 +549,8 @@ function syncBgmRemoteState(bgm = {}) {
     setBgmTitle(null);
     updatePlayBtn();
     updateRepeatBtn();
+    updateBgmProgressAccess();
+    updateBgmProgressUI();
     try { ytPlayer?.pauseVideo?.(); } catch (_) {}
     return;
   }
@@ -440,6 +566,9 @@ function syncBgmRemoteState(bgm = {}) {
   } else {
     setBgmPlaying(nextPlaying, { fromRemote: true });
   }
+  if (remoteSeek) applyRemoteBgmSeek(remoteSeek);
+  updateBgmProgressAccess();
+  updateBgmProgressUI();
 }
 
 function toggleBgmExpanded() {
@@ -452,5 +581,7 @@ setTimeout(() => {
   updatePlayBtn();
   updateRepeatBtn();
   syncBgmPermissionUI();
+  startBgmProgressTimer();
+  updateBgmProgressUI();
   if (!getCurrentBgmTrack()) setBgmTitle(null);
 }, 0);

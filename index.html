@@ -787,8 +787,20 @@ window._FB = {
       <button class="bgm-btn" id="bgm-next-btn" onclick="bgmNext()" title="다음 곡">▶▶</button>
       <button class="bgm-btn bgm-repeat-btn" id="bgm-repeat-btn" onclick="toggleBgmRepeat()" title="반복 없음">↻</button>
     </div>
-    <div class="bgm-vol"><span class="bgm-vol-label">음량</span><input type="range" min="0" max="100" value="60" id="vol-slider" oninput="setVolume(this.value)"></div>
+    <div class="bgm-vol" title="볼륨">
+      <span class="bgm-vol-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" focusable="false">
+          <path d="M4 9v6h4l5 4V5L8 9H4z"></path>
+          <path d="M16.5 8.5a5 5 0 0 1 0 7"></path>
+          <path d="M18.8 6.2a8.2 8.2 0 0 1 0 11.6"></path>
+        </svg>
+      </span>
+      <input type="range" min="0" max="100" value="60" id="vol-slider" oninput="setVolume(this.value)" aria-label="BGM 볼륨">
+    </div>
     <button class="bgm-add gm-only bgm-gm-control" onclick="openModal('modal-bgm')" style="display:none">+ BGM</button>
+    <div class="bgm-progress-row" id="bgm-progress-row">
+      <input type="range" min="0" max="1000" value="0" id="bgm-progress-slider" class="bgm-progress-slider" aria-label="BGM 재생 위치" oninput="previewBgmSeek(this.value)" onchange="commitBgmSeek(this.value)">
+    </div>
   </div>
 </div>
 
