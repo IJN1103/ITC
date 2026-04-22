@@ -398,8 +398,7 @@ window._FB = {
             <div class="vn-content">
               <button class="vn-close" onclick="event.stopPropagation();hideDialogueBox()">✕</button>
               <div class="vn-name-tag" id="vn-name"></div>
-              <div class="vn-box" id="vn-box">
-                <div class="vn-portrait" id="vn-portrait"></div>
+              <div class="vn-box">
                 <div class="vn-text" id="vn-text"></div>
                 <div class="vn-arrow">▼</div>
               </div>
@@ -574,10 +573,6 @@ window._FB = {
               </div>
               <input type="file" id="sh-avatar-input" accept="image/*" style="display:none" onchange="handleSheetAvatar(this)">
               <span class="sh-avatar-hint">클릭해서 변경</span>
-              <label class="sh-portrait-toggle" title="ON이면 이 저널로 말할 때 대사창 왼쪽에 프로필 이미지를 표시합니다.">
-                <input type="checkbox" id="sh-show-portrait-dialogue">
-                <span>두상 노출</span>
-              </label>
               <div class="sh-token-assign" id="sh-token-assign">
                 <div class="sh-token-assigned" id="sh-token-assigned" style="display:none">
                   <div class="sh-token-chip" id="sh-token-chip"></div>

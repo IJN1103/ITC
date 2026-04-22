@@ -137,7 +137,6 @@ function normalizeJournal(raw, idOverride) {
     raw?.avatar || raw?.sheet?.avatar || ''
   );
   const nameColor = String(raw?.nameColor || raw?.sheet?.nameColor || '').trim();
-  const showPortraitInDialogue = raw?.showPortraitInDialogue === true || raw?.sheet?.showPortraitInDialogue === true;
   const safeSheet = sanitizeStoredJournalValue(raw?.sheet || {}, ['sheet']);
 
   if (avatar) safeSheet.avatar = avatar;
@@ -155,7 +154,6 @@ function normalizeJournal(raw, idOverride) {
     assignedMap: buildUidBoolMap(assignedTo),
     avatar,
     nameColor,
-    showPortraitInDialogue,
     sheet: safeSheet && typeof safeSheet === 'object' ? safeSheet : {},
   };
 }
@@ -173,14 +171,10 @@ function buildJournalStoragePayload(journal) {
     assignedTo: normalized.assignedTo,
     assignedMap: buildUidBoolMap(normalized.assignedTo),
     nameColor: normalized.nameColor,
-    showPortraitInDialogue: !!normalized.showPortraitInDialogue,
     sheet: normalized.sheet || {},
   };
   if (normalized.nameColor && payload.sheet && typeof payload.sheet === 'object') {
     payload.sheet.nameColor = normalized.nameColor;
-  }
-  if (payload.sheet && typeof payload.sheet === 'object') {
-    payload.sheet.showPortraitInDialogue = !!normalized.showPortraitInDialogue;
   }
   if (normalized.avatar) {
     payload.avatar = normalized.avatar;
@@ -210,10 +204,6 @@ function sanitizeJournalMetaPatch(metaPatch = {}, currentJournal = null) {
   const hasNameColorPatch = Object.prototype.hasOwnProperty.call(metaPatch, 'nameColor');
   const patchNameColor = hasNameColorPatch ? String(metaPatch.nameColor || '').trim() : '';
   const currentNameColor = String(current?.nameColor || '').trim();
-  const hasPortraitPatch = Object.prototype.hasOwnProperty.call(metaPatch, 'showPortraitInDialogue');
-  const showPortraitInDialogue = hasPortraitPatch
-    ? metaPatch.showPortraitInDialogue === true
-    : (current?.showPortraitInDialogue === true || current?.sheet?.showPortraitInDialogue === true);
 
   const safe = {
     title,
@@ -225,7 +215,6 @@ function sanitizeJournalMetaPatch(metaPatch = {}, currentJournal = null) {
   };
   if (hasNameColorPatch) safe.nameColor = patchNameColor;
   else if (currentNameColor) safe.nameColor = currentNameColor;
-  safe.showPortraitInDialogue = !!showPortraitInDialogue;
   if (avatar) safe.avatar = avatar;
   return safe;
 }
@@ -1185,8 +1174,6 @@ function createNewJournal() {
   });
 
   refreshSheetAvatar(null, '?');
-  const portraitToggle = document.getElementById('sh-show-portrait-dialogue');
-  if (portraitToggle) portraitToggle.checked = false;
   refreshJournalTokenBar(null);
   _sheetAssignedTo = [];
   refreshSheetAssignBar(null);
@@ -2770,8 +2757,6 @@ function openSheet(journalId) {
   _sheetAvatarUploadPromise = null;
   if (_sheetAvatarData) saSetAvatar(journalId, _sheetAvatarData);  // 캐시 워밍
   refreshSheetAvatar(_sheetAvatarData, (data.name || j?.title || '?')[0]?.toUpperCase());
-  const portraitToggle = document.getElementById('sh-show-portrait-dialogue');
-  if (portraitToggle) portraitToggle.checked = j?.showPortraitInDialogue === true || data.showPortraitInDialogue === true;
 
   refreshJournalTokenBar(j?.assignedTokenId || null);
 
@@ -2982,8 +2967,6 @@ async function saveSheet() {
     data['bs_'+k] = document.getElementById('sh-bs-'+k)?.value || '';
   });
 
-  data.showPortraitInDialogue = !!document.getElementById('sh-show-portrait-dialogue')?.checked;
-
   if (_sheetAvatarUploadPromise) {
     const hint = document.getElementById('sheet-hint');
     if (hint) hint.textContent = '아바타 업로드 완료를 기다리는 중...';
@@ -3011,7 +2994,6 @@ async function saveSheet() {
       title: data.name || existing.title,
       updatedAt: Date.now(),
       assignedTokenId: targetAssignedTokenId,
-      showPortraitInDialogue: !!data.showPortraitInDialogue,
     };
     if (_sheetAssignedTo !== undefined) metaPatch.assignedTo = targetAssignedTo;
     if (_keepAv) metaPatch.avatar = _keepAv;
@@ -3020,7 +3002,6 @@ async function saveSheet() {
     existing.title = metaPatch.title;
     existing.updatedAt = metaPatch.updatedAt;
     existing.assignedTokenId = metaPatch.assignedTokenId;
-    existing.showPortraitInDialogue = !!metaPatch.showPortraitInDialogue;
     if (_sheetAssignedTo !== undefined) existing.assignedTo = metaPatch.assignedTo;
 
     saveJournalSheetFB(targetJournalId, data, metaPatch);
@@ -3035,7 +3016,6 @@ async function saveSheet() {
       updatedAt: Date.now(),
       assignedTokenId: targetAssignedTokenId,
       assignedTo: targetAssignedTo,
-      showPortraitInDialogue: !!data.showPortraitInDialogue,
     };
     const newAvatar = getSharedJournalAvatarRuntime().sanitizePersistentAvatarSrc(_sheetAvatarStoredUrl || _sheetAvatarData || null);
     if (newAvatar) {

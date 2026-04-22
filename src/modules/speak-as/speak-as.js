@@ -171,7 +171,6 @@ function showDialogueBox(journal, text) {
 
   nameEl.textContent = name;
   textEl.innerHTML = esc(cleanText).replace(/\n/g, '<br>');
-  renderDialoguePortrait(dialog, journal);
 
   if (standingImg) {
     standingEl.innerHTML = `<img src="${standingImg}" alt="">`;
@@ -206,7 +205,6 @@ function showDialogueBoxFromMsg(name, text, journalId, standingImg, tokenId, sta
   nameEl.textContent = (journal?.title || name || '???');
   const cleanText = cleanDialogueText(text);
   textEl.innerHTML = esc(cleanText).replace(/\n/g, '<br>');
-  renderDialoguePortrait(dialog, journal);
 
   // 스탠딩 resolve: 3단계 fallback
   let finalStanding = null;
