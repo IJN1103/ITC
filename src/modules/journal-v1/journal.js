@@ -2073,6 +2073,51 @@ function canChangeQuickStanding(journal, token) {
   return false;
 }
 
+function canEditQuickStandingCrop(journal, token) {
+  if (St.isGM) return true;
+  const myId = String(St.myId || '');
+  if (!myId || !token) return false;
+  if (String(token.ownerId || '') === myId) return true;
+  if (typeof hasPerm === 'function' && hasPerm('editToken')) return true;
+  return false;
+}
+
+function clampQuickStandingCropValue(value, min, max, fallback) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return fallback;
+  return Math.max(min, Math.min(max, num));
+}
+
+function normalizeQuickStandingThumbCrop(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const cx = clampQuickStandingCropValue(raw.cx, 0, 1, 0.5);
+  const cy = clampQuickStandingCropValue(raw.cy, 0, 1, 0.5);
+  const zoom = clampQuickStandingCropValue(raw.zoom, 1, 3, 1);
+  return {
+    cx: Math.round(cx * 1000) / 1000,
+    cy: Math.round(cy * 1000) / 1000,
+    zoom: Math.round(zoom * 1000) / 1000,
+  };
+}
+
+function getQuickStandingThumbCrop(token, standing = null) {
+  return normalizeQuickStandingThumbCrop(standing?.quickStandingCrop || standing?.thumbCrop || null)
+    || normalizeQuickStandingThumbCrop(token?.quickStandingCrop || token?.standingQuickCrop || null);
+}
+
+function getQuickStandingThumbImgStyle(crop) {
+  const safe = normalizeQuickStandingThumbCrop(crop);
+  if (!safe) return '';
+  const cx = Math.round(safe.cx * 10000) / 100;
+  const cy = Math.round(safe.cy * 10000) / 100;
+  const zoom = Math.round(safe.zoom * 1000) / 1000;
+  return ` style="object-position:${cx}% ${cy}%;transform:scale(${zoom});transform-origin:${cx}% ${cy}%;"`;
+}
+
+function getQuickStandingCropIconSvg() {
+  return `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M8.1 10.2 4.6 6.7a2.4 2.4 0 1 1 1.4-1.4l9.4 9.4 2.3-2.3a1 1 0 0 1 1.4 1.4l-3.1 3.1 3.3 3.3a1 1 0 0 1-1.4 1.4L12.8 16l-2.7 2.7a3.3 3.3 0 1 1-1.4-1.4l2.4-2.4-2.7-2.7-2.4 2.4a3.3 3.3 0 1 1-1.4-1.4l3.1-3.1Zm-2.9 9.6a1.3 1.3 0 1 0 0-2.6 1.3 1.3 0 0 0 0 2.6Zm0-6.4a1.3 1.3 0 1 0 0-2.6 1.3 1.3 0 0 0 0 2.6Z"/></svg>`;
+}
+
 function getQuickStandingCurrentLabel(journal, token, standings) {
   const current = normalizeQuickStandingLabel(token?.currentStandingLabel || '');
   if (current && standings.some(s => normalizeQuickStandingLabel(s.label) === current)) return current;
@@ -2117,12 +2162,16 @@ function renderQuickStandingMenu() {
   }
   const { journal, token, standings } = ctx;
   const canChange = canChangeQuickStanding(journal, token);
+  const canCrop = canEditQuickStandingCrop(journal, token);
   const currentLabel = getQuickStandingCurrentLabel(journal, token, standings);
   const title = String(journal?.title || '무제 저널').trim() || '무제 저널';
   menu.innerHTML = `
     <div class="map-quick-standing-head">
       <span>${esc(title)} 스탠딩</span>
-      ${canChange ? '' : '<em>보기 전용</em>'}
+      <div class="map-quick-standing-head-actions">
+        ${canCrop ? `<button type="button" class="map-quick-standing-crop-btn" title="크롭 기능" aria-label="스탠딩 썸네일 크롭">${getQuickStandingCropIconSvg()}</button>` : ''}
+        ${canChange ? '' : '<em>보기 전용</em>'}
+      </div>
     </div>
     <div class="map-quick-standing-grid">
       ${standings.map((standing, index) => {
@@ -2130,12 +2179,21 @@ function renderQuickStandingMenu() {
         const active = currentLabel && label === currentLabel;
         const src = String(standing.img || '').trim();
         const displayLabel = getQuickStandingDisplayLabel(label);
+        const cropStyle = getQuickStandingThumbImgStyle(getQuickStandingThumbCrop(token, standing));
         return `<button type="button" class="map-quick-standing-card${active ? ' active' : ''}${canChange ? '' : ' disabled'}" data-standing-index="${index}" ${canChange ? '' : 'disabled'}>
-          <span class="map-quick-standing-thumb">${src ? `<img src="${esc(src)}" alt="">` : '<span class="map-quick-standing-fallback">?</span>'}</span>
+          <span class="map-quick-standing-thumb${cropStyle ? ' cropped' : ''}">${src ? `<img src="${esc(src)}" alt=""${cropStyle}>` : '<span class="map-quick-standing-fallback">?</span>'}</span>
           <span class="map-quick-standing-label">${esc(displayLabel)}</span>
         </button>`;
       }).join('')}
     </div>`;
+  const cropBtn = menu.querySelector('.map-quick-standing-crop-btn');
+  if (cropBtn) {
+    cropBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      renderQuickStandingCropEditor();
+    });
+  }
   menu.querySelectorAll('.map-quick-standing-card').forEach(btn => {
     btn.addEventListener('click', async (e) => {
       e.preventDefault();
@@ -2146,6 +2204,196 @@ function renderQuickStandingMenu() {
       await selectQuickStanding(journal, token, standing);
     });
   });
+  menu.style.display = 'flex';
+}
+
+function getDefaultQuickStandingThumbCrop() {
+  return { cx: 0.5, cy: 0.5, zoom: 1 };
+}
+
+function getQuickStandingCropPreviewStyle(crop) {
+  const safe = normalizeQuickStandingThumbCrop(crop) || getDefaultQuickStandingThumbCrop();
+  const cx = Math.round(safe.cx * 10000) / 100;
+  const cy = Math.round(safe.cy * 10000) / 100;
+  const zoom = Math.round(safe.zoom * 1000) / 1000;
+  return `object-position:${cx}% ${cy}%;transform:scale(${zoom});transform-origin:${cx}% ${cy}%;`;
+}
+
+function updateQuickStandingCropPreview(menu, crop) {
+  const img = menu?.querySelector('.map-quick-standing-crop-image');
+  const range = menu?.querySelector('.map-quick-standing-crop-range');
+  const value = menu?.querySelector('.map-quick-standing-crop-value');
+  const safe = normalizeQuickStandingThumbCrop(crop) || getDefaultQuickStandingThumbCrop();
+  if (img) img.setAttribute('style', getQuickStandingCropPreviewStyle(safe));
+  if (range) range.value = String(Math.round(safe.zoom * 100));
+  if (value) value.textContent = `${Math.round(safe.zoom * 100)}%`;
+}
+
+async function saveQuickStandingThumbCrop(journal, token, crop) {
+  if (!journal?.id || !token?.id) return;
+  if (!canEditQuickStandingCrop(journal, token)) {
+    showToast('스탠딩 크롭 설정 권한이 없어요.');
+    return;
+  }
+  const safeCrop = crop ? normalizeQuickStandingThumbCrop(crop) : null;
+  const prevCrop = token.quickStandingCrop || null;
+  try {
+    if (safeCrop) token.quickStandingCrop = safeCrop;
+    else delete token.quickStandingCrop;
+    if (St.tokens && St.tokens[token.id]) {
+      if (safeCrop) St.tokens[token.id].quickStandingCrop = safeCrop;
+      else delete St.tokens[token.id].quickStandingCrop;
+    }
+    if (window._FB?.CONFIGURED && St.roomCode) {
+      const { db, ref, update } = window._FB;
+      await update(ref(db, `rooms/${St.roomCode}/tokens/${token.id}`), { quickStandingCrop: safeCrop });
+    }
+    renderQuickStandingMenu();
+    showToast(safeCrop ? '스탠딩 썸네일 크롭을 저장했어요.' : '스탠딩 썸네일 크롭을 초기화했어요.');
+  } catch (err) {
+    if (prevCrop) token.quickStandingCrop = prevCrop;
+    else delete token.quickStandingCrop;
+    if (St.tokens && St.tokens[token.id]) {
+      if (prevCrop) St.tokens[token.id].quickStandingCrop = prevCrop;
+      else delete St.tokens[token.id].quickStandingCrop;
+    }
+    console.error('quick standing crop save failed', err);
+    showToast('스탠딩 크롭 저장에 실패했어요.');
+  }
+}
+
+function bindQuickStandingCropEditor(menu, journal, token, cropState) {
+  if (!menu || !cropState) return;
+  const preview = menu.querySelector('.map-quick-standing-crop-preview');
+  const range = menu.querySelector('.map-quick-standing-crop-range');
+  const backBtn = menu.querySelector('.map-quick-standing-crop-back');
+  const saveBtn = menu.querySelector('.map-quick-standing-crop-save');
+  const resetBtn = menu.querySelector('.map-quick-standing-crop-reset');
+  const clampCrop = () => {
+    cropState.crop.cx = clampQuickStandingCropValue(cropState.crop.cx, 0, 1, 0.5);
+    cropState.crop.cy = clampQuickStandingCropValue(cropState.crop.cy, 0, 1, 0.5);
+    cropState.crop.zoom = clampQuickStandingCropValue(cropState.crop.zoom, 1, 3, 1);
+  };
+  if (backBtn) {
+    backBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      renderQuickStandingMenu();
+    });
+  }
+  if (range) {
+    range.addEventListener('input', () => {
+      cropState.crop.zoom = clampQuickStandingCropValue(Number(range.value) / 100, 1, 3, 1);
+      updateQuickStandingCropPreview(menu, cropState.crop);
+    });
+  }
+  if (preview) {
+    const startDrag = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      cropState.dragging = true;
+      cropState.lastX = e.clientX;
+      cropState.lastY = e.clientY;
+      preview.setPointerCapture?.(e.pointerId);
+      preview.classList.add('dragging');
+    };
+    const moveDrag = (e) => {
+      if (!cropState.dragging) return;
+      e.preventDefault();
+      const rect = preview.getBoundingClientRect();
+      const zoom = Math.max(1, Number(cropState.crop.zoom) || 1);
+      const dx = e.clientX - cropState.lastX;
+      const dy = e.clientY - cropState.lastY;
+      cropState.lastX = e.clientX;
+      cropState.lastY = e.clientY;
+      cropState.crop.cx += dx / Math.max(1, rect.width * zoom);
+      cropState.crop.cy += dy / Math.max(1, rect.height * zoom);
+      clampCrop();
+      updateQuickStandingCropPreview(menu, cropState.crop);
+    };
+    const endDrag = (e) => {
+      if (!cropState.dragging) return;
+      cropState.dragging = false;
+      preview.classList.remove('dragging');
+      try { preview.releasePointerCapture?.(e.pointerId); } catch (_) {}
+    };
+    preview.addEventListener('pointerdown', startDrag);
+    preview.addEventListener('pointermove', moveDrag);
+    preview.addEventListener('pointerup', endDrag);
+    preview.addEventListener('pointerleave', endDrag);
+    preview.addEventListener('pointercancel', endDrag);
+  }
+  if (saveBtn) {
+    saveBtn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      clampCrop();
+      await saveQuickStandingThumbCrop(journal, token, cropState.crop);
+    });
+  }
+  if (resetBtn) {
+    resetBtn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      await saveQuickStandingThumbCrop(journal, token, null);
+    });
+  }
+}
+
+function renderQuickStandingCropEditor() {
+  const menu = getQuickStandingMenuEl();
+  if (!menu) return;
+  bindQuickStandingMenuScrollGuard(menu);
+  const ctx = getSelectedQuickStandingContext();
+  getQuickStandingButtonEl()?.classList.add('is-open');
+  if (ctx.error) {
+    menu.innerHTML = getStandingQuickEmptyHtml(ctx.error);
+    menu.style.display = 'flex';
+    return;
+  }
+  const { journal, token, standings } = ctx;
+  if (!canEditQuickStandingCrop(journal, token)) {
+    showToast('스탠딩 크롭 설정 권한이 없어요.');
+    renderQuickStandingMenu();
+    return;
+  }
+  const baseStanding = standings[0];
+  if (!baseStanding) {
+    showToast('크롭 기준으로 사용할 스탠딩 이미지가 없어요.');
+    renderQuickStandingMenu();
+    return;
+  }
+  const title = String(journal?.title || '무제 저널').trim() || '무제 저널';
+  const baseLabel = getQuickStandingDisplayLabel(baseStanding.label || '첫 번째 스탠딩');
+  const currentCrop = normalizeQuickStandingThumbCrop(token?.quickStandingCrop || null) || getDefaultQuickStandingThumbCrop();
+  const cropState = { crop: { ...currentCrop }, dragging: false, lastX: 0, lastY: 0 };
+  menu.innerHTML = `
+    <div class="map-quick-standing-head crop-mode">
+      <button type="button" class="map-quick-standing-crop-back" aria-label="스탠딩 목록으로 돌아가기">‹</button>
+      <span>${esc(title)} 크롭 기능</span>
+    </div>
+    <div class="map-quick-standing-crop-editor">
+      <div class="map-quick-standing-crop-preview" title="드래그해서 썸네일 중심을 조정">
+        <img class="map-quick-standing-crop-image" src="${esc(String(baseStanding.img || '').trim())}" alt="" style="${getQuickStandingCropPreviewStyle(cropState.crop)}">
+        <span class="map-quick-standing-crop-frame" aria-hidden="true"></span>
+      </div>
+      <div class="map-quick-standing-crop-meta">
+        <span>기준 이미지</span>
+        <strong>${esc(baseLabel)}</strong>
+      </div>
+      <label class="map-quick-standing-crop-slider">
+        <span>크기</span>
+        <input type="range" min="100" max="300" step="1" value="${Math.round(cropState.crop.zoom * 100)}" class="map-quick-standing-crop-range">
+        <em class="map-quick-standing-crop-value">${Math.round(cropState.crop.zoom * 100)}%</em>
+      </label>
+      <p class="map-quick-standing-crop-help">이미지를 드래그해 썸네일 중심을 맞추고, 크기로 확대 비율을 조정합니다. 저장하면 이 토큰의 모든 스탠딩 퀵뷰 썸네일에 같은 영역이 적용됩니다.</p>
+      <div class="map-quick-standing-crop-actions">
+        <button type="button" class="map-quick-standing-crop-reset">초기화</button>
+        <button type="button" class="map-quick-standing-crop-save primary">저장</button>
+      </div>
+    </div>`;
+  updateQuickStandingCropPreview(menu, cropState.crop);
+  bindQuickStandingCropEditor(menu, journal, token, cropState);
   menu.style.display = 'flex';
 }
 
