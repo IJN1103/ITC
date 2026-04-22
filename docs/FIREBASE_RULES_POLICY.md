@@ -4,7 +4,7 @@ Firebase Rules 권한 정책 정리
 목적
 ----
 이 문서는 현재 운영 Firebase Realtime Database Rules의 권한 기준을 고정하기 위한 문서다.
-2026-04-20 기준으로 `firebase-rules/database.rules.console-candidate.json`을 Firebase Console에 적용했고, GM/플레이어 2계정 Stage 4 테스트를 통과했다.
+2026-04-21 기준으로 BGM 권한, 스탠딩 퀵뷰, 토큰 공개/비공개 visibility 권한까지 반영한 `database.rules.json`을 현재 운영 기준으로 본다.
 
 현재 파일 기준
 --------------
@@ -27,8 +27,8 @@ Firebase Rules 권한 정책 정리
 
 ### BGM
 - 기본적으로 GM/owner만 BGM을 수정할 수 있다.
-- 예외: `players/{uid}/permissions/manageBgm === true`인 플레이어는 BGM playlist/currentTrack 수정 가능.
-- 현재 BGM 기능은 완성/실사용 단계가 아니므로 manageBgm 실제 UI 테스트는 보류 상태다.
+- 예외: `players/{uid}/permissions/manageBgm === true`인 플레이어는 BGM playlist/currentTrack/isPlaying/repeatMode/seek/playback 상태를 수정할 수 있다.
+- BGM 기능은 구축 완료 상태이며, manageBgm 권한자는 GM과 동일하게 BGM 조작 UI를 사용할 수 있다.
 - BGM 권한자는 맵세팅 데이터(`mapBackground`, `mapObjects`, `mapLayerState` 등)를 수정할 수 없도록 분리한다.
 
 ### Tokens
@@ -38,6 +38,10 @@ Firebase Rules 권한 정책 정리
   - `moveToken`: 토큰 이동
   - `editToken`: 토큰 편집/삭제
 - 권한 없는 플레이어의 무단 토큰 조작은 Rules 레벨에서 차단한다.
+- 토큰 visibility 변경은 GM/owner만 가능하다.
+- 기존 토큰에 visibility 값이 없으면 클라이언트에서는 전체 공개로 취급한다.
+- 플레이어는 공개 토큰만 기존 권한 기준에 따라 이동/편집할 수 있고, 비공개 토큰은 이동/편집/삭제/스탠딩 변경할 수 없다.
+- 스탠딩 퀵뷰는 토큰 소유자/권한자/해당 저널 사용 가능 플레이어/GM만 사용할 수 있으며, 비공개 토큰은 플레이어 측 조작을 차단한다.
 
 ### Map / mapScenes
 - 맵세팅 ZIP, 레이어, 장면 전환 저장/복제/순서 변경은 GM/owner 중심 기능이다.
@@ -85,7 +89,7 @@ Stage 4 적용 결과
 - 일반 플레이어의 방 전체 삭제가 차단됨.
 - 일반 플레이어의 권한 상승 가능성이 줄어듦.
 - 채팅/팝아웃/토큰/맵세팅/장면 전환 주요 기능 정상.
-- BGM 관련 manageBgm 테스트는 기능 미구축으로 보류.
+- BGM 관련 manageBgm 기능은 구축 완료되었고, 권한 부여/회수 UI 안정화 테스트가 필요하다.
 
 주의사항
 --------

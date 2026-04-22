@@ -230,9 +230,9 @@ styles/all.css          — 통합 CSS
   - src/modules/map-token/map-token.js
   - src/modules/journal-v1/journal.js
 - build.sh 정상 출력 기준:
-  - chat.js 2145 lines
-  - map-token.js 1989 lines
-  - journal.js 2402 lines
+  - chat.js 2186 lines
+  - map-token.js 2113 lines
+  - journal.js 2695 lines
 - src만 직접 수정하면 build.sh 실행 시 회귀될 수 있으므로, src 수정 시 dev에도 반드시 같은 내용을 반영해야 한다.
 - dev만 수정한 경우 build.sh를 실행해 src를 갱신해야 한다.
 - 관련 문서: docs/DEV_SRC_BUILD_SYNC_CHECKLIST.txt
@@ -254,7 +254,7 @@ styles/all.css          — 통합 CSS
 - 방 전체 삭제는 GM/owner만 가능하다.
 - 일반 플레이어가 마지막으로 방을 나가도 `rooms/{roomCode}` 전체를 삭제하지 않는다.
 - players role/permissions는 GM/owner만 관리한다.
-- BGM playlist/currentTrack은 GM/owner 또는 `manageBgm` 권한자만 수정 가능하다.
+- BGM playlist/currentTrack/isPlaying/repeatMode/seek/playback 상태는 GM/owner 또는 `manageBgm` 권한자만 수정 가능하다.
 - 맵세팅 관련 bgm 하위 키(mapBackground/mapObjects/mapLayerState 등)는 GM/owner 또는 `manageMap` 기준이다.
 - Tokens는 GM/owner 기본 권한이며, 플레이어는 `createToken`, `moveToken`, `editToken` 권한을 받은 만큼만 가능하다.
 - Journals/Handouts read 하드닝은 아직 보류다. 현재 코드는 전체 read 후 프론트 필터링 구조이기 때문이다.
@@ -263,18 +263,18 @@ styles/all.css          — 통합 CSS
 - GM/owner 주요 기능 정상.
 - 일반 플레이어 방 전체 삭제 차단 정상.
 - 채팅/팝아웃/토큰/맵세팅/장면 전환 주요 기능 정상.
-- BGM 기능은 아직 구축되지 않아 manageBgm 실제 테스트는 보류.
+- BGM 기능은 구축 완료 상태이며, manageBgm 권한자 조작/권한 회수 UI 안정화 테스트 대상이다.
 
 중요 주의:
 - 새 Firebase 경로를 추가하는 작업은 반드시 Rules 필요 여부를 작업 전에 사용자에게 안내한다.
 - journals/handouts를 Rules에서 per-item read로 바로 잠그면 현재 로딩 구조가 깨질 수 있다.
-- 권한 UI가 없는 상태에서 Rules만 세분화되어 있으므로, 권한 부여/회수 UI는 별도 작업으로 다룬다.
+- 권한 UI는 moveToken/createToken/editToken/manageMap/manageBgm/sendDesc 기준으로 작동한다. visibility 변경은 GM 전용이다.
 - 문제가 생기면 `firebase-rules/database.rules.rollback-current.json`을 Firebase Console에 붙여넣어 즉시 롤백한다.
 
 다음 권장 작업:
-1. 토큰 권한 UI 구현 여부 검토
+1. 토큰 visibility / 스탠딩 퀵뷰 / BGM 권한 회귀 테스트
 2. 권한 없는 플레이어 버튼 숨김/비활성화 UX 정리
-3. journals/handouts 권한 구조 별도 로드맵 작성
+3. journals/handouts read per-item 하드닝은 별도 장기 로드맵에서 검토
 4. 최종 통합 회귀 테스트
 
 [2026-04-20] 토큰 권한 UI 1차 안정화
@@ -283,7 +283,23 @@ styles/all.css          — 통합 CSS
 - 토큰 권한은 moveToken / createToken / editToken 개별 권한 버튼으로 조정한다.
 - `전체 권한 부여`는 manageMap / manageBgm / sendDesc까지 포함하므로 신중하게 사용한다.
 - 방 설정 안의 채팅 글자 크기 조절 UI를 복구했다. `--chat-font-size` CSS 변수와 `itc_chat_font_size` localStorage 값을 사용한다.
-- BGM 기능은 아직 미구축 상태라 manageBgm은 실제 테스트 보류다.
+- BGM 기능은 구축 완료 상태이며, manageBgm 권한자는 GM과 동일하게 BGM을 조작할 수 있다.
 - manageMap을 켜면 `+ 맵세팅`과 맵세팅 레이어 버튼이 표시된다. 장면 전환은 계속 GM 전용이다.
 - manageMap 권한자는 importedMapObject 패널 토큰 생성/수정/삭제가 가능하도록 database.rules.json에도 반영했다. Firebase Console Rules도 같은 기준으로 갱신해야 한다.
+- 토큰 visibility는 GM만 변경 가능하다. 기존 토큰과 신규 토큰은 기본 전체 공개이며, 비공개 토큰은 플레이어 화면/상태패널/편집창/스탠딩 변경에서 차단된다.
 - 관련 테스트 문서: docs/TOKEN_PERMISSION_UI_CHECKLIST.txt
+
+
+[2026-04-21] BGM / 스탠딩 퀵뷰 / 토큰 visibility 안정화
+------------------------------------------------
+완료된 주요 기능:
+- BGM 접기/펼치기 바, 플레이리스트 추가/삭제/선택 재생/드래그 순서 변경, 반복재생, 개인 볼륨, 재생바/seek, 새로고침 후 이어재생을 구현했다.
+- manageBgm 권한자는 GM과 동일하게 BGM 조작 가능하며, 권한 없는 플레이어는 볼륨만 조절 가능하다.
+- 저널 퀵뷰 왼쪽에 스탠딩 퀵뷰를 추가했고, 선택한 스탠딩은 토큰 이미지/채팅 출력/GM·플레이어 화면에 동기화된다.
+- 캐릭터/패널 토큰 편집창 상단에 GM 전용 비공개/전체 공개 토글을 추가했다.
+- 기존 토큰과 신규 토큰은 기본 전체 공개다. GM이 비공개로 저장한 토큰은 플레이어 맵/상태패널/편집창 접근/스탠딩 변경에서 차단된다.
+
+주의:
+- database.rules.json 변경이 있었으므로 Firebase Console Rules 반영 여부를 항상 확인한다.
+- src/modules/map-token/map-token.js, src/modules/journal-v1/journal.js는 dev 분할 파일과 동기화되어야 한다.
+- 다음 큰 기능 추가 전 docs/FINAL_REGRESSION_CHECKLIST.txt 기준으로 통합 테스트를 권장한다.
