@@ -1598,7 +1598,7 @@ async function sendChat() {
       const target = Object.entries(players).find(([id, p]) => p.name === targetName);
       if (target) {
         inp.value = '';
-        await sendWhisperMessage(St.myName, whisperText, target[0], targetName, { channelKey: currentChannelKey });
+        await sendWhisperMessage(St.myName, whisperText, target[0], targetName, { channelKey: currentChannelKey, speakAsJournalId: St.speakAsJournalId || null });
         return;
       }
       const jTarget = _allJournals.find(j => (j.title || '') === targetName);
@@ -1895,24 +1895,52 @@ function getActiveWhisperChannelKey(options = {}) {
   return String(window._itcActiveChatChannelKey || (typeof getCurrentDmChannelKey === 'function' ? getCurrentDmChannelKey() : 'global') || 'global').trim() || 'global';
 }
 
+function resolveWhisperSpeakAsContext(journalId, text = '') {
+  const safeJournalId = String(journalId || '').trim();
+  if (!safeJournalId) return null;
+
+  const journalList = typeof loadJournals === 'function' ? loadJournals() : [];
+  const journal = journalList.find(x => String(x.id || '') === safeJournalId)
+    || (_allJournals || []).find(x => String(x.id || '') === safeJournalId)
+    || null;
+
+  let context = null;
+  try {
+    if (journal && typeof saBuildMessageContext === 'function') {
+      context = saBuildMessageContext(journal, text);
+    }
+  } catch (e) {
+    context = null;
+  }
+
+  const avatarFromResolver = typeof saGetAvatar === 'function' ? saGetAvatar(safeJournalId) : null;
+  const avatar = context?.speakAsAvatar || avatarFromResolver || journal?.avatar || journal?.sheet?.avatar || '';
+
+  return {
+    name: context?.name || journal?.title || '',
+    speakAsJournalId: safeJournalId,
+    speakAsAvatar: avatar || '',
+    nameColor: context?.nameColor || journal?.nameColor || ''
+  };
+}
+
 function sendWhisperMessage(senderName, text, targetUid, targetName, options = {}) {
   const localTime = Date.now();
   const channelKey = getActiveWhisperChannelKey(options);
   const speakAsJournalId = String(options?.speakAsJournalId || St.speakAsJournalId || '').trim();
   const targetJournalId = String(options?.targetJournalId || St.whisperToJournal || '').trim();
+  const speakAsContext = resolveWhisperSpeakAsContext(speakAsJournalId, text);
   const msg = {
-    name: senderName, text, type: 'whisper',
+    name: speakAsContext?.name || senderName, text, type: 'whisper',
     uid: St.myId, time: localTime,
     whisperTo: targetUid, whisperToName: targetName,
     dmChannelKey: channelKey || 'global'
   };
   if (targetJournalId) msg.whisperToJournal = targetJournalId;
-  if (speakAsJournalId) {
-    const journalList = typeof loadJournals === 'function' ? loadJournals() : [];
-    const j = journalList.find(x => x.id === speakAsJournalId) || (_allJournals || []).find(x => x.id === speakAsJournalId);
-    msg.speakAsJournalId = speakAsJournalId;
-    if (j?.avatar) msg.speakAsAvatar = j.avatar;
-    if (j?.nameColor) msg.nameColor = j.nameColor;
+  if (speakAsContext) {
+    msg.speakAsJournalId = speakAsContext.speakAsJournalId;
+    if (speakAsContext.speakAsAvatar) msg.speakAsAvatar = speakAsContext.speakAsAvatar;
+    if (speakAsContext.nameColor) msg.nameColor = speakAsContext.nameColor;
   } else if (St.myNameColor) {
     msg.nameColor = St.myNameColor;
   }

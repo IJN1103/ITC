@@ -411,7 +411,7 @@ function popoutChat() {
       type: msgType,
       channel: fallbackChannel,
       nameColor: m.nameColor || '',
-      avatar: m.speakAsAvatar || m.avatar || getPopoutAvatarUrl(m.name, m.uid),
+      avatar: m.speakAsAvatar || (m.speakAsJournalId && typeof saGetAvatar === 'function' ? saGetAvatar(m.speakAsJournalId) : '') || m.avatar || getPopoutAvatarUrl(m.name, m.uid),
       time: formatPopoutMessageTime(m.time || m.timestamp),
       fhtml: isImage ? '' : (typeof fmtText === 'function' ? fmtText(m.text || '') : ''),
       imageWide: !!m.imageWide,
