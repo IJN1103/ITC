@@ -262,9 +262,16 @@
   function positionDmRoomListPanel(anchor, panel) {
     const rect = anchor?.getBoundingClientRect?.();
     if (!rect) return;
-    const width = Math.min(260, Math.max(180, window.innerWidth - 24));
-    const left = Math.min(Math.max(12, rect.left), Math.max(12, window.innerWidth - width - 12));
-    const top = Math.min(rect.bottom + 8, Math.max(12, window.innerHeight - 260));
+    const width = Math.min(260, Math.max(200, window.innerWidth - 24));
+    const gap = 8;
+    const estimatedHeight = Math.min(280, Math.max(120, panel.scrollHeight || 160));
+    let left = rect.left;
+    let top = rect.bottom + gap;
+    if (top + estimatedHeight > window.innerHeight - 12) {
+      top = Math.max(12, rect.top - estimatedHeight - gap);
+    }
+    left = Math.min(Math.max(12, left), Math.max(12, window.innerWidth - width - 12));
+    top = Math.min(Math.max(12, top), Math.max(12, window.innerHeight - estimatedHeight - 12));
     panel.style.width = `${width}px`;
     panel.style.left = `${left}px`;
     panel.style.top = `${top}px`;
@@ -332,7 +339,7 @@
 
   function getDmRoomListButtonHtml() {
     const dotStyle = visibleRoomListHasUnread() ? '' : 'display:none';
-    return `<button type="button" class="dm-channel-btn dm-room-list-toggle" data-dm-role="room-list" title="DM방 목록" aria-label="DM방 목록"><span class="dm-room-list-icon">⋮</span><span class="dm-channel-dot" style="${dotStyle}"></span></button>`;
+    return `<button type="button" class="dm-channel-btn dm-room-list-toggle" data-dm-role="room-list" title="DM방 목록" aria-label="DM방 목록"><span class="dm-room-list-icon" aria-hidden="true"><span></span><span></span><span></span></span><span class="dm-channel-dot" style="${dotStyle}"></span></button>`;
   }
 
   function renderGmButtons(list) {
@@ -341,8 +348,8 @@
     const currentKey = typeof ROOT.getCurrentDmChannelKey === 'function' ? ROOT.getCurrentDmChannelKey() : 'global';
     const isGlobal = typeof ROOT.isGlobalDmChannelKey === 'function' ? ROOT.isGlobalDmChannelKey(currentKey) : selected.size === 0;
     const items = [];
-    items.push(`<button type="button" class="dm-channel-btn ${isGlobal ? 'is-active' : ''}" data-dm-role="global"><span class="dm-channel-label">전체</span><span class="dm-channel-dot" style="display:none"></span></button>`);
     items.push(getDmRoomListButtonHtml());
+    items.push(`<button type="button" class="dm-channel-btn ${isGlobal ? 'is-active' : ''}" data-dm-role="global"><span class="dm-channel-label">전체</span><span class="dm-channel-dot" style="display:none"></span></button>`);
     others.forEach((player) => {
       const active = !isGlobal && selected.has(player.uid);
       const label = (getAliasForUid(player.uid) || player.name).replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -385,8 +392,8 @@
     const currentKey = typeof ROOT.getCurrentDmChannelKey === 'function' ? ROOT.getCurrentDmChannelKey() : 'global';
     const channels = typeof ROOT.getPlayerVisibleDmChannels === 'function' ? ROOT.getPlayerVisibleDmChannels(myId) : [];
     const items = [];
-    items.push(`<button type="button" class="dm-channel-btn ${String(currentKey) === 'global' ? 'is-active' : ''}" data-dm-role="global"><span class="dm-channel-label">전체</span><span class="dm-channel-dot" style="display:none"></span></button>`);
     items.push(getDmRoomListButtonHtml());
+    items.push(`<button type="button" class="dm-channel-btn ${String(currentKey) === 'global' ? 'is-active' : ''}" data-dm-role="global"><span class="dm-channel-label">전체</span><span class="dm-channel-dot" style="display:none"></span></button>`);
     channels.forEach((channel) => {
       const active = String(currentKey) === String(channel.channelKey || '');
       const label = getChannelLabelForViewer(channel, myId);

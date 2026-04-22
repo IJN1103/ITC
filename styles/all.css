@@ -421,6 +421,20 @@ to{opacity:1}
 .dm-channel-btn.is-active{border-color:rgba(184,154,96,.45);background:rgba(184,154,96,.12);color:var(--accent)}
 .dm-channel-label{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:88px}
 .dm-channel-dot{position:absolute;top:3px;right:3px;width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 2px rgba(19,16,14,.9)}
+.dm-room-list-toggle{width:24px;padding:0;min-width:24px;max-width:24px;}
+.dm-room-list-icon{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;width:12px;height:12px;}
+.dm-room-list-icon span{display:block;width:10px;height:1px;border-radius:999px;background:currentColor;opacity:.88;}
+.dm-room-list-panel{position:fixed;z-index:2200;display:none;max-height:280px;overflow:hidden;background:rgba(16,16,16,.98);border:1px solid var(--border2);border-radius:10px;box-shadow:0 14px 42px rgba(0,0,0,.45);color:var(--dim);backdrop-filter:blur(8px);}
+.dm-room-list-head{display:flex;align-items:center;justify-content:space-between;padding:9px 11px 7px;border-bottom:1px solid var(--border);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);background:linear-gradient(180deg,rgba(184,154,96,.08),rgba(184,154,96,0));}
+.dm-room-list-body{display:flex;flex-direction:column;gap:4px;max-height:232px;overflow-y:auto;padding:7px;}
+.dm-room-list-item{position:relative;width:100%;min-height:30px;border:1px solid transparent;border-radius:7px;background:transparent;color:var(--dim);display:flex;align-items:center;gap:8px;padding:6px 9px;text-align:left;cursor:pointer;transition:var(--t);}
+.dm-room-list-item:hover{border-color:rgba(184,154,96,.32);background:rgba(184,154,96,.08);color:var(--text);}
+.dm-room-list-item.is-active{border-color:rgba(184,154,96,.42);background:rgba(184,154,96,.12);color:var(--accent);}
+.dm-room-list-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;}
+.dm-room-list-meta{flex-shrink:0;font-size:9px;color:var(--accent);opacity:.8;}
+.dm-room-list-dot{position:absolute;top:7px;right:7px;width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 2px rgba(16,16,16,.95);}
+.dm-room-list-empty{padding:14px 10px;text-align:center;font-size:11px;color:var(--muted);line-height:1.5;}
+
 .chat-messages{flex:1;overflow-y:auto;padding:10px;display:block;}
 .chat-msg{animation:none;display:block;overflow:hidden;margin-bottom:16px;}
 .chat-msg.msg-sys{text-align:center;}
