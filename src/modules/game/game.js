@@ -331,6 +331,62 @@ function normalizeDmChannelEntry(channelKey, raw = {}) {
   };
 }
 
+function isCurrentUserRoomGm() {
+  const myRole = String(St.players?.[St.myId]?.role || '').trim().toLowerCase();
+  return !!St.isGM || myRole === 'gm';
+}
+
+function clearDmChannelRuntimeCache(channelKey = 'global') {
+  const safeKey = String(channelKey || 'global').trim() || 'global';
+  _processedChatKeysByChannel.delete(safeKey);
+  _chatMessageSignaturesByChannel.delete(safeKey);
+  _chatRecordsByChannel.delete(safeKey);
+  _chatHistoryCursorByChannel.delete(safeKey);
+  try { if (typeof clearDmUnreadState === 'function') clearDmUnreadState(safeKey); } catch (e) {}
+}
+
+async function deleteDmChannelWithMessages(channelKey = 'global') {
+  const safeKey = String(channelKey || 'global').trim() || 'global';
+  if (!safeKey || safeKey === 'global') throw new Error('Invalid DM channel key');
+  if (!window._FB?.CONFIGURED || !St.roomCode) throw new Error('Firebase is not ready');
+  if (!isCurrentUserRoomGm()) throw new Error('Only GM can delete DM rooms');
+
+  const { db, ref, get, update, remove } = window._FB;
+  if (!db || !ref || !get || !update) throw new Error('Firebase helpers are missing');
+
+  const rootUpdates = {};
+  const chatSnap = await get(ref(db, `rooms/${St.roomCode}/chat`)).catch(() => null);
+  const rawMessages = chatSnap?.val?.() || {};
+  Object.entries(rawMessages || {}).forEach(([messageId, message]) => {
+    if (String(message?.dmChannelKey || 'global').trim() === safeKey) {
+      rootUpdates[`rooms/${St.roomCode}/chat/${messageId}`] = null;
+    }
+  });
+
+  const dmMessagesSnap = await get(ref(db, `rooms/${St.roomCode}/dmChats/${safeKey}/messages`)).catch(() => null);
+  const rawDmMessages = dmMessagesSnap?.val?.() || {};
+  Object.keys(rawDmMessages || {}).forEach((messageId) => {
+    rootUpdates[`rooms/${St.roomCode}/dmChats/${safeKey}/messages/${messageId}`] = null;
+  });
+
+  if (Object.keys(rootUpdates).length) {
+    await update(ref(db), rootUpdates);
+  }
+
+  if (typeof remove === 'function') {
+    await remove(ref(db, `rooms/${St.roomCode}/dmChats/${safeKey}/meta`)).catch(() => {});
+  } else {
+    await update(ref(db, `rooms/${St.roomCode}/dmChats/${safeKey}`), { meta: null }).catch(() => {});
+  }
+
+  clearDmChannelRuntimeCache(safeKey);
+  if (String(window._itcActiveChatChannelKey || 'global') === safeKey) {
+    if (typeof selectGlobalDmChannel === 'function') selectGlobalDmChannel();
+    else switchActiveChatChannel('global');
+  }
+  try { if (typeof refreshDmChannelButtons === 'function') refreshDmChannelButtons(); } catch (e) {}
+}
+
 async function ensureDmChannelMeta(channelKey = 'global') {
   const safeKey = String(channelKey || 'global').trim() || 'global';
   if (!window._FB?.CONFIGURED || !St.roomCode || safeKey === 'global') return;
@@ -363,6 +419,12 @@ function syncAvailableDmChannels(entries = []) {
     .map((entry) => normalizeDmChannelEntry(entry?.channelKey, { meta: entry }))
     .filter((item) => item.channelKey && item.channelKey !== 'global');
   if (typeof setAvailableDmChannels === 'function') setAvailableDmChannels(normalized);
+  const currentKey = String(window._itcActiveChatChannelKey || (typeof getCurrentDmChannelKey === 'function' ? getCurrentDmChannelKey() : 'global') || 'global').trim() || 'global';
+  if (currentKey !== 'global' && !normalized.some((item) => item.channelKey === currentKey)) {
+    clearDmChannelRuntimeCache(currentKey);
+    if (typeof selectGlobalDmChannel === 'function') selectGlobalDmChannel();
+    else switchActiveChatChannel('global');
+  }
   if (typeof refreshDmChannelButtons === 'function') refreshDmChannelButtons();
 }
 
@@ -443,6 +505,8 @@ async function loadOlderCasualHistory() {
   }
   return { count: records.length, exhausted: entries.length < pageLimit };
 }
+
+window.deleteDmChannelWithMessages = deleteDmChannelWithMessages;
 
 window.loadOlderMessagesForPopout = async function(channel = 'chat', channelKey = 'global') {
   const safeChannel = String(channel || 'chat').trim() || 'chat';

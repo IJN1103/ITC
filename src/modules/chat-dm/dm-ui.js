@@ -352,6 +352,10 @@
     return getVisibleRoomListChannels().some((channel) => channelHasUnread(channel.channelKey));
   }
 
+  function canManageDmRooms() {
+    return typeof ROOT.isDmGmView === 'function' && ROOT.isDmGmView();
+  }
+
   function getDmRoomListPanel() {
     let panel = document.getElementById('dm-room-list-panel');
     if (panel) return panel;
@@ -392,18 +396,25 @@
     const panel = getDmRoomListPanel();
     const channels = getVisibleRoomListChannels();
     const currentKey = typeof ROOT.getCurrentDmChannelKey === 'function' ? ROOT.getCurrentDmChannelKey() : 'global';
+    const canDelete = canManageDmRooms();
     const rows = channels.map((channel) => {
       const key = String(channel?.channelKey || '').trim();
       const active = key && String(currentKey) === key;
       const unread = key && channelHasUnread(key);
-      return `<button type="button" class="dm-room-list-item ${active ? 'is-active' : ''}" data-channel-key="${escapeHtml(key)}">`
+      const deleteButton = canDelete
+        ? `<button type="button" class="dm-room-list-delete" data-delete-channel-key="${escapeHtml(key)}" title="DM방 삭제" aria-label="DM방 삭제">×</button>`
+        : '';
+      return `<div class="dm-room-list-row ${active ? 'is-active' : ''}">`
+        + `<button type="button" class="dm-room-list-item" data-channel-key="${escapeHtml(key)}">`
         + `<span class="dm-room-list-name">${escapeHtml(getChannelFullLabel(channel))}</span>`
         + `<span class="dm-room-list-meta">${active ? '현재' : ''}</span>`
         + `<span class="dm-room-list-dot" style="${unread ? '' : 'display:none'}"></span>`
-        + `</button>`;
+        + `</button>`
+        + deleteButton
+        + `</div>`;
     });
     panel.innerHTML = `
-      <div class="dm-room-list-head">DM방 목록</div>
+      <div class="dm-room-list-head"><span>DM방 목록</span>${canDelete ? '<span class="dm-room-list-head-note">GM 삭제 가능</span>' : ''}</div>
       <div class="dm-room-list-body">
         ${rows.length ? rows.join('') : '<div class="dm-room-list-empty">표시할 DM방이 없어요.</div>'}
       </div>
@@ -417,6 +428,29 @@
         markChannelSeen(channelKey);
         closeDmRoomListPanel();
         renderDmChannelButtons();
+      });
+    });
+    panel.querySelectorAll('[data-delete-channel-key]').forEach((btn) => {
+      btn.addEventListener('click', async (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        const channelKey = String(btn.dataset.deleteChannelKey || '').trim();
+        if (!channelKey) return;
+        const label = getChannelFullLabel(channels.find((channel) => String(channel?.channelKey || '').trim() === channelKey) || {});
+        if (!window.confirm(`${label} DM방과 해당 메시지 기록을 삭제할까요?\n삭제 후에는 되돌릴 수 없습니다.`)) return;
+        btn.disabled = true;
+        try {
+          if (typeof ROOT.deleteDmChannelWithMessages !== 'function') throw new Error('deleteDmChannelWithMessages is not available');
+          await ROOT.deleteDmChannelWithMessages(channelKey);
+          clearPendingPlayerTargetIds();
+          closeDmRoomListPanel();
+          renderDmChannelButtons();
+          showDmToast('DM방을 삭제했어요.');
+        } catch (err) {
+          console.error('delete DM room failed', err);
+          btn.disabled = false;
+          showDmToast('DM방 삭제에 실패했어요.');
+        }
       });
     });
     panel.style.display = 'block';
@@ -520,10 +554,7 @@
     players.forEach((player) => {
       const safeUid = String(player.uid || '').trim();
       if (!safeUid) return;
-      if (player.isSelf) {
-        items.push(`<button type="button" class="dm-channel-btn dm-channel-self ${(!isGlobal || getPendingPlayerTargetIds()) ? 'is-active' : ''}" data-dm-role="self" aria-disabled="true" title="본인은 DM 참여자에 자동 포함됩니다."><span class="dm-channel-label">${escapeHtml(player.name)} · 나</span><span class="dm-channel-dot" style="display:none"></span></button>`);
-        return;
-      }
+      if (player.isSelf) return;
       const active = selected.has(safeUid);
       const dotStyle = targetHasVisibleUnread(safeUid) ? '' : 'display:none';
       items.push(`<button type="button" class="dm-channel-btn ${active ? 'is-active' : ''}" data-dm-role="target" data-uid="${escapeHtml(safeUid)}"><span class="dm-channel-label">${escapeHtml(player.name)}</span><span class="dm-channel-dot" style="${dotStyle}"></span></button>`);
