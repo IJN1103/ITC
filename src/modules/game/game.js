@@ -507,6 +507,7 @@ async function loadOlderCasualHistory() {
 }
 
 window.deleteDmChannelWithMessages = deleteDmChannelWithMessages;
+window.ensureDmChannelMeta = ensureDmChannelMeta;
 
 window.loadOlderMessagesForPopout = async function(channel = 'chat', channelKey = 'global') {
   const safeChannel = String(channel || 'chat').trim() || 'chat';
