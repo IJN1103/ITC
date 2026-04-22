@@ -170,7 +170,7 @@ function shouldShowChatMessageForChannel(channelKey = 'global', message = {}) {
   if (!message) return false;
   if (message.type === 'dm-bootstrap') return false;
   if (resolveMessageChannelKey(message) !== safeChannelKey) return false;
-  if (message.type === 'whisper') return safeChannelKey === 'global' && (message.uid === St.myId || message.whisperTo === St.myId);
+  if (message.type === 'whisper') return message.uid === St.myId || message.whisperTo === St.myId;
   return true;
 }
 
@@ -487,6 +487,7 @@ function switchActiveChatChannel(channelKey = 'global') {
     name: m.name, text: m.text, type: m.type || 'normal', uid: m.uid, timestamp: m.time,
     speakAsAvatar: m.speakAsAvatar, speakAsJournalId: m.speakAsJournalId,
     whisperTo: m.whisperTo, whisperToName: m.whisperToName, whisperToJournal: m.whisperToJournal, nameColor: m.nameColor,
+    speakAsAvatar: m.speakAsAvatar, speakAsJournalId: m.speakAsJournalId,
     msgKey: key, channel: 'chat', standingImg: m.standingImg, tokenId: m.tokenId,
     standingLabel: m.standingLabel, imageWide: !!m.imageWide, imageMeta: m.imageMeta,
     hideImageMeta: !!m.hideImageMeta,

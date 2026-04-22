@@ -285,7 +285,7 @@ L.push('window.renderDmBar=renderDmBar;');
   // send with desc/whisper awareness
   L.push('function send(){var i=document.getElementById("pi");var t=i.value.trim();if(!t)return;i.value="";if(!window.opener)return;');
   L.push('if(descMode){if(window.opener.sendDescFromPopout){window.opener.sendDescFromPopout(t,getCurrentDmChannelKey())}else{window.opener.sendMessage(window.opener.St.myName,t,"desc")}return}');
-  L.push('if(whisperUid){window.opener.sendWhisperMessage(saJId?(journals.find(function(j){return j.id===saJId})||{}).title||window.opener.St.myName:window.opener.St.myName,t,whisperUid,whisperName,{targetJournalId:whisperJournalId||null,speakAsJournalId:saJId||null});return}');
+  L.push('if(whisperUid){window.opener.sendWhisperMessage(saJId?(journals.find(function(j){return j.id===saJId})||{}).title||window.opener.St.myName:window.opener.St.myName,t,whisperUid,whisperName,{targetJournalId:whisperJournalId||null,speakAsJournalId:saJId||null,channelKey:getCurrentDmChannelKey()});return}');
   L.push('window.opener.sendChatFromPopout(t,aTab,getCurrentDmChannelKey())}');
 
   L.push('document.getElementById("sb").onclick=send;');

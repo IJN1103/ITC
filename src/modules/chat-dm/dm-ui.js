@@ -125,10 +125,14 @@
   function rebuildUnreadState(raw) {
     const runtime = getUnreadRuntime();
     const latestByChannel = {};
+    const state = getStateRoot();
+    const myId = String(state.myId || '').trim();
     Object.values(raw && typeof raw === 'object' ? raw : {}).forEach((msg) => {
       const key = String(msg?.dmChannelKey || 'global').trim() || 'global';
       if (key === 'global') return;
-      if (String(msg?.type || '').trim() === 'dm-bootstrap') return;
+      const type = String(msg?.type || '').trim();
+      if (type === 'dm-bootstrap') return;
+      if (type === 'whisper' && myId && String(msg?.uid || '') !== myId && String(msg?.whisperTo || '') !== myId) return;
       const stamp = getMessageStamp(msg);
       latestByChannel[key] = Math.max(Number(latestByChannel[key] || 0), stamp);
     });

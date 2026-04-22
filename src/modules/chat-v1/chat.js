@@ -443,6 +443,7 @@ function storeMessageRecord(channel = 'chat', record = {}, key = '', options = {
     speakAsJournalId: record.speakAsJournalId,
     whisperTo: record.whisperTo,
     whisperToName: record.whisperToName,
+    whisperToJournal: record.whisperToJournal,
     nameColor: record.nameColor,
     standingImg: record.standingImg,
     tokenId: record.tokenId,
@@ -465,6 +466,7 @@ function coerceHistoryRecordForStore(record = {}) {
     speakAsJournalId: record.speakAsJournalId,
     whisperTo: record.whisperTo,
     whisperToName: record.whisperToName,
+    whisperToJournal: record.whisperToJournal,
     nameColor: record.nameColor,
     standingImg: record.standingImg,
     tokenId: record.tokenId,
@@ -536,6 +538,7 @@ function normalizeStoredRecordForSnapshot(channel = 'chat', key = '', record = {
     speakAsJournalId: record.speakAsJournalId || '',
     whisperTo: record.whisperTo || '',
     whisperToName: record.whisperToName || '',
+    whisperToJournal: record.whisperToJournal || '',
     nameColor: record.nameColor || '',
     standingImg: record.standingImg || '',
     tokenId: record.tokenId || '',
@@ -1544,7 +1547,6 @@ async function sendChat() {
   const raw = inp.value.trim();
   const hasImages = _pendingChatImages.length > 0;
   const currentChannelKey = String(window._itcActiveChatChannelKey || (typeof getCurrentDmChannelKey === 'function' ? getCurrentDmChannelKey() : 'global') || 'global').trim() || 'global';
-  const isDmChannel = String(currentChannelKey || 'global').trim() !== 'global';
   if (!raw && !hasImages) return;
 
   const restoreInput = () => {
@@ -1585,10 +1587,6 @@ async function sendChat() {
 
     const wm = raw.match(/^\/w\s+(\S+)\s+([\s\S]+)$/i);
     if (wm) {
-      if (isDmChannel) {
-        showToast('DM 채널에서는 귓말을 사용할 수 없어요.');
-        return;
-      }
       if (hasImages) {
         showToast('귓말과 이미지는 함께 보낼 수 없어요.');
         return;
@@ -1600,14 +1598,14 @@ async function sendChat() {
       const target = Object.entries(players).find(([id, p]) => p.name === targetName);
       if (target) {
         inp.value = '';
-        await sendWhisperMessage(St.myName, whisperText, target[0], targetName);
+        await sendWhisperMessage(St.myName, whisperText, target[0], targetName, { channelKey: currentChannelKey });
         return;
       }
       const jTarget = _allJournals.find(j => (j.title || '') === targetName);
       if (jTarget && jTarget.ownerId) {
         inp.value = '';
         const senderName = St.speakAsJournalId ? (loadJournals().find(x=>x.id===St.speakAsJournalId)?.title||St.myName) : St.myName;
-        await sendWhisperMessage(senderName, whisperText, jTarget.ownerId, targetName);
+        await sendWhisperMessage(senderName, whisperText, jTarget.ownerId, targetName, { channelKey: currentChannelKey, targetJournalId: jTarget.id || null, speakAsJournalId: St.speakAsJournalId || null });
         return;
       }
       showToast(`'${targetName}' 대상을 찾을 수 없어요.`);
@@ -1641,17 +1639,13 @@ async function sendChat() {
     }
 
     if (St.whisperTo) {
-      if (isDmChannel) {
-        showToast('DM 채널에서는 귓말을 사용할 수 없어요.');
-        return;
-      }
       if (hasImages) {
         showToast('귓말 상태에서는 이미지를 함께 보낼 수 없어요.');
         return;
       }
       const senderName = St.speakAsJournalId ? (loadJournals().find(x=>x.id===St.speakAsJournalId)?.title || St.myName) : St.myName;
       inp.value = '';
-      await sendWhisperMessage(senderName, raw, St.whisperTo, St.whisperToName);
+      await sendWhisperMessage(senderName, raw, St.whisperTo, St.whisperToName, { channelKey: currentChannelKey, targetJournalId: St.whisperToJournal || null, speakAsJournalId: St.speakAsJournalId || null });
       return;
     }
 
@@ -1895,19 +1889,44 @@ function removeCasualMsg(msgKey) {
   removeRenderedMessage('casual', msgKey);
 }
 
-function sendWhisperMessage(senderName, text, targetUid, targetName) {
+function getActiveWhisperChannelKey(options = {}) {
+  const fromOptions = String(options?.channelKey || '').trim();
+  if (fromOptions) return fromOptions;
+  return String(window._itcActiveChatChannelKey || (typeof getCurrentDmChannelKey === 'function' ? getCurrentDmChannelKey() : 'global') || 'global').trim() || 'global';
+}
+
+function sendWhisperMessage(senderName, text, targetUid, targetName, options = {}) {
   const localTime = Date.now();
+  const channelKey = getActiveWhisperChannelKey(options);
+  const speakAsJournalId = String(options?.speakAsJournalId || St.speakAsJournalId || '').trim();
+  const targetJournalId = String(options?.targetJournalId || St.whisperToJournal || '').trim();
   const msg = {
     name: senderName, text, type: 'whisper',
     uid: St.myId, time: localTime,
-    whisperTo: targetUid, whisperToName: targetName
+    whisperTo: targetUid, whisperToName: targetName,
+    dmChannelKey: channelKey || 'global'
   };
+  if (targetJournalId) msg.whisperToJournal = targetJournalId;
+  if (speakAsJournalId) {
+    const journalList = typeof loadJournals === 'function' ? loadJournals() : [];
+    const j = journalList.find(x => x.id === speakAsJournalId) || (_allJournals || []).find(x => x.id === speakAsJournalId);
+    msg.speakAsJournalId = speakAsJournalId;
+    if (j?.avatar) msg.speakAsAvatar = j.avatar;
+    if (j?.nameColor) msg.nameColor = j.nameColor;
+  } else if (St.myNameColor) {
+    msg.nameColor = St.myNameColor;
+  }
   if (window._FB?.CONFIGURED) {
     const { db, ref, push } = window._FB;
     if (!St.roomCode) return Promise.reject(new Error('roomCode missing'));
     return push(ref(db, `rooms/${St.roomCode}/chat`), { ...msg, time: getChatServerTimestamp() });
   }
-  appendChatMsg({ name: msg.name, text, type: 'whisper', uid: St.myId, timestamp: msg.time, whisperTo: targetUid, whisperToName: targetName });
+  appendChatMsg({
+    name: msg.name, text, type: 'whisper', uid: St.myId, timestamp: msg.time,
+    whisperTo: targetUid, whisperToName: targetName, whisperToJournal: msg.whisperToJournal || null,
+    speakAsJournalId: msg.speakAsJournalId || null, speakAsAvatar: msg.speakAsAvatar || null,
+    nameColor: msg.nameColor || null, channel: 'chat'
+  });
   return Promise.resolve();
 }
 
@@ -1977,7 +1996,7 @@ function buildStandardChatImageSection(name, time, src, avatarHtml, imageWide = 
 
 function buildChatMsgElement(msg = {}) {
   const { name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId,
-          whisperTo, whisperToName, nameColor, msgKey, channel,
+          whisperTo, whisperToName, whisperToJournal, nameColor, msgKey, channel,
           standingImg, tokenId, standingLabel,
           imageWide = false, imageMeta = null, hideImageMeta = false } = msg;
   const d = timestamp ? new Date(timestamp) : new Date();
@@ -1999,14 +2018,22 @@ function buildChatMsgElement(msg = {}) {
   }
 
   if (type === 'whisper') {
-    const avatarHtml = getAvatarHtml(name, uid || (name === St.myName ? St.myId : null));
+    const r = St.avatarShape === 'circle' ? '50%' : '6px';
+    const sc = St.avatarShape === 'circle' ? 'shape-circle' : 'shape-rounded';
+    const finalAvatar = speakAsAvatar || (speakAsJournalId ? saGetAvatar(speakAsJournalId) : null);
+    const avatarHtml = finalAvatar
+      ? `<div class="msg-avatar ${sc} sa-avatar"><img src="${esc(finalAvatar)}" alt="" style="width:38px;height:38px;object-fit:cover;border-radius:${r};display:block"></div>`
+      : getAvatarHtml(name, uid || (name === St.myName ? St.myId : null));
     const isMine = uid === St.myId;
     const tagText = isMine ? `→ ${esc(whisperToName || '?')}에게 귓말` : `→ 나에게 귓말`;
+    const whisperNameColor = nameColor || (speakAsJournalId ? (_allJournals.find(x => x.id === speakAsJournalId)?.nameColor || '') : '');
+    const nameStyle = whisperNameColor ? ` style="color:${esc(whisperNameColor)}"` : '';
     const div = document.createElement('div');
     div.className = 'chat-msg msg-whisper';
     div.dataset.avatarUid = uid || '';
     div.dataset.avatarName = name || '';
-    div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name">${esc(name)}</span><span class="whisper-tag">${tagText}</span><span class="msg-time">${time}</span></div><div class="msg-text">${fmtText(text)}</div></div>`;
+    if (whisperToJournal) div.dataset.whisperToJournal = whisperToJournal;
+    div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name"${nameStyle}>${esc(name)}</span><span class="whisper-tag">${tagText}</span><span class="msg-time">${time}</span></div><div class="msg-text">${fmtText(text)}</div></div>`;
     addMsgActions(div, uid, msgKey, channel || 'chat', text, type);
     return div;
   }
@@ -2119,7 +2146,8 @@ function appendChatMsg(msg = {}) {
   const safeKey = upsertStoredMessage(actualChannel, msg.msgKey, {
     name: msg.name, text: msg.text, type: msg.type, uid: msg.uid, timestamp: msg.timestamp,
     speakAsAvatar: msg.speakAsAvatar, speakAsJournalId: msg.speakAsJournalId,
-    whisperTo: msg.whisperTo, whisperToName: msg.whisperToName, nameColor: msg.nameColor,
+    whisperTo: msg.whisperTo, whisperToName: msg.whisperToName, whisperToJournal: msg.whisperToJournal,
+    speakAsAvatar: msg.speakAsAvatar, speakAsJournalId: msg.speakAsJournalId, nameColor: msg.nameColor,
     standingImg: msg.standingImg, tokenId: msg.tokenId, standingLabel: msg.standingLabel,
     imageWide: msg.imageWide, hideImageMeta: msg.hideImageMeta,
     imageMeta: normalizeChatImageMeta(msg.imageMeta)
@@ -2138,7 +2166,8 @@ function replaceChatMsg(msg = {}) {
   const safeKey = upsertStoredMessage(actualChannel, msg.msgKey, {
     name: msg.name, text: msg.text, type: msg.type, uid: msg.uid, timestamp: msg.timestamp,
     speakAsAvatar: msg.speakAsAvatar, speakAsJournalId: msg.speakAsJournalId,
-    whisperTo: msg.whisperTo, whisperToName: msg.whisperToName, nameColor: msg.nameColor,
+    whisperTo: msg.whisperTo, whisperToName: msg.whisperToName, whisperToJournal: msg.whisperToJournal,
+    speakAsAvatar: msg.speakAsAvatar, speakAsJournalId: msg.speakAsJournalId, nameColor: msg.nameColor,
     standingImg: msg.standingImg, tokenId: msg.tokenId, standingLabel: msg.standingLabel,
     imageWide: msg.imageWide, hideImageMeta: msg.hideImageMeta,
     imageMeta: normalizeChatImageMeta(msg.imageMeta)
