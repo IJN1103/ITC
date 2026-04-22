@@ -15,6 +15,15 @@
   function getDmListWrap() { return document.getElementById('dm-channel-list'); }
   function isChatTabActive() { return typeof _activeRightTab !== 'undefined' ? _activeRightTab === 'chat' : true; }
 
+  function escapeHtml(value) {
+    return String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
   function getAliasStorageKey() {
     const state = getStateRoot();
     const roomCode = String(state.roomCode || state.roomId || '').trim();
@@ -204,6 +213,128 @@
     return others.map((uid) => String(players?.[uid]?.name || '플레이어').trim() || '플레이어').join('+');
   }
 
+  function getParticipantName(uid) {
+    const state = getStateRoot();
+    const safeUid = String(uid || '').trim();
+    const player = state.players?.[safeUid] || {};
+    const role = String(player?.role || '').trim().toLowerCase();
+    if (role === 'gm') return 'GM';
+    return String(player?.name || '플레이어').trim() || '플레이어';
+  }
+
+  function getChannelFullLabel(channel) {
+    const ids = Array.isArray(channel?.participantIds) ? channel.participantIds : [];
+    if (!ids.length) return 'DM';
+    return ids.map((uid) => getParticipantName(uid)).join(' + ');
+  }
+
+  function getVisibleRoomListChannels() {
+    const state = getStateRoot();
+    const myId = String(state.myId || '').trim();
+    const all = typeof ROOT.getAvailableDmChannels === 'function' ? ROOT.getAvailableDmChannels() : [];
+    if (typeof ROOT.isDmGmView === 'function' && ROOT.isDmGmView()) return all;
+    if (typeof ROOT.getPlayerVisibleDmChannels === 'function') return ROOT.getPlayerVisibleDmChannels(myId);
+    return myId ? all.filter((channel) => Array.isArray(channel?.participantIds) && channel.participantIds.includes(myId)) : [];
+  }
+
+  function visibleRoomListHasUnread() {
+    return getVisibleRoomListChannels().some((channel) => channelHasUnread(channel.channelKey));
+  }
+
+  function getDmRoomListPanel() {
+    let panel = document.getElementById('dm-room-list-panel');
+    if (panel) return panel;
+    panel = document.createElement('div');
+    panel.id = 'dm-room-list-panel';
+    panel.className = 'dm-room-list-panel';
+    panel.style.display = 'none';
+    document.body.appendChild(panel);
+    return panel;
+  }
+
+  function closeDmRoomListPanel() {
+    const panel = document.getElementById('dm-room-list-panel');
+    if (!panel) return;
+    panel.style.display = 'none';
+    panel.innerHTML = '';
+  }
+
+  function positionDmRoomListPanel(anchor, panel) {
+    const rect = anchor?.getBoundingClientRect?.();
+    if (!rect) return;
+    const width = Math.min(260, Math.max(180, window.innerWidth - 24));
+    const left = Math.min(Math.max(12, rect.left), Math.max(12, window.innerWidth - width - 12));
+    const top = Math.min(rect.bottom + 8, Math.max(12, window.innerHeight - 260));
+    panel.style.width = `${width}px`;
+    panel.style.left = `${left}px`;
+    panel.style.top = `${top}px`;
+  }
+
+  function renderDmRoomListPanel(anchor) {
+    const panel = getDmRoomListPanel();
+    const channels = getVisibleRoomListChannels();
+    const currentKey = typeof ROOT.getCurrentDmChannelKey === 'function' ? ROOT.getCurrentDmChannelKey() : 'global';
+    const rows = channels.map((channel) => {
+      const key = String(channel?.channelKey || '').trim();
+      const active = key && String(currentKey) === key;
+      const unread = key && channelHasUnread(key);
+      return `<button type="button" class="dm-room-list-item ${active ? 'is-active' : ''}" data-channel-key="${escapeHtml(key)}">`
+        + `<span class="dm-room-list-name">${escapeHtml(getChannelFullLabel(channel))}</span>`
+        + `<span class="dm-room-list-meta">${active ? '현재' : ''}</span>`
+        + `<span class="dm-room-list-dot" style="${unread ? '' : 'display:none'}"></span>`
+        + `</button>`;
+    });
+    panel.innerHTML = `
+      <div class="dm-room-list-head">DM방 목록</div>
+      <div class="dm-room-list-body">
+        ${rows.length ? rows.join('') : '<div class="dm-room-list-empty">표시할 DM방이 없어요.</div>'}
+      </div>
+    `;
+    panel.querySelectorAll('[data-channel-key]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const channelKey = String(btn.dataset.channelKey || '').trim();
+        if (!channelKey) return;
+        if (typeof ROOT.setCurrentDmChannelKey === 'function') ROOT.setCurrentDmChannelKey(channelKey);
+        markChannelSeen(channelKey);
+        closeDmRoomListPanel();
+        renderDmChannelButtons();
+      });
+    });
+    panel.style.display = 'block';
+    positionDmRoomListPanel(anchor, panel);
+  }
+
+  function bindDmRoomListButton(list) {
+    list.querySelector('[data-dm-role="room-list"]')?.addEventListener('click', (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      const panel = getDmRoomListPanel();
+      if (panel.style.display === 'block') {
+        closeDmRoomListPanel();
+        return;
+      }
+      renderDmRoomListPanel(ev.currentTarget);
+    });
+  }
+
+  function bindDmRoomListGlobalEvents() {
+    if (ROOT.__DM_ROOM_LIST_EVENTS_BOUND) return;
+    ROOT.__DM_ROOM_LIST_EVENTS_BOUND = true;
+    document.addEventListener('click', (ev) => {
+      const panel = document.getElementById('dm-room-list-panel');
+      if (!panel || panel.style.display !== 'block') return;
+      if (panel.contains(ev.target)) return;
+      if (ev.target?.closest?.('[data-dm-role="room-list"]')) return;
+      closeDmRoomListPanel();
+    });
+    window.addEventListener('resize', closeDmRoomListPanel);
+  }
+
+  function getDmRoomListButtonHtml() {
+    const dotStyle = visibleRoomListHasUnread() ? '' : 'display:none';
+    return `<button type="button" class="dm-channel-btn dm-room-list-toggle" data-dm-role="room-list" title="DM방 목록" aria-label="DM방 목록"><span class="dm-room-list-icon">⋮</span><span class="dm-channel-dot" style="${dotStyle}"></span></button>`;
+  }
+
   function renderGmButtons(list) {
     const others = getOtherPlayerEntries();
     const selected = new Set(getSelectedParticipantIds());
@@ -211,6 +342,7 @@
     const isGlobal = typeof ROOT.isGlobalDmChannelKey === 'function' ? ROOT.isGlobalDmChannelKey(currentKey) : selected.size === 0;
     const items = [];
     items.push(`<button type="button" class="dm-channel-btn ${isGlobal ? 'is-active' : ''}" data-dm-role="global"><span class="dm-channel-label">전체</span><span class="dm-channel-dot" style="display:none"></span></button>`);
+    items.push(getDmRoomListButtonHtml());
     others.forEach((player) => {
       const active = !isGlobal && selected.has(player.uid);
       const label = (getAliasForUid(player.uid) || player.name).replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -218,6 +350,7 @@
       items.push(`<button type="button" class="dm-channel-btn ${active ? 'is-active' : ''}" data-dm-role="player" data-uid="${player.uid.replace(/"/g, '&quot;')}"><span class="dm-channel-label">${label}</span><span class="dm-channel-dot" style="${dotStyle}"></span></button>`);
     });
     list.innerHTML = items.join('');
+    bindDmRoomListButton(list);
     list.querySelector('[data-dm-role="global"]')?.addEventListener('click', () => {
       if (typeof ROOT.selectGlobalDmChannel === 'function') ROOT.selectGlobalDmChannel();
       renderDmChannelButtons();
@@ -253,6 +386,7 @@
     const channels = typeof ROOT.getPlayerVisibleDmChannels === 'function' ? ROOT.getPlayerVisibleDmChannels(myId) : [];
     const items = [];
     items.push(`<button type="button" class="dm-channel-btn ${String(currentKey) === 'global' ? 'is-active' : ''}" data-dm-role="global"><span class="dm-channel-label">전체</span><span class="dm-channel-dot" style="display:none"></span></button>`);
+    items.push(getDmRoomListButtonHtml());
     channels.forEach((channel) => {
       const active = String(currentKey) === String(channel.channelKey || '');
       const label = getChannelLabelForViewer(channel, myId);
@@ -260,6 +394,7 @@
       items.push(`<button type="button" class="dm-channel-btn ${active ? 'is-active' : ''}" data-dm-role="channel" data-channel-key="${String(channel.channelKey || '').replace(/"/g, '&quot;')}"><span class="dm-channel-label">${label.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</span><span class="dm-channel-dot" style="${dotStyle}"></span></button>`);
     });
     list.innerHTML = items.join('');
+    bindDmRoomListButton(list);
     list.querySelector('[data-dm-role="global"]')?.addEventListener('click', () => {
       if (typeof ROOT.selectGlobalDmChannel === 'function') ROOT.selectGlobalDmChannel();
       renderDmChannelButtons();
@@ -282,13 +417,14 @@
     ensureUnreadSync();
     const visible = isChatTabActive();
     bar.style.display = visible ? 'inline-flex' : 'none';
-    if (!visible) { list.innerHTML = ''; return; }
+    if (!visible) { list.innerHTML = ''; closeDmRoomListPanel(); return; }
     markChannelSeen(typeof ROOT.getCurrentDmChannelKey === 'function' ? ROOT.getCurrentDmChannelKey() : 'global');
     if (typeof ROOT.isDmGmView === 'function' && ROOT.isDmGmView()) renderGmButtons(list);
     else renderPlayerButtons(list);
   }
 
   function scheduleBootRender() {
+    bindDmRoomListGlobalEvents();
     let tries = 0;
     const timer = setInterval(() => {
       tries += 1;
