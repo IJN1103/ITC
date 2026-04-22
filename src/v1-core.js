@@ -204,8 +204,8 @@ function deleteMsg(div) {
 function fmtText(str) {
   let s = esc(str);
   s = s.replace(/\*\*\*(.+?)\*\*\*/g, '<b><i>$1</i></b>');
-  s = s.replace(/\*\*(.+?)\*\*/g, '<i>$1</i>');
-  s = s.replace(/\*(.+?)\*/g, '<b>$1</b>');
+  s = s.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+  s = s.replace(/\*(.+?)\*/g, '<i>$1</i>');
   s = s.replace(/\n/g, '<br>');
   return s;
 }
