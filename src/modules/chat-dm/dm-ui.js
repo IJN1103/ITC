@@ -199,6 +199,117 @@
       .filter((item) => item.uid);
   }
 
+  function getAllPlayerEntries() {
+    const state = getStateRoot();
+    const players = state.players || {};
+    return Object.entries(players)
+      .filter(([, player]) => String(player?.role || '').trim().toLowerCase() !== 'gm')
+      .map(([uid, player]) => ({
+        uid: String(uid || '').trim(),
+        name: String(player?.name || '').trim() || '플레이어',
+        isSelf: String(uid || '') === String(state.myId || ''),
+      }))
+      .filter((item) => item.uid);
+  }
+
+  function getGmEntry() {
+    const state = getStateRoot();
+    const players = state.players || {};
+    const found = Object.entries(players).find(([, player]) => String(player?.role || '').trim().toLowerCase() === 'gm');
+    if (!found) return null;
+    const [uid, player] = found;
+    const safeUid = String(uid || '').trim();
+    if (!safeUid) return null;
+    return { uid: safeUid, name: 'GM', rawName: String(player?.name || 'GM').trim() || 'GM' };
+  }
+
+  function normalizeParticipantIds(ids) {
+    return Array.from(new Set((Array.isArray(ids) ? ids : [])
+      .map((id) => String(id || '').trim())
+      .filter(Boolean)))
+      .sort();
+  }
+
+  function sameParticipantSet(a, b) {
+    const left = normalizeParticipantIds(a);
+    const right = normalizeParticipantIds(b);
+    if (left.length !== right.length) return false;
+    return left.every((id, index) => id === right[index]);
+  }
+
+  function findExistingDmChannelByParticipants(participantIds) {
+    const wanted = normalizeParticipantIds(participantIds);
+    if (wanted.length <= 1) return null;
+    const channels = typeof ROOT.getAvailableDmChannels === 'function' ? ROOT.getAvailableDmChannels() : [];
+    return channels.find((channel) => sameParticipantSet(channel?.participantIds || [], wanted)) || null;
+  }
+
+  function showDmToast(message) {
+    if (typeof ROOT.showToast === 'function') ROOT.showToast(message);
+    else if (typeof showToast === 'function') showToast(message);
+  }
+
+  function targetHasVisibleUnread(uid) {
+    const safeUid = String(uid || '').trim();
+    if (!safeUid) return false;
+    return getVisibleRoomListChannels().some((channel) => (channel?.participantIds || []).includes(safeUid) && channelHasUnread(channel.channelKey));
+  }
+
+  function getPendingPlayerTargetIds() {
+    return Array.isArray(ROOT.__DM_PLAYER_PENDING_TARGET_IDS) ? normalizeParticipantIds(ROOT.__DM_PLAYER_PENDING_TARGET_IDS) : null;
+  }
+
+  function setPendingPlayerTargetIds(ids) {
+    ROOT.__DM_PLAYER_PENDING_TARGET_IDS = normalizeParticipantIds(ids);
+    return ROOT.__DM_PLAYER_PENDING_TARGET_IDS.slice();
+  }
+
+  function clearPendingPlayerTargetIds() {
+    ROOT.__DM_PLAYER_PENDING_TARGET_IDS = null;
+  }
+
+  function getPlayerDisplayTargetIds(myId) {
+    const pending = getPendingPlayerTargetIds();
+    if (Array.isArray(pending)) return pending.filter((uid) => uid !== myId);
+    return getSelectedParticipantIds().filter((uid) => uid !== myId);
+  }
+
+  function attemptSelectPlayerDmTargets(targetIds) {
+    const state = getStateRoot();
+    const myId = String(state.myId || '').trim();
+    if (!myId) return;
+    const targets = setPendingPlayerTargetIds(normalizeParticipantIds(targetIds).filter((uid) => uid !== myId));
+    if (!targets.length) {
+      clearPendingPlayerTargetIds();
+      if (typeof ROOT.selectGlobalDmChannel === 'function') ROOT.selectGlobalDmChannel();
+      closeDmRoomListPanel();
+      renderDmChannelButtons();
+      return;
+    }
+
+    const gmEntry = getGmEntry();
+    const gmUid = String(gmEntry?.uid || '').trim();
+    if (!gmUid || !targets.includes(gmUid)) {
+      showDmToast('플레이어끼리만 디엠할 수 없어요.');
+      renderDmChannelButtons();
+      return;
+    }
+
+    const participantIds = normalizeParticipantIds([myId, ...targets]);
+    const channel = findExistingDmChannelByParticipants(participantIds);
+    if (!channel?.channelKey) {
+      showDmToast('GM이 해당 인원의 디엠방을 만들지 않았어요.');
+      renderDmChannelButtons();
+      return;
+    }
+
+    clearPendingPlayerTargetIds();
+    if (typeof ROOT.setCurrentDmChannelKey === 'function') ROOT.setCurrentDmChannelKey(channel.channelKey);
+    markChannelSeen(channel.channelKey);
+    closeDmRoomListPanel();
+    renderDmChannelButtons();
+  }
+
   function getSelectedParticipantIds() {
     return Array.isArray(ROOT.__DM_CHANNEL_STATE?.selectedParticipantIds) ? ROOT.__DM_CHANNEL_STATE.selectedParticipantIds.slice() : [];
   }
@@ -301,6 +412,7 @@
       btn.addEventListener('click', () => {
         const channelKey = String(btn.dataset.channelKey || '').trim();
         if (!channelKey) return;
+        clearPendingPlayerTargetIds();
         if (typeof ROOT.setCurrentDmChannelKey === 'function') ROOT.setCurrentDmChannelKey(channelKey);
         markChannelSeen(channelKey);
         closeDmRoomListPanel();
@@ -359,6 +471,7 @@
     list.innerHTML = items.join('');
     bindDmRoomListButton(list);
     list.querySelector('[data-dm-role="global"]')?.addEventListener('click', () => {
+      clearPendingPlayerTargetIds();
       if (typeof ROOT.selectGlobalDmChannel === 'function') ROOT.selectGlobalDmChannel();
       renderDmChannelButtons();
     });
@@ -390,29 +503,48 @@
     const state = getStateRoot();
     const myId = String(state.myId || '').trim();
     const currentKey = typeof ROOT.getCurrentDmChannelKey === 'function' ? ROOT.getCurrentDmChannelKey() : 'global';
-    const channels = typeof ROOT.getPlayerVisibleDmChannels === 'function' ? ROOT.getPlayerVisibleDmChannels(myId) : [];
+    const isGlobal = String(currentKey) === 'global';
+    const selected = new Set(getPlayerDisplayTargetIds(myId));
+    const gmEntry = getGmEntry();
+    const players = getAllPlayerEntries();
     const items = [];
     items.push(getDmRoomListButtonHtml());
-    items.push(`<button type="button" class="dm-channel-btn ${String(currentKey) === 'global' ? 'is-active' : ''}" data-dm-role="global"><span class="dm-channel-label">전체</span><span class="dm-channel-dot" style="display:none"></span></button>`);
-    channels.forEach((channel) => {
-      const active = String(currentKey) === String(channel.channelKey || '');
-      const label = getChannelLabelForViewer(channel, myId);
-      const dotStyle = channelHasUnread(channel.channelKey) ? '' : 'display:none';
-      items.push(`<button type="button" class="dm-channel-btn ${active ? 'is-active' : ''}" data-dm-role="channel" data-channel-key="${String(channel.channelKey || '').replace(/"/g, '&quot;')}"><span class="dm-channel-label">${label.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</span><span class="dm-channel-dot" style="${dotStyle}"></span></button>`);
+    items.push(`<button type="button" class="dm-channel-btn ${isGlobal && !getPendingPlayerTargetIds() ? 'is-active' : ''}" data-dm-role="global"><span class="dm-channel-label">전체</span><span class="dm-channel-dot" style="display:none"></span></button>`);
+
+    if (gmEntry?.uid && gmEntry.uid !== myId) {
+      const active = selected.has(gmEntry.uid);
+      const dotStyle = targetHasVisibleUnread(gmEntry.uid) ? '' : 'display:none';
+      items.push(`<button type="button" class="dm-channel-btn ${active ? 'is-active' : ''}" data-dm-role="target" data-uid="${escapeHtml(gmEntry.uid)}"><span class="dm-channel-label">GM</span><span class="dm-channel-dot" style="${dotStyle}"></span></button>`);
+    }
+
+    players.forEach((player) => {
+      const safeUid = String(player.uid || '').trim();
+      if (!safeUid) return;
+      if (player.isSelf) {
+        items.push(`<button type="button" class="dm-channel-btn dm-channel-self ${(!isGlobal || getPendingPlayerTargetIds()) ? 'is-active' : ''}" data-dm-role="self" aria-disabled="true" title="본인은 DM 참여자에 자동 포함됩니다."><span class="dm-channel-label">${escapeHtml(player.name)} · 나</span><span class="dm-channel-dot" style="display:none"></span></button>`);
+        return;
+      }
+      const active = selected.has(safeUid);
+      const dotStyle = targetHasVisibleUnread(safeUid) ? '' : 'display:none';
+      items.push(`<button type="button" class="dm-channel-btn ${active ? 'is-active' : ''}" data-dm-role="target" data-uid="${escapeHtml(safeUid)}"><span class="dm-channel-label">${escapeHtml(player.name)}</span><span class="dm-channel-dot" style="${dotStyle}"></span></button>`);
     });
+
     list.innerHTML = items.join('');
     bindDmRoomListButton(list);
     list.querySelector('[data-dm-role="global"]')?.addEventListener('click', () => {
+      clearPendingPlayerTargetIds();
       if (typeof ROOT.selectGlobalDmChannel === 'function') ROOT.selectGlobalDmChannel();
+      closeDmRoomListPanel();
       renderDmChannelButtons();
     });
-    list.querySelectorAll('[data-dm-role="channel"]').forEach((btn) => {
+    list.querySelectorAll('[data-dm-role="target"]').forEach((btn) => {
       btn.addEventListener('click', () => {
-        const channelKey = String(btn.dataset.channelKey || '').trim();
-        if (!channelKey) return;
-        if (typeof ROOT.setCurrentDmChannelKey === 'function') ROOT.setCurrentDmChannelKey(channelKey);
-        markChannelSeen(channelKey);
-        renderDmChannelButtons();
+        const uid = String(btn.dataset.uid || '').trim();
+        if (!uid) return;
+        const next = new Set(getPlayerDisplayTargetIds(myId));
+        if (next.has(uid)) next.delete(uid);
+        else next.add(uid);
+        attemptSelectPlayerDmTargets(Array.from(next));
       });
     });
   }

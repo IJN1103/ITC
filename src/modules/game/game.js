@@ -530,7 +530,9 @@ function handleDmChannelChange(ev) {
   const detail = ev?.detail || {};
   const nextChannelKey = String(detail.channelKey || (typeof getCurrentDmChannelKey === 'function' ? getCurrentDmChannelKey() : 'global') || 'global').trim() || 'global';
   if (!St.roomCode || !window._FB?.CONFIGURED) return;
-  const runner = nextChannelKey === 'global' ? Promise.resolve() : ensureDmChannelMeta(nextChannelKey).catch((err) => {
+  const myRole = String(St.players?.[St.myId]?.role || '').trim().toLowerCase();
+  const canCreateDmChannel = !!St.isGM || myRole === 'gm';
+  const runner = (nextChannelKey === 'global' || !canCreateDmChannel) ? Promise.resolve() : ensureDmChannelMeta(nextChannelKey).catch((err) => {
     console.error('ensureDmChannelMeta failed', err);
   });
   runner.finally(() => {

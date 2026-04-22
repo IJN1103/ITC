@@ -421,6 +421,9 @@ to{opacity:1}
 .dm-channel-btn.is-active{border-color:rgba(184,154,96,.45);background:rgba(184,154,96,.12);color:var(--accent)}
 .dm-channel-label{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:88px}
 .dm-channel-dot{position:absolute;top:3px;right:3px;width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 2px rgba(19,16,14,.9)}
+.dm-channel-btn.dm-channel-self{cursor:default;opacity:.78;box-shadow:inset 0 0 0 1px rgba(184,154,96,.05)}
+.dm-channel-btn.dm-channel-self:hover{border-color:var(--border);color:var(--muted);background:var(--s2)}
+.dm-channel-btn.dm-channel-self.is-active{border-color:rgba(184,154,96,.32);background:rgba(184,154,96,.08);color:var(--accent)}
 .dm-room-list-toggle{width:24px;padding:0;min-width:24px;max-width:24px;}
 .dm-room-list-icon{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;width:12px;height:12px;}
 .dm-room-list-icon span{display:block;width:10px;height:1px;border-radius:999px;background:currentColor;opacity:.88;}
