@@ -19,6 +19,59 @@ let _roomAvatarSyncBound = false;
 let _lastSyncedRoomAvatar = null;
 let _typingState = {};
 
+let _lastChatDebugLogAt = 0;
+
+function isItcChatDebugEnabled() {
+  try {
+    return window.ITC_DEBUG_CHAT === true || localStorage.getItem('ITC_DEBUG_CHAT') === 'true';
+  } catch (e) {
+    return window.ITC_DEBUG_CHAT === true;
+  }
+}
+
+function logItcChatDebug(label, detail = {}, options = {}) {
+  if (!isItcChatDebugEnabled()) return;
+  const now = Date.now();
+  if (options?.throttleMs && now - _lastChatDebugLogAt < options.throttleMs) return;
+  _lastChatDebugLogAt = now;
+  try {
+    console.debug('[ITC_CHAT_DEBUG]', label, {
+      roomCode: St.roomCode || '',
+      activeChannelKey: _activeChatChannelKey || 'global',
+      listenerVersion: _activeChatChannelListenerVersion,
+      activeListenerCount: _activeChatChannelUnsubs.length,
+      ...detail,
+    });
+  } catch (e) {}
+}
+
+window.itcChatDebugReport = function(channelKey = '') {
+  const safeKey = String(channelKey || _activeChatChannelKey || 'global').trim() || 'global';
+  const processed = _processedChatKeysByChannel.get(safeKey);
+  const signatures = _chatMessageSignaturesByChannel.get(safeKey);
+  const records = Array.isArray(_chatRecordsByChannel.get(safeKey)) ? _chatRecordsByChannel.get(safeKey) : [];
+  const report = {
+    roomCode: St.roomCode || '',
+    activeChannelKey: _activeChatChannelKey || 'global',
+    requestedChannelKey: safeKey,
+    listenerVersion: _activeChatChannelListenerVersion,
+    activeChatChannelListenerCount: _activeChatChannelUnsubs.length,
+    processedKeyCount: processed ? processed.size : 0,
+    signatureCount: signatures ? signatures.size : 0,
+    cachedRecordCount: records.length,
+    oldestCachedKey: records[0]?._key || '',
+    newestCachedKey: records[records.length - 1]?._key || '',
+  };
+  try {
+    if (typeof window.itcChatRenderDebugReport === 'function') {
+      report.render = window.itcChatRenderDebugReport('chat');
+      report.casualRender = window.itcChatRenderDebugReport('casual');
+    }
+  } catch (e) {}
+  try { console.log('[ITC_CHAT_DEBUG_REPORT]', report); } catch (e) {}
+  return report;
+};
+
 function refreshTypingIndicators() {
   renderTypingIndicator('typing-chat', _typingState, 'chat');
   renderTypingIndicator('typing-casual', _typingState, 'casual');
@@ -118,13 +171,18 @@ function cleanupFirebaseListeners() {
 }
 
 function cleanupActiveChatChannelListeners() {
+  const prevCount = _activeChatChannelUnsubs.length;
   _activeChatChannelListenerVersion += 1;
   _activeChatChannelUnsubs.forEach(unsub => { try { if (typeof unsub === 'function') unsub(); } catch (e) {} });
   _activeChatChannelUnsubs = [];
+  logItcChatDebug('active-listener-cleanup', { previousListenerCount: prevCount });
 }
 
 function trackActiveChatChannelListener(unsub) {
-  if (typeof unsub === 'function') _activeChatChannelUnsubs.push(unsub);
+  if (typeof unsub === 'function') {
+    _activeChatChannelUnsubs.push(unsub);
+    logItcChatDebug('active-listener-registered', { registeredListenerCount: _activeChatChannelUnsubs.length });
+  }
 }
 
 function getProcessedChatKeySet(channelKey = 'global') {
@@ -543,6 +601,7 @@ function switchActiveChatChannel(channelKey = 'global') {
   cleanupActiveChatChannelListeners();
   _activeChatChannelKey = safeChannelKey;
   window._itcActiveChatChannelKey = safeChannelKey;
+  logItcChatDebug('switch-active-channel', { channelKey: safeChannelKey });
   _chatHistoryCursorByChannel.delete(safeChannelKey);
   restoreCachedChannelMessages(safeChannelKey);
   if (typeof configureHistoryPaging === 'function') {
@@ -579,7 +638,14 @@ function switchActiveChatChannel(channelKey = 'global') {
   });
 
   trackActiveChatChannelListener(onValue(listenRef, snap => {
-    if (listenerVersion !== _activeChatChannelListenerVersion) return;
+    if (listenerVersion !== _activeChatChannelListenerVersion) {
+      logItcChatDebug('stale-listener-snapshot-ignored', {
+        channelKey: safeChannelKey,
+        snapshotListenerVersion: listenerVersion,
+        currentListenerVersion: _activeChatChannelListenerVersion,
+      }, { throttleMs: 1000 });
+      return;
+    }
     const msgs = snap.val() || {};
     const filtered = Object.entries(msgs)
       .map(([k, m]) => ({ ...m, _key: k }))
@@ -594,12 +660,26 @@ function switchActiveChatChannel(channelKey = 'global') {
     const previousNewestKey = newestSeenKey;
     cacheChannelMessages(safeChannelKey, filtered, { merge: true });
     const nextKeys = new Set(filtered.map((m) => m._key));
+    let removedFromActiveChannel = 0;
     Array.from(processed).forEach((key) => {
       if (!nextKeys.has(key)) {
         removeChatMsg(key, 'chat');
         signatures.delete(key);
+        removedFromActiveChannel += 1;
       }
     });
+
+    const debugStats = {
+      rawCount: Object.keys(msgs || {}).length,
+      visibleCount: filtered.length,
+      appended: 0,
+      replaced: 0,
+      skippedDuplicate: 0,
+      skippedLateOlder: 0,
+      removed: removedFromActiveChannel,
+      previousNewestKey,
+      nextNewestKey: '',
+    };
 
     filtered.forEach((m) => {
       const nextSig = buildChatMessageSignature(m);
@@ -607,8 +687,25 @@ function switchActiveChatChannel(channelKey = 'global') {
       const payload = makePayload(m._key, m);
       const alreadyProcessed = processed.has(m._key);
       const isLateOlderSnapshotItem = hasSeenSnapshot && !alreadyProcessed && isChatKeyAtOrBeforeBoundary(m._key, previousNewestKey);
-      if (!alreadyProcessed && !isLateOlderSnapshotItem) appendChatMsg(payload);
-      else if (alreadyProcessed && prevSig !== nextSig) replaceChatMsg(payload);
+      if (!alreadyProcessed && !isLateOlderSnapshotItem) {
+        appendChatMsg(payload);
+        debugStats.appended += 1;
+      } else if (alreadyProcessed && prevSig !== nextSig) {
+        replaceChatMsg(payload);
+        debugStats.replaced += 1;
+      } else if (isLateOlderSnapshotItem) {
+        debugStats.skippedLateOlder += 1;
+        logItcChatDebug('late-older-message-skip', {
+          channelKey: safeChannelKey,
+          messageKey: m._key,
+          previousNewestKey,
+          type: m.type || 'normal',
+          time: m.time || 0,
+          name: m.name || '',
+        }, { throttleMs: 500 });
+      } else if (alreadyProcessed) {
+        debugStats.skippedDuplicate += 1;
+      }
       signatures.set(m._key, nextSig);
     });
 
@@ -623,6 +720,8 @@ function switchActiveChatChannel(channelKey = 'global') {
         return itemKey > maxKey ? itemKey : maxKey;
       }, newestSeenKey);
     }
+    debugStats.nextNewestKey = newestSeenKey;
+    logItcChatDebug('active-channel-snapshot', { channelKey: safeChannelKey, ...debugStats });
     hasSeenSnapshot = true;
   }));
 }
