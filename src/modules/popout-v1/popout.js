@@ -354,12 +354,12 @@ L.push('window.renderDmBar=renderDmBar;');
   L.push('function renderDocSection(titleText,list,kind,emptyText){var sec=document.createElement("section");sec.className="doc-pop-sec";var head=document.createElement("div");head.className="doc-pop-head";var title=document.createElement("div");title.className="doc-pop-head-title";title.textContent=titleText;head.appendChild(title);var actions=document.createElement("div");actions.className="doc-pop-actions";if(kind==="journal"){actions.appendChild(makeDocAction("API","doc-pop-api-btn","CCFOLIA API 코드로 저널 가져오기","openJournalApiImportModal"));actions.appendChild(makeDocAction("+","doc-pop-add-btn","새 저널 만들기","createNewJournal"))}else if(kind==="handout"&&popIsGM){actions.appendChild(makeDocAction("+","doc-pop-add-btn","새 핸드아웃 만들기","createNewHandout"))}head.appendChild(actions);var body=document.createElement("div");body.className="doc-pop-list";if(!list||!list.length){var emp=document.createElement("div");emp.className="doc-pop-empty";emp.textContent=emptyText;body.appendChild(emp)}else{list.forEach(function(item){body.appendChild(makeDocItem(kind,item))})}sec.appendChild(head);sec.appendChild(body);return sec}');
   L.push('function renderDocsPane(){var c=document.getElementById("pm-journal");if(!c)return;c.innerHTML="";c.appendChild(renderDocSection("저널",journals,"journal","저널이 없어요."));c.appendChild(renderDocSection("핸드아웃",handouts,"handout",popIsGM?"핸드아웃이 없어요.":"아직 열람 가능한 핸드아웃이 없어요."))}');
   L.push('window.setDocuments=function(jList,hList,isGM){journals=Array.isArray(jList)?jList:[];handouts=Array.isArray(hList)?hList:[];if(typeof isGM==="boolean")popIsGM=isGM;renderDocsPane()};');
-  L.push('window.setJournals=function(list){window.setDocuments(list,handouts||[],popIsGM)};renderDocsPane();');
+  L.push('window.setJournals=function(list){window.setDocuments(list,handouts||[],popIsGM)};');
 
   // helper: get avatar from opener
   L.push('var _avCache={},_ncCache={};');
-  L.push('function getAv(id){return _avCache[id]||""}');
-  L.push('function getNc(id){return _ncCache[id]||""}');
+  L.push('function getAv(id){return (_avCache&&_avCache[id])||""}');
+  L.push('function getNc(id){return (_ncCache&&_ncCache[id])||""}');
   L.push('window.setAvatars=function(m){for(var k in m)_avCache[k]=m[k]};');
   L.push('window.setColors=function(m){_ncCache=m||{}};');
   L.push('var POP_CASUAL_COLORS=["#b89a60","#e8c87a","#f5a623","#e74c3c","#e91e63","#ff6b6b","#9b59b6","#8e44ad","#3498db","#2980b9","#7c9ece","#1abc9c","#2ecc71","#27ae60","#f39c12","#e67e22","#95a5a6","#ecf0f1"];');
