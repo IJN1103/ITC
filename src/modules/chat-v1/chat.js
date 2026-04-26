@@ -1696,7 +1696,7 @@ function sendMessage(name, text, type = 'normal', extra = null) {
     if (!St.roomCode) return Promise.reject(new Error('roomCode missing'));
     return push(ref(db, `rooms/${St.roomCode}/chat`), { ...msg, dmChannelKey: currentChannelKey || 'global', time: getChatServerTimestamp() });
   }
-  appendChatMsg({ name, text, type, uid: St.myId, timestamp: msg.time, nameColor: msg.nameColor || null, channel: 'chat', imageWide: !!msg.imageWide, imageMeta: msg.imageMeta || null, hideImageMeta: !!msg.hideImageMeta });
+  appendChatMsg({ ...msg, timestamp: msg.time, nameColor: msg.nameColor || null, channel: 'chat', imageWide: !!msg.imageWide, imageMeta: msg.imageMeta || null, hideImageMeta: !!msg.hideImageMeta });
   return Promise.resolve();
 }
 
@@ -2184,6 +2184,7 @@ function appendChatMsg(msg = {}) {
     whisperTo: msg.whisperTo, whisperToName: msg.whisperToName, whisperToJournal: msg.whisperToJournal,
     speakAsAvatar: msg.speakAsAvatar, speakAsJournalId: msg.speakAsJournalId, nameColor: msg.nameColor,
     standingImg: msg.standingImg, tokenId: msg.tokenId, standingLabel: msg.standingLabel,
+    dialoguePortrait: msg.dialoguePortrait, showPortraitInDialogue: msg.showPortraitInDialogue,
     imageWide: msg.imageWide, hideImageMeta: msg.hideImageMeta,
     imageMeta: normalizeChatImageMeta(msg.imageMeta)
   });
@@ -2204,6 +2205,7 @@ function replaceChatMsg(msg = {}) {
     whisperTo: msg.whisperTo, whisperToName: msg.whisperToName, whisperToJournal: msg.whisperToJournal,
     speakAsAvatar: msg.speakAsAvatar, speakAsJournalId: msg.speakAsJournalId, nameColor: msg.nameColor,
     standingImg: msg.standingImg, tokenId: msg.tokenId, standingLabel: msg.standingLabel,
+    dialoguePortrait: msg.dialoguePortrait, showPortraitInDialogue: msg.showPortraitInDialogue,
     imageWide: msg.imageWide, hideImageMeta: msg.hideImageMeta,
     imageMeta: normalizeChatImageMeta(msg.imageMeta)
   });

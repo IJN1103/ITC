@@ -293,7 +293,7 @@ function buildPopoutScript(journalJson, playersJson, isGmJson) {
   L.push('try{var __op=getOpenerState();if(__op&&typeof __op.getCurrentDmChannelKey==="function")popDmChannelKey=String(__op.getCurrentDmChannelKey()||"global")||"global"}catch(e){}');
   L.push('function escHtml(v){return String(v||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;")}');
   L.push('function normalizeMsgType(t){t=String(t||"normal").trim();if(t==="desc"||t==="dsec"||t==="msg-dsec")return "desc";if(t==="system")return "sys";return t||"normal"}');
-  L.push('function fmtPopText(v){var s=escHtml(v);s=s.replace(/\\*\\*\\*([\\s\\S]+?)\\*\\*\\*/g,"<b><i>$1</i></b>");s=s.replace(/\\*\\*([\\s\\S]+?)\\*\\*/g,"<i>$1</i>");s=s.replace(/\\*([\\s\\S]+?)\\*/g,"<b>$1</b>");s=s.replace(/\\n/g,"<br>");return s}');
+  L.push('function fmtPopText(v){var s=escHtml(v);s=s.replace(/\\*\\*\\*([\\s\\S]+?)\\*\\*\\*/g,"<b><i>$1</i></b>");s=s.replace(/\\*\\*([\\s\\S]+?)\\*\\*/g,"<b>$1</b>");s=s.replace(/\\*([\\s\\S]+?)\\*/g,"<i>$1</i>");s=s.replace(/\\n/g,"<br>");return s}');
   L.push('function safeMsgHtml(text,fhtml){return fhtml?String(fhtml):fmtPopText(text)}');
   L.push('function cleanStandingCommandText(v){return String(v||"").replace(/@\\S+/g,"").trim()}');
   L.push('function displayHtmlForType(text,type,fhtml){if(normalizeMsgType(type)==="speak-as")return fmtPopText(cleanStandingCommandText(text));return safeMsgHtml(text,fhtml)}');
@@ -404,7 +404,7 @@ L.push('window.renderDmBar=renderDmBar;');
   L.push('document.getElementById("pi").onkeydown=function(ev){if(ev.key==="Enter"&&!ev.shiftKey){ev.preventDefault();send()}};');
   L.push('document.getElementById("pi").oninput=function(){if(window.opener&&window.opener.broadcastTyping)window.opener.broadcastTyping()};');
   L.push('document.addEventListener("click",function(e){if(!e.target.closest("#pop-sa-btn")&&!e.target.closest("#sa-dd"))document.getElementById("sa-dd").classList.remove("open");if(!e.target.closest("#pop-whisper-btn")&&!e.target.closest("#w-dd"))document.getElementById("w-dd").classList.remove("open");if(!e.target.closest("#pop-casual-color-btn")&&!e.target.closest("#pop-casual-color-pop")){var p=document.getElementById("pop-casual-color-pop");if(p)p.classList.remove("open")}});');
-  L.push('renderDocsPane();refreshPopCasualProfile();window._popReady=true;');
+  L.push('try{renderDocsPane()}catch(e){console.error("popout renderDocsPane failed",e)}try{refreshPopCasualProfile()}catch(e){console.error("popout refreshPopCasualProfile failed",e)}window._popReady=true;');
   L.push('})();');
   return L.join('\n');
 }
