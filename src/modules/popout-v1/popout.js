@@ -244,7 +244,10 @@ textarea.whisper-mode{border-color:#9b59b6;background:rgba(155,89,182,.05)}
 <div class="ptb" id="ptb" style="position:relative">
   <div class="sa-row" id="pop-sa-row">
     <button class="sa-btn" id="pop-sa-btn" onclick="toggleSADD()"><span class="sa-icon" id="sa-icon-span"><svg width="11" height="11" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="5" r="3" stroke="currentColor" stroke-width="1.5"/><path d="M2 12c0-2.21 2.239-4 5-4s5 1.79 5 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></span><span class="sa-name" id="sa-name-span">\ub098</span></button>
-    <div style="margin-left:auto"></div>
+    <div class="pop-name-color-wrap">
+      <button class="pop-name-color-btn" id="pop-name-color-btn" type="button" onclick="togglePopNameColor(event)" title="채팅 이름 색상 설정" aria-label="채팅 이름 색상 설정"><img class="pop-name-color-icon" src="${colorIconSrc}" alt="" aria-hidden="true"></button>
+      <div class="pop-color-pop" id="pop-name-color-pop"></div>
+    </div>
   </div>
   <div class="pop-casual-row" id="pop-casual-row">
     <div class="pop-casual-avatar" id="pop-casual-avatar">?</div>
