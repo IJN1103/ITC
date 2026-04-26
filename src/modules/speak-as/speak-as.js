@@ -44,11 +44,14 @@ function saBuildMessageContext(journal, text = '') {
   if (!journal?.id) return null;
   const avatar = saGetAvatar(journal.id);
   resolveStandingImage(journal, text);
+  const showPortrait = journal.showPortraitInDialogue === true || journal.sheet?.showPortraitInDialogue === true;
   const payload = {
     name: journal.title || '무제',
     speakAsAvatar: avatar,
     speakAsJournalId: journal.id,
     nameColor: journal.nameColor || '',
+    showPortraitInDialogue: !!showPortrait,
+    dialoguePortrait: showPortrait && avatar ? avatar : '',
   };
   if (journal.assignedTokenId) {
     payload.tokenId = journal.assignedTokenId;
@@ -139,6 +142,30 @@ function cleanDialogueText(text) {
   return text.replace(/@\S+/g, '').trim();
 }
 
+function resolveDialoguePortrait(journal, explicitPortrait = '', explicitEnabled = null) {
+  const isEnabled = explicitEnabled === true
+    || journal?.showPortraitInDialogue === true
+    || journal?.sheet?.showPortraitInDialogue === true;
+  if (!isEnabled) return '';
+  const src = explicitPortrait || (journal?.id ? saGetAvatar(journal.id) : '') || journal?.avatar || journal?.sheet?.avatar || '';
+  return typeof src === 'string' && src.trim() && !saIsEphemeralAvatarSrc(src) ? src.trim() : '';
+}
+
+function renderDialoguePortrait(dialog, journal, explicitPortrait = '', explicitEnabled = null) {
+  const portraitEl = document.getElementById('vn-portrait');
+  if (!dialog || !portraitEl) return;
+  const src = resolveDialoguePortrait(journal, explicitPortrait, explicitEnabled);
+  portraitEl.textContent = '';
+  dialog.classList.remove('has-portrait');
+  if (!src) return;
+  const img = document.createElement('img');
+  img.src = src;
+  img.alt = '';
+  img.loading = 'lazy';
+  portraitEl.appendChild(img);
+  dialog.classList.add('has-portrait');
+}
+
 function updateTokenStandingOnMap(journalId) {
   const j = _allJournals.find(x => x.id === journalId);
   if (!j?.assignedTokenId) return;
@@ -194,7 +221,7 @@ function hideDialogueBox() {
   if (_vnTimer) { clearTimeout(_vnTimer); _vnTimer = null; }
 }
 
-function showDialogueBoxFromMsg(name, text, journalId, standingImg, tokenId, standingLabel) {
+function showDialogueBoxFromMsg(name, text, journalId, standingImg, tokenId, standingLabel, dialoguePortrait = '', showPortraitInDialogue = null) {
   const journal = journalId ? _allJournals.find(x => x.id === journalId) : null;
   const dialog = document.getElementById('vn-dialog');
   const nameEl = document.getElementById('vn-name');
@@ -206,7 +233,7 @@ function showDialogueBoxFromMsg(name, text, journalId, standingImg, tokenId, sta
   nameEl.textContent = (journal?.title || name || '???');
   const cleanText = cleanDialogueText(text);
   textEl.innerHTML = esc(cleanText).replace(/\n/g, '<br>');
-  renderDialoguePortrait(dialog, journal);
+  renderDialoguePortrait(dialog, journal, dialoguePortrait, showPortraitInDialogue);
 
   // 스탠딩 resolve: 3단계 fallback
   let finalStanding = null;

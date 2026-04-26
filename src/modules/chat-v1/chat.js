@@ -448,6 +448,8 @@ function storeMessageRecord(channel = 'chat', record = {}, key = '', options = {
     standingImg: record.standingImg,
     tokenId: record.tokenId,
     standingLabel: record.standingLabel,
+    dialoguePortrait: record.dialoguePortrait,
+    showPortraitInDialogue: record.showPortraitInDialogue,
     imageWide: record.imageWide,
     hideImageMeta: record.hideImageMeta,
     imageMeta: normalizeChatImageMeta(record.imageMeta),
@@ -471,6 +473,8 @@ function coerceHistoryRecordForStore(record = {}) {
     standingImg: record.standingImg,
     tokenId: record.tokenId,
     standingLabel: record.standingLabel,
+    dialoguePortrait: record.dialoguePortrait,
+    showPortraitInDialogue: record.showPortraitInDialogue,
     imageWide: !!record.imageWide,
     hideImageMeta: !!record.hideImageMeta,
     imageMeta: normalizeChatImageMeta(record.imageMeta),
@@ -543,6 +547,8 @@ function normalizeStoredRecordForSnapshot(channel = 'chat', key = '', record = {
     standingImg: record.standingImg || '',
     tokenId: record.tokenId || '',
     standingLabel: record.standingLabel || '',
+    dialoguePortrait: record.dialoguePortrait || '',
+    showPortraitInDialogue: record.showPortraitInDialogue === true,
     imageWide: !!record.imageWide,
     hideImageMeta: !!record.hideImageMeta,
     imageMeta: normalizeChatImageMeta(record.imageMeta),
@@ -2026,6 +2032,7 @@ function buildChatMsgElement(msg = {}) {
   const { name, text, type, uid, timestamp, speakAsAvatar, speakAsJournalId,
           whisperTo, whisperToName, whisperToJournal, nameColor, msgKey, channel,
           standingImg, tokenId, standingLabel,
+          dialoguePortrait = '', showPortraitInDialogue = false,
           imageWide = false, imageMeta = null, hideImageMeta = false } = msg;
   const d = timestamp ? new Date(timestamp) : new Date();
   const time = `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
@@ -2185,7 +2192,7 @@ function appendChatMsg(msg = {}) {
   queueMessageRender(actualChannel, div, safeKey, true);
   if ((msg.type === 'speak-as' || (msg.type === 'dice' && msg.speakAsJournalId)) && (!msg.timestamp || Date.now() - msg.timestamp < 5000)) {
     const dialogueText = msg.type === 'dice' ? formatDiceDialogueText(msg.text) : msg.text;
-    showDialogueBoxFromMsg(msg.name, dialogueText, msg.speakAsJournalId, msg.standingImg, msg.tokenId, msg.standingLabel);
+    showDialogueBoxFromMsg(msg.name, dialogueText, msg.speakAsJournalId, msg.standingImg, msg.tokenId, msg.standingLabel, msg.dialoguePortrait, msg.showPortraitInDialogue);
   }
 }
 
