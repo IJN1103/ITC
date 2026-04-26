@@ -2250,17 +2250,39 @@ function setCasualNicknameFromPopout(name) {
   return getCasualProfileForPopout();
 }
 
-function setCasualNameColorFromPopout(color) {
-  if (typeof window.setCasualNameColor === 'function') {
-    window.setCasualNameColor(color);
-  } else {
-    St.casualNameColor = String(color || '').trim();
-    try { localStorage.setItem('itc_casual_name_color', St.casualNameColor); } catch(e) {}
-    refreshCasualNickDisplay();
+function normalizeCasualNameColor(color) {
+  const safe = String(color || '').trim();
+  if (!safe) return '';
+  return /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(safe) ? safe : '';
+}
+
+function applyCasualNameColorFromExternal(color, options = {}) {
+  const safeColor = normalizeCasualNameColor(color);
+  if (!safeColor) return getCasualProfileForPopout();
+  const prevColor = St.casualNameColor || '';
+  St.casualNameColor = safeColor;
+  try { localStorage.setItem('itc_casual_name_color', safeColor); } catch(e) {}
+  if (window._FB?.CONFIGURED && St.roomCode && St.myId) {
+    const { db, ref, update } = window._FB;
+    update(ref(db, `rooms/${St.roomCode}/players/${St.myId}`), { casualNameColor: safeColor }).catch(() => {});
   }
+  refreshCasualNickDisplay();
   if (typeof window.forcePopoutSync === 'function') window.forcePopoutSync();
+  if (!options.silent && prevColor !== safeColor && typeof showToast === 'function') {
+    showToast('잡담 이름 색상이 변경됐어요.');
+  }
   return getCasualProfileForPopout();
 }
+
+function setCasualNameColorFromPopout(color) {
+  return applyCasualNameColorFromExternal(color);
+}
+
+window.addEventListener('message', (event) => {
+  const data = event?.data || null;
+  if (!data || data.type !== 'ITC_POPOUT_CASUAL_COLOR') return;
+  applyCasualNameColorFromExternal(data.color);
+});
 
 window.getCasualProfileForPopout = getCasualProfileForPopout;
 window.setCasualNicknameFromPopout = setCasualNicknameFromPopout;
