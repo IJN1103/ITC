@@ -1501,7 +1501,7 @@ async function sendPreparedChatImage(preparedOrDataUrl, imageWide = false, image
       time: Date.now(),
       speakAsAvatar: saAvatar,
       speakAsJournalId: saJId,
-      nameColor: saJournal.nameColor || '',
+      nameColor: (typeof saGetJournalNameColor === 'function' ? saGetJournalNameColor(saJId, saJournal) : (saJournal.nameColor || saJournal.sheet?.nameColor || '')),
       imageWide: !!imageWide,
       hideImageMeta: !!hideImageMeta,
       imageMeta: normalizedMeta,
@@ -1943,7 +1943,7 @@ function resolveWhisperSpeakAsContext(journalId, text = '') {
     name: context?.name || journal?.title || '',
     speakAsJournalId: safeJournalId,
     speakAsAvatar: avatar || '',
-    nameColor: context?.nameColor || journal?.nameColor || ''
+    nameColor: context?.nameColor || (typeof saGetJournalNameColor === 'function' ? saGetJournalNameColor(safeJournalId, journal) : (journal?.nameColor || journal?.sheet?.nameColor || ''))
   };
 }
 
@@ -2078,7 +2078,7 @@ function buildChatMsgElement(msg = {}) {
       : getAvatarHtml(name, uid || (name === St.myName ? St.myId : null));
     const isMine = uid === St.myId;
     const tagText = isMine ? `→ ${esc(whisperToName || '?')}에게 귓말` : `→ 나에게 귓말`;
-    const whisperNameColor = nameColor || (speakAsJournalId ? (_allJournals.find(x => x.id === speakAsJournalId)?.nameColor || '') : '');
+    const whisperNameColor = nameColor || (speakAsJournalId ? (typeof saGetJournalNameColor === 'function' ? saGetJournalNameColor(speakAsJournalId) : (_allJournals.find(x => x.id === speakAsJournalId)?.nameColor || _allJournals.find(x => x.id === speakAsJournalId)?.sheet?.nameColor || '')) : '');
     const nameStyle = whisperNameColor ? ` style="color:${esc(whisperNameColor)}"` : '';
     const div = document.createElement('div');
     div.className = 'chat-msg msg-whisper';
@@ -2099,7 +2099,7 @@ function buildChatMsgElement(msg = {}) {
       : `<div class="msg-avatar ${sc} sa-avatar"><div class="msg-avatar-inner" style="border-radius:${r}">${esc((name || '?')[0].toUpperCase())}</div></div>`;
     const div = document.createElement('div');
     div.className = 'chat-msg msg-speak-as';
-    const journalColor = nameColor || (speakAsJournalId ? (_allJournals.find(x => x.id === speakAsJournalId)?.nameColor || '') : '');
+    const journalColor = nameColor || (speakAsJournalId ? (typeof saGetJournalNameColor === 'function' ? saGetJournalNameColor(speakAsJournalId) : (_allJournals.find(x => x.id === speakAsJournalId)?.nameColor || _allJournals.find(x => x.id === speakAsJournalId)?.sheet?.nameColor || '')) : '');
     const nameStyle = journalColor ? ` style="color:${journalColor}"` : '';
     div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name sa-msg-name"${nameStyle}>${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-text">${fmtText(text.replace(/@\S+/g,'').trim())}</div></div>`;
     addMsgActions(div, uid, msgKey, channel || 'chat', text, type);
@@ -2157,7 +2157,7 @@ function buildChatMsgElement(msg = {}) {
             ? `<div class="msg-avatar ${sc} sa-avatar"><img src="${esc(finalAvatar)}" alt="" style="width:38px;height:38px;object-fit:cover;border-radius:${r};display:block"></div>`
             : `<div class="msg-avatar ${sc} sa-avatar"><div class="msg-avatar-inner" style="border-radius:${r}">${esc((name || '?')[0].toUpperCase())}</div></div>`)
         : defaultAvatarHtml;
-      const diceNameColor = isSpeakAsDice ? (nameColor || (_allJournals.find(x => x.id === speakAsJournalId)?.nameColor || '')) : nameColor;
+      const diceNameColor = isSpeakAsDice ? (nameColor || (typeof saGetJournalNameColor === 'function' ? saGetJournalNameColor(speakAsJournalId) : (_allJournals.find(x => x.id === speakAsJournalId)?.nameColor || _allJournals.find(x => x.id === speakAsJournalId)?.sheet?.nameColor || ''))) : nameColor;
       const diceNameStyle = diceNameColor ? ` style="color:${diceNameColor}"` : '';
       div.innerHTML = `${diceAvatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name${isSpeakAsDice ? ' sa-msg-name' : ''}"${diceNameStyle}>${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-text">${fmtText(text)}</div><div class="dice-card${skillCheckClass}"><div class="dice-card-formula">${esc(formula)}</div><div class="dice-card-result">${esc(result)}</div>${judgmentHtml}<div class="dice-card-rolls">${esc(rolls)}</div></div></div>`;
     } else {

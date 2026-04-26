@@ -40,6 +40,32 @@ function saGetAvatar(journalId) {
   return null;
 }
 
+
+function saNormalizeNameColor(color) {
+  return String(color || '').trim();
+}
+
+function saSetJournalNameColor(journalId, color) {
+  const safeId = String(journalId || '').trim();
+  if (!safeId) return '';
+  const safeColor = saNormalizeNameColor(color);
+  const j = (_allJournals || []).find(x => String(x.id || '') === safeId);
+  if (j) {
+    j.nameColor = safeColor;
+    if (!j.sheet || typeof j.sheet !== 'object') j.sheet = {};
+    j.sheet.nameColor = safeColor;
+  }
+  return safeColor;
+}
+
+function saGetJournalNameColor(journalId, fallbackJournal = null) {
+  const safeId = String(journalId || fallbackJournal?.id || '').trim();
+  const j = fallbackJournal || (safeId ? (_allJournals || []).find(x => String(x.id || '') === safeId) : null);
+  const safeColor = saNormalizeNameColor(j?.nameColor || j?.sheet?.nameColor || '');
+  if (safeId && safeColor) saSetJournalNameColor(safeId, safeColor);
+  return safeColor;
+}
+
 function saBuildMessageContext(journal, text = '') {
   if (!journal?.id) return null;
   const avatar = saGetAvatar(journal.id);
@@ -49,7 +75,7 @@ function saBuildMessageContext(journal, text = '') {
     name: journal.title || '무제',
     speakAsAvatar: avatar,
     speakAsJournalId: journal.id,
-    nameColor: journal.nameColor || '',
+    nameColor: saGetJournalNameColor(journal.id, journal),
     showPortraitInDialogue: !!showPortrait,
     dialoguePortrait: showPortrait && avatar ? avatar : '',
   };
@@ -372,7 +398,7 @@ function saRefreshBtn() {
     if (j) {
       btn.classList.add('active');
       nameEl.textContent = j.title || '무제';
-      nameEl.style.color = j.nameColor || '';
+      nameEl.style.color = saGetJournalNameColor(j.id, j) || '';
       iconEl.innerHTML = av
         ? `<img src="${esc(av)}" alt="" style="width:16px;height:16px;object-fit:cover;border-radius:4px;display:block">`
         : esc((j.title || '?')[0].toUpperCase());
@@ -431,7 +457,7 @@ function toggleColorPalette(e) {
   if (popup.classList.contains('open')) { popup.classList.remove('open'); return; }
   const jId = St.speakAsJournalId;
   const j = jId ? loadJournals().find(x => x.id === jId) : null;
-  const currentColor = j ? (j.nameColor || '#b89a60') : (St.myNameColor || '#b89a60');
+  const currentColor = j ? (saGetJournalNameColor(j.id, j) || '#b89a60') : (St.myNameColor || '#b89a60');
   renderColorPalettePopup(popup, '채팅 이름 색상', currentColor, setNameColor);
   popup.classList.add('open');
 }
@@ -447,21 +473,33 @@ function toggleCasualColorPalette(e) {
 }
 
 function setNameColor(color) {
-  const jId = St.speakAsJournalId;
+  const safeColor = saNormalizeNameColor(color);
+  const jId = String(St.speakAsJournalId || '').trim();
   if (jId) {
-    const j = _allJournals.find(x => x.id === jId);
+    const j = (_allJournals || []).find(x => String(x.id || '') === jId);
     if (!j) return;
-    j.nameColor = color;
-    if (j.sheet && typeof j.sheet === 'object') j.sheet.nameColor = color;
-    saveJournalFB(j);
+    const prevColor = saGetJournalNameColor(jId, j);
+    saSetJournalNameColor(jId, safeColor);
     saRefreshToolbar();
     if (typeof renderJournalList === 'function') renderJournalList();
+    const savePromise = typeof saveJournalNameColorFB === 'function'
+      ? saveJournalNameColorFB(jId, safeColor)
+      : Promise.resolve();
+    Promise.resolve(savePromise).then(() => {
+      if (typeof saRefreshBtn === 'function') saRefreshBtn();
+    }).catch((err) => {
+      console.error('journal nameColor save failed', err);
+      saSetJournalNameColor(jId, prevColor);
+      if (typeof fetchJournalsFromFB === 'function') fetchJournalsFromFB();
+      saRefreshToolbar();
+      showToast('저널 이름 색상 저장에 실패했어요. 권한을 확인해 주세요.');
+    });
   } else {
-    St.myNameColor = color;
-    try { localStorage.setItem('itc_name_color_' + St.myId, color); } catch(e) {}
+    St.myNameColor = safeColor;
+    try { localStorage.setItem('itc_name_color_' + St.myId, safeColor); } catch(e) {}
     if (window._FB?.CONFIGURED && St.roomCode) {
       const { db, ref, update } = window._FB;
-      update(ref(db, `rooms/${St.roomCode}/players/${St.myId}`), { nameColor: color });
+      update(ref(db, `rooms/${St.roomCode}/players/${St.myId}`), { nameColor: safeColor });
     }
   }
   showToast('이름 색상이 변경됐어요.');

@@ -236,6 +236,9 @@ function syncJournalRuntimeCache(journal) {
   if (safeAvatar && typeof saSetAvatar === 'function') {
     saSetAvatar(journal.id, safeAvatar);
   }
+  if (typeof saSetJournalNameColor === 'function') {
+    saSetJournalNameColor(journal.id, journal.nameColor || journal.sheet?.nameColor || '');
+  }
 }
 
 let _popoutDocumentSyncTimer = 0;
@@ -922,6 +925,34 @@ function saveJournalFB(journal) {
     upsertLocalJournal(normalized);
     localStorage.setItem(journalKey(), JSON.stringify(_allJournals));
   }
+}
+
+
+function saveJournalNameColorFB(journalId, color) {
+  const safeId = String(journalId || '').trim();
+  if (!safeId) return Promise.resolve();
+  const safeColor = String(color || '').trim();
+  const currentJournal = _allJournals.find(j => String(j.id || '') === safeId) || null;
+  if (currentJournal) {
+    currentJournal.nameColor = safeColor;
+    if (!currentJournal.sheet || typeof currentJournal.sheet !== 'object') currentJournal.sheet = {};
+    currentJournal.sheet.nameColor = safeColor;
+    currentJournal.updatedAt = Date.now();
+    if (typeof syncJournalRuntimeCache === 'function') syncJournalRuntimeCache(currentJournal);
+  }
+
+  if (!window._FB?.CONFIGURED) {
+    try { localStorage.setItem(journalKey(), JSON.stringify(_allJournals)); } catch (e) {}
+    return Promise.resolve();
+  }
+
+  const { db, ref, update } = window._FB;
+  const patch = {
+    nameColor: safeColor,
+    'sheet/nameColor': safeColor,
+    updatedAt: getJournalServerTimestamp(),
+  };
+  return update(ref(db, `rooms/${St.roomCode}/journals/${safeId}`), patch);
 }
 
 function saveJournalSheetFB(journalId, sheetData, metaPatch = {}) {
