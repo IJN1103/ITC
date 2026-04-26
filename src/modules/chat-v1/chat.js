@@ -209,6 +209,21 @@ function getRenderedKeyList(channel = 'chat') {
     .filter(Boolean);
 }
 
+function getRenderedNodeByKey(channel = 'chat', key = '') {
+  const safeKey = String(key || '').trim();
+  if (!safeKey) return null;
+  const state = getRenderState(channel);
+  const mapped = state.map.get(safeKey);
+  if (mapped && mapped.parentNode) return mapped;
+  const el = getRenderContainer(channel);
+  if (!el) return null;
+  try {
+    return el.querySelector(`.chat-msg[data-msg-key="${CSS.escape(safeKey)}"]`);
+  } catch (e) {
+    return null;
+  }
+}
+
 function syncStickyState(channel = 'chat', el = null) {
   const target = el || getRenderContainer(channel);
   const state = getRenderState(channel);
@@ -643,6 +658,7 @@ function prependStoredWindow(channel = 'chat', count = 0) {
   const frag = document.createDocumentFragment();
 
   keysToAdd.forEach(key => {
+    if (getRenderedNodeByKey(channel, key)) return;
     const record = getStoredRecord(channel, key);
     const node = buildMessageNodeFromRecord(channel, record);
     if (!node) return;
@@ -684,6 +700,7 @@ function appendStoredWindow(channel = 'chat', count = 0) {
   const keepBottom = isNearBottom(el);
   const frag = document.createDocumentFragment();
   keysToAdd.forEach(key => {
+    if (getRenderedNodeByKey(channel, key)) return;
     const record = getStoredRecord(channel, key);
     const node = buildMessageNodeFromRecord(channel, record);
     if (!node) return;
@@ -718,7 +735,7 @@ function flushMessageRender(channel = 'chat') {
   items.forEach((item) => {
     const { node, key } = item;
     if (!node || !key) return;
-    const current = state.map.get(key);
+    const current = getRenderedNodeByKey(channel, key);
     if (current && current.parentNode === el) {
       el.replaceChild(node, current);
       state.map.set(key, node);
@@ -2301,6 +2318,7 @@ window.clearAllChatHistory = clearAllChatHistory;
 window.toggleDescMode = toggleDescMode;
 window.broadcastTyping = broadcastTyping;
 window.queueMessageRender = queueMessageRender;
+window.getRenderedNodeByKey = getRenderedNodeByKey;
 window.replaceRenderedMessage = replaceRenderedMessage;
 window.removeRenderedMessage = removeRenderedMessage;
 window.resetRenderedMessages = resetRenderedMessages;

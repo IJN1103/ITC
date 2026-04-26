@@ -9,6 +9,7 @@ let _chatMessageSignaturesByChannel = new Map();
 let _chatRecordsByChannel = new Map();
 let _activeChatChannelKey = 'global';
 let _activeChatChannelUnsubs = [];
+let _activeChatChannelListenerVersion = 0;
 let _chatHistoryCursorByChannel = new Map();
 let _casualHistoryCursor = '';
 let _processedCasualKeys = new Set();
@@ -117,6 +118,7 @@ function cleanupFirebaseListeners() {
 }
 
 function cleanupActiveChatChannelListeners() {
+  _activeChatChannelListenerVersion += 1;
   _activeChatChannelUnsubs.forEach(unsub => { try { if (typeof unsub === 'function') unsub(); } catch (e) {} });
   _activeChatChannelUnsubs = [];
 }
@@ -153,11 +155,20 @@ function buildChatMessageSignature(message = {}) {
     message?.standingImg || '',
     message?.tokenId || '',
     message?.standingLabel || '',
+    message?.dialoguePortrait || '',
+    !!message?.showPortraitInDialogue,
     !!message?.imageWide,
     !!message?.hideImageMeta,
     JSON.stringify(message?.imageMeta || null),
     message?.dmChannelKey || 'global',
   ]);
+}
+
+function isChatKeyAtOrBeforeBoundary(key = '', boundaryKey = '') {
+  const safeKey = String(key || '').trim();
+  const safeBoundary = String(boundaryKey || '').trim();
+  if (!safeKey || !safeBoundary) return false;
+  return safeKey <= safeBoundary;
 }
 
 
@@ -250,6 +261,8 @@ function normalizeChatRecordForRender(key, m = {}) {
     standingImg: m.standingImg,
     tokenId: m.tokenId,
     standingLabel: m.standingLabel,
+    dialoguePortrait: m.dialoguePortrait || '',
+    showPortraitInDialogue: m.showPortraitInDialogue === true,
     imageWide: !!m.imageWide,
     hideImageMeta: !!m.hideImageMeta,
     imageMeta: m.imageMeta || null,
@@ -275,6 +288,8 @@ function makeChatRenderPayloadFromRecord(record = {}) {
     standingImg: record.standingImg,
     tokenId: record.tokenId,
     standingLabel: record.standingLabel,
+    dialoguePortrait: record.dialoguePortrait || '',
+    showPortraitInDialogue: record.showPortraitInDialogue === true,
     imageWide: !!record.imageWide,
     imageMeta: record.imageMeta,
     hideImageMeta: !!record.hideImageMeta,
@@ -540,6 +555,9 @@ function switchActiveChatChannel(channelKey = 'global') {
   } catch (e) {}
   try { if (typeof refreshDmChannelButtons === 'function') refreshDmChannelButtons(); } catch (e) {}
 
+  const listenerVersion = _activeChatChannelListenerVersion;
+  let hasSeenSnapshot = false;
+  let newestSeenKey = '';
   const processed = getProcessedChatKeySet(safeChannelKey);
   const signatures = getChatMessageSignatureStore(safeChannelKey);
   const listenRef = (query && limitToLast)
@@ -554,17 +572,26 @@ function switchActiveChatChannel(channelKey = 'global') {
     whisperTo: m.whisperTo, whisperToName: m.whisperToName, whisperToJournal: m.whisperToJournal, nameColor: m.nameColor,
     speakAsAvatar: m.speakAsAvatar, speakAsJournalId: m.speakAsJournalId,
     msgKey: key, channel: 'chat', standingImg: m.standingImg, tokenId: m.tokenId,
-    standingLabel: m.standingLabel, imageWide: !!m.imageWide, imageMeta: m.imageMeta,
+    standingLabel: m.standingLabel,
+    dialoguePortrait: m.dialoguePortrait || '', showPortraitInDialogue: m.showPortraitInDialogue === true,
+    imageWide: !!m.imageWide, imageMeta: m.imageMeta,
     hideImageMeta: !!m.hideImageMeta,
   });
 
   trackActiveChatChannelListener(onValue(listenRef, snap => {
+    if (listenerVersion !== _activeChatChannelListenerVersion) return;
     const msgs = snap.val() || {};
     const filtered = Object.entries(msgs)
       .map(([k, m]) => ({ ...m, _key: k }))
       .filter((m) => shouldShowChatMessage(m))
-      .sort((a, b) => (a.time || 0) - (b.time || 0));
+      .sort((a, b) => {
+        const at = Number(a.time || 0);
+        const bt = Number(b.time || 0);
+        if (at && bt && at !== bt) return at - bt;
+        return String(a._key || '').localeCompare(String(b._key || ''));
+      });
 
+    const previousNewestKey = newestSeenKey;
     cacheChannelMessages(safeChannelKey, filtered, { merge: true });
     const nextKeys = new Set(filtered.map((m) => m._key));
     Array.from(processed).forEach((key) => {
@@ -578,8 +605,10 @@ function switchActiveChatChannel(channelKey = 'global') {
       const nextSig = buildChatMessageSignature(m);
       const prevSig = signatures.get(m._key);
       const payload = makePayload(m._key, m);
-      if (!processed.has(m._key)) appendChatMsg(payload);
-      else if (prevSig !== nextSig) replaceChatMsg(payload);
+      const alreadyProcessed = processed.has(m._key);
+      const isLateOlderSnapshotItem = hasSeenSnapshot && !alreadyProcessed && isChatKeyAtOrBeforeBoundary(m._key, previousNewestKey);
+      if (!alreadyProcessed && !isLateOlderSnapshotItem) appendChatMsg(payload);
+      else if (alreadyProcessed && prevSig !== nextSig) replaceChatMsg(payload);
       signatures.set(m._key, nextSig);
     });
 
@@ -588,6 +617,13 @@ function switchActiveChatChannel(channelKey = 'global') {
     Array.from(signatures.keys()).forEach((key) => {
       if (!nextKeys.has(key)) signatures.delete(key);
     });
+    if (filtered.length) {
+      newestSeenKey = filtered.reduce((maxKey, item) => {
+        const itemKey = String(item?._key || '');
+        return itemKey > maxKey ? itemKey : maxKey;
+      }, newestSeenKey);
+    }
+    hasSeenSnapshot = true;
   }));
 }
 
