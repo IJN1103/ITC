@@ -17,6 +17,10 @@ let _bgmPendingStartSeconds = null;
 let _bgmExpanded = false;
 let _bgmDragFromIndex = null;
 let _bgmSuppressPlaylistClickUntil = 0;
+let _bgmContinuityTimer = null;
+let _bgmContinuityMissCount = 0;
+let _bgmLastContinuityActionAt = 0;
+let _lastRemoteBgmSnapshot = null;
 
 const BGM_EMPTY_TITLE = '재생되고 있는 BGM이 없어요.';
 const BGM_REPEAT_MODES = ['off', 'one', 'all'];
@@ -43,10 +47,14 @@ window.onYouTubeIframeAPIReady = () => {
         applyStoredBgmVolume();
         flushPendingBgmTrack();
         startBgmProgressTimer();
+        startBgmContinuityTimer();
         updateBgmProgressUI();
       },
       onStateChange: e => {
-        if (e.data === YT.PlayerState.ENDED && canControlBgm()) handleBgmEnded();
+        handleBgmPlayerStateChange(e?.data);
+      },
+      onError: e => {
+        handleBgmPlayerError(e);
       },
     },
   });
@@ -205,6 +213,107 @@ function updateBgmProgressUI() {
 function startBgmProgressTimer() {
   if (_bgmProgressTimer) return;
   _bgmProgressTimer = setInterval(updateBgmProgressUI, 700);
+}
+
+function getBgmPlayerState() {
+  try {
+    return ytPlayer?.getPlayerState?.();
+  } catch (_) {
+    return null;
+  }
+}
+
+function getLatestRemoteBgmSeconds() {
+  if (_lastRemoteBgmSnapshot && typeof _lastRemoteBgmSnapshot === 'object') {
+    return getRemoteBgmPlaybackSeconds(_lastRemoteBgmSnapshot);
+  }
+  return getBgmCurrentTime();
+}
+
+function resetBgmContinuityMisses() {
+  _bgmContinuityMissCount = 0;
+}
+
+function shouldAttemptBgmContinuityRecovery(state) {
+  if (!St.isPlaying || !getCurrentBgmTrack() || !ytReady || !ytPlayer) {
+    resetBgmContinuityMisses();
+    return false;
+  }
+  if (state === YT.PlayerState.PLAYING) {
+    resetBgmContinuityMisses();
+    return false;
+  }
+  if (state === YT.PlayerState.BUFFERING) {
+    _bgmContinuityMissCount += 1;
+    return _bgmContinuityMissCount >= 3;
+  }
+  if (state === YT.PlayerState.PAUSED || state === YT.PlayerState.CUED || state === YT.PlayerState.UNSTARTED || state === YT.PlayerState.ENDED) {
+    _bgmContinuityMissCount += 1;
+    return _bgmContinuityMissCount >= 2;
+  }
+  return false;
+}
+
+function recoverBgmContinuity(reason = 'watchdog') {
+  if (!St.isPlaying) return;
+  const track = getCurrentBgmTrack();
+  if (!track?.videoId || !ytReady || !ytPlayer) return;
+
+  const now = Date.now();
+  if (now - _bgmLastContinuityActionAt < 8000) return;
+  _bgmLastContinuityActionAt = now;
+
+  const expectedSeconds = getLatestRemoteBgmSeconds();
+  try {
+    const loadedId = getLoadedYoutubeVideoId();
+    if (loadedId && loadedId !== track.videoId) return;
+
+    if (!loadedId) {
+      applyBgmPlayerState(track, true, expectedSeconds);
+      return;
+    }
+
+    const current = getBgmCurrentTime();
+    if (Math.abs(current - expectedSeconds) > 6) {
+      ytPlayer.seekTo(expectedSeconds, true);
+    }
+    ytPlayer.playVideo();
+    updateBgmProgressUI();
+  } catch (err) {
+    console.warn('bgm continuity recovery failed', reason, err);
+  }
+}
+
+function checkBgmContinuity() {
+  const state = getBgmPlayerState();
+  if (shouldAttemptBgmContinuityRecovery(state)) {
+    recoverBgmContinuity('timer');
+  }
+}
+
+function startBgmContinuityTimer() {
+  if (_bgmContinuityTimer) return;
+  _bgmContinuityTimer = setInterval(checkBgmContinuity, 3500);
+}
+
+function handleBgmPlayerStateChange(state) {
+  if (state === YT.PlayerState.ENDED && canControlBgm()) {
+    handleBgmEnded();
+    return;
+  }
+  if (state === YT.PlayerState.PLAYING) {
+    resetBgmContinuityMisses();
+    return;
+  }
+  if (shouldAttemptBgmContinuityRecovery(state)) {
+    recoverBgmContinuity('statechange');
+  }
+}
+
+function handleBgmPlayerError(event) {
+  console.warn('bgm player error', event?.data ?? event);
+  if (!St.isPlaying || !getCurrentBgmTrack()) return;
+  setTimeout(() => recoverBgmContinuity('error'), 1200);
 }
 
 function seekBgmPlayer(seconds, tries = 0) {
@@ -817,6 +926,7 @@ async function removeTrack(i) {
 }
 
 function syncBgmRemoteState(bgm = {}) {
+  _lastRemoteBgmSnapshot = bgm && typeof bgm === 'object' ? { ...bgm } : null;
   const nextPlaylist = Array.isArray(bgm.playlist) ? bgm.playlist : [];
   const nextTrack = Number.isInteger(bgm.currentTrack) ? bgm.currentTrack : -1;
   const hasRemotePlaying = Object.prototype.hasOwnProperty.call(bgm, 'isPlaying');
@@ -875,6 +985,7 @@ setTimeout(() => {
   updateRepeatBtn();
   syncBgmPermissionUI();
   startBgmProgressTimer();
+  startBgmContinuityTimer();
   updateBgmProgressUI();
   renderBgmExpandedUI();
   if (!getCurrentBgmTrack()) setBgmTitle(null);
