@@ -238,6 +238,16 @@ function syncJournalRuntimeCache(journal) {
   }
 }
 
+let _popoutDocumentSyncTimer = 0;
+function schedulePopoutDocumentSync() {
+  if (typeof window === 'undefined' || typeof window.forcePopoutSync !== 'function') return;
+  if (_popoutDocumentSyncTimer) clearTimeout(_popoutDocumentSyncTimer);
+  _popoutDocumentSyncTimer = setTimeout(() => {
+    _popoutDocumentSyncTimer = 0;
+    if (typeof window.forcePopoutSync === 'function') window.forcePopoutSync();
+  }, 80);
+}
+
 function normalizeIncomingJournal(raw, idOverride) {
   const normalized = normalizeJournal(raw, idOverride);
   if (normalized) syncJournalRuntimeCache(normalized);
@@ -250,6 +260,7 @@ function upsertLocalJournal(normalizedJournal) {
   const idx = _allJournals.findIndex(j => j.id === normalized.id);
   if (idx >= 0) _allJournals[idx] = normalized;
   else _allJournals.push(normalized);
+  schedulePopoutDocumentSync();
   return normalized;
 }
 
@@ -445,6 +456,7 @@ function renderHandoutList() {
   container.querySelectorAll('.handout-item').forEach(el => el.remove());
   if (!St.roomCode) {
     if (empty) { empty.style.display = 'block'; empty.textContent = '방에 입장하면 핸드아웃을 볼 수 있어요.'; }
+    schedulePopoutDocumentSync();
     return;
   }
   const list = loadHandouts();
@@ -453,6 +465,7 @@ function renderHandoutList() {
       empty.style.display = 'block';
       empty.innerHTML = St.isGM ? '핸드아웃이 없어요.<br>위 + 버튼으로 새 핸드아웃을 만들어보세요.' : '아직 열람 가능한 핸드아웃이 없어요.';
     }
+    schedulePopoutDocumentSync();
     return;
   }
   if (empty) empty.style.display = 'none';
@@ -467,6 +480,7 @@ function renderHandoutList() {
     div.innerHTML = `<div class="handout-icon">📄</div><div class="handout-item-body"><div class="handout-item-title">${esc(h.title || '무제 핸드아웃')}${canEdit ? '<span class="handout-item-badge">편집 가능</span>' : ''}</div><div class="handout-item-preview">${esc(preview)}${stripHandoutText(h.contentHtml || '').length > 80 ? '…' : ''}</div><div class="handout-item-meta"><span>${allowed.length ? '열람: ' + esc(allowed.join(', ')) : 'GM 전용'}</span><span>${(d.getMonth()+1)}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}</span></div></div>`;
     container.appendChild(div);
   });
+  schedulePopoutDocumentSync();
 }
 
 function setHandoutEditorMode(canEdit) {
@@ -959,6 +973,7 @@ function deleteJournalFB(id) {
     _allJournals = _allJournals.filter(j => j.id !== id);
     localStorage.setItem(journalKey(), JSON.stringify(_allJournals));
   }
+  schedulePopoutDocumentSync();
 }
 
 function migrateLocalJournals() {
@@ -1084,11 +1099,13 @@ function renderJournalList() {
   container.querySelectorAll('.journal-item').forEach(el => el.remove());
   if (!St.roomCode) {
     setJournalListEmptyState('방에 입장하면 저널을 볼 수 있어요.');
+    schedulePopoutDocumentSync();
     return;
   }
   const list = loadJournals();
   if (!list.length) {
     setJournalListEmptyState('저널이 없어요.<br>위 + 버튼으로 새 저널을 만들어보세요.');
+    schedulePopoutDocumentSync();
     return;
   }
   setJournalListEmptyState('');
@@ -1096,6 +1113,7 @@ function renderJournalList() {
   list.slice().reverse().forEach(j => frag.appendChild(buildJournalListItem(j)));
   container.appendChild(frag);
   saRefreshToolbar();
+  schedulePopoutDocumentSync();
 }
 
 function openJournalEditor(id) {
