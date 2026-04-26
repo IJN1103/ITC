@@ -1514,7 +1514,7 @@ async function sendPreparedChatImage(preparedOrDataUrl, imageWide = false, image
       if (!St.roomCode) throw new Error('roomCode missing');
       return push(ref(db, `rooms/${St.roomCode}/chat`), { ...msg, dmChannelKey: currentChannelKey || 'global', time: getChatServerTimestamp() });
     }
-    appendChatMsg({ name: msg.name, text: finalSrc, type: 'speak-as-image', uid: St.myId, timestamp: msg.time, speakAsAvatar: saAvatar, speakAsJournalId: saJId, channel: 'chat', imageWide: !!imageWide, imageMeta: normalizedMeta, hideImageMeta: !!hideImageMeta });
+    appendChatMsg({ name: msg.name, text: finalSrc, type: 'speak-as-image', uid: St.myId, timestamp: msg.time, speakAsAvatar: saAvatar, speakAsJournalId: saJId, nameColor: msg.nameColor || '', channel: 'chat', imageWide: !!imageWide, imageMeta: normalizedMeta, hideImageMeta: !!hideImageMeta });
     return Promise.resolve();
   }
 
@@ -2115,7 +2115,9 @@ function buildChatMsgElement(msg = {}) {
       : `<div class="msg-avatar ${sc} sa-avatar"><div class="msg-avatar-inner" style="border-radius:${r}">${esc((name || '?')[0].toUpperCase())}</div></div>`;
     const div = document.createElement('div');
     div.className = `chat-msg msg-speak-as msg-image-msg${imageWide ? ' msg-image-wide-row' : ''}${hideImageMeta ? ' msg-image-hide-meta' : ''}`;
-    div.innerHTML = buildStandardChatImageSection(name, time, text, avatarHtml, !!imageWide, imageMeta, 'sa-msg-name', '', !!hideImageMeta);
+    const journalColor = nameColor || (speakAsJournalId ? (typeof saGetJournalNameColor === 'function' ? saGetJournalNameColor(speakAsJournalId) : (_allJournals.find(x => x.id === speakAsJournalId)?.nameColor || _allJournals.find(x => x.id === speakAsJournalId)?.sheet?.nameColor || '')) : '');
+    const nameStyle = journalColor ? ` style="color:${esc(journalColor)}"` : '';
+    div.innerHTML = buildStandardChatImageSection(name, time, text, avatarHtml, !!imageWide, imageMeta, 'sa-msg-name', nameStyle, !!hideImageMeta);
     addMsgActions(div, uid, msgKey, channel || 'chat', text, type);
     return div;
   }

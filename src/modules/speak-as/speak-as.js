@@ -516,6 +516,21 @@ function setCasualNameColor(color) {
   showToast('잡담 이름 색상이 변경됐어요.');
 }
 
+
+function getNameColorProfileForPopout() {
+  const jId = String(St.speakAsJournalId || '').trim();
+  if (jId) return { journalId: jId, color: saGetJournalNameColor(jId) || '' };
+  return { journalId: '', color: St.myNameColor || '' };
+}
+
+function setNameColorFromPopout(color) {
+  setNameColor(color);
+  return getNameColorProfileForPopout();
+}
+
+window.getNameColorProfileForPopout = getNameColorProfileForPopout;
+window.setNameColorFromPopout = setNameColorFromPopout;
+
 function toggleWhisperDropdown(e) {
   e.stopPropagation();
   if (St.whisperTo) { clearWhisper(); return; }
