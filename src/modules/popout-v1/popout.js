@@ -182,17 +182,49 @@ textarea::-webkit-scrollbar-thumb{background:#2e2e2e;border-radius:2px}
 .dot{width:6px;height:6px;border-radius:50%;background:#5a5751;flex-shrink:0;transition:.18s ease}
 textarea.desc-mode{border-color:#b89a60;background:rgba(184,154,96,.05)}
 textarea.whisper-mode{border-color:#9b59b6;background:rgba(155,89,182,.05)}
+.pop-casual-row{display:none;align-items:center;width:100%;gap:7px;min-height:30px}
+.pop-casual-avatar{width:28px;height:28px;border-radius:6px;background:#1e1e1e;border:1px solid #2e2e2e;color:#b89a60;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;overflow:hidden;flex-shrink:0}
+.pop-casual-avatar img{width:100%;height:100%;object-fit:cover;display:block}
+.pop-casual-name{min-width:0;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12.5px;font-weight:600;color:#e8e3da}
+.pop-casual-mini-btn{height:26px;padding:0 8px;border:1px solid #1f1f1f;border-radius:6px;background:#161616;color:#8c8882;font:inherit;font-size:10px;cursor:pointer;transition:.18s ease;flex-shrink:0}
+.pop-casual-mini-btn:hover{border-color:#b89a60;color:#b89a60}
+.pop-casual-color-wrap{position:relative;margin-left:auto;flex-shrink:0}
+.pop-color-pop{display:none;position:absolute;right:0;bottom:calc(100% + 6px);width:156px;padding:8px;border:1px solid #2e2e2e;border-radius:9px;background:#161616;box-shadow:0 -4px 16px rgba(0,0,0,.4);z-index:80}
+.pop-color-pop.open{display:block}
+.pop-color-title{font-size:10px;color:#8c8882;margin-bottom:7px;letter-spacing:.04em}
+.pop-color-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:5px}
+.pop-color-swatch{width:18px;height:18px;border-radius:5px;border:1px solid rgba(255,255,255,.14);cursor:pointer;padding:0}
+.pop-color-swatch.active{outline:2px solid #b89a60;outline-offset:1px}
+.doc-pop{flex:1;overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:12px}
+.doc-pop-sec{border:1px solid #1f1f1f;border-radius:9px;background:rgba(255,255,255,.015);overflow:hidden}
+.doc-pop-head{display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-bottom:1px solid #1f1f1f;color:#b89a60;font-size:10px;letter-spacing:.12em;background:rgba(184,154,96,.05)}
+.doc-pop-list{display:flex;flex-direction:column;gap:6px;padding:8px}
+.doc-pop-empty{padding:12px 8px;text-align:center;font-size:11px;color:#5a5751;line-height:1.5}
+.doc-pop-item{padding:8px 9px;border:1px solid #1f1f1f;border-radius:7px;background:#141414;cursor:pointer;transition:.18s ease}
+.doc-pop-item:hover{border-color:rgba(184,154,96,.38);background:rgba(184,154,96,.07)}
+.doc-pop-title{font-size:12.5px;color:#e8e3da;font-weight:600;line-height:1.35;word-break:break-word}
+.doc-pop-preview{margin-top:4px;font-size:10.5px;color:#8c8882;line-height:1.45;word-break:break-word}
+.doc-pop-meta{margin-top:5px;font-size:9px;color:#5a5751;text-align:right}
 `;
 
   const htmlBody = `
 <div class="tabs" id="tabs"></div>
 <div class="pane on" id="p-chat"><div class="pdm" id="pdm"></div><div class="msgs" id="pm-chat"></div></div>
 <div class="pane" id="p-casual"><div class="msgs" id="pm-casual"></div></div>
-<div class="pane" id="p-journal"><div class="j-list" id="pm-journal"></div></div>
+<div class="pane" id="p-journal"><div class="doc-pop" id="pm-journal"></div></div>
 <div class="ptb" id="ptb" style="position:relative">
-  <div class="sa-row">
+  <div class="sa-row" id="pop-sa-row">
     <button class="sa-btn" id="pop-sa-btn" onclick="toggleSADD()"><span class="sa-icon" id="sa-icon-span"><svg width="11" height="11" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="5" r="3" stroke="currentColor" stroke-width="1.5"/><path d="M2 12c0-2.21 2.239-4 5-4s5 1.79 5 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></span><span class="sa-name" id="sa-name-span">\ub098</span></button>
     <div style="margin-left:auto"></div>
+  </div>
+  <div class="pop-casual-row" id="pop-casual-row">
+    <div class="pop-casual-avatar" id="pop-casual-avatar">?</div>
+    <span class="pop-casual-name" id="pop-casual-name">\ub098</span>
+    <button class="pop-casual-mini-btn" id="pop-casual-edit-btn" type="button" onclick="editPopCasualNick()">닉네임</button>
+    <div class="pop-casual-color-wrap">
+      <button class="pop-casual-mini-btn" id="pop-casual-color-btn" type="button" onclick="togglePopCasualColor(event)">색상</button>
+      <div class="pop-color-pop" id="pop-casual-color-pop"></div>
+    </div>
   </div>
   <div class="tb-row">
     <button class="desc-btn" id="pop-desc-btn" onclick="popDesc()"><span class="dot"></span><span>desc</span></button>
@@ -227,8 +259,8 @@ function buildPopoutScript(journalJson, playersJson) {
   
   // switchTab
   L.push('var tabs=document.getElementById("tabs");');
-  L.push('["채팅:chat","잡담:casual","저널:journal"].forEach(function(s,i){var p=s.split(":"),b=document.createElement("button");b.className="tab"+(i===0?" on":"");b.dataset.tab=p[1];b.textContent=p[0];b.onclick=function(){switchTab(p[1])};tabs.appendChild(b)});');
-  L.push('function switchTab(t){aTab=t;document.querySelectorAll(".tab").forEach(function(b){b.classList.toggle("on",b.dataset.tab===t)});document.querySelectorAll(".pane").forEach(function(p){p.classList.toggle("on",p.id==="p-"+t)});document.getElementById("iw").style.display=t==="journal"?"none":"";document.getElementById("ptb").style.display=t==="journal"?"none":"";var pdm=document.getElementById("pdm");if(pdm)pdm.style.display=t==="chat"?"flex":"none"}');
+  L.push('["채팅:chat","잡담:casual","문서:journal"].forEach(function(s,i){var p=s.split(":"),b=document.createElement("button");b.className="tab"+(i===0?" on":"");b.dataset.tab=p[1];b.textContent=p[0];b.onclick=function(){switchTab(p[1])};tabs.appendChild(b)});');
+  L.push('function switchTab(t){aTab=t;document.querySelectorAll(".tab").forEach(function(b){b.classList.toggle("on",b.dataset.tab===t)});document.querySelectorAll(".pane").forEach(function(p){p.classList.toggle("on",p.id==="p-"+t)});var iw=document.getElementById("iw"),ptb=document.getElementById("ptb"),saRow=document.getElementById("pop-sa-row"),casualRow=document.getElementById("pop-casual-row"),tools=document.querySelector(".tb-row"),pdm=document.getElementById("pdm"),sad=document.getElementById("sa-dd"),wdd=document.getElementById("w-dd"),ccp=document.getElementById("pop-casual-color-pop");if(sad)sad.classList.remove("open");if(wdd)wdd.classList.remove("open");if(ccp)ccp.classList.remove("open");if(t==="journal"){if(iw)iw.style.display="none";if(ptb)ptb.style.display="none"}else{if(iw)iw.style.display="";if(ptb)ptb.style.display=""}if(saRow)saRow.style.display=t==="chat"?"flex":"none";if(casualRow)casualRow.style.display=t==="casual"?"flex":"none";if(tools)tools.style.display=t==="chat"?"flex":"none";if(pdm)pdm.style.display=t==="chat"?"flex":"none";if(t==="casual"){descMode=false;whisperUid=null;whisperName=null;whisperJournalId=null;refreshWhisperUI();var db=document.getElementById("pop-desc-btn");if(db)db.classList.remove("active");refreshPopCasualProfile()}else if(t==="chat"){refreshWhisperUI()}}');
   L.push('window.switchTab=switchTab;');
   L.push('function getOpenerState(){try{return window.opener||null}catch(e){return null}}');
   L.push('function getCurrentDmChannelKey(){return String(popDmChannelKey||"global").trim()||"global"}');
@@ -289,8 +321,13 @@ L.push('window.renderDmBar=renderDmBar;');
   L.push('window.setMessages=function(ch,list){ch=ch||"chat";var c=document.getElementById("pm-"+ch)||document.getElementById("pm-chat");if(!c)return;var nearBottom=(c.scrollHeight-c.scrollTop-c.clientHeight)<=56;var prevHeight=c.scrollHeight;var prevTop=c.scrollTop;window._popoutSuppressAutoscroll=true;c.innerHTML="";(Array.isArray(list)?list:[]).forEach(function(item){window.addMsg(item.name,item.text,normalizeMsgType(item.type),item.channel||ch,item.nameColor||"",item.avatar||"",item.time||"",item.fhtml||"",!!item.imageWide,item.imageMeta||null,!!item.hideImageMeta)});window._popoutSuppressAutoscroll=false;if(nearBottom||prevHeight===0)c.scrollTop=c.scrollHeight;else c.scrollTop=prevTop+(c.scrollHeight-prevHeight)};');
   L.push('var _popOlderLoading={chat:false,casual:false};function bindOlderScroll(ch){var c=document.getElementById("pm-"+ch)||document.getElementById("pm-chat");if(!c||c.dataset.olderScrollBound==="1")return;c.dataset.olderScrollBound="1";c.addEventListener("scroll",function(){if(c.scrollTop>28||_popOlderLoading[ch])return;var op=getOpenerState();if(!op||typeof op.loadOlderMessagesForPopout!=="function")return;_popOlderLoading[ch]=true;var prevHeight=c.scrollHeight;var prevTop=c.scrollTop;Promise.resolve(op.loadOlderMessagesForPopout(ch,ch==="chat"?getCurrentDmChannelKey():"casual")).then(function(){try{if(op.forcePopoutSync)op.forcePopoutSync()}catch(e){}setTimeout(function(){if(c.scrollHeight>prevHeight)c.scrollTop=prevTop+(c.scrollHeight-prevHeight)},120)}).finally(function(){_popOlderLoading[ch]=false})},{passive:true})}bindOlderScroll("chat");bindOlderScroll("casual");');
 
-  // setJournals
-  L.push('window.setJournals=function(list){journals=list;var c=document.getElementById("pm-journal");c.innerHTML="";list.forEach(function(j){var d=document.createElement("div");d.className="j-item";var b=document.createElement("b");b.textContent=j.title||"\\uBB34\\uC81C";var s=document.createElement("span");s.textContent=(j.body||"").slice(0,40)||"\\uB0B4\\uC6A9 \\uC5C6\\uC74C";d.appendChild(b);d.appendChild(s);c.appendChild(d)})};');
+  // document pane
+  L.push('var handouts=[];function stripHtml(v){var d=document.createElement("div");d.innerHTML=String(v||"");return d.textContent||d.innerText||""}');
+  L.push('function makeDocItem(kind,item){var d=document.createElement("div");d.className="doc-pop-item";var title=document.createElement("div");title.className="doc-pop-title";title.textContent=item.title||(kind==="handout"?"무제 핸드아웃":"무제 저널");var preview=document.createElement("div");preview.className="doc-pop-preview";var raw=kind==="handout"?stripHtml(item.contentHtml||""):(item.body||"");preview.textContent=(raw||"내용 없음").slice(0,56)+(raw&&raw.length>56?"…":"");var meta=document.createElement("div");meta.className="doc-pop-meta";var dt=new Date(item.updatedAt||item.createdAt||Date.now());meta.textContent=(dt.getMonth()+1)+"/"+dt.getDate()+" "+String(dt.getHours()).padStart(2,"0")+":"+String(dt.getMinutes()).padStart(2,"0");d.appendChild(title);d.appendChild(preview);d.appendChild(meta);d.onclick=function(){try{var op=getOpenerState();if(!op)return;if(kind==="handout"&&typeof op.openHandoutEditor==="function")op.openHandoutEditor(item.id);else if(kind==="journal"&&typeof op.openSheet==="function")op.openSheet(item.id)}catch(e){}};return d}');
+  L.push('function renderDocSection(title,list,kind,emptyText){var sec=document.createElement("section");sec.className="doc-pop-sec";var head=document.createElement("div");head.className="doc-pop-head";head.textContent=title;var body=document.createElement("div");body.className="doc-pop-list";if(!list||!list.length){var emp=document.createElement("div");emp.className="doc-pop-empty";emp.textContent=emptyText;body.appendChild(emp)}else{list.forEach(function(item){body.appendChild(makeDocItem(kind,item))})}sec.appendChild(head);sec.appendChild(body);return sec}');
+  L.push('function renderDocsPane(){var c=document.getElementById("pm-journal");if(!c)return;c.innerHTML="";c.appendChild(renderDocSection("저널",journals,"journal","저널이 없어요."));c.appendChild(renderDocSection("핸드아웃",handouts,"handout","표시할 핸드아웃이 없어요."))}');
+  L.push('window.setDocuments=function(jList,hList){journals=Array.isArray(jList)?jList:[];handouts=Array.isArray(hList)?hList:[];renderDocsPane()};');
+  L.push('window.setJournals=function(list){window.setDocuments(list,handouts||[])};');
 
   // helper: get avatar from opener
   L.push('var _avCache={},_ncCache={};');
@@ -298,6 +335,12 @@ L.push('window.renderDmBar=renderDmBar;');
   L.push('function getNc(id){return _ncCache[id]||""}');
   L.push('window.setAvatars=function(m){for(var k in m)_avCache[k]=m[k]};');
   L.push('window.setColors=function(m){_ncCache=m||{}};');
+  L.push('var POP_CASUAL_COLORS=["#b89a60","#e8c87a","#f5a623","#e74c3c","#e91e63","#ff6b6b","#9b59b6","#8e44ad","#3498db","#2980b9","#7c9ece","#1abc9c","#2ecc71","#27ae60","#f39c12","#e67e22","#95a5a6","#ecf0f1"];');
+  L.push('function getPopCasualProfile(){try{var op=getOpenerState();if(op&&typeof op.getCasualProfileForPopout==="function")return op.getCasualProfileForPopout()}catch(e){}return{name:"나",color:"",avatar:""}}');
+  L.push('function refreshPopCasualProfile(){var p=getPopCasualProfile(),av=document.getElementById("pop-casual-avatar"),name=document.getElementById("pop-casual-name");if(name){name.textContent=p.name||"나";name.style.color=p.color||""}if(av){av.innerHTML="";if(p.avatar){var img=document.createElement("img");img.src=p.avatar;av.appendChild(img)}else{av.textContent=((p.name||"?")[0]||"?").toUpperCase()}}}');
+  L.push('window.refreshPopCasualProfile=refreshPopCasualProfile;');
+  L.push('window.editPopCasualNick=function(){var p=getPopCasualProfile(),v=window.prompt("잡담 닉네임을 입력하세요 (18자 이내)",p.name||"나");if(v===null)return;var trimmed=String(v||"").trim().slice(0,18);if(!trimmed){showPopDmToast("닉네임을 입력해주세요.");return}try{var op=getOpenerState();if(op&&typeof op.setCasualNicknameFromPopout==="function")op.setCasualNicknameFromPopout(trimmed);else if(op&&typeof op.editCasualNick==="function")op.editCasualNick()}catch(e){}refreshPopCasualProfile()}');
+  L.push('window.togglePopCasualColor=function(ev){if(ev&&ev.stopPropagation)ev.stopPropagation();var pop=document.getElementById("pop-casual-color-pop");if(!pop)return;if(pop.classList.contains("open")){pop.classList.remove("open");return}var p=getPopCasualProfile();pop.innerHTML="<div class=\"pop-color-title\">잡담 이름 색상</div><div class=\"pop-color-grid\"></div>";var grid=pop.querySelector(".pop-color-grid");POP_CASUAL_COLORS.forEach(function(color){var sw=document.createElement("button");sw.type="button";sw.className="pop-color-swatch"+(p.color===color?" active":"");sw.style.background=color;sw.onclick=function(e){e.stopPropagation();try{var op=getOpenerState();if(op&&typeof op.setCasualNameColorFromPopout==="function")op.setCasualNameColorFromPopout(color);else if(op&&typeof op.setCasualNameColor==="function")op.setCasualNameColor(color)}catch(err){}pop.classList.remove("open");setTimeout(refreshPopCasualProfile,30)};grid.appendChild(sw)});pop.classList.add("open")}');
 
   // speak-as dropdown
   L.push('function toggleSADD(){var dd=document.getElementById("sa-dd");if(dd.classList.contains("open")){dd.classList.remove("open");return}dd.innerHTML="";');
@@ -333,8 +376,8 @@ L.push('window.renderDmBar=renderDmBar;');
   L.push('document.getElementById("sb").onclick=send;');
   L.push('document.getElementById("pi").onkeydown=function(ev){if(ev.key==="Enter"&&!ev.shiftKey){ev.preventDefault();send()}};');
   L.push('document.getElementById("pi").oninput=function(){if(window.opener&&window.opener.broadcastTyping)window.opener.broadcastTyping()};');
-  L.push('document.addEventListener("click",function(e){if(!e.target.closest("#pop-sa-btn")&&!e.target.closest("#sa-dd"))document.getElementById("sa-dd").classList.remove("open");if(!e.target.closest("#pop-whisper-btn")&&!e.target.closest("#w-dd"))document.getElementById("w-dd").classList.remove("open")});');
-  L.push('window._popReady=true;');
+  L.push('document.addEventListener("click",function(e){if(!e.target.closest("#pop-sa-btn")&&!e.target.closest("#sa-dd"))document.getElementById("sa-dd").classList.remove("open");if(!e.target.closest("#pop-whisper-btn")&&!e.target.closest("#w-dd"))document.getElementById("w-dd").classList.remove("open");if(!e.target.closest("#pop-casual-color-btn")&&!e.target.closest("#pop-casual-color-pop")){var p=document.getElementById("pop-casual-color-pop");if(p)p.classList.remove("open")}});');
+  L.push('renderDocsPane();refreshPopCasualProfile();window._popReady=true;');
   L.push('})();');
   return L.join('\n');
 }
@@ -449,7 +492,8 @@ function popoutChat() {
         targetWin.setMessages('casual', casualList);
       }
     } catch (e) {}
-    try { targetWin.setJournals(loadJournals()); } catch(e){}
+    try { if (targetWin.setDocuments) targetWin.setDocuments(loadJournals(), typeof loadHandouts === 'function' ? loadHandouts() : []); else if (targetWin.setJournals) targetWin.setJournals(loadJournals()); } catch(e){}
+    try { if (targetWin.refreshPopCasualProfile) targetWin.refreshPopCasualProfile(); } catch(e){}
     try {
       const avMap = {}, ncMap = {};
       _allJournals.forEach(j => {

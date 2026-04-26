@@ -2222,6 +2222,50 @@ if (document.readyState === 'loading') {
   initChatImageComposer();
 }
 
+function getCasualProfileForPopout() {
+  let avatar = '';
+  try {
+    avatar = window._itcAvatarRuntime?.readStoredAvatar?.(St.myId) || localStorage.getItem('itc_avatar_' + St.myId) || '';
+  } catch (e) {
+    avatar = '';
+  }
+  return {
+    name: _casualNickname || St.myName || '나',
+    color: St.casualNameColor || '',
+    avatar,
+  };
+}
+
+function setCasualNicknameFromPopout(name) {
+  const trimmed = String(name || '').trim().slice(0, 18);
+  if (!trimmed) return getCasualProfileForPopout();
+  _casualNickname = trimmed;
+  try { localStorage.setItem('itc_casual_nick_' + St.myId, trimmed); } catch(e) {}
+  if (window._FB?.CONFIGURED && St.roomCode) {
+    const { db, ref, update } = window._FB;
+    update(ref(db, `rooms/${St.roomCode}/players/${St.myId}`), { casualNick: trimmed });
+  }
+  refreshCasualNickDisplay();
+  if (typeof window.forcePopoutSync === 'function') window.forcePopoutSync();
+  return getCasualProfileForPopout();
+}
+
+function setCasualNameColorFromPopout(color) {
+  if (typeof window.setCasualNameColor === 'function') {
+    window.setCasualNameColor(color);
+  } else {
+    St.casualNameColor = String(color || '').trim();
+    try { localStorage.setItem('itc_casual_name_color', St.casualNameColor); } catch(e) {}
+    refreshCasualNickDisplay();
+  }
+  if (typeof window.forcePopoutSync === 'function') window.forcePopoutSync();
+  return getCasualProfileForPopout();
+}
+
+window.getCasualProfileForPopout = getCasualProfileForPopout;
+window.setCasualNicknameFromPopout = setCasualNicknameFromPopout;
+window.setCasualNameColorFromPopout = setCasualNameColorFromPopout;
+
 window.chatKeydown = chatKeydown;
 window.sendChat = sendChat;
 window.handleChatImageUpload = handleChatImageUpload;
