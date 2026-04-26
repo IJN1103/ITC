@@ -572,7 +572,7 @@ function getChatRenderSnapshot(channel = 'chat', options = {}) {
 function buildMessageNodeFromRecord(channel = 'chat', record) {
   if (!record) return null;
   if (channel === 'casual') {
-    return buildCasualMsgElement(record.name, record.text, record.uid, record.timestamp, record._key);
+    return buildCasualMsgElement(record.name, record.text, record.uid, record.timestamp, record._key, record.nameColor || '');
   }
   return buildChatMsgElement({ ...record, msgKey: record._key, channel });
 }
@@ -1880,7 +1880,7 @@ function appendCasualMsg(name, text, uid, timestamp, msgKey, nameColor) {
   if (typeof _popoutWins !== 'undefined') {
     const av = getPopoutAvatarUrl(name, uid);
     const renderedTime = div.querySelector('.msg-time')?.textContent || '';
-    _popoutWins.filter(w => w && !w.closed).forEach(w => { if (w.addMsg) w.addMsg(name, text, 'normal', 'casual', '', av, renderedTime, fmtText(text)); });
+    _popoutWins.filter(w => w && !w.closed).forEach(w => { if (w.addMsg) w.addMsg(name, text, 'normal', 'casual', nameColor || '', av, renderedTime, fmtText(text)); });
   }
 }
 

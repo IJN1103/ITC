@@ -715,13 +715,13 @@ function setupFirebaseListeners() {
 
   const addCasualRecord = (key, m) => {
     if (!m || _processedCasualKeys.has(key)) return;
-    appendCasualMsg(m.name, m.text, m.uid, m.time, key);
+    appendCasualMsg(m.name, m.text, m.uid, m.time, key, m.nameColor || '');
     _processedCasualKeys.add(key);
   };
 
   const changeCasualRecord = (key, m) => {
     if (!m) return;
-    replaceCasualMsg(m.name, m.text, m.uid, m.time, key);
+    replaceCasualMsg(m.name, m.text, m.uid, m.time, key, m.nameColor || '');
     _processedCasualKeys.add(key);
   };
 
