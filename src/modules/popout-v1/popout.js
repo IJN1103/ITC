@@ -65,11 +65,18 @@ function buildPopoutHtml() {
   const SE = '</' + 'script>';
   const rc = esc(St.roomCode);
   
-  // Collect journal data for the popout
+  // Collect visible document data for the popout
   const journals = loadJournals().map(j => ({
-    id: j.id, title: j.title || '무제'
+    id: j.id,
+    title: j.title || '무제',
+    body: j.body || '',
+    avatar: j.avatar || j.sheet?.avatar || '',
+    assignedTo: Array.isArray(j.assignedTo) ? j.assignedTo : [],
+    createdAt: j.createdAt || Date.now(),
+    updatedAt: j.updatedAt || j.createdAt || Date.now(),
   }));
-  const journalJson = JSON.stringify(journals);
+  const journalJson = JSON.stringify(journals).replace(/</g, '\\x3c');
+  const isGmJson = JSON.stringify(!!St.isGM);
   
   const css = `
 *{box-sizing:border-box;margin:0;padding:0}
@@ -200,15 +207,27 @@ textarea.whisper-mode{border-color:#9b59b6;background:rgba(155,89,182,.05)}
 .pop-color-swatch{width:18px;height:18px;border-radius:5px;border:1px solid rgba(255,255,255,.14);cursor:pointer;padding:0}
 .pop-color-swatch.active{outline:2px solid #b89a60;outline-offset:1px}
 .doc-pop{flex:1;overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:12px}
-.doc-pop-sec{border:1px solid #1f1f1f;border-radius:9px;background:rgba(255,255,255,.015);overflow:hidden}
-.doc-pop-head{display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-bottom:1px solid #1f1f1f;color:#b89a60;font-size:10px;letter-spacing:.12em;background:rgba(184,154,96,.05)}
-.doc-pop-list{display:flex;flex-direction:column;gap:6px;padding:8px}
+.doc-pop-sec{border:1px solid #1f1f1f;border-radius:9px;background:rgba(255,255,255,.015);overflow:hidden;display:flex;flex-direction:column;min-height:0}
+.doc-pop-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;border-bottom:1px solid #1f1f1f;background:rgba(184,154,96,.05)}
+.doc-pop-head-title{font-size:11px;font-weight:700;color:#e8e3da;letter-spacing:.04em}
+.doc-pop-actions{display:flex;align-items:center;gap:6px;flex-shrink:0}
+.doc-pop-api-btn,.doc-pop-add-btn{height:22px;min-width:22px;border:1px solid #2b2b2b;border-radius:7px;background:#161616;color:#8c8882;font:inherit;font-size:10px;line-height:1;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:.18s ease;padding:0 7px}
+.doc-pop-add-btn{font-size:16px;padding:0;width:22px}
+.doc-pop-api-btn:hover,.doc-pop-add-btn:hover{border-color:#b89a60;color:#b89a60;background:rgba(184,154,96,.08)}
+.doc-pop-list{display:flex;flex-direction:column;gap:6px;padding:8px;min-height:0}
 .doc-pop-empty{padding:12px 8px;text-align:center;font-size:11px;color:#5a5751;line-height:1.5}
-.doc-pop-item{padding:8px 9px;border:1px solid #1f1f1f;border-radius:7px;background:#141414;cursor:pointer;transition:.18s ease}
+.doc-pop-item{padding:8px 9px;border:1px solid #1f1f1f;border-radius:7px;background:#141414;cursor:pointer;transition:.18s ease;display:flex;align-items:flex-start;gap:10px;min-width:0}
 .doc-pop-item:hover{border-color:rgba(184,154,96,.38);background:rgba(184,154,96,.07)}
-.doc-pop-title{font-size:12.5px;color:#e8e3da;font-weight:600;line-height:1.35;word-break:break-word}
-.doc-pop-preview{margin-top:4px;font-size:10.5px;color:#8c8882;line-height:1.45;word-break:break-word}
-.doc-pop-meta{margin-top:5px;font-size:9px;color:#5a5751;text-align:right}
+.doc-pop-avatar{width:30px;height:30px;flex:0 0 30px;border-radius:7px;background:#1e1e1e;border:1px solid #2e2e2e;color:#b89a60;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;overflow:hidden}
+.doc-pop-avatar img{width:100%;height:100%;object-fit:cover;display:block}
+.doc-pop-icon{font-size:10px;letter-spacing:.04em;color:#8c8882}
+.doc-pop-body{flex:1;min-width:0}
+.doc-pop-title{display:flex;align-items:center;gap:5px;min-width:0;font-size:12.5px;color:#e8e3da;font-weight:600;line-height:1.35;word-break:break-word}
+.doc-pop-title-text{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.doc-pop-badge{font-size:9px;color:#b89a60;border:1px solid rgba(184,154,96,.22);background:rgba(184,154,96,.08);border-radius:999px;padding:1px 5px;flex-shrink:0}
+.doc-pop-preview{margin-top:4px;font-size:10.5px;color:#8c8882;line-height:1.45;word-break:break-word;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.doc-pop-meta{margin-top:5px;font-size:9px;color:#5a5751;display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0}
+.doc-pop-meta span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 `;
   const colorIconSrc = esc(new URL('assets/ui/icon-name-color.png', window.location.href).href);
 
@@ -253,14 +272,14 @@ textarea.whisper-mode{border-color:#9b59b6;background:rgba(155,89,182,.05)}
   });
   const playersJson = JSON.stringify(playersObj).replace(/</g, '\\x3c');
 
-  return '<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ITC \u2014 ' + rc + '</title><link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400&display=swap" rel=stylesheet><style>' + css + '</style></head><body>' + htmlBody + S + buildPopoutScript(journalJson, playersJson) + SE + '</body></html>';
+  return '<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ITC \u2014 ' + rc + '</title><link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400&display=swap" rel=stylesheet><style>' + css + '</style></head><body>' + htmlBody + S + buildPopoutScript(journalJson, playersJson, isGmJson) + SE + '</body></html>';
 }
 
-function buildPopoutScript(journalJson, playersJson) {
+function buildPopoutScript(journalJson, playersJson, isGmJson) {
   var L = [];
   L.push('(function(){');
   L.push('var aTab="chat",saJId=null,descMode=false,whisperUid=null,whisperName=null,whisperJournalId=null,popDmChannelKey="global",popDmPendingTargetIds=null;');
-  L.push('var journals='+journalJson+',players='+playersJson+';');
+  L.push('var journals='+journalJson+',players='+playersJson+',handouts=[],popIsGM='+isGmJson+';');
   
   // switchTab
   L.push('var tabs=document.getElementById("tabs");');
@@ -327,12 +346,15 @@ L.push('window.renderDmBar=renderDmBar;');
   L.push('var _popOlderLoading={chat:false,casual:false};function bindOlderScroll(ch){var c=document.getElementById("pm-"+ch)||document.getElementById("pm-chat");if(!c||c.dataset.olderScrollBound==="1")return;c.dataset.olderScrollBound="1";c.addEventListener("scroll",function(){if(c.scrollTop>28||_popOlderLoading[ch])return;var op=getOpenerState();if(!op||typeof op.loadOlderMessagesForPopout!=="function")return;_popOlderLoading[ch]=true;var prevHeight=c.scrollHeight;var prevTop=c.scrollTop;Promise.resolve(op.loadOlderMessagesForPopout(ch,ch==="chat"?getCurrentDmChannelKey():"casual")).then(function(){try{if(op.forcePopoutSync)op.forcePopoutSync()}catch(e){}setTimeout(function(){if(c.scrollHeight>prevHeight)c.scrollTop=prevTop+(c.scrollHeight-prevHeight)},120)}).finally(function(){_popOlderLoading[ch]=false})},{passive:true})}bindOlderScroll("chat");bindOlderScroll("casual");');
 
   // document pane
-  L.push('var handouts=[];function stripHtml(v){var d=document.createElement("div");d.innerHTML=String(v||"");return d.textContent||d.innerText||""}');
-  L.push('function makeDocItem(kind,item){var d=document.createElement("div");d.className="doc-pop-item";var title=document.createElement("div");title.className="doc-pop-title";title.textContent=item.title||(kind==="handout"?"무제 핸드아웃":"무제 저널");var preview=document.createElement("div");preview.className="doc-pop-preview";var raw=kind==="handout"?stripHtml(item.contentHtml||""):(item.body||"");preview.textContent=(raw||"내용 없음").slice(0,56)+(raw&&raw.length>56?"…":"");var meta=document.createElement("div");meta.className="doc-pop-meta";var dt=new Date(item.updatedAt||item.createdAt||Date.now());meta.textContent=(dt.getMonth()+1)+"/"+dt.getDate()+" "+String(dt.getHours()).padStart(2,"0")+":"+String(dt.getMinutes()).padStart(2,"0");d.appendChild(title);d.appendChild(preview);d.appendChild(meta);d.onclick=function(){try{var op=getOpenerState();if(!op)return;if(kind==="handout"&&typeof op.openHandoutEditor==="function")op.openHandoutEditor(item.id);else if(kind==="journal"&&typeof op.openSheet==="function")op.openSheet(item.id)}catch(e){}};return d}');
-  L.push('function renderDocSection(title,list,kind,emptyText){var sec=document.createElement("section");sec.className="doc-pop-sec";var head=document.createElement("div");head.className="doc-pop-head";head.textContent=title;var body=document.createElement("div");body.className="doc-pop-list";if(!list||!list.length){var emp=document.createElement("div");emp.className="doc-pop-empty";emp.textContent=emptyText;body.appendChild(emp)}else{list.forEach(function(item){body.appendChild(makeDocItem(kind,item))})}sec.appendChild(head);sec.appendChild(body);return sec}');
-  L.push('function renderDocsPane(){var c=document.getElementById("pm-journal");if(!c)return;c.innerHTML="";c.appendChild(renderDocSection("저널",journals,"journal","저널이 없어요."));c.appendChild(renderDocSection("핸드아웃",handouts,"handout","표시할 핸드아웃이 없어요."))}');
-  L.push('window.setDocuments=function(jList,hList){journals=Array.isArray(jList)?jList:[];handouts=Array.isArray(hList)?hList:[];renderDocsPane()};');
-  L.push('window.setJournals=function(list){window.setDocuments(list,handouts||[])};');
+  L.push('function stripHtml(v){var d=document.createElement("div");d.innerHTML=String(v||"");return d.textContent||d.innerText||""}');
+  L.push('function playerName(uid){var p=players&&players[uid];return p&&(p.name||p.currentJournalName)||""}');
+  L.push('function fmtDocTime(item){var dt=new Date(item&& (item.updatedAt||item.createdAt) || Date.now());if(!dt||isNaN(dt.getTime()))dt=new Date();return (dt.getMonth()+1)+"/"+dt.getDate()+" "+String(dt.getHours()).padStart(2,"0")+":"+String(dt.getMinutes()).padStart(2,"0")}');
+  L.push('function makeDocAction(label,cls,title,fnName){var b=document.createElement("button");b.type="button";b.className=cls;b.textContent=label;b.title=title;b.onclick=function(e){e.stopPropagation();try{var op=getOpenerState();if(op&&typeof op[fnName]==="function"){op[fnName]();if(op.forcePopoutSync)setTimeout(function(){try{op.forcePopoutSync()}catch(_e){}},80)}}catch(err){}};return b}');
+  L.push('function makeDocItem(kind,item){item=item||{};var d=document.createElement("div");d.className="doc-pop-item";var av=document.createElement("div");av.className="doc-pop-avatar";if(kind==="journal"){var imgSrc=getAv(item.id)||item.avatar||(item.sheet&&item.sheet.avatar)||"";if(imgSrc){var img=document.createElement("img");img.src=imgSrc;av.appendChild(img)}else{av.textContent=((item.title||"저").trim()[0]||"?").toUpperCase()}}else{av.innerHTML="<span class=\\"doc-pop-icon\\">문서</span>"}var body=document.createElement("div");body.className="doc-pop-body";var title=document.createElement("div");title.className="doc-pop-title";var titleText=document.createElement("span");titleText.className="doc-pop-title-text";titleText.textContent=item.title||(kind==="handout"?"무제 핸드아웃":"무제 저널");title.appendChild(titleText);if(kind==="handout"&&popIsGM){var edit=document.createElement("span");edit.className="doc-pop-badge";edit.textContent="편집 가능";title.appendChild(edit)}var preview=document.createElement("div");preview.className="doc-pop-preview";var raw=kind==="handout"?stripHtml(item.contentHtml||""):(item.body||"");preview.textContent=(raw||"내용 없음").slice(0,80)+(raw&&raw.length>80?"…":"");var meta=document.createElement("div");meta.className="doc-pop-meta";var left=document.createElement("span");var right=document.createElement("span");if(kind==="journal"){var names=(Array.isArray(item.assignedTo)?item.assignedTo:[]).map(playerName).filter(Boolean);left.textContent=names.length?"권한: "+names.join(", "):""}else{var allowed=(Array.isArray(item.allowedTo)?item.allowedTo:[]).map(playerName).filter(Boolean);left.textContent=allowed.length?"열람: "+allowed.join(", "):(popIsGM?"GM 전용":"열람 가능")}right.textContent=fmtDocTime(item);meta.appendChild(left);meta.appendChild(right);body.appendChild(title);body.appendChild(preview);body.appendChild(meta);d.appendChild(av);d.appendChild(body);d.onclick=function(){try{var op=getOpenerState();if(!op)return;if(kind==="handout"&&typeof op.openHandoutEditor==="function")op.openHandoutEditor(item.id);else if(kind==="journal"&&typeof op.openSheet==="function")op.openSheet(item.id)}catch(e){}};return d}');
+  L.push('function renderDocSection(titleText,list,kind,emptyText){var sec=document.createElement("section");sec.className="doc-pop-sec";var head=document.createElement("div");head.className="doc-pop-head";var title=document.createElement("div");title.className="doc-pop-head-title";title.textContent=titleText;head.appendChild(title);var actions=document.createElement("div");actions.className="doc-pop-actions";if(kind==="journal"){actions.appendChild(makeDocAction("API","doc-pop-api-btn","CCFOLIA API 코드로 저널 가져오기","openJournalApiImportModal"));actions.appendChild(makeDocAction("+","doc-pop-add-btn","새 저널 만들기","createNewJournal"))}else if(kind==="handout"&&popIsGM){actions.appendChild(makeDocAction("+","doc-pop-add-btn","새 핸드아웃 만들기","createNewHandout"))}head.appendChild(actions);var body=document.createElement("div");body.className="doc-pop-list";if(!list||!list.length){var emp=document.createElement("div");emp.className="doc-pop-empty";emp.textContent=emptyText;body.appendChild(emp)}else{list.forEach(function(item){body.appendChild(makeDocItem(kind,item))})}sec.appendChild(head);sec.appendChild(body);return sec}');
+  L.push('function renderDocsPane(){var c=document.getElementById("pm-journal");if(!c)return;c.innerHTML="";c.appendChild(renderDocSection("저널",journals,"journal","저널이 없어요."));c.appendChild(renderDocSection("핸드아웃",handouts,"handout",popIsGM?"핸드아웃이 없어요.":"아직 열람 가능한 핸드아웃이 없어요."))}');
+  L.push('window.setDocuments=function(jList,hList,isGM){journals=Array.isArray(jList)?jList:[];handouts=Array.isArray(hList)?hList:[];if(typeof isGM==="boolean")popIsGM=isGM;renderDocsPane()};');
+  L.push('window.setJournals=function(list){window.setDocuments(list,handouts||[],popIsGM)};renderDocsPane();');
 
   // helper: get avatar from opener
   L.push('var _avCache={},_ncCache={};');
@@ -497,7 +519,7 @@ function popoutChat() {
         targetWin.setMessages('casual', casualList);
       }
     } catch (e) {}
-    try { if (targetWin.setDocuments) targetWin.setDocuments(loadJournals(), typeof loadHandouts === 'function' ? loadHandouts() : []); else if (targetWin.setJournals) targetWin.setJournals(loadJournals()); } catch(e){}
+    try { if (targetWin.setDocuments) targetWin.setDocuments(loadJournals(), typeof loadHandouts === 'function' ? loadHandouts() : [], !!St.isGM); else if (targetWin.setJournals) targetWin.setJournals(loadJournals()); } catch(e){}
     try { if (targetWin.refreshPopCasualProfile) targetWin.refreshPopCasualProfile(); } catch(e){}
     try {
       const avMap = {}, ncMap = {};
