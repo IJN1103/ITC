@@ -139,7 +139,21 @@ function resolveStandingImage(journal, text) {
 }
 
 function cleanDialogueText(text) {
-  return text.replace(/@\S+/g, '').trim();
+  return String(text || '').replace(/@\S+/g, '').trim();
+}
+
+function formatDialogueText(text) {
+  const raw = String(text || '');
+  if (typeof fmtText === 'function') return fmtText(raw);
+  return raw
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\"/g, '&quot;')
+    .replace(/\*\*\*(.+?)\*\*\*/g, '<b><i>$1</i></b>')
+    .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
+    .replace(/\*(.+?)\*/g, '<i>$1</i>')
+    .replace(/\n/g, '<br>');
 }
 
 function resolveDialoguePortrait(journal, explicitPortrait = '', explicitEnabled = null) {
@@ -197,7 +211,7 @@ function showDialogueBox(journal, text) {
   const cleanText = cleanDialogueText(text);
 
   nameEl.textContent = name;
-  textEl.innerHTML = esc(cleanText).replace(/\n/g, '<br>');
+  textEl.innerHTML = formatDialogueText(cleanText);
   renderDialoguePortrait(dialog, journal);
 
   if (standingImg) {
@@ -232,7 +246,7 @@ function showDialogueBoxFromMsg(name, text, journalId, standingImg, tokenId, sta
 
   nameEl.textContent = (journal?.title || name || '???');
   const cleanText = cleanDialogueText(text);
-  textEl.innerHTML = esc(cleanText).replace(/\n/g, '<br>');
+  textEl.innerHTML = formatDialogueText(cleanText);
   renderDialoguePortrait(dialog, journal, dialoguePortrait, showPortraitInDialogue);
 
   // 스탠딩 resolve: 3단계 fallback
