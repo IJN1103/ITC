@@ -186,9 +186,13 @@ textarea.whisper-mode{border-color:#9b59b6;background:rgba(155,89,182,.05)}
 .pop-casual-avatar{width:28px;height:28px;border-radius:6px;background:#1e1e1e;border:1px solid #2e2e2e;color:#b89a60;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;overflow:hidden;flex-shrink:0}
 .pop-casual-avatar img{width:100%;height:100%;object-fit:cover;display:block}
 .pop-casual-name{min-width:0;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12.5px;font-weight:600;color:#e8e3da}
-.pop-casual-mini-btn{height:26px;padding:0 8px;border:1px solid #1f1f1f;border-radius:6px;background:#161616;color:#8c8882;font:inherit;font-size:10px;cursor:pointer;transition:.18s ease;flex-shrink:0}
-.pop-casual-mini-btn:hover{border-color:#b89a60;color:#b89a60}
+.pop-casual-edit-btn{background:none;border:none;color:#8c8882;cursor:pointer;padding:2px;transition:.18s ease;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0}
+.pop-casual-edit-btn:hover{color:#b89a60}
 .pop-casual-color-wrap{position:relative;margin-left:auto;flex-shrink:0}
+.pop-casual-color-btn{background:none;border:none;color:#8c8882;cursor:pointer;padding:2px 4px;transition:.18s ease;display:inline-flex;align-items:center;justify-content:center}
+.pop-casual-color-btn:hover{color:#b89a60}
+.pop-casual-color-icon{display:block;width:16px;height:16px;object-fit:contain;filter:none;opacity:1;transition:.18s ease;pointer-events:none}
+.pop-casual-color-btn:hover .pop-casual-color-icon{filter:none;opacity:1;transform:scale(1.06)}
 .pop-color-pop{display:none;position:absolute;right:0;bottom:calc(100% + 6px);width:156px;padding:8px;border:1px solid #2e2e2e;border-radius:9px;background:#161616;box-shadow:0 -4px 16px rgba(0,0,0,.4);z-index:80}
 .pop-color-pop.open{display:block}
 .pop-color-title{font-size:10px;color:#8c8882;margin-bottom:7px;letter-spacing:.04em}
@@ -206,6 +210,7 @@ textarea.whisper-mode{border-color:#9b59b6;background:rgba(155,89,182,.05)}
 .doc-pop-preview{margin-top:4px;font-size:10.5px;color:#8c8882;line-height:1.45;word-break:break-word}
 .doc-pop-meta{margin-top:5px;font-size:9px;color:#5a5751;text-align:right}
 `;
+  const colorIconSrc = esc(new URL('assets/ui/icon-name-color.png', window.location.href).href);
 
   const htmlBody = `
 <div class="tabs" id="tabs"></div>
@@ -220,9 +225,9 @@ textarea.whisper-mode{border-color:#9b59b6;background:rgba(155,89,182,.05)}
   <div class="pop-casual-row" id="pop-casual-row">
     <div class="pop-casual-avatar" id="pop-casual-avatar">?</div>
     <span class="pop-casual-name" id="pop-casual-name">\ub098</span>
-    <button class="pop-casual-mini-btn" id="pop-casual-edit-btn" type="button" onclick="editPopCasualNick()">닉네임</button>
+    <button class="pop-casual-edit-btn" id="pop-casual-edit-btn" type="button" onclick="editPopCasualNick()" title="잡담 닉네임 변경" aria-label="잡담 닉네임 변경"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
     <div class="pop-casual-color-wrap">
-      <button class="pop-casual-mini-btn" id="pop-casual-color-btn" type="button" onclick="togglePopCasualColor(event)">색상</button>
+      <button class="pop-casual-color-btn" id="pop-casual-color-btn" type="button" onclick="togglePopCasualColor(event)" title="잡담 이름 색상 설정" aria-label="잡담 이름 색상 설정"><img class="pop-casual-color-icon" src="${colorIconSrc}" alt="" aria-hidden="true"></button>
       <div class="pop-color-pop" id="pop-casual-color-pop"></div>
     </div>
   </div>
