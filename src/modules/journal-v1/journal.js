@@ -1213,10 +1213,13 @@ function createNewJournal() {
     const ck = document.getElementById('sk-check-'+i);
     const val = document.getElementById('sk-val-'+i);
     const hlf = document.getElementById('sk-half-'+i);
+    const fif = document.getElementById('sk-fifth-'+i);
     if (ck) ck.checked = false;
     if (val) val.value = sk.base;
     if (hlf) hlf.value = Math.floor(sk.base/2);
+    if (fif) fif.value = Math.floor(sk.base/5);
   });
+  renderCustomSheetSkillRows([]);
   const notes = document.getElementById('sh-notes');
   if (notes) notes.value = '';
   document.getElementById('sh-unarmed-skill').value = '근접전(격투)';
@@ -1529,6 +1532,7 @@ function buildEmptyImportedCocSheet() {
     hp: '', hp_max: '', san: '', san_max: '', mp: '', mp_max: '', luck: '', db: '', build: '',
     status_temp_insane: false, status_indefinite: false, status_major_wound: false, status_dying: false,
     skills: COC_SKILLS.map(sk => ({ checked: false, val: sk.base, half: Math.floor(sk.base / 2) })),
+    customSkills: [],
     unarmed_skill: '근접전(격투)',
     unarmed_dmg: '1d3+db',
     combat_rows: [],
@@ -1715,6 +1719,152 @@ function bindSheetSkillRollInteractions(wrap) {
   });
 }
 
+let _customSkillRowCount = 0;
+
+function getCustomSkillRowsWrap() {
+  return document.getElementById('sh-custom-skill-rows');
+}
+
+function normalizeCustomSkillValue(value) {
+  const raw = String(value ?? '').trim();
+  if (!raw) return '';
+  const n = parseInt(raw, 10);
+  return Number.isFinite(n) ? Math.max(0, Math.min(999, n)) : '';
+}
+
+function readCustomSkillRowsFromSheet() {
+  const rows = Array.from(document.querySelectorAll('.custom-skill-row'));
+  return rows.map((row) => {
+    const index = row.dataset.customSkillIndex;
+    const name = document.getElementById(`sk-custom-name-${index}`)?.value?.trim() || '';
+    const valRaw = document.getElementById(`sk-custom-val-${index}`)?.value ?? '';
+    const halfRaw = document.getElementById(`sk-custom-half-${index}`)?.value ?? '';
+    const quarterRaw = document.getElementById(`sk-custom-quarter-${index}`)?.value ?? '';
+    const data = {
+      name,
+      val: normalizeCustomSkillValue(valRaw),
+      half: normalizeCustomSkillValue(halfRaw),
+      quarter: normalizeCustomSkillValue(quarterRaw),
+    };
+    const hasAnyValue = data.name || data.val !== '' || data.half !== '' || data.quarter !== '';
+    return hasAnyValue ? data : null;
+  }).filter(Boolean);
+}
+
+function rollCustomSheetSkill(index) {
+  const nameEl = document.getElementById(`sk-custom-name-${index}`);
+  const valEl = document.getElementById(`sk-custom-val-${index}`);
+  const name = nameEl?.value?.trim() || '커스텀 기능';
+  const value = valEl ? parseInt(valEl.value, 10) || 0 : 0;
+  if (typeof window.rollJournalSheetSkillCheck === 'function') {
+    window.rollJournalSheetSkillCheck(name, value);
+  }
+}
+
+function addCustomSheetSkillRow(skillData = {}) {
+  const rowsWrap = getCustomSkillRowsWrap();
+  if (!rowsWrap) return;
+
+  const index = _customSkillRowCount++;
+  const row = document.createElement('div');
+  row.className = 'custom-skill-row';
+  row.dataset.customSkillIndex = String(index);
+
+  const rollBtn = document.createElement('button');
+  rollBtn.type = 'button';
+  rollBtn.className = 'custom-skill-roll-btn';
+  rollBtn.textContent = '굴림';
+  rollBtn.title = '추가 기능 판정';
+  rollBtn.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    rollCustomSheetSkill(index);
+  });
+
+  const nameInput = document.createElement('input');
+  nameInput.className = 'skill-input custom-skill-name-input';
+  nameInput.id = `sk-custom-name-${index}`;
+  nameInput.placeholder = '기능명';
+  nameInput.value = String(skillData.name || '');
+
+  const valInput = document.createElement('input');
+  valInput.className = 'skill-input';
+  valInput.id = `sk-custom-val-${index}`;
+  valInput.type = 'number';
+  valInput.min = '0';
+  valInput.max = '999';
+  valInput.placeholder = '현재';
+  valInput.value = skillData.val !== undefined && skillData.val !== null ? String(skillData.val) : '';
+
+  const halfInput = document.createElement('input');
+  halfInput.className = 'skill-input half-val';
+  halfInput.id = `sk-custom-half-${index}`;
+  halfInput.type = 'number';
+  halfInput.min = '0';
+  halfInput.max = '999';
+  halfInput.placeholder = '½';
+  halfInput.value = skillData.half !== undefined && skillData.half !== null ? String(skillData.half) : '';
+
+  const quarterInput = document.createElement('input');
+  quarterInput.className = 'skill-input half-val';
+  quarterInput.id = `sk-custom-quarter-${index}`;
+  quarterInput.type = 'number';
+  quarterInput.min = '0';
+  quarterInput.max = '999';
+  quarterInput.placeholder = '¼';
+  const quarterValue = skillData.quarter !== undefined ? skillData.quarter : skillData.fifth;
+  quarterInput.value = quarterValue !== undefined && quarterValue !== null ? String(quarterValue) : '';
+
+  row.appendChild(rollBtn);
+  row.appendChild(nameInput);
+  row.appendChild(valInput);
+  row.appendChild(halfInput);
+  row.appendChild(quarterInput);
+  rowsWrap.appendChild(row);
+
+  const modal = getQuickSheetModalEl();
+  const editable = modal?.dataset.editable !== '0';
+  [nameInput, valInput, halfInput, quarterInput].forEach((input) => { input.readOnly = !editable; });
+  if (editable) nameInput.focus();
+}
+
+function renderCustomSheetSkillRows(customSkills = []) {
+  const rowsWrap = getCustomSkillRowsWrap();
+  if (!rowsWrap) return;
+  rowsWrap.innerHTML = '';
+  _customSkillRowCount = 0;
+  (Array.isArray(customSkills) ? customSkills : []).forEach((skill) => addCustomSheetSkillRow(skill || {}));
+}
+
+function appendCustomSkillAddRow(wrap) {
+  if (!wrap) return;
+  const section = document.createElement('div');
+  section.className = 'custom-skill-section';
+
+  const rowsWrap = document.createElement('div');
+  rowsWrap.id = 'sh-custom-skill-rows';
+  rowsWrap.className = 'custom-skill-rows';
+
+  const addRow = document.createElement('div');
+  addRow.className = 'custom-skill-add-row';
+
+  const addBtn = document.createElement('button');
+  addBtn.type = 'button';
+  addBtn.className = 'custom-skill-add-btn';
+  addBtn.textContent = '+';
+  addBtn.title = '추가 기능 입력';
+  addBtn.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    addCustomSheetSkillRow();
+  });
+
+  addRow.appendChild(addBtn);
+  section.appendChild(rowsWrap);
+  section.appendChild(addRow);
+  wrap.appendChild(section);
+}
+
 function initSheetUI() {
   const grid = document.getElementById('sh-stats-grid');
   if (grid && !grid.children.length) {
@@ -1760,6 +1910,7 @@ function initSheetUI() {
     });
     wrap.appendChild(col);
   });
+  appendCustomSkillAddRow(wrap);
   bindResourceRollInteractions();
 }
 
@@ -1814,6 +1965,11 @@ function setSheetEditorMode(editable) {
 
   const addCombatBtn = modal.querySelector('button[onclick*="addCombatRow"]');
   if (addCombatBtn) addCombatBtn.style.display = editable ? '' : 'none';
+
+  modal.querySelectorAll('.custom-skill-add-btn').forEach((btn) => {
+    btn.style.display = editable ? '' : 'none';
+    btn.disabled = !editable;
+  });
 
   const tokenAssignBtn = document.getElementById('sh-token-assign-btn');
   if (tokenAssignBtn) tokenAssignBtn.style.display = editable ? '' : 'none';
@@ -2805,6 +2961,7 @@ function openSheet(journalId) {
     if (hlf) hlf.value     = d.half !== undefined ? d.half : Math.floor((d.val !== undefined ? d.val : sk.base)/2);
     if (fif) fif.value     = d.fifth !== undefined ? d.fifth : Math.floor((d.val !== undefined ? d.val : sk.base)/5);
   });
+  renderCustomSheetSkillRows(data.customSkills || []);
 
   const notes = document.getElementById('sh-notes');
   if (notes) notes.value = data.notes || '';
@@ -3028,6 +3185,7 @@ async function saveSheet() {
     half: parseInt(document.getElementById('sk-half-'+i)?.value, 10) || Math.floor((parseInt(document.getElementById('sk-val-'+i)?.value, 10) || sk.base)/2),
     fifth: parseInt(document.getElementById('sk-fifth-'+i)?.value, 10) || Math.floor((parseInt(document.getElementById('sk-val-'+i)?.value, 10) || sk.base)/5),
   }));
+  data.customSkills = readCustomSkillRowsFromSheet();
 
   data.unarmed_skill = document.getElementById('sh-unarmed-skill')?.value || '';
   data.unarmed_dmg   = document.getElementById('sh-unarmed-dmg')?.value   || '';
