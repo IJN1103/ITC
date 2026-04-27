@@ -269,6 +269,104 @@ function bindSheetSkillRollInteractions(wrap) {
 let _customSkillRowCount = 0;
 let _customSkillColumns = [];
 let _customSkillAddRowEl = null;
+let _customSkillContextMenuEl = null;
+let _customSkillContextCloseBound = false;
+
+function closeCustomSkillContextMenu() {
+  if (_customSkillContextMenuEl && _customSkillContextMenuEl.parentElement) {
+    _customSkillContextMenuEl.parentElement.removeChild(_customSkillContextMenuEl);
+  }
+  _customSkillContextMenuEl = null;
+}
+
+function bindCustomSkillContextMenuClose() {
+  if (_customSkillContextCloseBound) return;
+  _customSkillContextCloseBound = true;
+
+  document.addEventListener('pointerdown', (event) => {
+    if (!_customSkillContextMenuEl) return;
+    if (_customSkillContextMenuEl.contains(event.target)) return;
+    closeCustomSkillContextMenu();
+  }, true);
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') closeCustomSkillContextMenu();
+  });
+
+  window.addEventListener('resize', closeCustomSkillContextMenu);
+  window.addEventListener('scroll', closeCustomSkillContextMenu, true);
+}
+
+function isCustomSkillEditable() {
+  const modal = getQuickSheetModalEl();
+  return !modal || modal.dataset.editable !== '0';
+}
+
+function positionCustomSkillContextMenu(menu, event) {
+  const pad = 8;
+  const width = menu.offsetWidth || 112;
+  const height = menu.offsetHeight || 72;
+  const maxX = Math.max(pad, window.innerWidth - width - pad);
+  const maxY = Math.max(pad, window.innerHeight - height - pad);
+  const x = Math.min(Math.max(event.clientX, pad), maxX);
+  const y = Math.min(Math.max(event.clientY, pad), maxY);
+  menu.style.left = `${x}px`;
+  menu.style.top = `${y}px`;
+}
+
+function showCustomSkillContextMenu(event, row, index) {
+  event.preventDefault();
+  event.stopPropagation();
+
+  if (!row || !document.body.contains(row) || !isCustomSkillEditable()) return;
+
+  closeCustomSkillContextMenu();
+  bindCustomSkillContextMenuClose();
+
+  const menu = document.createElement('div');
+  menu.className = 'sheet-custom-skill-context-menu';
+  menu.setAttribute('role', 'menu');
+
+  const editBtn = document.createElement('button');
+  editBtn.type = 'button';
+  editBtn.textContent = '수정';
+  editBtn.setAttribute('role', 'menuitem');
+  editBtn.addEventListener('click', (clickEvent) => {
+    clickEvent.preventDefault();
+    clickEvent.stopPropagation();
+    closeCustomSkillContextMenu();
+    renderCustomSkillNameEditor(row, index, true);
+  });
+
+  const deleteBtn = document.createElement('button');
+  deleteBtn.type = 'button';
+  deleteBtn.textContent = '삭제';
+  deleteBtn.setAttribute('role', 'menuitem');
+  deleteBtn.addEventListener('click', (clickEvent) => {
+    clickEvent.preventDefault();
+    clickEvent.stopPropagation();
+    closeCustomSkillContextMenu();
+    row.remove();
+    moveCustomSkillAddRow();
+  });
+
+  menu.appendChild(editBtn);
+  menu.appendChild(deleteBtn);
+  document.body.appendChild(menu);
+  _customSkillContextMenuEl = menu;
+  positionCustomSkillContextMenu(menu, event);
+}
+
+function bindCustomSkillContextMenu(row, index) {
+  const cell = row?.querySelector?.('.custom-skill-name-cell');
+  if (!cell || cell.dataset.customContextBound === '1') return;
+  cell.dataset.customContextBound = '1';
+  cell.addEventListener('contextmenu', (event) => {
+    if (event.target.closest('.custom-skill-name-input')) return;
+    if (!event.target.closest('.custom-skill-name-cell')) return;
+    showCustomSkillContextMenu(event, row, index);
+  });
+}
 
 function getCustomSkillColumns() {
   const wrap = document.getElementById('sh-skills-wrap');
@@ -411,6 +509,7 @@ function createCustomSheetSkillRow(skillData = {}) {
   } else {
     renderCustomSkillNameEditor(row, index, false);
   }
+  bindCustomSkillContextMenu(row, String(index));
   return row;
 }
 
@@ -468,6 +567,7 @@ function addCustomSheetSkillRow(skillData = {}) {
 }
 
 function renderCustomSheetSkillRows(customSkills = []) {
+  closeCustomSkillContextMenu();
   document.querySelectorAll('.custom-skill-row, .custom-skill-add-row').forEach((el) => el.remove());
   _customSkillRowCount = 0;
   _customSkillAddRowEl = null;
