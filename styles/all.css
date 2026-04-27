@@ -1218,3 +1218,12 @@ to{transform:translateX(0);opacity:1;}
   opacity:1;
   transform:translate(-50%,0);
 }
+.sheet-combat-row{transition:background .1s;}
+.sheet-combat-row:hover{background:var(--s2);}
+.sheet-combat-skill-cell{position:relative;min-width:0;}
+.sheet-combat-skill-roll-btn{appearance:none;width:100%;min-width:0;display:block;background:none;border:none;padding:0;margin:0;color:var(--dim);font:inherit;font-size:12px;line-height:1.3;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;}
+.sheet-combat-skill-roll-btn[data-empty="1"]{opacity:.72;}
+.sheet-combat-skill-roll-btn:hover{color:var(--accent);}
+.sheet-combat-skill-roll-btn:focus-visible{outline:1px solid rgba(184,154,96,.45);outline-offset:1px;border-radius:2px;}
+.sheet-combat-skill-input-hidden{display:none !important;}
+

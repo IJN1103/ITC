@@ -771,6 +771,7 @@ function setSheetEditorMode(editable) {
   });
 
   refreshCustomSkillNameDisplays();
+  refreshCombatSkillDisplays();
 
   const tokenAssignBtn = document.getElementById('sh-token-assign-btn');
   if (tokenAssignBtn) tokenAssignBtn.style.display = editable ? '' : 'none';
@@ -1881,6 +1882,10 @@ function getCombatRowInput(index, key) {
   return document.getElementById(`sh-w-${key}-${index}`);
 }
 
+function getCombatSkillButton(index) {
+  return document.querySelector(`.sheet-combat-skill-roll-btn[data-combat-index="${index}"]`);
+}
+
 function normalizeSheetDbFormula(raw) {
   const value = String(raw || '').trim().replace(/\s+/g, '').toLowerCase();
   if (!value || value === '없음' || value === 'none' || value === 'no' || value === '-' || value === '—') return '0';
@@ -1904,6 +1909,7 @@ function resolveCombatDamageFormula(rawDamage) {
   formula = formula.replace(/^\+/, '');
   return formula;
 }
+
 function rollCombatRowDamage(index) {
   const weaponName = getCombatRowInput(index, 'name')?.value?.trim() || '';
   const skillName = getCombatRowInput(index, 'skill')?.value?.trim() || '';
@@ -1931,28 +1937,34 @@ function rollCombatRowDamage(index) {
 
 function syncCombatSkillButton(index) {
   const input = getCombatRowInput(index, 'skill');
-  const btn = document.querySelector(`.sheet-combat-skill-roll-btn[data-combat-index="${index}"]`);
+  const btn = getCombatSkillButton(index);
   if (!btn || !input) return;
-  const name = input.value.trim() || '기능명';
+  const rawName = String(input.value || '').trim();
+  const name = rawName || '기능명';
   btn.textContent = name;
-  btn.title = `${name} 피해 굴림`;
+  btn.title = rawName ? `${name} 피해 굴림` : '기능명을 입력한 뒤 피해 굴림';
+  btn.dataset.empty = rawName ? '0' : '1';
 }
 
 function showCombatSkillButton(index) {
   const input = getCombatRowInput(index, 'skill');
-  const btn = document.querySelector(`.sheet-combat-skill-roll-btn[data-combat-index="${index}"]`);
+  const btn = getCombatSkillButton(index);
   if (!input || !btn) return;
   syncCombatSkillButton(index);
   input.classList.add('sheet-combat-skill-input-hidden');
+  input.setAttribute('aria-hidden', 'true');
+  btn.hidden = false;
   btn.style.display = '';
 }
 
 function showCombatSkillEditor(index, focus = false) {
   const input = getCombatRowInput(index, 'skill');
-  const btn = document.querySelector(`.sheet-combat-skill-roll-btn[data-combat-index="${index}"]`);
+  const btn = getCombatSkillButton(index);
   if (!input || !btn || !isCombatRowEditable()) return;
+  btn.hidden = true;
   btn.style.display = 'none';
   input.classList.remove('sheet-combat-skill-input-hidden');
+  input.removeAttribute('aria-hidden');
   input.readOnly = false;
   input.disabled = false;
   if (focus) {
@@ -1961,20 +1973,36 @@ function showCombatSkillEditor(index, focus = false) {
   }
 }
 
+function commitCombatSkillEditor(index) {
+  const input = getCombatRowInput(index, 'skill');
+  if (!input) return;
+  showCombatSkillButton(index);
+}
+
+function refreshCombatSkillDisplays() {
+  document.querySelectorAll('.sheet-combat-row').forEach((row) => {
+    const index = row.dataset.combatIndex;
+    if (index == null) return;
+    if (!isCombatRowEditable()) showCombatSkillButton(index);
+    else if (getCombatRowInput(index, 'skill')?.classList.contains('sheet-combat-skill-input-hidden')) showCombatSkillButton(index);
+  });
+}
+
 function bindCombatSkillEditor(index) {
   const input = getCombatRowInput(index, 'skill');
-  const btn = document.querySelector(`.sheet-combat-skill-roll-btn[data-combat-index="${index}"]`);
+  const btn = getCombatSkillButton(index);
   if (!input || !btn || input.dataset.combatSkillBound === '1') return;
   input.dataset.combatSkillBound = '1';
 
   input.addEventListener('input', () => syncCombatSkillButton(index));
   input.addEventListener('keydown', (event) => {
-    if (event.key !== 'Enter') return;
+    if (event.key !== 'Enter' || event.isComposing) return;
     event.preventDefault();
-    showCombatSkillButton(index);
+    commitCombatSkillEditor(index);
   });
-  input.addEventListener('blur', () => {
-    if (isCombatRowEditable()) showCombatSkillButton(index);
+  input.addEventListener('change', () => syncCombatSkillButton(index));
+  input.addEventListener('focusout', () => {
+    if (isCombatRowEditable()) commitCombatSkillEditor(index);
   });
 
   btn.addEventListener('click', (event) => {
@@ -2120,7 +2148,7 @@ function addCombatRow(rowData = null) {
   tr.innerHTML = `
     <td style="padding:3px 4px"><input class="sh-input" id="sh-w-name-${i}" placeholder="무기명" style="font-size:12px"></td>
     <td class="sheet-combat-skill-cell" style="padding:3px 4px">
-      <button type="button" class="sheet-combat-skill-roll-btn" data-combat-index="${i}" title="기능 피해 굴림">기능명</button>
+      <button type="button" class="skill-name skill-roll-trigger sheet-combat-skill-roll-btn" data-combat-index="${i}" title="기능 피해 굴림">기능명</button>
       <input class="sh-input sheet-combat-skill-input" id="sh-w-skill-${i}" placeholder="기능명" style="font-size:12px">
     </td>
     <td style="padding:3px 4px"><input class="sh-input" id="sh-w-dmg-${i}" placeholder="1d6" style="font-size:12px;text-align:center"></td>
