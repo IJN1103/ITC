@@ -1805,7 +1805,7 @@ function showCustomSkillContextMenu(event, row, index) {
     clickEvent.stopPropagation();
     closeCustomSkillContextMenu();
     row.remove();
-    moveCustomSkillAddRow();
+    reflowCustomSkillRows();
   });
 
   menu.appendChild(editBtn);
@@ -1816,12 +1816,10 @@ function showCustomSkillContextMenu(event, row, index) {
 }
 
 function bindCustomSkillContextMenu(row, index) {
-  const cell = row?.querySelector?.('.custom-skill-name-cell');
-  if (!cell || cell.dataset.customContextBound === '1') return;
-  cell.dataset.customContextBound = '1';
-  cell.addEventListener('contextmenu', (event) => {
+  if (!row || row.dataset.customContextBound === '1') return;
+  row.dataset.customContextBound = '1';
+  row.addEventListener('contextmenu', (event) => {
     if (event.target.closest('.custom-skill-name-input')) return;
-    if (!event.target.closest('.custom-skill-name-cell')) return;
     showCustomSkillContextMenu(event, row, index);
   });
 }
@@ -1836,7 +1834,8 @@ function getCustomSkillColumns() {
 function getCustomSkillTargetColumn() {
   const cols = getCustomSkillColumns();
   if (!cols.length) return null;
-  return cols[_customSkillRowCount % cols.length] || cols[0];
+  const currentRows = document.querySelectorAll('.custom-skill-row').length;
+  return cols[currentRows % cols.length] || cols[0];
 }
 
 function normalizeCustomSkillValue(value) {
@@ -1996,6 +1995,18 @@ function ensureCustomSkillAddRow() {
   addRow.appendChild(blank);
   _customSkillAddRowEl = addRow;
   return addRow;
+}
+
+function reflowCustomSkillRows() {
+  const cols = getCustomSkillColumns();
+  if (!cols.length) return;
+  const rows = Array.from(document.querySelectorAll('.custom-skill-row'))
+    .sort((a, b) => (parseInt(a.dataset.customSkillIndex, 10) || 0) - (parseInt(b.dataset.customSkillIndex, 10) || 0));
+  rows.forEach((row, idx) => {
+    const target = cols[idx % cols.length] || cols[0];
+    target.appendChild(row);
+  });
+  moveCustomSkillAddRow();
 }
 
 function moveCustomSkillAddRow() {
