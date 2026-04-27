@@ -1182,3 +1182,21 @@ to{transform:translateX(0);opacity:1;}
 .map-quick-standing-crop-actions button:hover{border-color:rgba(184,154,96,.45);background:rgba(184,154,96,.09);color:var(--text);}
 .map-quick-standing-crop-actions button.primary{border-color:rgba(184,154,96,.48);background:rgba(184,154,96,.16);color:var(--accent);}
 .map-quick-standing-crop-actions button.primary:hover{background:rgba(184,154,96,.24);}
+
+
+/* Quickview tooltips open below the top quickview buttons. */
+.map-quick-journal-btn .map-quickview-tooltip,
+.map-quick-standing-btn .map-quickview-tooltip{
+  right:auto;
+  left:50%;
+  top:calc(100% + 8px);
+  transform:translate(-50%,-4px);
+  z-index:90;
+}
+.map-quick-journal-btn:hover .map-quickview-tooltip,
+.map-quick-journal-btn:focus-visible .map-quickview-tooltip,
+.map-quick-standing-btn:hover .map-quickview-tooltip,
+.map-quick-standing-btn:focus-visible .map-quickview-tooltip{
+  opacity:1;
+  transform:translate(-50%,0);
+}
