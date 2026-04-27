@@ -1855,13 +1855,15 @@ function clampQuickSheetRect(x, y, width, height) {
 
 function getDefaultQuickSheetRect() {
   const pad = 16;
-  const gap = 24;
+  const gap = 12;
+  const quickBtn = getQuickJournalButtonEl();
+  const btnRect = quickBtn?.getBoundingClientRect();
   const chatPanel = document.getElementById('panel-right');
   const chatRect = chatPanel?.getBoundingClientRect();
   const viewportWidth = window.innerWidth;
   const viewportHeight = window.innerHeight;
   const baseHeight = Math.round((chatRect?.height || viewportHeight) * 0.6);
-  const targetHeight = Math.max(320, Math.min(baseHeight, viewportHeight - pad * 2));
+  let targetHeight = Math.max(320, Math.min(baseHeight, viewportHeight - pad * 2));
   let targetWidth = Math.round(targetHeight * 1.18);
 
   if (chatRect && chatRect.left > pad + 280) {
@@ -1872,6 +1874,14 @@ function getDefaultQuickSheetRect() {
   }
 
   targetWidth = Math.max(420, Math.min(targetWidth, 760, viewportWidth - pad * 2));
+
+  if (btnRect && btnRect.width && btnRect.height) {
+    const availableBelow = viewportHeight - btnRect.bottom - gap - pad;
+    if (availableBelow >= 320) targetHeight = Math.min(targetHeight, availableBelow);
+    const x = btnRect.right - targetWidth;
+    const y = btnRect.bottom + gap;
+    return clampQuickSheetRect(x, y, targetWidth, targetHeight);
+  }
 
   let x;
   if (chatRect && chatRect.left > pad + 280) {
