@@ -182,57 +182,6 @@ function getRenderContainer(channel = 'chat') {
   return document.getElementById(state.containerId);
 }
 
-function isItcChatRenderDebugEnabled() {
-  try {
-    return window.ITC_DEBUG_CHAT === true || localStorage.getItem('ITC_DEBUG_CHAT') === 'true';
-  } catch (e) {
-    return window.ITC_DEBUG_CHAT === true;
-  }
-}
-
-function logItcChatRenderDebug(label, detail = {}) {
-  if (!isItcChatRenderDebugEnabled()) return;
-  try { console.debug('[ITC_CHAT_RENDER_DEBUG]', label, detail); } catch (e) {}
-}
-
-function collectDuplicateValues(values = []) {
-  const seen = new Set();
-  const dup = new Set();
-  values.forEach((value) => {
-    const key = String(value || '').trim();
-    if (!key) return;
-    if (seen.has(key)) dup.add(key);
-    seen.add(key);
-  });
-  return Array.from(dup);
-}
-
-window.itcChatRenderDebugReport = function(channel = 'chat') {
-  const state = getRenderState(channel);
-  const renderedKeys = getRenderedKeyList(channel);
-  const queuedKeys = (state.queue || []).map((item) => item?.key || '').filter(Boolean);
-  const report = {
-    channel,
-    containerId: state.containerId,
-    renderedCount: renderedKeys.length,
-    storedCount: state.storeOrder.length,
-    storeMapCount: state.storeMap.size,
-    queuedCount: queuedKeys.length,
-    mapCount: state.map.size,
-    virtualEnabled: !!state.virtualEnabled,
-    oldestStoredKey: state.storeOrder[0] || '',
-    newestStoredKey: state.storeOrder[state.storeOrder.length - 1] || '',
-    oldestRenderedKey: renderedKeys[0] || '',
-    newestRenderedKey: renderedKeys[renderedKeys.length - 1] || '',
-    duplicateRenderedKeys: collectDuplicateValues(renderedKeys),
-    duplicateQueuedKeys: collectDuplicateValues(queuedKeys),
-  };
-  if (report.duplicateRenderedKeys.length || report.duplicateQueuedKeys.length) {
-    logItcChatRenderDebug('duplicate-key-report', report);
-  }
-  return report;
-};
-
 function isNearBottom(el, threshold = 56) {
   if (!el) return true;
   return (el.scrollHeight - el.scrollTop - el.clientHeight) <= threshold;
@@ -273,6 +222,94 @@ function getRenderedNodeByKey(channel = 'chat', key = '') {
   } catch (e) {
     return null;
   }
+}
+
+function getStoredMessageSortTime(record = {}) {
+  const n = Number(record?.timestamp || record?.time || 0);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function compareStoredMessageKeys(channel = 'chat', leftKey = '', rightKey = '') {
+  const state = getRenderState(channel);
+  const left = state.storeMap.get(leftKey) || {};
+  const right = state.storeMap.get(rightKey) || {};
+  const lt = getStoredMessageSortTime(left);
+  const rt = getStoredMessageSortTime(right);
+  if (lt && rt && lt !== rt) return lt - rt;
+  return String(leftKey || '').localeCompare(String(rightKey || ''));
+}
+
+function insertStoredKeyInOrder(channel = 'chat', key = '') {
+  const safeKey = String(key || '').trim();
+  if (!safeKey) return;
+  const state = getRenderState(channel);
+  const prevIdx = state.storeOrder.indexOf(safeKey);
+  if (prevIdx >= 0) state.storeOrder.splice(prevIdx, 1);
+
+  let insertAt = state.storeOrder.length;
+  for (let i = 0; i < state.storeOrder.length; i += 1) {
+    if (compareStoredMessageKeys(channel, safeKey, state.storeOrder[i]) < 0) {
+      insertAt = i;
+      break;
+    }
+  }
+  state.storeOrder.splice(insertAt, 0, safeKey);
+}
+
+function insertRenderedNodeInStoredOrder(channel = 'chat', node, key = '') {
+  const state = getRenderState(channel);
+  const el = getRenderContainer(channel);
+  if (!el || !node) return false;
+  const safeKey = String(key || node?.dataset?.msgKey || '').trim();
+  if (!safeKey) {
+    el.appendChild(node);
+    return true;
+  }
+
+  const current = getRenderedNodeByKey(channel, safeKey);
+  if (current && current !== node && current.parentNode === el) {
+    el.replaceChild(node, current);
+    state.map.set(safeKey, node);
+    return true;
+  }
+
+  const orderIndex = state.storeOrder.indexOf(safeKey);
+  if (orderIndex < 0) {
+    el.appendChild(node);
+    state.map.set(safeKey, node);
+    return true;
+  }
+
+  for (let i = orderIndex + 1; i < state.storeOrder.length; i += 1) {
+    const nextKey = state.storeOrder[i];
+    const nextNode = state.map.get(nextKey) || getRenderedNodeByKey(channel, nextKey);
+    if (nextNode && nextNode.parentNode === el && nextNode !== node) {
+      el.insertBefore(node, nextNode);
+      state.map.set(safeKey, node);
+      return true;
+    }
+  }
+
+  el.appendChild(node);
+  state.map.set(safeKey, node);
+  return true;
+}
+
+function removeDuplicateRenderedMessages(channel = 'chat') {
+  const state = getRenderState(channel);
+  const el = getRenderContainer(channel);
+  if (!el) return;
+  const seen = new Set();
+  Array.from(el.querySelectorAll('.chat-msg[data-msg-key]')).forEach((node) => {
+    const key = String(node?.dataset?.msgKey || '').trim();
+    if (!key) return;
+    if (seen.has(key)) {
+      node.remove();
+      return;
+    }
+    seen.add(key);
+    state.map.set(key, node);
+  });
 }
 
 function syncStickyState(channel = 'chat', el = null) {
@@ -468,14 +505,10 @@ function scheduleVirtualRender(channel = 'chat', options = {}) {
 function upsertStoredMessage(channel = 'chat', key, record, options = {}) {
   const state = getRenderState(channel);
   const safeKey = makeStoredMessageKey(channel, key);
-  const existing = state.storeMap.has(safeKey);
-  const position = options?.position === 'prepend' ? 'prepend' : 'append';
-
-  if (!existing) {
-    if (position === 'prepend') state.storeOrder.unshift(safeKey);
-    else state.storeOrder.push(safeKey);
-  }
-  state.storeMap.set(safeKey, { ...(record || {}), _key: safeKey });
+  const previous = state.storeMap.get(safeKey) || {};
+  const nextRecord = { ...previous, ...(record || {}), _key: safeKey };
+  state.storeMap.set(safeKey, nextRecord);
+  insertStoredKeyInOrder(channel, safeKey);
 
   while (state.storeOrder.length > state.maxMemory) {
     const dropKey = state.storeOrder.shift();
@@ -786,17 +819,10 @@ function flushMessageRender(channel = 'chat') {
   items.forEach((item) => {
     const { node, key } = item;
     if (!node || !key) return;
-    const current = getRenderedNodeByKey(channel, key);
-    if (current && current.parentNode === el) {
-      logItcChatRenderDebug('flush-replace-existing-key', { channel, key });
-      el.replaceChild(node, current);
-      state.map.set(key, node);
-      return;
-    }
-    state.map.set(key, node);
-    el.appendChild(node);
+    insertRenderedNodeInStoredOrder(channel, node, key);
   });
 
+  removeDuplicateRenderedMessages(channel);
   trimRenderedMessages(channel);
   primeDeferredChatImages(el);
 
@@ -816,25 +842,19 @@ function queueMessageRender(channel = 'chat', node, key = '', autoscroll = true)
   const state = getRenderState(channel);
   const el = getRenderContainer(channel);
   if (!el || !node) return;
-  if (state.virtualEnabled) {
-    if (autoscroll) syncStickyState(channel, el);
-    state.queue.push({ node, key });
-    if (state.raf) return;
-    state.raf = requestAnimationFrame(() => flushMessageRender(channel));
-    return;
-  }
-  if (key) {
-    node.dataset.msgKey = key;
-    if (isItcChatRenderDebugEnabled()) {
-      const hasRendered = !!getRenderedNodeByKey(channel, key);
-      const hasQueued = (state.queue || []).some((item) => item?.key === key);
-      if (hasRendered || hasQueued) {
-        logItcChatRenderDebug('queue-duplicate-key', { channel, key, hasRendered, hasQueued });
-      }
+  const safeKey = String(key || node?.dataset?.msgKey || '').trim();
+  if (safeKey) {
+    node.dataset.msgKey = safeKey;
+    const queuedIdx = state.queue.findIndex(item => item?.key === safeKey);
+    if (queuedIdx >= 0) {
+      state.queue[queuedIdx] = { node, key: safeKey };
+    } else {
+      state.queue.push({ node, key: safeKey });
     }
+  } else {
+    state.queue.push({ node, key: safeKey });
   }
   if (autoscroll) syncStickyState(channel, el);
-  state.queue.push({ node, key });
   if (state.raf) return;
   state.raf = requestAnimationFrame(() => flushMessageRender(channel));
 }
