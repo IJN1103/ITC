@@ -2105,8 +2105,28 @@ function refreshQuickStandingMenuForToken(tokenId) {
   if (!currentTokenId || currentTokenId === String(tokenId || '')) renderQuickStandingMenu();
 }
 
+function getQuickStandingCloseButtonHtml() {
+  return '<button type="button" class="map-quick-standing-close-btn" title="닫기" aria-label="스탠딩 퀵뷰 닫기">×</button>';
+}
+
+function bindQuickStandingCloseButton(menu) {
+  const closeBtn = menu?.querySelector('.map-quick-standing-close-btn');
+  if (!closeBtn) return;
+  closeBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    closeQuickStandingMenu();
+  });
+}
+
 function getStandingQuickEmptyHtml(message) {
-  return `<div class="map-quick-standing-empty">${esc(message)}</div>`;
+  return `
+    <div class="map-quick-standing-head">
+      <span>스탠딩 퀵뷰</span>
+      <div class="map-quick-standing-head-actions">${getQuickStandingCloseButtonHtml()}</div>
+    </div>
+    <div class="map-quick-standing-empty">${esc(message)}</div>
+  `;
 }
 
 function normalizeQuickStandingLabel(label) {
@@ -2283,6 +2303,7 @@ function renderQuickStandingMenu() {
   getQuickStandingButtonEl()?.classList.add('is-open');
   if (ctx.error) {
     menu.innerHTML = getStandingQuickEmptyHtml(ctx.error);
+    bindQuickStandingCloseButton(menu);
     menu.style.display = 'flex';
     return;
   }
@@ -2297,6 +2318,7 @@ function renderQuickStandingMenu() {
       <div class="map-quick-standing-head-actions">
         ${canCrop ? `<button type="button" class="map-quick-standing-crop-btn" title="크롭 기능" aria-label="스탠딩 썸네일 크롭">${getQuickStandingCropIconSvg()}</button>` : ''}
         ${canChange ? '' : '<em>보기 전용</em>'}
+        ${getQuickStandingCloseButtonHtml()}
       </div>
     </div>
     <div class="map-quick-standing-grid">
@@ -2314,6 +2336,7 @@ function renderQuickStandingMenu() {
         </button>`;
       }).join('')}
     </div>`;
+  bindQuickStandingCloseButton(menu);
   const cropBtn = menu.querySelector('.map-quick-standing-crop-btn');
   if (cropBtn) {
     cropBtn.addEventListener('click', (e) => {
@@ -2542,6 +2565,7 @@ function renderQuickStandingCropEditor(options = {}) {
   getQuickStandingButtonEl()?.classList.add('is-open');
   if (ctx.error) {
     menu.innerHTML = getStandingQuickEmptyHtml(ctx.error);
+    bindQuickStandingCloseButton(menu);
     menu.style.display = 'flex';
     return;
   }
@@ -2576,6 +2600,7 @@ function renderQuickStandingCropEditor(options = {}) {
     <div class="map-quick-standing-head crop-mode">
       <button type="button" class="map-quick-standing-crop-back" aria-label="스탠딩 목록으로 돌아가기">‹</button>
       <span>${esc(title)} ${isIndividual ? '개별 크롭' : '크롭 기능'}</span>
+      <div class="map-quick-standing-head-actions">${getQuickStandingCloseButtonHtml()}</div>
     </div>
     <div class="map-quick-standing-crop-editor">
       <div class="map-quick-standing-crop-preview" title="드래그해서 썸네일 중심을 조정">
@@ -2598,6 +2623,7 @@ function renderQuickStandingCropEditor(options = {}) {
       </div>
     </div>`;
   updateQuickStandingCropPreview(menu, cropState.crop);
+  bindQuickStandingCloseButton(menu);
   bindQuickStandingCropEditor(menu, journal, token, cropState);
   menu.style.display = 'flex';
 }
@@ -2646,10 +2672,7 @@ async function selectQuickStanding(journal, token, standing) {
 function toggleQuickStandingView(event) {
   if (event) { event.preventDefault(); event.stopPropagation(); }
   const menu = getQuickStandingMenuEl();
-  if (menu && menu.style.display !== 'none' && menu.innerHTML.trim()) {
-    closeQuickStandingMenu();
-    return;
-  }
+  if (menu && menu.style.display !== 'none' && menu.innerHTML.trim()) return;
   closeQuickJournalMenu();
   renderQuickStandingMenu();
 }
@@ -2739,15 +2762,7 @@ document.addEventListener('click', (e) => {
   closeQuickJournalMenu();
 });
 
-document.addEventListener('click', (e) => {
-  if (e.target.closest('#map-quick-standing-btn') || e.target.closest('#map-quick-standing-menu')) return;
-  closeQuickStandingMenu();
-});
-
-document.addEventListener('keydown', (e) => {
-  if (e.key !== 'Escape') return;
-  closeQuickStandingMenu();
-});
+// 스탠딩 퀵뷰는 외부 클릭이나 Escape로 닫지 않고, 패널 우측 상단 X 버튼으로만 닫습니다.
 
 function openSheet(journalId) {
   _sheetIsNew = false;
