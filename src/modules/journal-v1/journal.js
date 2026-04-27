@@ -857,9 +857,23 @@ function loadJournals() {
   );
 }
 
+function isJournalAssignedToMe(journal) {
+  if (!journal) return false;
+  const myId = String(St.myId || '').trim();
+  if (!myId) return false;
+  if (Array.isArray(journal.assignedTo) && journal.assignedTo.map(String).includes(myId)) return true;
+  if (journal.assignedMap && journal.assignedMap[myId] === true) return true;
+  return false;
+}
+
+function canManageJournalEntry(journal) {
+  if (!journal) return false;
+  return !!St.isGM || String(journal.ownerId || '') === String(St.myId || '');
+}
+
 function canEditJournalEntry(journal) {
   if (!journal) return false;
-  return !!St.isGM || String(journal.ownerId || '') === String(St.myId || '') || (Array.isArray(journal.assignedTo) && journal.assignedTo.includes(St.myId)) || (journal.assignedMap && journal.assignedMap[St.myId] === true);
+  return canManageJournalEntry(journal) || isJournalAssignedToMe(journal);
 }
 
 function canEditJournalById(journalId) {
@@ -916,11 +930,26 @@ function saveJournalFB(journal) {
 
   if (window._FB?.CONFIGURED) {
     const { db, ref, update } = window._FB;
-    const remotePayload = { ...payload };
-    if (!remotePayload.createdAt) remotePayload.createdAt = getJournalServerTimestamp();
+    const currentJournal = _allJournals.find(j => String(j.id || '') === String(normalized.id || '')) || null;
+    const canManage = !currentJournal || canManageJournalEntry(currentJournal);
+    const remotePayload = canManage ? { ...payload } : {
+      title: payload.title,
+      body: payload.body,
+      assignedTokenId: payload.assignedTokenId || null,
+      nameColor: payload.nameColor || '',
+      showPortraitInDialogue: !!payload.showPortraitInDialogue,
+      sheet: payload.sheet || {},
+    };
+    if (payload.avatar) remotePayload.avatar = payload.avatar;
+    if (canManage && !remotePayload.createdAt) remotePayload.createdAt = getJournalServerTimestamp();
     remotePayload.updatedAt = getJournalServerTimestamp();
     upsertLocalJournal({ ...normalized, updatedAt: Date.now() });
-    update(ref(db, `rooms/${St.roomCode}/journals/${normalized.id}`), remotePayload);
+    return update(ref(db, `rooms/${St.roomCode}/journals/${normalized.id}`), remotePayload)
+      .catch(err => {
+        console.error('journal save failed', err);
+        showToast('저널 저장에 실패했어요. 권한을 확인해 주세요.');
+        throw err;
+      });
   } else {
     upsertLocalJournal(normalized);
     localStorage.setItem(journalKey(), JSON.stringify(_allJournals));
@@ -969,22 +998,37 @@ function saveJournalSheetFB(journalId, sheetData, metaPatch = {}) {
 
   if (window._FB?.CONFIGURED) {
     const { db, ref, update, set } = window._FB;
-    const remoteMetaPatch = { ...safeMetaPatch, updatedAt: getJournalServerTimestamp() };
-    if (!remoteMetaPatch.createdAt && !currentJournal?.createdAt) {
+    const canManage = !currentJournal || canManageJournalEntry(currentJournal);
+    const localMetaPatch = { ...safeMetaPatch };
+    const remoteMetaPatch = canManage ? { ...safeMetaPatch } : {
+      title: safeMetaPatch.title,
+      assignedTokenId: safeMetaPatch.assignedTokenId || null,
+      showPortraitInDialogue: !!safeMetaPatch.showPortraitInDialogue,
+    };
+    if (safeMetaPatch.nameColor !== undefined) remoteMetaPatch.nameColor = safeMetaPatch.nameColor || '';
+    if (safeAvatar) remoteMetaPatch.avatar = safeAvatar;
+    remoteMetaPatch.updatedAt = getJournalServerTimestamp();
+    if (canManage && !remoteMetaPatch.createdAt && !currentJournal?.createdAt) {
       remoteMetaPatch.createdAt = getJournalServerTimestamp();
     }
     const nextJournal = upsertLocalJournal({
       ...(currentJournal || {}),
       id: journalId,
-      ...safeMetaPatch,
+      ...localMetaPatch,
       sheet: safeSheetData,
     });
     if (nextJournal) {
       renderJournalList();
       saRefreshToolbar();
     }
-    update(ref(db, `rooms/${St.roomCode}/journals/${journalId}`), remoteMetaPatch);
-    set(ref(db, `rooms/${St.roomCode}/journals/${journalId}/sheet`), safeSheetData);
+    return Promise.all([
+      update(ref(db, `rooms/${St.roomCode}/journals/${journalId}`), remoteMetaPatch),
+      set(ref(db, `rooms/${St.roomCode}/journals/${journalId}/sheet`), safeSheetData),
+    ]).catch(err => {
+      console.error('journal sheet save failed', err);
+      showToast('저널 저장에 실패했어요. 권한을 확인해 주세요.');
+      throw err;
+    });
   } else {
     const nextJournal = upsertLocalJournal({
       ...(currentJournal || {}),
