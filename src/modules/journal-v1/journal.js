@@ -1876,6 +1876,15 @@ function rollCustomSheetSkill(index) {
   }
 }
 
+function updateCustomSkillFractions(index) {
+  const valEl = document.getElementById(`sk-custom-val-${index}`);
+  const halfEl = document.getElementById(`sk-custom-half-${index}`);
+  const quarterEl = document.getElementById(`sk-custom-quarter-${index}`);
+  const current = parseInt(valEl?.value, 10) || 0;
+  if (halfEl) halfEl.value = Math.floor(current / 2);
+  if (quarterEl) quarterEl.value = Math.floor(current / 4);
+}
+
 function createCustomSkillNumberInput(index, kind, placeholder, value) {
   const input = document.createElement('input');
   input.className = kind === 'val' ? 'skill-input' : 'skill-input half-val';
@@ -1885,6 +1894,11 @@ function createCustomSkillNumberInput(index, kind, placeholder, value) {
   input.max = '999';
   input.placeholder = placeholder;
   input.value = value !== undefined && value !== null ? String(value) : '';
+  if (kind !== 'val') {
+    input.readOnly = true;
+  } else {
+    input.addEventListener('input', () => updateCustomSkillFractions(index));
+  }
   input.addEventListener('keydown', (event) => {
     if (event.key !== 'Enter') return;
     event.preventDefault();
@@ -1950,9 +1964,13 @@ function createCustomSheetSkillRow(skillData = {}) {
   nameHidden.value = String(skillData.name || '');
   nameCell.appendChild(nameHidden);
 
-  const valInput = createCustomSkillNumberInput(index, 'val', '현재', skillData.val);
-  const halfInput = createCustomSkillNumberInput(index, 'half', '½', skillData.half);
-  const quarterValue = skillData.quarter !== undefined ? skillData.quarter : skillData.fifth;
+  const customVal = normalizeCustomSkillValue(skillData.val);
+  const hasCustomVal = customVal !== '';
+  const currentForFractions = hasCustomVal ? (parseInt(customVal, 10) || 0) : 0;
+  const halfValue = hasCustomVal ? Math.floor(currentForFractions / 2) : '';
+  const quarterValue = hasCustomVal ? Math.floor(currentForFractions / 4) : '';
+  const valInput = createCustomSkillNumberInput(index, 'val', '현재', customVal);
+  const halfInput = createCustomSkillNumberInput(index, 'half', '½', halfValue);
   const quarterInput = createCustomSkillNumberInput(index, 'quarter', '¼', quarterValue);
 
   row.appendChild(check);

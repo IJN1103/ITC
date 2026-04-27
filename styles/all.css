@@ -667,8 +667,8 @@ to{transform:translateX(0);opacity:1;}
 .custom-skill-row{background:transparent;}
 .custom-skill-check{box-sizing:border-box;margin:0;}
 .custom-skill-name-cell{min-width:0;display:flex;align-items:center;}
-.custom-skill-name-btn{width:100%;min-width:0;font-size:11px;color:var(--dim);}
-.custom-skill-name-input{width:100%;min-width:0;background:none;border:none;outline:none;color:var(--dim);font:inherit;font-size:11px;text-align:left;padding:0;}
+.custom-skill-name-btn{width:100%;min-width:0;font-size:inherit;color:var(--dim);}
+.custom-skill-name-input{width:100%;min-width:0;background:none;border:none;outline:none;color:var(--dim);font:inherit;font-size:inherit;text-align:left;padding:0;}
 .custom-skill-name-input::placeholder{color:var(--muted);}
 .custom-skill-name-input:focus{color:var(--accent);}
 .custom-skill-add-row{min-height:22px;}
