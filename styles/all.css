@@ -363,7 +363,7 @@ to{opacity:1;transform:translateY(0)}
 .vn-content{position:relative;display:flex;flex-direction:column;align-items:flex-start;z-index:2}
 .vn-name-tag{background:linear-gradient(135deg,rgba(184,154,96,.92),rgba(140,115,62,.95));border:1px solid rgba(220,195,130,.4);border-bottom:none;border-radius:6px 6px 0 0;padding:6px 20px;font-size:14px;font-weight:700;color:#fff;letter-spacing:.05em;text-shadow:0 1px 3px rgba(0,0,0,.5);margin-left:20px;z-index:5}
 .vn-box{width:100%;min-height:216px;background:linear-gradient(180deg,rgba(16,14,10,.9) 0%,rgba(12,10,8,.95) 100%);border:1px solid rgba(184,154,96,.25);border-radius:0 8px 8px 8px;padding:20px 28px 24px;backdrop-filter:blur(10px);cursor:pointer;position:relative;box-shadow:0 -2px 20px rgba(184,154,96,.08),inset 0 1px 0 rgba(184,154,96,.1);z-index:3;display:flex;align-items:flex-start;gap:16px;}
-.vn-portrait{display:none;flex:0 0 128px;width:128px;height:128px;align-self:center;border-radius:12px;overflow:hidden;background:rgba(0,0,0,.28);border:1px solid rgba(184,154,96,.32);box-shadow:0 6px 20px rgba(0,0,0,.35);}
+.vn-portrait{display:none;flex:0 0 128px;width:128px;height:128px;align-self:flex-start;border-radius:12px;overflow:hidden;background:rgba(0,0,0,.28);border:1px solid rgba(184,154,96,.32);box-shadow:0 6px 20px rgba(0,0,0,.35);}
 .vn-portrait img{width:100%;height:100%;object-fit:cover;display:block;}
 .vn-dialog.has-portrait .vn-portrait{display:block;}
 .vn-text{flex:1;min-width:0;font-size:14.5px;color:rgba(232,227,218,.92);line-height:1.85;letter-spacing:.03em;animation:vnTypeIn .25s ease;padding-right:24px}
