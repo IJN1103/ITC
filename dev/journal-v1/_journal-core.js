@@ -77,6 +77,34 @@ function saveJournalFB(journal) {
   }
 }
 
+
+function saveJournalNameColorFB(journalId, color) {
+  const safeId = String(journalId || '').trim();
+  if (!safeId) return Promise.resolve();
+  const safeColor = String(color || '').trim();
+  const currentJournal = _allJournals.find(j => String(j.id || '') === safeId) || null;
+  if (currentJournal) {
+    currentJournal.nameColor = safeColor;
+    if (!currentJournal.sheet || typeof currentJournal.sheet !== 'object') currentJournal.sheet = {};
+    currentJournal.sheet.nameColor = safeColor;
+    currentJournal.updatedAt = Date.now();
+    if (typeof syncJournalRuntimeCache === 'function') syncJournalRuntimeCache(currentJournal);
+  }
+
+  if (!window._FB?.CONFIGURED) {
+    try { localStorage.setItem(journalKey(), JSON.stringify(_allJournals)); } catch (e) {}
+    return Promise.resolve();
+  }
+
+  const { db, ref, update } = window._FB;
+  const patch = {
+    nameColor: safeColor,
+    'sheet/nameColor': safeColor,
+    updatedAt: getJournalServerTimestamp(),
+  };
+  return update(ref(db, `rooms/${St.roomCode}/journals/${safeId}`), patch);
+}
+
 function saveJournalSheetFB(journalId, sheetData, metaPatch = {}) {
   if (!journalId) return;
 
@@ -126,6 +154,7 @@ function deleteJournalFB(id) {
     _allJournals = _allJournals.filter(j => j.id !== id);
     localStorage.setItem(journalKey(), JSON.stringify(_allJournals));
   }
+  schedulePopoutDocumentSync();
 }
 
 function migrateLocalJournals() {
@@ -251,11 +280,13 @@ function renderJournalList() {
   container.querySelectorAll('.journal-item').forEach(el => el.remove());
   if (!St.roomCode) {
     setJournalListEmptyState('방에 입장하면 저널을 볼 수 있어요.');
+    schedulePopoutDocumentSync();
     return;
   }
   const list = loadJournals();
   if (!list.length) {
     setJournalListEmptyState('저널이 없어요.<br>위 + 버튼으로 새 저널을 만들어보세요.');
+    schedulePopoutDocumentSync();
     return;
   }
   setJournalListEmptyState('');
@@ -263,6 +294,7 @@ function renderJournalList() {
   list.slice().reverse().forEach(j => frag.appendChild(buildJournalListItem(j)));
   container.appendChild(frag);
   saRefreshToolbar();
+  schedulePopoutDocumentSync();
 }
 
 function openJournalEditor(id) {
@@ -331,10 +363,13 @@ function createNewJournal() {
     const ck = document.getElementById('sk-check-'+i);
     const val = document.getElementById('sk-val-'+i);
     const hlf = document.getElementById('sk-half-'+i);
+    const fif = document.getElementById('sk-fifth-'+i);
     if (ck) ck.checked = false;
     if (val) val.value = sk.base;
     if (hlf) hlf.value = Math.floor(sk.base/2);
+    if (fif) fif.value = Math.floor(sk.base/5);
   });
+  renderCustomSheetSkillRows([]);
   const notes = document.getElementById('sh-notes');
   if (notes) notes.value = '';
   document.getElementById('sh-unarmed-skill').value = '근접전(격투)';
@@ -352,6 +387,8 @@ function createNewJournal() {
   });
 
   refreshSheetAvatar(null, '?');
+  const portraitToggle = document.getElementById('sh-show-portrait-dialogue');
+  if (portraitToggle) portraitToggle.checked = false;
   refreshJournalTokenBar(null);
   _sheetAssignedTo = [];
   refreshSheetAssignBar(null);

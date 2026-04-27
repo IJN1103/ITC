@@ -74,6 +74,7 @@ function buildEmptyImportedCocSheet() {
     hp: '', hp_max: '', san: '', san_max: '', mp: '', mp_max: '', luck: '', db: '', build: '',
     status_temp_insane: false, status_indefinite: false, status_major_wound: false, status_dying: false,
     skills: COC_SKILLS.map(sk => ({ checked: false, val: sk.base, half: Math.floor(sk.base / 2) })),
+    customSkills: [],
     unarmed_skill: '근접전(격투)',
     unarmed_dmg: '1d3+db',
     combat_rows: [],
@@ -260,6 +261,188 @@ function bindSheetSkillRollInteractions(wrap) {
   });
 }
 
+let _customSkillRowCount = 0;
+let _customSkillColumns = [];
+let _customSkillAddRowEl = null;
+
+function getCustomSkillColumns() {
+  const wrap = document.getElementById('sh-skills-wrap');
+  const cols = wrap ? Array.from(wrap.querySelectorAll('.skill-col-wrap')) : [];
+  if (cols.length) _customSkillColumns = cols;
+  return _customSkillColumns;
+}
+
+function getCustomSkillTargetColumn() {
+  const cols = getCustomSkillColumns();
+  if (!cols.length) return null;
+  return cols[_customSkillRowCount % cols.length] || cols[0];
+}
+
+function normalizeCustomSkillValue(value) {
+  const raw = String(value ?? '').trim();
+  if (!raw) return '';
+  const n = parseInt(raw, 10);
+  return Number.isFinite(n) ? Math.max(0, Math.min(999, n)) : '';
+}
+
+function readCustomSkillRowsFromSheet() {
+  const rows = Array.from(document.querySelectorAll('.custom-skill-row'));
+  return rows.map((row) => {
+    const index = row.dataset.customSkillIndex;
+    const name = document.getElementById(`sk-custom-name-${index}`)?.value?.trim() || '';
+    const valRaw = document.getElementById(`sk-custom-val-${index}`)?.value ?? '';
+    const halfRaw = document.getElementById(`sk-custom-half-${index}`)?.value ?? '';
+    const quarterRaw = document.getElementById(`sk-custom-quarter-${index}`)?.value ?? '';
+    const data = {
+      checked: !!document.getElementById(`sk-custom-check-${index}`)?.checked,
+      name,
+      val: normalizeCustomSkillValue(valRaw),
+      half: normalizeCustomSkillValue(halfRaw),
+      quarter: normalizeCustomSkillValue(quarterRaw),
+    };
+    const hasAnyValue = data.name || data.val !== '' || data.half !== '' || data.quarter !== '' || data.checked;
+    return hasAnyValue ? data : null;
+  }).filter(Boolean);
+}
+
+function rollCustomSheetSkill(index) {
+  const nameEl = document.getElementById(`sk-custom-name-${index}`);
+  const valEl = document.getElementById(`sk-custom-val-${index}`);
+  const name = nameEl?.value?.trim() || '추가 기능';
+  const value = valEl ? parseInt(valEl.value, 10) || 0 : 0;
+  if (typeof window.rollJournalSheetSkillCheck === 'function') {
+    window.rollJournalSheetSkillCheck(name, value);
+  }
+}
+
+function createCustomSkillNumberInput(index, kind, placeholder, value) {
+  const input = document.createElement('input');
+  input.className = kind === 'val' ? 'skill-input' : 'skill-input half-val';
+  input.id = `sk-custom-${kind}-${index}`;
+  input.type = 'number';
+  input.min = '0';
+  input.max = '999';
+  input.placeholder = placeholder;
+  input.value = value !== undefined && value !== null ? String(value) : '';
+  input.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    rollCustomSheetSkill(index);
+  });
+  return input;
+}
+
+function createCustomSheetSkillRow(skillData = {}) {
+  const index = _customSkillRowCount++;
+  const row = document.createElement('div');
+  row.className = 'skill-row custom-skill-row';
+  row.dataset.customSkillIndex = String(index);
+
+  const rollBtn = document.createElement('button');
+  rollBtn.type = 'button';
+  rollBtn.className = 'custom-skill-roll-btn';
+  rollBtn.textContent = '▶';
+  rollBtn.title = '추가 기능 판정';
+  rollBtn.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    rollCustomSheetSkill(index);
+  });
+
+  const nameInput = document.createElement('input');
+  nameInput.className = 'custom-skill-name-input';
+  nameInput.id = `sk-custom-name-${index}`;
+  nameInput.placeholder = '기능명';
+  nameInput.value = String(skillData.name || '');
+  nameInput.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    rollCustomSheetSkill(index);
+  });
+  nameInput.addEventListener('click', () => {
+    if (!nameInput.readOnly) return;
+    rollCustomSheetSkill(index);
+  });
+
+  const valInput = createCustomSkillNumberInput(index, 'val', '현재', skillData.val);
+  const halfInput = createCustomSkillNumberInput(index, 'half', '½', skillData.half);
+  const quarterValue = skillData.quarter !== undefined ? skillData.quarter : skillData.fifth;
+  const quarterInput = createCustomSkillNumberInput(index, 'quarter', '¼', quarterValue);
+
+  row.appendChild(rollBtn);
+  row.appendChild(nameInput);
+  row.appendChild(valInput);
+  row.appendChild(halfInput);
+  row.appendChild(quarterInput);
+  return row;
+}
+
+function ensureCustomSkillAddRow() {
+  if (_customSkillAddRowEl && document.body.contains(_customSkillAddRowEl)) return _customSkillAddRowEl;
+
+  const addRow = document.createElement('div');
+  addRow.className = 'skill-row custom-skill-add-row';
+
+  const addBtn = document.createElement('button');
+  addBtn.type = 'button';
+  addBtn.className = 'custom-skill-add-btn';
+  addBtn.textContent = '+';
+  addBtn.title = '추가 기능 입력';
+  addBtn.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    addCustomSheetSkillRow();
+  });
+
+  const blank = document.createElement('div');
+  blank.className = 'custom-skill-add-blank';
+  blank.setAttribute('aria-hidden', 'true');
+
+  addRow.appendChild(addBtn);
+  addRow.appendChild(blank);
+  _customSkillAddRowEl = addRow;
+  return addRow;
+}
+
+function moveCustomSkillAddRow() {
+  const target = getCustomSkillTargetColumn();
+  if (!target) return;
+  target.appendChild(ensureCustomSkillAddRow());
+}
+
+function addCustomSheetSkillRow(skillData = {}) {
+  const target = getCustomSkillTargetColumn();
+  if (!target) return;
+
+  const addRow = ensureCustomSkillAddRow();
+  const row = createCustomSheetSkillRow(skillData || {});
+  if (addRow.parentElement === target) {
+    target.insertBefore(row, addRow);
+  } else {
+    target.appendChild(row);
+  }
+  moveCustomSkillAddRow();
+
+  const modal = getQuickSheetModalEl();
+  const editable = modal?.dataset.editable !== '0';
+  row.querySelectorAll('input').forEach((input) => { input.readOnly = !editable; });
+  if (editable && !skillData.name) row.querySelector('.custom-skill-name-input')?.focus();
+}
+
+function renderCustomSheetSkillRows(customSkills = []) {
+  document.querySelectorAll('.custom-skill-row, .custom-skill-add-row').forEach((el) => el.remove());
+  _customSkillRowCount = 0;
+  _customSkillAddRowEl = null;
+  (Array.isArray(customSkills) ? customSkills : []).forEach((skill) => addCustomSheetSkillRow(skill || {}));
+  moveCustomSkillAddRow();
+}
+
+function appendCustomSkillAddRow(wrap) {
+  if (!wrap) return;
+  _customSkillColumns = Array.from(wrap.querySelectorAll('.skill-col-wrap'));
+  moveCustomSkillAddRow();
+}
+
 function initSheetUI() {
   const grid = document.getElementById('sh-stats-grid');
   if (grid && !grid.children.length) {
@@ -305,6 +488,7 @@ function initSheetUI() {
     });
     wrap.appendChild(col);
   });
+  appendCustomSkillAddRow(wrap);
   bindResourceRollInteractions();
 }
 
@@ -360,6 +544,15 @@ function setSheetEditorMode(editable) {
   const addCombatBtn = modal.querySelector('button[onclick*="addCombatRow"]');
   if (addCombatBtn) addCombatBtn.style.display = editable ? '' : 'none';
 
+  modal.querySelectorAll('.custom-skill-add-row').forEach((row) => {
+    row.style.display = editable ? '' : 'none';
+  });
+
+  modal.querySelectorAll('.custom-skill-add-btn').forEach((btn) => {
+    btn.style.display = editable ? '' : 'none';
+    btn.disabled = !editable;
+  });
+
   const tokenAssignBtn = document.getElementById('sh-token-assign-btn');
   if (tokenAssignBtn) tokenAssignBtn.style.display = editable ? '' : 'none';
 
@@ -400,13 +593,15 @@ function clampQuickSheetRect(x, y, width, height) {
 
 function getDefaultQuickSheetRect() {
   const pad = 16;
-  const gap = 24;
+  const gap = 12;
+  const quickBtn = getQuickJournalButtonEl();
+  const btnRect = quickBtn?.getBoundingClientRect();
   const chatPanel = document.getElementById('panel-right');
   const chatRect = chatPanel?.getBoundingClientRect();
   const viewportWidth = window.innerWidth;
   const viewportHeight = window.innerHeight;
   const baseHeight = Math.round((chatRect?.height || viewportHeight) * 0.6);
-  const targetHeight = Math.max(320, Math.min(baseHeight, viewportHeight - pad * 2));
+  let targetHeight = Math.max(320, Math.min(baseHeight, viewportHeight - pad * 2));
   let targetWidth = Math.round(targetHeight * 1.18);
 
   if (chatRect && chatRect.left > pad + 280) {
@@ -417,6 +612,14 @@ function getDefaultQuickSheetRect() {
   }
 
   targetWidth = Math.max(420, Math.min(targetWidth, 760, viewportWidth - pad * 2));
+
+  if (btnRect && btnRect.width && btnRect.height) {
+    const availableBelow = viewportHeight - btnRect.bottom - gap - pad;
+    if (availableBelow >= 320) targetHeight = Math.min(targetHeight, availableBelow);
+    const x = btnRect.right - targetWidth;
+    const y = btnRect.bottom + gap;
+    return clampQuickSheetRect(x, y, targetWidth, targetHeight);
+  }
 
   let x;
   if (chatRect && chatRect.left > pad + 280) {
@@ -640,8 +843,28 @@ function refreshQuickStandingMenuForToken(tokenId) {
   if (!currentTokenId || currentTokenId === String(tokenId || '')) renderQuickStandingMenu();
 }
 
+function getQuickStandingCloseButtonHtml() {
+  return '<button type="button" class="map-quick-standing-close-btn" title="닫기" aria-label="스탠딩 퀵뷰 닫기">×</button>';
+}
+
+function bindQuickStandingCloseButton(menu) {
+  const closeBtn = menu?.querySelector('.map-quick-standing-close-btn');
+  if (!closeBtn) return;
+  closeBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    closeQuickStandingMenu();
+  });
+}
+
 function getStandingQuickEmptyHtml(message) {
-  return `<div class="map-quick-standing-empty">${esc(message)}</div>`;
+  return `
+    <div class="map-quick-standing-head">
+      <span>스탠딩 퀵뷰</span>
+      <div class="map-quick-standing-head-actions">${getQuickStandingCloseButtonHtml()}</div>
+    </div>
+    <div class="map-quick-standing-empty">${esc(message)}</div>
+  `;
 }
 
 function normalizeQuickStandingLabel(label) {
@@ -680,6 +903,59 @@ function canChangeQuickStanding(journal, token) {
   return false;
 }
 
+function canEditQuickStandingCrop(journal, token) {
+  if (St.isGM) return true;
+  const myId = String(St.myId || '');
+  if (!myId || !token) return false;
+  if (String(token.ownerId || '') === myId) return true;
+  if (typeof hasPerm === 'function' && hasPerm('editToken')) return true;
+  return false;
+}
+
+function clampQuickStandingCropValue(value, min, max, fallback) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return fallback;
+  return Math.max(min, Math.min(max, num));
+}
+
+function normalizeQuickStandingThumbCrop(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const cx = clampQuickStandingCropValue(raw.cx, 0, 1, 0.5);
+  const cy = clampQuickStandingCropValue(raw.cy, 0, 1, 0.5);
+  const zoom = clampQuickStandingCropValue(raw.zoom, 1, 3, 1);
+  return {
+    cx: Math.round(cx * 1000) / 1000,
+    cy: Math.round(cy * 1000) / 1000,
+    zoom: Math.round(zoom * 1000) / 1000,
+  };
+}
+
+function getQuickStandingIndividualThumbCrop(standing = null) {
+  return normalizeQuickStandingThumbCrop(standing?.quickStandingCrop || standing?.thumbCrop || null);
+}
+
+function hasQuickStandingIndividualThumbCrop(standing = null) {
+  return !!getQuickStandingIndividualThumbCrop(standing);
+}
+
+function getQuickStandingThumbCrop(token, standing = null) {
+  return getQuickStandingIndividualThumbCrop(standing)
+    || normalizeQuickStandingThumbCrop(token?.quickStandingCrop || token?.standingQuickCrop || null);
+}
+
+function getQuickStandingThumbImgStyle(crop) {
+  const safe = normalizeQuickStandingThumbCrop(crop);
+  if (!safe) return '';
+  const cx = Math.round(safe.cx * 10000) / 100;
+  const cy = Math.round(safe.cy * 10000) / 100;
+  const zoom = Math.round(safe.zoom * 1000) / 1000;
+  return ` style="object-position:${cx}% ${cy}%;transform:scale(${zoom});transform-origin:${cx}% ${cy}%;"`;
+}
+
+function getQuickStandingCropIconSvg() {
+  return `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M8.1 10.2 4.6 6.7a2.4 2.4 0 1 1 1.4-1.4l9.4 9.4 2.3-2.3a1 1 0 0 1 1.4 1.4l-3.1 3.1 3.3 3.3a1 1 0 0 1-1.4 1.4L12.8 16l-2.7 2.7a3.3 3.3 0 1 1-1.4-1.4l2.4-2.4-2.7-2.7-2.4 2.4a3.3 3.3 0 1 1-1.4-1.4l3.1-3.1Zm-2.9 9.6a1.3 1.3 0 1 0 0-2.6 1.3 1.3 0 0 0 0 2.6Zm0-6.4a1.3 1.3 0 1 0 0-2.6 1.3 1.3 0 0 0 0 2.6Z"/></svg>`;
+}
+
 function getQuickStandingCurrentLabel(journal, token, standings) {
   const current = normalizeQuickStandingLabel(token?.currentStandingLabel || '');
   if (current && standings.some(s => normalizeQuickStandingLabel(s.label) === current)) return current;
@@ -711,6 +987,52 @@ function bindQuickStandingMenuScrollGuard(menu) {
   }, { passive: true });
 }
 
+function closeQuickStandingCropContextMenu(menu = null) {
+  const root = menu || getQuickStandingMenuEl();
+  root?.querySelector('.map-quick-standing-context-menu')?.remove();
+}
+
+function showQuickStandingCropContextMenu(menu, journal, token, standing, standingIndex, event) {
+  if (!menu || !journal || !token || !standing) return;
+  if (!canEditQuickStandingCrop(journal, token)) return;
+  closeQuickStandingCropContextMenu(menu);
+  const rect = menu.getBoundingClientRect();
+  const boxWidth = 172;
+  const boxHeight = 76;
+  const left = Math.max(8, Math.min((event?.clientX || rect.left) - rect.left, Math.max(8, rect.width - boxWidth - 8)));
+  const top = Math.max(8, Math.min((event?.clientY || rect.top) - rect.top, Math.max(8, rect.height - boxHeight - 8)));
+  const hasIndividualCrop = hasQuickStandingIndividualThumbCrop(standing);
+  const context = document.createElement('div');
+  context.className = 'map-quick-standing-context-menu';
+  context.style.left = `${left}px`;
+  context.style.top = `${top}px`;
+  context.innerHTML = `
+    <button type="button" data-action="edit">개별 크롭 영역 지정</button>
+    <button type="button" data-action="reset"${hasIndividualCrop ? '' : ' disabled'}>개별 크롭 초기화</button>
+  `;
+  context.addEventListener('click', (e) => e.stopPropagation());
+  context.addEventListener('pointerdown', (e) => e.stopPropagation());
+  context.querySelectorAll('button').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const action = btn.dataset.action;
+      closeQuickStandingCropContextMenu(menu);
+      if (action === 'edit') {
+        renderQuickStandingCropEditor({ standingIndex });
+      } else if (action === 'reset' && hasIndividualCrop) {
+        await saveQuickStandingIndividualThumbCrop(journal, token, standingIndex, null);
+      }
+    });
+  });
+  menu.appendChild(context);
+  window.setTimeout(() => {
+    const close = () => closeQuickStandingCropContextMenu(menu);
+    document.addEventListener('click', close, { once: true });
+    document.addEventListener('contextmenu', close, { once: true });
+  }, 0);
+}
+
 function renderQuickStandingMenu() {
   const menu = getQuickStandingMenuEl();
   if (!menu) return;
@@ -719,17 +1041,23 @@ function renderQuickStandingMenu() {
   getQuickStandingButtonEl()?.classList.add('is-open');
   if (ctx.error) {
     menu.innerHTML = getStandingQuickEmptyHtml(ctx.error);
+    bindQuickStandingCloseButton(menu);
     menu.style.display = 'flex';
     return;
   }
   const { journal, token, standings } = ctx;
   const canChange = canChangeQuickStanding(journal, token);
+  const canCrop = canEditQuickStandingCrop(journal, token);
   const currentLabel = getQuickStandingCurrentLabel(journal, token, standings);
   const title = String(journal?.title || '무제 저널').trim() || '무제 저널';
   menu.innerHTML = `
     <div class="map-quick-standing-head">
       <span>${esc(title)} 스탠딩</span>
-      ${canChange ? '' : '<em>보기 전용</em>'}
+      <div class="map-quick-standing-head-actions">
+        ${canCrop ? `<button type="button" class="map-quick-standing-crop-btn" title="크롭 기능" aria-label="스탠딩 썸네일 크롭">${getQuickStandingCropIconSvg()}</button>` : ''}
+        ${canChange ? '' : '<em>보기 전용</em>'}
+        ${getQuickStandingCloseButtonHtml()}
+      </div>
     </div>
     <div class="map-quick-standing-grid">
       ${standings.map((standing, index) => {
@@ -737,22 +1065,304 @@ function renderQuickStandingMenu() {
         const active = currentLabel && label === currentLabel;
         const src = String(standing.img || '').trim();
         const displayLabel = getQuickStandingDisplayLabel(label);
-        return `<button type="button" class="map-quick-standing-card${active ? ' active' : ''}${canChange ? '' : ' disabled'}" data-standing-index="${index}" ${canChange ? '' : 'disabled'}>
-          <span class="map-quick-standing-thumb">${src ? `<img src="${esc(src)}" alt="">` : '<span class="map-quick-standing-fallback">?</span>'}</span>
+        const hasIndividualCrop = hasQuickStandingIndividualThumbCrop(standing);
+        const cropStyle = getQuickStandingThumbImgStyle(getQuickStandingThumbCrop(token, standing));
+        return `<button type="button" class="map-quick-standing-card${active ? ' active' : ''}${canChange ? '' : ' disabled'}${hasIndividualCrop ? ' has-individual-crop' : ''}" data-standing-index="${index}" ${canChange ? '' : 'disabled'}>
+          <span class="map-quick-standing-thumb${cropStyle ? ' cropped' : ''}">${src ? `<img src="${esc(src)}" alt=""${cropStyle}>` : '<span class="map-quick-standing-fallback">?</span>'}</span>
+          ${hasIndividualCrop ? '<span class="map-quick-standing-crop-badge">개별</span>' : ''}
           <span class="map-quick-standing-label">${esc(displayLabel)}</span>
         </button>`;
       }).join('')}
     </div>`;
+  bindQuickStandingCloseButton(menu);
+  const cropBtn = menu.querySelector('.map-quick-standing-crop-btn');
+  if (cropBtn) {
+    cropBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      renderQuickStandingCropEditor();
+    });
+  }
   menu.querySelectorAll('.map-quick-standing-card').forEach(btn => {
     btn.addEventListener('click', async (e) => {
       e.preventDefault();
       e.stopPropagation();
+      closeQuickStandingCropContextMenu(menu);
       const idx = Number(btn.dataset.standingIndex);
       const standing = standings[idx];
       if (!standing || !canChange) return;
       await selectQuickStanding(journal, token, standing);
     });
+    if (canCrop) {
+      btn.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const idx = Number(btn.dataset.standingIndex);
+        const standing = standings[idx];
+        if (!standing) return;
+        showQuickStandingCropContextMenu(menu, journal, token, standing, idx, e);
+      });
+    }
   });
+  menu.style.display = 'flex';
+}
+
+function getDefaultQuickStandingThumbCrop() {
+  return { cx: 0.5, cy: 0.5, zoom: 1 };
+}
+
+function getQuickStandingCropPreviewStyle(crop) {
+  const safe = normalizeQuickStandingThumbCrop(crop) || getDefaultQuickStandingThumbCrop();
+  const cx = Math.round(safe.cx * 10000) / 100;
+  const cy = Math.round(safe.cy * 10000) / 100;
+  const zoom = Math.round(safe.zoom * 1000) / 1000;
+  return `object-position:${cx}% ${cy}%;transform:scale(${zoom});transform-origin:${cx}% ${cy}%;`;
+}
+
+function updateQuickStandingCropPreview(menu, crop) {
+  const img = menu?.querySelector('.map-quick-standing-crop-image');
+  const range = menu?.querySelector('.map-quick-standing-crop-range');
+  const value = menu?.querySelector('.map-quick-standing-crop-value');
+  const safe = normalizeQuickStandingThumbCrop(crop) || getDefaultQuickStandingThumbCrop();
+  if (img) img.setAttribute('style', getQuickStandingCropPreviewStyle(safe));
+  if (range) range.value = String(Math.round(safe.zoom * 100));
+  if (value) value.textContent = `${Math.round(safe.zoom * 100)}%`;
+}
+
+async function saveQuickStandingThumbCrop(journal, token, crop) {
+  if (!journal?.id || !token?.id) return;
+  if (!canEditQuickStandingCrop(journal, token)) {
+    showToast('스탠딩 크롭 설정 권한이 없어요.');
+    return;
+  }
+  const safeCrop = crop ? normalizeQuickStandingThumbCrop(crop) : null;
+  const prevCrop = token.quickStandingCrop || null;
+  try {
+    if (safeCrop) token.quickStandingCrop = safeCrop;
+    else delete token.quickStandingCrop;
+    if (St.tokens && St.tokens[token.id]) {
+      if (safeCrop) St.tokens[token.id].quickStandingCrop = safeCrop;
+      else delete St.tokens[token.id].quickStandingCrop;
+    }
+    if (window._FB?.CONFIGURED && St.roomCode) {
+      const { db, ref, update } = window._FB;
+      await update(ref(db, `rooms/${St.roomCode}/tokens/${token.id}`), { quickStandingCrop: safeCrop });
+    }
+    renderQuickStandingMenu();
+    showToast(safeCrop ? '스탠딩 썸네일 크롭을 저장했어요.' : '스탠딩 썸네일 크롭을 초기화했어요.');
+  } catch (err) {
+    if (prevCrop) token.quickStandingCrop = prevCrop;
+    else delete token.quickStandingCrop;
+    if (St.tokens && St.tokens[token.id]) {
+      if (prevCrop) St.tokens[token.id].quickStandingCrop = prevCrop;
+      else delete St.tokens[token.id].quickStandingCrop;
+    }
+    console.error('quick standing crop save failed', err);
+    showToast('스탠딩 크롭 저장에 실패했어요.');
+  }
+}
+
+async function saveQuickStandingIndividualThumbCrop(journal, token, standingIndex, crop) {
+  if (!journal?.id || !token?.id) return;
+  if (!canEditQuickStandingCrop(journal, token)) {
+    showToast('스탠딩 크롭 설정 권한이 없어요.');
+    return;
+  }
+  const index = Number(standingIndex);
+  const standings = Array.isArray(token.standings) ? token.standings : [];
+  const standing = standings[index];
+  if (!Number.isInteger(index) || index < 0 || !standing) {
+    showToast('개별 크롭을 적용할 스탠딩을 찾을 수 없어요.');
+    return;
+  }
+  const safeCrop = crop ? normalizeQuickStandingThumbCrop(crop) : null;
+  const prevQuickCrop = standing.quickStandingCrop || null;
+  const prevThumbCrop = standing.thumbCrop || null;
+  try {
+    if (safeCrop) standing.quickStandingCrop = safeCrop;
+    else delete standing.quickStandingCrop;
+    delete standing.thumbCrop;
+    if (St.tokens && St.tokens[token.id] && Array.isArray(St.tokens[token.id].standings) && St.tokens[token.id].standings[index]) {
+      if (safeCrop) St.tokens[token.id].standings[index].quickStandingCrop = safeCrop;
+      else delete St.tokens[token.id].standings[index].quickStandingCrop;
+      delete St.tokens[token.id].standings[index].thumbCrop;
+    }
+    if (window._FB?.CONFIGURED && St.roomCode) {
+      const { db, ref, update } = window._FB;
+      await update(ref(db, `rooms/${St.roomCode}/tokens/${token.id}/standings/${index}`), { quickStandingCrop: safeCrop, thumbCrop: null });
+    }
+    renderQuickStandingMenu();
+    showToast(safeCrop ? '개별 스탠딩 크롭을 저장했어요.' : '개별 스탠딩 크롭을 초기화했어요.');
+  } catch (err) {
+    if (prevQuickCrop) standing.quickStandingCrop = prevQuickCrop;
+    else delete standing.quickStandingCrop;
+    if (prevThumbCrop) standing.thumbCrop = prevThumbCrop;
+    else delete standing.thumbCrop;
+    if (St.tokens && St.tokens[token.id] && Array.isArray(St.tokens[token.id].standings) && St.tokens[token.id].standings[index]) {
+      if (prevQuickCrop) St.tokens[token.id].standings[index].quickStandingCrop = prevQuickCrop;
+      else delete St.tokens[token.id].standings[index].quickStandingCrop;
+      if (prevThumbCrop) St.tokens[token.id].standings[index].thumbCrop = prevThumbCrop;
+      else delete St.tokens[token.id].standings[index].thumbCrop;
+    }
+    console.error('quick standing individual crop save failed', err);
+    showToast('개별 스탠딩 크롭 저장에 실패했어요.');
+  }
+}
+
+function bindQuickStandingCropEditor(menu, journal, token, cropState) {
+  if (!menu || !cropState) return;
+  const preview = menu.querySelector('.map-quick-standing-crop-preview');
+  const range = menu.querySelector('.map-quick-standing-crop-range');
+  const backBtn = menu.querySelector('.map-quick-standing-crop-back');
+  const saveBtn = menu.querySelector('.map-quick-standing-crop-save');
+  const resetBtn = menu.querySelector('.map-quick-standing-crop-reset');
+  const clampCrop = () => {
+    cropState.crop.cx = clampQuickStandingCropValue(cropState.crop.cx, 0, 1, 0.5);
+    cropState.crop.cy = clampQuickStandingCropValue(cropState.crop.cy, 0, 1, 0.5);
+    cropState.crop.zoom = clampQuickStandingCropValue(cropState.crop.zoom, 1, 3, 1);
+  };
+  if (backBtn) {
+    backBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      renderQuickStandingMenu();
+    });
+  }
+  if (range) {
+    range.addEventListener('input', () => {
+      cropState.crop.zoom = clampQuickStandingCropValue(Number(range.value) / 100, 1, 3, 1);
+      updateQuickStandingCropPreview(menu, cropState.crop);
+    });
+  }
+  if (preview) {
+    const startDrag = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      cropState.dragging = true;
+      cropState.lastX = e.clientX;
+      cropState.lastY = e.clientY;
+      preview.setPointerCapture?.(e.pointerId);
+      preview.classList.add('dragging');
+    };
+    const moveDrag = (e) => {
+      if (!cropState.dragging) return;
+      e.preventDefault();
+      const rect = preview.getBoundingClientRect();
+      const zoom = Math.max(1, Number(cropState.crop.zoom) || 1);
+      const dx = e.clientX - cropState.lastX;
+      const dy = e.clientY - cropState.lastY;
+      cropState.lastX = e.clientX;
+      cropState.lastY = e.clientY;
+      cropState.crop.cx -= dx / Math.max(1, rect.width * zoom);
+      cropState.crop.cy -= dy / Math.max(1, rect.height * zoom);
+      clampCrop();
+      updateQuickStandingCropPreview(menu, cropState.crop);
+    };
+    const endDrag = (e) => {
+      if (!cropState.dragging) return;
+      cropState.dragging = false;
+      preview.classList.remove('dragging');
+      try { preview.releasePointerCapture?.(e.pointerId); } catch (_) {}
+    };
+    preview.addEventListener('pointerdown', startDrag);
+    preview.addEventListener('pointermove', moveDrag);
+    preview.addEventListener('pointerup', endDrag);
+    preview.addEventListener('pointerleave', endDrag);
+    preview.addEventListener('pointercancel', endDrag);
+  }
+  if (saveBtn) {
+    saveBtn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      clampCrop();
+      if (Number.isInteger(cropState.standingIndex)) {
+        await saveQuickStandingIndividualThumbCrop(journal, token, cropState.standingIndex, cropState.crop);
+      } else {
+        await saveQuickStandingThumbCrop(journal, token, cropState.crop);
+      }
+    });
+  }
+  if (resetBtn) {
+    resetBtn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (Number.isInteger(cropState.standingIndex)) {
+        await saveQuickStandingIndividualThumbCrop(journal, token, cropState.standingIndex, null);
+      } else {
+        await saveQuickStandingThumbCrop(journal, token, null);
+      }
+    });
+  }
+}
+
+function renderQuickStandingCropEditor(options = {}) {
+  const menu = getQuickStandingMenuEl();
+  if (!menu) return;
+  bindQuickStandingMenuScrollGuard(menu);
+  const ctx = getSelectedQuickStandingContext();
+  getQuickStandingButtonEl()?.classList.add('is-open');
+  if (ctx.error) {
+    menu.innerHTML = getStandingQuickEmptyHtml(ctx.error);
+    bindQuickStandingCloseButton(menu);
+    menu.style.display = 'flex';
+    return;
+  }
+  const { journal, token, standings } = ctx;
+  if (!canEditQuickStandingCrop(journal, token)) {
+    showToast('스탠딩 크롭 설정 권한이 없어요.');
+    renderQuickStandingMenu();
+    return;
+  }
+  const requestedIndex = Number(options?.standingIndex);
+  const isIndividual = Number.isInteger(requestedIndex) && requestedIndex >= 0;
+  const standingIndex = isIndividual ? requestedIndex : null;
+  const baseStanding = isIndividual ? standings[standingIndex] : standings[0];
+  if (!baseStanding) {
+    showToast(isIndividual ? '개별 크롭 기준으로 사용할 스탠딩을 찾을 수 없어요.' : '크롭 기준으로 사용할 스탠딩 이미지가 없어요.');
+    renderQuickStandingMenu();
+    return;
+  }
+  const baseImg = String(baseStanding.img || '').trim();
+  if (!baseImg) {
+    showToast('크롭 기준으로 사용할 스탠딩 이미지가 없어요.');
+    renderQuickStandingMenu();
+    return;
+  }
+  const title = String(journal?.title || '무제 저널').trim() || '무제 저널';
+  const baseLabel = getQuickStandingDisplayLabel(baseStanding.label || (isIndividual ? '선택한 스탠딩' : '첫 번째 스탠딩'));
+  const currentCrop = isIndividual
+    ? (getQuickStandingIndividualThumbCrop(baseStanding) || normalizeQuickStandingThumbCrop(token?.quickStandingCrop || null) || getDefaultQuickStandingThumbCrop())
+    : (normalizeQuickStandingThumbCrop(token?.quickStandingCrop || null) || getDefaultQuickStandingThumbCrop());
+  const cropState = { crop: { ...currentCrop }, dragging: false, lastX: 0, lastY: 0, standingIndex };
+  menu.innerHTML = `
+    <div class="map-quick-standing-head crop-mode">
+      <button type="button" class="map-quick-standing-crop-back" aria-label="스탠딩 목록으로 돌아가기">‹</button>
+      <span>${esc(title)} ${isIndividual ? '개별 크롭' : '크롭 기능'}</span>
+      <div class="map-quick-standing-head-actions">${getQuickStandingCloseButtonHtml()}</div>
+    </div>
+    <div class="map-quick-standing-crop-editor">
+      <div class="map-quick-standing-crop-preview" title="드래그해서 썸네일 중심을 조정">
+        <img class="map-quick-standing-crop-image" src="${esc(baseImg)}" alt="" style="${getQuickStandingCropPreviewStyle(cropState.crop)}">
+        <span class="map-quick-standing-crop-frame" aria-hidden="true"></span>
+      </div>
+      <div class="map-quick-standing-crop-meta">
+        <span>${isIndividual ? '개별 이미지' : '기준 이미지'}</span>
+        <strong>${esc(baseLabel)}</strong>
+      </div>
+      <label class="map-quick-standing-crop-slider">
+        <span>크기</span>
+        <input type="range" min="100" max="300" step="1" value="${Math.round(cropState.crop.zoom * 100)}" class="map-quick-standing-crop-range">
+        <em class="map-quick-standing-crop-value">${Math.round(cropState.crop.zoom * 100)}%</em>
+      </label>
+      <p class="map-quick-standing-crop-help">${isIndividual ? '이미지를 드래그해 이 스탠딩 하나에만 적용할 썸네일 중심을 맞춥니다. 저장하면 전체 크롭보다 개별 크롭이 우선 적용됩니다.' : '이미지를 드래그해 썸네일 중심을 맞추고, 크기로 확대 비율을 조정합니다. 저장하면 이 토큰의 모든 스탠딩 퀵뷰 썸네일에 같은 영역이 적용됩니다.'}</p>
+      <div class="map-quick-standing-crop-actions">
+        <button type="button" class="map-quick-standing-crop-reset">초기화</button>
+        <button type="button" class="map-quick-standing-crop-save primary">저장</button>
+      </div>
+    </div>`;
+  updateQuickStandingCropPreview(menu, cropState.crop);
+  bindQuickStandingCloseButton(menu);
+  bindQuickStandingCropEditor(menu, journal, token, cropState);
   menu.style.display = 'flex';
 }
 
@@ -800,10 +1410,7 @@ async function selectQuickStanding(journal, token, standing) {
 function toggleQuickStandingView(event) {
   if (event) { event.preventDefault(); event.stopPropagation(); }
   const menu = getQuickStandingMenuEl();
-  if (menu && menu.style.display !== 'none' && menu.innerHTML.trim()) {
-    closeQuickStandingMenu();
-    return;
-  }
+  if (menu && menu.style.display !== 'none' && menu.innerHTML.trim()) return;
   closeQuickJournalMenu();
   renderQuickStandingMenu();
 }
@@ -893,15 +1500,7 @@ document.addEventListener('click', (e) => {
   closeQuickJournalMenu();
 });
 
-document.addEventListener('click', (e) => {
-  if (e.target.closest('#map-quick-standing-btn') || e.target.closest('#map-quick-standing-menu')) return;
-  closeQuickStandingMenu();
-});
-
-document.addEventListener('keydown', (e) => {
-  if (e.key !== 'Escape') return;
-  closeQuickStandingMenu();
-});
+// 스탠딩 퀵뷰는 외부 클릭이나 Escape로 닫지 않고, 패널 우측 상단 X 버튼으로만 닫습니다.
 
 function openSheet(journalId) {
   _sheetIsNew = false;
@@ -944,6 +1543,7 @@ function openSheet(journalId) {
     if (hlf) hlf.value     = d.half !== undefined ? d.half : Math.floor((d.val !== undefined ? d.val : sk.base)/2);
     if (fif) fif.value     = d.fifth !== undefined ? d.fifth : Math.floor((d.val !== undefined ? d.val : sk.base)/5);
   });
+  renderCustomSheetSkillRows(data.customSkills || []);
 
   const notes = document.getElementById('sh-notes');
   if (notes) notes.value = data.notes || '';
@@ -983,6 +1583,8 @@ function openSheet(journalId) {
   _sheetAvatarUploadPromise = null;
   if (_sheetAvatarData) saSetAvatar(journalId, _sheetAvatarData);  // 캐시 워밍
   refreshSheetAvatar(_sheetAvatarData, (data.name || j?.title || '?')[0]?.toUpperCase());
+  const portraitToggle = document.getElementById('sh-show-portrait-dialogue');
+  if (portraitToggle) portraitToggle.checked = j?.showPortraitInDialogue === true || data.showPortraitInDialogue === true;
 
   refreshJournalTokenBar(j?.assignedTokenId || null);
 
@@ -1165,6 +1767,7 @@ async function saveSheet() {
     half: parseInt(document.getElementById('sk-half-'+i)?.value, 10) || Math.floor((parseInt(document.getElementById('sk-val-'+i)?.value, 10) || sk.base)/2),
     fifth: parseInt(document.getElementById('sk-fifth-'+i)?.value, 10) || Math.floor((parseInt(document.getElementById('sk-val-'+i)?.value, 10) || sk.base)/5),
   }));
+  data.customSkills = readCustomSkillRowsFromSheet();
 
   data.unarmed_skill = document.getElementById('sh-unarmed-skill')?.value || '';
   data.unarmed_dmg   = document.getElementById('sh-unarmed-dmg')?.value   || '';
@@ -1193,6 +1796,8 @@ async function saveSheet() {
     data['bs_'+k] = document.getElementById('sh-bs-'+k)?.value || '';
   });
 
+  data.showPortraitInDialogue = !!document.getElementById('sh-show-portrait-dialogue')?.checked;
+
   if (_sheetAvatarUploadPromise) {
     const hint = document.getElementById('sheet-hint');
     if (hint) hint.textContent = '아바타 업로드 완료를 기다리는 중...';
@@ -1220,6 +1825,7 @@ async function saveSheet() {
       title: data.name || existing.title,
       updatedAt: Date.now(),
       assignedTokenId: targetAssignedTokenId,
+      showPortraitInDialogue: !!data.showPortraitInDialogue,
     };
     if (_sheetAssignedTo !== undefined) metaPatch.assignedTo = targetAssignedTo;
     if (_keepAv) metaPatch.avatar = _keepAv;
@@ -1228,6 +1834,7 @@ async function saveSheet() {
     existing.title = metaPatch.title;
     existing.updatedAt = metaPatch.updatedAt;
     existing.assignedTokenId = metaPatch.assignedTokenId;
+    existing.showPortraitInDialogue = !!metaPatch.showPortraitInDialogue;
     if (_sheetAssignedTo !== undefined) existing.assignedTo = metaPatch.assignedTo;
 
     saveJournalSheetFB(targetJournalId, data, metaPatch);
@@ -1242,6 +1849,7 @@ async function saveSheet() {
       updatedAt: Date.now(),
       assignedTokenId: targetAssignedTokenId,
       assignedTo: targetAssignedTo,
+      showPortraitInDialogue: !!data.showPortraitInDialogue,
     };
     const newAvatar = getSharedJournalAvatarRuntime().sanitizePersistentAvatarSrc(_sheetAvatarStoredUrl || _sheetAvatarData || null);
     if (newAvatar) {

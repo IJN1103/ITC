@@ -137,6 +137,7 @@ function normalizeJournal(raw, idOverride) {
     raw?.avatar || raw?.sheet?.avatar || ''
   );
   const nameColor = String(raw?.nameColor || raw?.sheet?.nameColor || '').trim();
+  const showPortraitInDialogue = raw?.showPortraitInDialogue === true || raw?.sheet?.showPortraitInDialogue === true;
   const safeSheet = sanitizeStoredJournalValue(raw?.sheet || {}, ['sheet']);
 
   if (avatar) safeSheet.avatar = avatar;
@@ -154,6 +155,7 @@ function normalizeJournal(raw, idOverride) {
     assignedMap: buildUidBoolMap(assignedTo),
     avatar,
     nameColor,
+    showPortraitInDialogue,
     sheet: safeSheet && typeof safeSheet === 'object' ? safeSheet : {},
   };
 }
@@ -171,10 +173,14 @@ function buildJournalStoragePayload(journal) {
     assignedTo: normalized.assignedTo,
     assignedMap: buildUidBoolMap(normalized.assignedTo),
     nameColor: normalized.nameColor,
+    showPortraitInDialogue: !!normalized.showPortraitInDialogue,
     sheet: normalized.sheet || {},
   };
   if (normalized.nameColor && payload.sheet && typeof payload.sheet === 'object') {
     payload.sheet.nameColor = normalized.nameColor;
+  }
+  if (payload.sheet && typeof payload.sheet === 'object') {
+    payload.sheet.showPortraitInDialogue = !!normalized.showPortraitInDialogue;
   }
   if (normalized.avatar) {
     payload.avatar = normalized.avatar;
@@ -204,6 +210,10 @@ function sanitizeJournalMetaPatch(metaPatch = {}, currentJournal = null) {
   const hasNameColorPatch = Object.prototype.hasOwnProperty.call(metaPatch, 'nameColor');
   const patchNameColor = hasNameColorPatch ? String(metaPatch.nameColor || '').trim() : '';
   const currentNameColor = String(current?.nameColor || '').trim();
+  const hasPortraitPatch = Object.prototype.hasOwnProperty.call(metaPatch, 'showPortraitInDialogue');
+  const showPortraitInDialogue = hasPortraitPatch
+    ? metaPatch.showPortraitInDialogue === true
+    : (current?.showPortraitInDialogue === true || current?.sheet?.showPortraitInDialogue === true);
 
   const safe = {
     title,
@@ -215,6 +225,7 @@ function sanitizeJournalMetaPatch(metaPatch = {}, currentJournal = null) {
   };
   if (hasNameColorPatch) safe.nameColor = patchNameColor;
   else if (currentNameColor) safe.nameColor = currentNameColor;
+  safe.showPortraitInDialogue = !!showPortraitInDialogue;
   if (avatar) safe.avatar = avatar;
   return safe;
 }
@@ -225,6 +236,19 @@ function syncJournalRuntimeCache(journal) {
   if (safeAvatar && typeof saSetAvatar === 'function') {
     saSetAvatar(journal.id, safeAvatar);
   }
+  if (typeof saSetJournalNameColor === 'function') {
+    saSetJournalNameColor(journal.id, journal.nameColor || journal.sheet?.nameColor || '');
+  }
+}
+
+let _popoutDocumentSyncTimer = 0;
+function schedulePopoutDocumentSync() {
+  if (typeof window === 'undefined' || typeof window.forcePopoutSync !== 'function') return;
+  if (_popoutDocumentSyncTimer) clearTimeout(_popoutDocumentSyncTimer);
+  _popoutDocumentSyncTimer = setTimeout(() => {
+    _popoutDocumentSyncTimer = 0;
+    if (typeof window.forcePopoutSync === 'function') window.forcePopoutSync();
+  }, 80);
 }
 
 function normalizeIncomingJournal(raw, idOverride) {
@@ -239,6 +263,7 @@ function upsertLocalJournal(normalizedJournal) {
   const idx = _allJournals.findIndex(j => j.id === normalized.id);
   if (idx >= 0) _allJournals[idx] = normalized;
   else _allJournals.push(normalized);
+  schedulePopoutDocumentSync();
   return normalized;
 }
 
@@ -434,6 +459,7 @@ function renderHandoutList() {
   container.querySelectorAll('.handout-item').forEach(el => el.remove());
   if (!St.roomCode) {
     if (empty) { empty.style.display = 'block'; empty.textContent = '방에 입장하면 핸드아웃을 볼 수 있어요.'; }
+    schedulePopoutDocumentSync();
     return;
   }
   const list = loadHandouts();
@@ -442,6 +468,7 @@ function renderHandoutList() {
       empty.style.display = 'block';
       empty.innerHTML = St.isGM ? '핸드아웃이 없어요.<br>위 + 버튼으로 새 핸드아웃을 만들어보세요.' : '아직 열람 가능한 핸드아웃이 없어요.';
     }
+    schedulePopoutDocumentSync();
     return;
   }
   if (empty) empty.style.display = 'none';
@@ -456,6 +483,7 @@ function renderHandoutList() {
     div.innerHTML = `<div class="handout-icon">📄</div><div class="handout-item-body"><div class="handout-item-title">${esc(h.title || '무제 핸드아웃')}${canEdit ? '<span class="handout-item-badge">편집 가능</span>' : ''}</div><div class="handout-item-preview">${esc(preview)}${stripHandoutText(h.contentHtml || '').length > 80 ? '…' : ''}</div><div class="handout-item-meta"><span>${allowed.length ? '열람: ' + esc(allowed.join(', ')) : 'GM 전용'}</span><span>${(d.getMonth()+1)}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}</span></div></div>`;
     container.appendChild(div);
   });
+  schedulePopoutDocumentSync();
 }
 
 function setHandoutEditorMode(canEdit) {

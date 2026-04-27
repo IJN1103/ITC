@@ -664,17 +664,17 @@ to{transform:translateX(0);opacity:1;}
 .skill-input{background:var(--s2);border:1px solid var(--border);border-radius:3px;color:var(--accent);font-family:var(--font-mono);font-size:11px;text-align:center;outline:none;padding:1px 0;width:100%;}
 .skill-input.half-val{color:var(--dim);}
 .skill-input:focus{border-color:var(--accent);}
-.custom-skill-section{grid-column:1/-1;margin-top:5px;padding-top:5px;border-top:1px solid var(--border);}
-.custom-skill-rows{display:flex;flex-direction:column;gap:2px;}
-.custom-skill-row{display:grid;grid-template-columns:42px 1fr 58px 58px 58px;align-items:center;gap:4px;padding:2px 4px;border-radius:3px;transition:background .1s;}
-.custom-skill-row:hover{background:var(--s2);}
-.custom-skill-roll-btn{height:20px;background:var(--s2);border:1px solid var(--border);border-radius:3px;color:var(--muted);font:inherit;font-size:10px;line-height:1;cursor:pointer;transition:var(--t);}
-.custom-skill-roll-btn:hover{border-color:var(--accent);color:var(--accent);}
-.custom-skill-roll-btn:focus-visible{outline:1px solid rgba(184,154,96,.45);outline-offset:1px;}
-.custom-skill-name-input{text-align:left;color:var(--dim);padding-left:5px;}
-.custom-skill-add-row{display:grid;grid-template-columns:42px 1fr 58px 58px 58px;align-items:center;gap:4px;min-height:24px;padding:2px 4px;border-radius:3px;}
-.custom-skill-add-btn{width:100%;height:20px;background:none;border:1px dashed var(--border2);border-radius:3px;color:var(--muted);font:inherit;font-size:13px;line-height:1;cursor:pointer;transition:var(--t);}
-.custom-skill-add-btn:hover{border-color:var(--accent);color:var(--accent);background:var(--a-dim);}
+.custom-skill-row{background:transparent;}
+.custom-skill-roll-btn,.custom-skill-add-btn{width:13px;height:13px;display:inline-flex;align-items:center;justify-content:center;background:var(--s2);border:1px solid var(--border);border-radius:3px;color:var(--muted);font:inherit;font-size:8px;line-height:1;cursor:pointer;transition:var(--t);padding:0;}
+.custom-skill-roll-btn:hover,.custom-skill-add-btn:hover{border-color:var(--accent);color:var(--accent);background:var(--a-dim);}
+.custom-skill-roll-btn:focus-visible,.custom-skill-add-btn:focus-visible{outline:1px solid rgba(184,154,96,.45);outline-offset:1px;}
+.custom-skill-name-input{width:100%;min-width:0;background:none;border:none;outline:none;color:var(--dim);font:inherit;font-size:11px;text-align:left;padding:0;}
+.custom-skill-name-input::placeholder{color:var(--muted);}
+.custom-skill-name-input:focus{color:var(--accent);}
+.custom-skill-name-input[readonly]{cursor:pointer;}
+.custom-skill-add-row{min-height:22px;}
+.custom-skill-add-btn{background:none;border-style:dashed;font-size:12px;}
+.custom-skill-add-blank{grid-column:2/-1;min-height:13px;border-bottom:1px dashed rgba(255,255,255,.08);}
 .sheet-footer{display:flex;align-items:center;gap:10px;padding:12px 20px;border-top:1px solid var(--border);flex-shrink:0;background:var(--s2);}
 .sheet-hint{font-size:11px;color:var(--muted);flex:1;}
 .chat-input{flex:1;background:var(--s2);border:1px solid var(--border);border-radius:var(--r);color:var(--text);padding:7px 10px;font-size:13px;resize:none;min-height:34px;max-height:100px;transition:var(--t);font-family:inherit;}

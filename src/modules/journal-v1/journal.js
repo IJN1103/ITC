@@ -1720,9 +1720,20 @@ function bindSheetSkillRollInteractions(wrap) {
 }
 
 let _customSkillRowCount = 0;
+let _customSkillColumns = [];
+let _customSkillAddRowEl = null;
 
-function getCustomSkillRowsWrap() {
-  return document.getElementById('sh-custom-skill-rows');
+function getCustomSkillColumns() {
+  const wrap = document.getElementById('sh-skills-wrap');
+  const cols = wrap ? Array.from(wrap.querySelectorAll('.skill-col-wrap')) : [];
+  if (cols.length) _customSkillColumns = cols;
+  return _customSkillColumns;
+}
+
+function getCustomSkillTargetColumn() {
+  const cols = getCustomSkillColumns();
+  if (!cols.length) return null;
+  return cols[_customSkillRowCount % cols.length] || cols[0];
 }
 
 function normalizeCustomSkillValue(value) {
@@ -1741,12 +1752,13 @@ function readCustomSkillRowsFromSheet() {
     const halfRaw = document.getElementById(`sk-custom-half-${index}`)?.value ?? '';
     const quarterRaw = document.getElementById(`sk-custom-quarter-${index}`)?.value ?? '';
     const data = {
+      checked: !!document.getElementById(`sk-custom-check-${index}`)?.checked,
       name,
       val: normalizeCustomSkillValue(valRaw),
       half: normalizeCustomSkillValue(halfRaw),
       quarter: normalizeCustomSkillValue(quarterRaw),
     };
-    const hasAnyValue = data.name || data.val !== '' || data.half !== '' || data.quarter !== '';
+    const hasAnyValue = data.name || data.val !== '' || data.half !== '' || data.quarter !== '' || data.checked;
     return hasAnyValue ? data : null;
   }).filter(Boolean);
 }
@@ -1754,26 +1766,40 @@ function readCustomSkillRowsFromSheet() {
 function rollCustomSheetSkill(index) {
   const nameEl = document.getElementById(`sk-custom-name-${index}`);
   const valEl = document.getElementById(`sk-custom-val-${index}`);
-  const name = nameEl?.value?.trim() || '커스텀 기능';
+  const name = nameEl?.value?.trim() || '추가 기능';
   const value = valEl ? parseInt(valEl.value, 10) || 0 : 0;
   if (typeof window.rollJournalSheetSkillCheck === 'function') {
     window.rollJournalSheetSkillCheck(name, value);
   }
 }
 
-function addCustomSheetSkillRow(skillData = {}) {
-  const rowsWrap = getCustomSkillRowsWrap();
-  if (!rowsWrap) return;
+function createCustomSkillNumberInput(index, kind, placeholder, value) {
+  const input = document.createElement('input');
+  input.className = kind === 'val' ? 'skill-input' : 'skill-input half-val';
+  input.id = `sk-custom-${kind}-${index}`;
+  input.type = 'number';
+  input.min = '0';
+  input.max = '999';
+  input.placeholder = placeholder;
+  input.value = value !== undefined && value !== null ? String(value) : '';
+  input.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    rollCustomSheetSkill(index);
+  });
+  return input;
+}
 
+function createCustomSheetSkillRow(skillData = {}) {
   const index = _customSkillRowCount++;
   const row = document.createElement('div');
-  row.className = 'custom-skill-row';
+  row.className = 'skill-row custom-skill-row';
   row.dataset.customSkillIndex = String(index);
 
   const rollBtn = document.createElement('button');
   rollBtn.type = 'button';
   rollBtn.className = 'custom-skill-roll-btn';
-  rollBtn.textContent = '굴림';
+  rollBtn.textContent = '▶';
   rollBtn.title = '추가 기능 판정';
   rollBtn.addEventListener('click', (event) => {
     event.preventDefault();
@@ -1782,71 +1808,38 @@ function addCustomSheetSkillRow(skillData = {}) {
   });
 
   const nameInput = document.createElement('input');
-  nameInput.className = 'skill-input custom-skill-name-input';
+  nameInput.className = 'custom-skill-name-input';
   nameInput.id = `sk-custom-name-${index}`;
   nameInput.placeholder = '기능명';
   nameInput.value = String(skillData.name || '');
+  nameInput.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    rollCustomSheetSkill(index);
+  });
+  nameInput.addEventListener('click', () => {
+    if (!nameInput.readOnly) return;
+    rollCustomSheetSkill(index);
+  });
 
-  const valInput = document.createElement('input');
-  valInput.className = 'skill-input';
-  valInput.id = `sk-custom-val-${index}`;
-  valInput.type = 'number';
-  valInput.min = '0';
-  valInput.max = '999';
-  valInput.placeholder = '현재';
-  valInput.value = skillData.val !== undefined && skillData.val !== null ? String(skillData.val) : '';
-
-  const halfInput = document.createElement('input');
-  halfInput.className = 'skill-input half-val';
-  halfInput.id = `sk-custom-half-${index}`;
-  halfInput.type = 'number';
-  halfInput.min = '0';
-  halfInput.max = '999';
-  halfInput.placeholder = '½';
-  halfInput.value = skillData.half !== undefined && skillData.half !== null ? String(skillData.half) : '';
-
-  const quarterInput = document.createElement('input');
-  quarterInput.className = 'skill-input half-val';
-  quarterInput.id = `sk-custom-quarter-${index}`;
-  quarterInput.type = 'number';
-  quarterInput.min = '0';
-  quarterInput.max = '999';
-  quarterInput.placeholder = '¼';
+  const valInput = createCustomSkillNumberInput(index, 'val', '현재', skillData.val);
+  const halfInput = createCustomSkillNumberInput(index, 'half', '½', skillData.half);
   const quarterValue = skillData.quarter !== undefined ? skillData.quarter : skillData.fifth;
-  quarterInput.value = quarterValue !== undefined && quarterValue !== null ? String(quarterValue) : '';
+  const quarterInput = createCustomSkillNumberInput(index, 'quarter', '¼', quarterValue);
 
   row.appendChild(rollBtn);
   row.appendChild(nameInput);
   row.appendChild(valInput);
   row.appendChild(halfInput);
   row.appendChild(quarterInput);
-  rowsWrap.appendChild(row);
-
-  const modal = getQuickSheetModalEl();
-  const editable = modal?.dataset.editable !== '0';
-  [nameInput, valInput, halfInput, quarterInput].forEach((input) => { input.readOnly = !editable; });
-  if (editable) nameInput.focus();
+  return row;
 }
 
-function renderCustomSheetSkillRows(customSkills = []) {
-  const rowsWrap = getCustomSkillRowsWrap();
-  if (!rowsWrap) return;
-  rowsWrap.innerHTML = '';
-  _customSkillRowCount = 0;
-  (Array.isArray(customSkills) ? customSkills : []).forEach((skill) => addCustomSheetSkillRow(skill || {}));
-}
-
-function appendCustomSkillAddRow(wrap) {
-  if (!wrap) return;
-  const section = document.createElement('div');
-  section.className = 'custom-skill-section';
-
-  const rowsWrap = document.createElement('div');
-  rowsWrap.id = 'sh-custom-skill-rows';
-  rowsWrap.className = 'custom-skill-rows';
+function ensureCustomSkillAddRow() {
+  if (_customSkillAddRowEl && document.body.contains(_customSkillAddRowEl)) return _customSkillAddRowEl;
 
   const addRow = document.createElement('div');
-  addRow.className = 'custom-skill-add-row';
+  addRow.className = 'skill-row custom-skill-add-row';
 
   const addBtn = document.createElement('button');
   addBtn.type = 'button';
@@ -1859,10 +1852,53 @@ function appendCustomSkillAddRow(wrap) {
     addCustomSheetSkillRow();
   });
 
+  const blank = document.createElement('div');
+  blank.className = 'custom-skill-add-blank';
+  blank.setAttribute('aria-hidden', 'true');
+
   addRow.appendChild(addBtn);
-  section.appendChild(rowsWrap);
-  section.appendChild(addRow);
-  wrap.appendChild(section);
+  addRow.appendChild(blank);
+  _customSkillAddRowEl = addRow;
+  return addRow;
+}
+
+function moveCustomSkillAddRow() {
+  const target = getCustomSkillTargetColumn();
+  if (!target) return;
+  target.appendChild(ensureCustomSkillAddRow());
+}
+
+function addCustomSheetSkillRow(skillData = {}) {
+  const target = getCustomSkillTargetColumn();
+  if (!target) return;
+
+  const addRow = ensureCustomSkillAddRow();
+  const row = createCustomSheetSkillRow(skillData || {});
+  if (addRow.parentElement === target) {
+    target.insertBefore(row, addRow);
+  } else {
+    target.appendChild(row);
+  }
+  moveCustomSkillAddRow();
+
+  const modal = getQuickSheetModalEl();
+  const editable = modal?.dataset.editable !== '0';
+  row.querySelectorAll('input').forEach((input) => { input.readOnly = !editable; });
+  if (editable && !skillData.name) row.querySelector('.custom-skill-name-input')?.focus();
+}
+
+function renderCustomSheetSkillRows(customSkills = []) {
+  document.querySelectorAll('.custom-skill-row, .custom-skill-add-row').forEach((el) => el.remove());
+  _customSkillRowCount = 0;
+  _customSkillAddRowEl = null;
+  (Array.isArray(customSkills) ? customSkills : []).forEach((skill) => addCustomSheetSkillRow(skill || {}));
+  moveCustomSkillAddRow();
+}
+
+function appendCustomSkillAddRow(wrap) {
+  if (!wrap) return;
+  _customSkillColumns = Array.from(wrap.querySelectorAll('.skill-col-wrap'));
+  moveCustomSkillAddRow();
 }
 
 function initSheetUI() {
@@ -1965,6 +2001,10 @@ function setSheetEditorMode(editable) {
 
   const addCombatBtn = modal.querySelector('button[onclick*="addCombatRow"]');
   if (addCombatBtn) addCombatBtn.style.display = editable ? '' : 'none';
+
+  modal.querySelectorAll('.custom-skill-add-row').forEach((row) => {
+    row.style.display = editable ? '' : 'none';
+  });
 
   modal.querySelectorAll('.custom-skill-add-btn').forEach((btn) => {
     btn.style.display = editable ? '' : 'none';
