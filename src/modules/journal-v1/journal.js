@@ -1845,11 +1845,40 @@ function normalizeCustomSkillValue(value) {
   return Number.isFinite(n) ? Math.max(0, Math.min(999, n)) : '';
 }
 
+function getCustomSkillNameValue(row, index) {
+  const hidden = document.getElementById(`sk-custom-name-${index}`);
+  const fromHidden = hidden?.value?.trim() || '';
+  const fromDataset = row?.dataset?.customSkillName?.trim?.() || '';
+  const fromButton = row?.querySelector?.('.custom-skill-name-btn')?.textContent?.trim?.() || '';
+  const name = fromHidden || fromDataset || (fromButton && fromButton !== '기능명' ? fromButton : '');
+  if (hidden && hidden.value !== name) hidden.value = name;
+  if (row && name) row.dataset.customSkillName = name;
+  return name;
+}
+
+function setCustomSkillNameValue(row, index, value) {
+  const name = String(value || '').trim();
+  const hidden = document.getElementById(`sk-custom-name-${index}`);
+  if (hidden) hidden.value = name;
+  if (row) row.dataset.customSkillName = name;
+  return name;
+}
+
+function refreshCustomSkillNameDisplays() {
+  document.querySelectorAll('.custom-skill-row').forEach((row) => {
+    const index = row.dataset.customSkillIndex;
+    if (index === undefined) return;
+    const hasEditor = !!row.querySelector('.custom-skill-name-input');
+    const name = getCustomSkillNameValue(row, index);
+    if (name && !hasEditor) renderCustomSkillNameButton(row, index);
+  });
+}
+
 function readCustomSkillRowsFromSheet() {
   const rows = Array.from(document.querySelectorAll('.custom-skill-row'));
   return rows.map((row) => {
     const index = row.dataset.customSkillIndex;
-    const name = document.getElementById(`sk-custom-name-${index}`)?.value?.trim() || '';
+    const name = getCustomSkillNameValue(row, index);
     const valRaw = document.getElementById(`sk-custom-val-${index}`)?.value ?? '';
     const halfRaw = document.getElementById(`sk-custom-half-${index}`)?.value ?? '';
     const quarterRaw = document.getElementById(`sk-custom-quarter-${index}`)?.value ?? '';
@@ -1911,7 +1940,7 @@ function renderCustomSkillNameButton(row, index) {
   const cell = row.querySelector('.custom-skill-name-cell');
   const hidden = document.getElementById(`sk-custom-name-${index}`);
   if (!cell || !hidden) return;
-  const name = hidden.value.trim();
+  const name = getCustomSkillNameValue(row, index);
   cell.querySelectorAll('.custom-skill-name-input, .custom-skill-name-btn').forEach((el) => el.remove());
   const btn = document.createElement('button');
   btn.type = 'button';
@@ -1926,18 +1955,25 @@ function renderCustomSkillNameEditor(row, index, focus = false) {
   const cell = row.querySelector('.custom-skill-name-cell');
   const hidden = document.getElementById(`sk-custom-name-${index}`);
   if (!cell || !hidden) return;
+  const currentName = getCustomSkillNameValue(row, index);
   cell.querySelectorAll('.custom-skill-name-input, .custom-skill-name-btn').forEach((el) => el.remove());
   const input = document.createElement('input');
   input.className = 'custom-skill-name-input';
   input.id = `sk-custom-name-edit-${index}`;
   input.placeholder = '기능명';
-  input.value = hidden.value;
+  input.value = currentName;
+  const commit = () => {
+    setCustomSkillNameValue(row, index, input.value);
+    renderCustomSkillNameButton(row, index);
+  };
   input.addEventListener('keydown', (event) => {
     if (event.key !== 'Enter') return;
     event.preventDefault();
-    hidden.value = input.value.trim();
-    renderCustomSkillNameButton(row, index);
+    commit();
     document.getElementById(`sk-custom-val-${index}`)?.focus();
+  });
+  input.addEventListener('blur', () => {
+    if (cell.contains(input)) commit();
   });
   cell.appendChild(input);
   if (focus) input.focus();
@@ -1962,6 +1998,7 @@ function createCustomSheetSkillRow(skillData = {}) {
   nameHidden.type = 'hidden';
   nameHidden.id = `sk-custom-name-${index}`;
   nameHidden.value = String(skillData.name || '');
+  row.dataset.customSkillName = nameHidden.value.trim();
   nameCell.appendChild(nameHidden);
 
   const customVal = normalizeCustomSkillValue(skillData.val);
@@ -1979,7 +2016,7 @@ function createCustomSheetSkillRow(skillData = {}) {
   row.appendChild(halfInput);
   row.appendChild(quarterInput);
 
-  if (skillData.name) {
+  if (getCustomSkillNameValue(row, index)) {
     renderCustomSkillNameButton(row, index);
   } else {
     renderCustomSkillNameEditor(row, index, false);
@@ -2045,6 +2082,7 @@ function addCustomSheetSkillRow(skillData = {}) {
     target.appendChild(row);
   }
   moveCustomSkillAddRow();
+  refreshCustomSkillNameDisplays();
 
   const modal = getQuickSheetModalEl();
   const editable = modal?.dataset.editable !== '0';
@@ -2060,6 +2098,7 @@ function renderCustomSheetSkillRows(customSkills = []) {
   _customSkillAddRowEl = null;
   (Array.isArray(customSkills) ? customSkills : []).forEach((skill) => addCustomSheetSkillRow(skill || {}));
   moveCustomSkillAddRow();
+  refreshCustomSkillNameDisplays();
 }
 
 function appendCustomSkillAddRow(wrap) {
@@ -2177,6 +2216,8 @@ function setSheetEditorMode(editable) {
     btn.style.display = editable ? '' : 'none';
     btn.disabled = !editable;
   });
+
+  refreshCustomSkillNameDisplays();
 
   const tokenAssignBtn = document.getElementById('sh-token-assign-btn');
   if (tokenAssignBtn) tokenAssignBtn.style.display = editable ? '' : 'none';
