@@ -81,6 +81,27 @@
     return String(src || '').replace(/"/g, '%22');
   }
 
+  function isMapLayerVisible(layerId) {
+    const visible = window.St?.mapLayerState?.visible;
+    if (!visible || typeof visible !== 'object') return true;
+    return visible[String(layerId || '')] !== false;
+  }
+
+  function applyMapLayerElementVisibility(el, visible) {
+    if (!el) return;
+    if (visible) {
+      el.style.display = '';
+      el.style.visibility = '';
+      el.style.opacity = '';
+      el.classList.remove('map-layer-runtime-hidden');
+    } else {
+      el.style.display = 'none';
+      el.style.visibility = 'hidden';
+      el.style.opacity = '0';
+      el.classList.add('map-layer-runtime-hidden');
+    }
+  }
+
   function clearImportedMapObjects() {
     document.querySelectorAll('.map-import-object[data-map-layer-id]').forEach((el) => el.remove());
   }
@@ -101,6 +122,7 @@
         bgLayer.style.backgroundImage = `url("${cssImageUrl(getMapDisplayImageUrl(background.url, 2048))}")`;
         bgLayer.style.backgroundSize = fit === 'fill' ? '100% 100%' : (fit === 'cover' ? 'cover' : 'contain');
       }
+      applyMapLayerElementVisibility(bgLayer, !!background?.url && isMapLayerVisible('background'));
     }
     if (fgLayer) {
       if (!foreground?.url) {
@@ -128,6 +150,7 @@
       el.style.height = `${Number(item.hPct || 0)}%`;
       el.style.backgroundImage = `url("${cssImageUrl(getMapDisplayImageUrl(item.url, 1600))}")`;
       el.style.transform = `rotate(${Number(item.angle || 0)}deg)`;
+      applyMapLayerElementVisibility(el, isMapLayerVisible(layerId));
       mapInner.appendChild(el);
     });
   }

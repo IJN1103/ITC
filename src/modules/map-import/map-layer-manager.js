@@ -120,6 +120,31 @@
     return document.getElementById(entry.target);
   }
 
+  function setLayerElementVisibility(el, visible) {
+    if (!el) return;
+    if (visible) {
+      el.style.display = '';
+      el.style.visibility = '';
+      el.style.opacity = '';
+      el.classList.remove('map-layer-runtime-hidden');
+    } else {
+      el.style.display = 'none';
+      el.style.visibility = 'hidden';
+      el.style.opacity = '0';
+      el.classList.add('map-layer-runtime-hidden');
+    }
+  }
+
+  function prefixTokenPayload(payload) {
+    const result = {};
+    Object.entries(payload || {}).forEach(([key, value]) => {
+      const safeKey = String(key || '').trim();
+      if (!safeKey) return;
+      result[`tokens/${safeKey}`] = value;
+    });
+    return result;
+  }
+
   function getMapObjectByLayerId(layerId) {
     const state = getStateRoot().mapState || {};
     const objects = Array.isArray(state.objects) ? state.objects : [];
@@ -373,7 +398,7 @@
       syncImportedPanelTokenLocalState(entry, visible, zIndex);
       const el = resolveLayerElement(entry);
       if (!el) return;
-      el.style.display = visible ? '' : 'none';
+      setLayerElementVisibility(el, visible);
       el.style.zIndex = String(zIndex);
     });
   }
@@ -388,8 +413,8 @@
     if (!roomCode || roomCode === 'local') return;
     const payload = {
       'bgm/mapLayerState': normalized,
-      ...getImportedPanelPriorityPayload(normalized.order),
-      ...getImportedPanelVisibilityPayload(normalized.visible),
+      ...prefixTokenPayload(getImportedPanelPriorityPayload(normalized.order)),
+      ...prefixTokenPayload(getImportedPanelVisibilityPayload(normalized.visible)),
     };
     const { db, ref, update } = window._FB;
     await update(ref(db, `rooms/${roomCode}`), payload);

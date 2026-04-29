@@ -21,6 +21,7 @@ let _typingState = {};
 let _presenceHeartbeatTimer = null;
 let _presenceUiTimer = null;
 let _presenceServerOffsetMs = 0;
+let _legacyDmRecoveryRooms = new Set();
 const ITC_PRESENCE_HEARTBEAT_MS = 15000;
 const ITC_PRESENCE_STALE_MS = 45000;
 
@@ -484,23 +485,129 @@ function restoreCachedChannelMessages(channelKey = 'global') {
   });
 }
 
+function getDmChannelTimestampValue(message = {}) {
+  const candidates = [message.time, message.timestamp, message.createdAt, message.updatedAt];
+  for (const value of candidates) {
+    const numeric = Number(value || 0);
+    if (Number.isFinite(numeric) && numeric > 0) return numeric;
+  }
+  return 0;
+}
+
 function buildDmChannelCatalogFromChat(rawMessages = {}) {
   const map = new Map();
-  Object.values(rawMessages || {}).forEach((message) => {
+  Object.entries(rawMessages || {}).forEach(([messageKey, message]) => {
     const channelKey = String(message?.dmChannelKey || 'global').trim() || 'global';
     if (!channelKey || channelKey === 'global') return;
-    if (map.has(channelKey)) return;
     const participantIds = Array.isArray(message?.participantIds)
       ? message.participantIds
       : (typeof parseDmChannelKey === 'function' ? parseDmChannelKey(channelKey) : []);
-    map.set(channelKey, {
+    const normalizedParticipants = Array.from(new Set((participantIds || []).map((id) => String(id || '').trim()).filter(Boolean))).sort();
+    if (normalizedParticipants.length <= 1) return;
+    const previous = map.get(channelKey) || {
       channelKey,
-      participantIds: Array.from(new Set((participantIds || []).map((id) => String(id || '').trim()).filter(Boolean))).sort(),
-      createdBy: String(message?.createdBy || message?.uid || '').trim(),
-    });
+      participantIds: normalizedParticipants,
+      createdBy: '',
+      latestAt: 0,
+      latestMessageKey: '',
+      latestSenderUid: '',
+      latestType: '',
+      messageKeys: [],
+      visibleMessageCount: 0,
+    };
+    const safeMessageKey = String(messageKey || '').trim();
+    if (safeMessageKey) previous.messageKeys.push(safeMessageKey);
+    if (!previous.createdBy) previous.createdBy = String(message?.createdBy || message?.uid || '').trim();
+
+    const isBootstrap = String(message?.type || '').trim() === 'dm-bootstrap';
+    if (!isBootstrap) {
+      previous.visibleMessageCount += 1;
+      const ts = getDmChannelTimestampValue(message);
+      if (ts >= Number(previous.latestAt || 0)) {
+        previous.latestAt = ts || Number(previous.latestAt || 0);
+        previous.latestMessageKey = safeMessageKey;
+        previous.latestSenderUid = String(message?.uid || '').trim();
+        previous.latestType = String(message?.type || 'normal').trim() || 'normal';
+      }
+    }
+    map.set(channelKey, previous);
   });
   return Array.from(map.values());
 }
+
+function scheduleLegacyDmMetaRecovery(reason = '') {
+  if (!window._FB?.CONFIGURED || !St.roomCode) return;
+  if (!isCurrentUserRoomGm()) return;
+  const roomKey = String(St.roomCode || '').trim();
+  if (!roomKey || _legacyDmRecoveryRooms.has(roomKey)) return;
+  _legacyDmRecoveryRooms.add(roomKey);
+  window.setTimeout(() => {
+    recoverLegacyDmMetaFromChatOnce(reason).catch((err) => {
+      console.warn('[dm] legacy dm meta recovery failed', err);
+    });
+  }, 700);
+}
+
+async function recoverLegacyDmMetaFromChatOnce(reason = '') {
+  if (!window._FB?.CONFIGURED || !St.roomCode) return { recovered: 0, indexed: 0 };
+  if (!isCurrentUserRoomGm()) return { recovered: 0, indexed: 0 };
+  const { db, ref, get, update } = window._FB;
+  if (!db || !ref || !get || !update) return { recovered: 0, indexed: 0 };
+
+  const roomCode = String(St.roomCode || '').trim();
+  const [chatSnap, dmSnap] = await Promise.all([
+    get(ref(db, `rooms/${roomCode}/chat`)).catch((err) => {
+      console.warn('[dm] legacy recovery chat read failed', err);
+      return null;
+    }),
+    get(ref(db, `rooms/${roomCode}/dmChats`)).catch(() => null),
+  ]);
+  const rawMessages = chatSnap?.val?.() || {};
+  const existingDmChats = dmSnap?.val?.() || {};
+  const catalog = buildDmChannelCatalogFromChat(rawMessages);
+  const rootUpdates = {};
+  let recovered = 0;
+  let indexed = 0;
+
+  catalog.forEach((entry) => {
+    const channelKey = String(entry?.channelKey || '').trim();
+    if (!channelKey || channelKey === 'global') return;
+    const participantIds = Array.isArray(entry?.participantIds) ? entry.participantIds.filter(Boolean) : [];
+    if (participantIds.length <= 1) return;
+
+    (entry.messageKeys || []).forEach((messageKey) => {
+      const safeMessageKey = String(messageKey || '').trim();
+      if (!safeMessageKey) return;
+      rootUpdates[`rooms/${roomCode}/dmMessageIndex/${channelKey}/${safeMessageKey}`] = true;
+      indexed += 1;
+    });
+
+    const existingMeta = existingDmChats?.[channelKey]?.meta || null;
+    const hasExistingParticipants = Array.isArray(existingMeta?.participantIds) && existingMeta.participantIds.length > 1;
+    if (hasExistingParticipants) return;
+    if (Number(entry.visibleMessageCount || 0) <= 0) return;
+
+    rootUpdates[`rooms/${roomCode}/dmChats/${channelKey}/meta/participantIds`] = participantIds;
+    rootUpdates[`rooms/${roomCode}/dmChats/${channelKey}/meta/createdBy`] = String(entry.createdBy || St.myId || '');
+    rootUpdates[`rooms/${roomCode}/dmChats/${channelKey}/meta/latestAt`] = Number(entry.latestAt || 0) || Date.now();
+    rootUpdates[`rooms/${roomCode}/dmChats/${channelKey}/meta/latestMessageKey`] = String(entry.latestMessageKey || '');
+    rootUpdates[`rooms/${roomCode}/dmChats/${channelKey}/meta/latestSenderUid`] = String(entry.latestSenderUid || '');
+    rootUpdates[`rooms/${roomCode}/dmChats/${channelKey}/meta/latestType`] = String(entry.latestType || 'normal');
+    rootUpdates[`rooms/${roomCode}/dmChats/${channelKey}/meta/updatedAt`] = Date.now();
+    recovered += 1;
+  });
+
+  if (Object.keys(rootUpdates).length) await update(ref(db), rootUpdates);
+  if (recovered && typeof showToast === 'function') {
+    showToast(`이전 DM방 ${recovered}개를 복구했어요.`);
+  }
+  try {
+    logItcChatDebug('legacy-dm-recovery', { reason, recovered, indexed });
+  } catch (e) {}
+  return { recovered, indexed };
+}
+
+window.recoverLegacyDmMetaFromChatOnce = recoverLegacyDmMetaFromChatOnce;
 
 function normalizeDmChannelEntry(channelKey, raw = {}) {
   const participantIds = Array.isArray(raw?.meta?.participantIds)
@@ -789,7 +896,7 @@ window.loadOlderMessagesForPopout = async function(channel = 'chat', channelKey 
 function switchActiveChatChannel(channelKey = 'global') {
   if (!window._FB?.CONFIGURED || !St.roomCode) return;
   const safeChannelKey = String(channelKey || 'global').trim() || 'global';
-  const { db, ref, onValue, query, limitToLast } = window._FB;
+  const { db, ref, onValue, query, limitToLast, orderByChild, equalTo } = window._FB;
   if (safeChannelKey === _activeChatChannelKey && _activeChatChannelUnsubs.length === 1) {
     window._itcActiveChatChannelKey = safeChannelKey;
     logItcChatDebug('switch-active-channel-skip-same', { channelKey: safeChannelKey }, { throttleMs: 1000 });
@@ -822,9 +929,10 @@ function switchActiveChatChannel(channelKey = 'global') {
   let newestSeenKey = '';
   const processed = getProcessedChatKeySet(safeChannelKey);
   const signatures = getChatMessageSignatureStore(safeChannelKey);
-  const listenRef = (query && limitToLast)
-    ? query(ref(db, `rooms/${St.roomCode}/chat`), limitToLast(300))
-    : ref(db, `rooms/${St.roomCode}/chat`);
+  const chatBaseRef = ref(db, `rooms/${St.roomCode}/chat`);
+  const listenRef = (safeChannelKey !== 'global' && query && orderByChild && equalTo && limitToLast)
+    ? query(chatBaseRef, orderByChild('dmChannelKey'), equalTo(safeChannelKey), limitToLast(300))
+    : ((query && limitToLast) ? query(chatBaseRef, limitToLast(300)) : chatBaseRef);
 
   const shouldShowChatMessage = (m) => shouldShowChatMessageForChannel(safeChannelKey, m);
 
@@ -985,7 +1093,6 @@ function digestPlayers(players) {
       p.name || '',
       p.role || '',
       !!p.online,
-      p.lastSeen || 0,
       p.avatar || '',
       p.casualNick || '',
       p.nameColor || '',
@@ -1033,9 +1140,16 @@ function setupFirebaseListeners() {
       return;
     }
     const nextDigest = digestPlayers(players);
-    if (nextDigest === _playerDigest) return;
+    if (nextDigest === _playerDigest) {
+      St.players = players;
+      refreshMyPerms();
+      refreshPlayerPresenceUi();
+      scheduleLegacyDmMetaRecovery('players-listener-same');
+      return;
+    }
     _playerDigest = nextDigest;
     renderPlayers(players);
+    scheduleLegacyDmMetaRecovery('players-listener');
     if (typeof refreshDmChannelButtons === 'function') refreshDmChannelButtons();
   }));
 
@@ -1045,6 +1159,7 @@ function setupFirebaseListeners() {
       .map(([channelKey, raw]) => normalizeDmChannelEntry(channelKey, raw || {}))
       .filter((entry) => entry.channelKey && entry.channelKey !== 'global' && Array.isArray(entry.participantIds) && entry.participantIds.length > 1);
     syncAvailableDmChannels(channels);
+    scheduleLegacyDmMetaRecovery('dmChats-listener');
   }));
   const initialChatChannelKey = typeof getCurrentDmChannelKey === 'function'
     ? getCurrentDmChannelKey()
