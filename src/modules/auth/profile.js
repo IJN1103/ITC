@@ -41,6 +41,8 @@ function isEphemeralObjectUrl(src) {
 function sanitizePersistentAvatarSrc(src) {
   const value = String(src || '').trim();
   if (!value) return '';
+  if (/^(undefined|null|false|nan|\[object object\])$/i.test(value)) return '';
+  if (/^(javascript:|about:blank)/i.test(value)) return '';
   if (isLegacyBase64ImageSrc(value) || isEphemeralObjectUrl(value)) return '';
   return value;
 }

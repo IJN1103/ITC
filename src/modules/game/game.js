@@ -1263,14 +1263,23 @@ function renderPlayers(players) {
     const online = isPlayerPresenceOnline(id, p || {});
     addPlayerChip(id, p.name, id === St.myId, p.role, online);
 
-    const av = p.avatarUrl || p.avatar || localStorage.getItem('itc_avatar_' + id);
+    const avatarRuntime = window._itcAvatarRuntime || null;
+    const rawAvatar = p.avatarUrl || p.avatar || (() => { try { return localStorage.getItem('itc_avatar_' + id); } catch (e) { return ''; } })();
+    const av = avatarRuntime?.sanitizePersistentAvatarSrc ? avatarRuntime.sanitizePersistentAvatarSrc(rawAvatar) : rawAvatar;
     if (av) {
-      localStorage.setItem('itc_avatar_' + id, av);
+      try { localStorage.setItem('itc_avatar_' + id, av); } catch (e) {}
       if (p.avatarStoragePath) {
         try { localStorage.setItem('itc_avatar_path_' + id, p.avatarStoragePath); } catch (e) {}
       }
       window._avatarCache[id] = av;
       window._avatarCache[p.name] = av;
+    } else {
+      try {
+        localStorage.removeItem('itc_avatar_' + id);
+        localStorage.removeItem('itc_avatar_path_' + id);
+      } catch (e) {}
+      delete window._avatarCache[id];
+      if (p.name) delete window._avatarCache[p.name];
     }
   });
 

@@ -2106,7 +2106,7 @@ function getAvatarHtml(name, uid) {
   const avatarRuntime = window._itcAvatarRuntime || null;
 
   if (uid) {
-    imgSrc = localStorage.getItem('itc_avatar_' + uid);
+    try { imgSrc = localStorage.getItem('itc_avatar_' + uid); } catch (e) { imgSrc = null; }
   }
   if (!imgSrc && name) {
     imgSrc = window._avatarCache?.[uid] || window._avatarCache?.[name];
@@ -2121,10 +2121,12 @@ function getAvatarHtml(name, uid) {
   const initial = (name || '?')[0].toUpperCase();
   const shape_class = St.avatarShape === 'circle' ? 'shape-circle' : 'shape-rounded';
   const r = St.avatarShape === 'circle' ? '50%' : '6px';
+  const fallbackHtml = `<div class="msg-avatar-inner" style="border-radius:${r}">${esc(initial)}</div>`;
   if (imgSrc) {
-    return `<div class="msg-avatar ${shape_class}" data-avatar-holder="1"><img src="${imgSrc}" alt="${esc(initial)}" decoding="async" loading="lazy" style="border-radius:${r}"></div>`;
+    const safeSrc = esc(imgSrc);
+    return `<div class="msg-avatar ${shape_class}" data-avatar-holder="1">${fallbackHtml}<img class="msg-avatar-img" src="${safeSrc}" alt="" decoding="async" loading="lazy" style="border-radius:${r}" onload="this.classList.add('is-loaded')" onerror="this.remove()"></div>`;
   }
-  return `<div class="msg-avatar ${shape_class}" data-avatar-holder="1"><div class="msg-avatar-inner" style="border-radius:${r}">${esc(initial)}</div></div>`;
+  return `<div class="msg-avatar ${shape_class}" data-avatar-holder="1">${fallbackHtml}</div>`;
 }
 
 function rerenderExistingChatAvatars() {

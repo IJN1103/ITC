@@ -5,6 +5,8 @@ function getSharedAvatarRuntime() {
     sanitizePersistentAvatarSrc(src) {
       const value = String(src || '').trim();
       if (!value) return '';
+      if (/^(undefined|null|false|nan|\[object object\])$/i.test(value)) return '';
+      if (/^(javascript:|about:blank)/i.test(value)) return '';
       if (/^data:image\//i.test(value) || /^blob:/i.test(value)) return '';
       return value;
     },
