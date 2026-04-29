@@ -426,6 +426,7 @@ function addLocalMessage(type, name, text) { appendChatMsg({ name, text, type })
 
 function getAvatarHtml(name, uid) {
   let imgSrc = null;
+  const avatarRuntime = window._itcAvatarRuntime || null;
 
   if (uid) {
     imgSrc = localStorage.getItem('itc_avatar_' + uid);
@@ -433,12 +434,18 @@ function getAvatarHtml(name, uid) {
   if (!imgSrc && name) {
     imgSrc = window._avatarCache?.[uid] || window._avatarCache?.[name];
   }
+  if (avatarRuntime?.sanitizePersistentAvatarSrc) {
+    imgSrc = avatarRuntime.sanitizePersistentAvatarSrc(imgSrc);
+  }
+  if (imgSrc && avatarRuntime?.getDisplayAvatarSrc) {
+    imgSrc = avatarRuntime.getDisplayAvatarSrc(imgSrc, 64);
+  }
 
   const initial = (name || '?')[0].toUpperCase();
   const shape_class = St.avatarShape === 'circle' ? 'shape-circle' : 'shape-rounded';
   const r = St.avatarShape === 'circle' ? '50%' : '6px';
   if (imgSrc) {
-    return `<div class="msg-avatar ${shape_class}" data-avatar-holder="1"><img src="${imgSrc}" alt="${esc(initial)}" style="border-radius:${r}"></div>`;
+    return `<div class="msg-avatar ${shape_class}" data-avatar-holder="1"><img src="${imgSrc}" alt="${esc(initial)}" decoding="async" loading="lazy" style="border-radius:${r}"></div>`;
   }
   return `<div class="msg-avatar ${shape_class}" data-avatar-holder="1"><div class="msg-avatar-inner" style="border-radius:${r}">${esc(initial)}</div></div>`;
 }

@@ -45,6 +45,15 @@ function sanitizePersistentAvatarSrc(src) {
   return value;
 }
 
+function getProfileAvatarRuntime() {
+  if (typeof getAvatarRuntime === 'function') return getAvatarRuntime();
+  return {
+    sanitizePersistentAvatarSrc,
+    getDisplayAvatarSrc: (src) => sanitizePersistentAvatarSrc(src),
+    preloadAvatar: (src) => sanitizePersistentAvatarSrc(src),
+  };
+}
+
 function getFriendlyUploadErrorMessage(err, fallback = '업로드에 실패했어요. 다시 시도해 주세요.') {
   const raw = String(err?.message || err || '').toLowerCase();
   if (!raw) return fallback;
@@ -105,11 +114,18 @@ function refreshProfileAvatar() {
     }
   })();
   const initials = (user.displayName || St.myName || '?')[0].toUpperCase();
+  const avatarRuntime = getProfileAvatarRuntime();
+  const navSrc = saved ? avatarRuntime.getDisplayAvatarSrc(saved, 96) : '';
+  const bigSrc = saved ? avatarRuntime.getDisplayAvatarSrc(saved, 160) : '';
+  if (saved) {
+    avatarRuntime.preloadAvatar(saved, 96);
+    avatarRuntime.preloadAvatar(saved, 160);
+  }
 
   const navEl = document.getElementById('user-avatar');
   if (navEl) {
-    if (saved) {
-      navEl.innerHTML = `<img src="${saved}" alt="avatar" style="width:100%;height:100%;object-fit:cover;border-radius:inherit">`;
+    if (navSrc) {
+      navEl.innerHTML = `<img src="${navSrc}" alt="avatar" decoding="async" fetchpriority="high" style="width:100%;height:100%;object-fit:cover;border-radius:inherit">`;
     } else {
       navEl.textContent = initials;
     }
@@ -117,8 +133,8 @@ function refreshProfileAvatar() {
 
   const bigEl = document.getElementById('profile-avatar-big');
   if (bigEl) {
-    if (saved) {
-      bigEl.innerHTML = `<img src="${saved}" alt="avatar"><div class="av-overlay">📷</div>`;
+    if (bigSrc) {
+      bigEl.innerHTML = `<img src="${bigSrc}" alt="avatar" decoding="async"><div class="av-overlay">📷</div>`;
     } else {
       bigEl.innerHTML = `<span>${initials}</span><div class="av-overlay">📷</div>`;
     }
@@ -293,10 +309,12 @@ async function syncAvatarToFirebase(avatarSrc, meta = null) {
     } catch (e) {}
   }
 
-  window._avatarCache = window._avatarCache || {};
+  const avatarRuntime = getProfileAvatarRuntime();
+  avatarRuntime.writeStoredAvatar?.(user.uid, avatarValue, avatarStoragePath);
+  avatarRuntime.rememberAvatar?.(user.uid, St.myName || user.displayName || '플레이어', avatarValue);
   if (avatarValue) {
-    window._avatarCache[user.uid] = avatarValue;
-    window._avatarCache[St.myName || user.displayName || '플레이어'] = avatarValue;
+    avatarRuntime.preloadAvatar?.(avatarValue, 96);
+    avatarRuntime.preloadAvatar?.(avatarValue, 160);
   }
 
   document.dispatchEvent(new CustomEvent('itc:avatar-updated', {
@@ -359,9 +377,7 @@ async function applyCrop() {
   }
 
   try {
-    localStorage.setItem('itc_avatar_' + window._currentUser.uid, finalAvatarSrc);
-    if (uploadMeta?.path) localStorage.setItem('itc_avatar_path_' + window._currentUser.uid, uploadMeta.path);
-    else localStorage.removeItem('itc_avatar_path_' + window._currentUser.uid);
+    getProfileAvatarRuntime().writeStoredAvatar?.(window._currentUser.uid, finalAvatarSrc, uploadMeta?.path || '');
   } catch (e) {}
 
   try {

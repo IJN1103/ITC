@@ -595,11 +595,12 @@ function popoutChat() {
 }
 
 function getPopoutAvatarUrl(name, uid) {
-  const cached = getSharedAvatarRuntime().sanitizePersistentAvatarSrc(window._avatarCache?.[name] || window._avatarCache?.[uid]);
-  if (cached) return cached;
+  const runtime = getSharedAvatarRuntime();
+  const cached = runtime.sanitizePersistentAvatarSrc(window._avatarCache?.[uid] || window._avatarCache?.[name]);
+  if (cached) return runtime.getDisplayAvatarSrc ? runtime.getDisplayAvatarSrc(cached, 64) : cached;
   try {
-    const av = getSharedAvatarRuntime().readStoredAvatar(uid || '');
-    if (av) return av;
+    const av = runtime.readStoredAvatar(uid || '');
+    if (av) return runtime.getDisplayAvatarSrc ? runtime.getDisplayAvatarSrc(av, 64) : av;
   } catch (e) {}
   return '';
 }

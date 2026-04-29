@@ -790,6 +790,17 @@ function switchActiveChatChannel(channelKey = 'global') {
   if (!window._FB?.CONFIGURED || !St.roomCode) return;
   const safeChannelKey = String(channelKey || 'global').trim() || 'global';
   const { db, ref, onValue, query, limitToLast } = window._FB;
+  if (safeChannelKey === _activeChatChannelKey && _activeChatChannelUnsubs.length === 1) {
+    window._itcActiveChatChannelKey = safeChannelKey;
+    logItcChatDebug('switch-active-channel-skip-same', { channelKey: safeChannelKey }, { throttleMs: 1000 });
+    try {
+      document.dispatchEvent(new CustomEvent('itc:dm-active-channel-applied', {
+        detail: { channelKey: safeChannelKey }
+      }));
+    } catch (e) {}
+    try { if (typeof refreshDmChannelButtons === 'function') refreshDmChannelButtons(); } catch (e) {}
+    return;
+  }
   cleanupActiveChatChannelListeners();
   _activeChatChannelKey = safeChannelKey;
   window._itcActiveChatChannelKey = safeChannelKey;

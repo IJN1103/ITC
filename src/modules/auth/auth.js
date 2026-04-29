@@ -59,13 +59,77 @@ function getAvatarRuntime() {
         if (safe) window._avatarCache[name] = safe;
         else delete window._avatarCache[name];
       }
+      if (safe) runtime.preloadAvatar(safe, 96);
       return safe;
+    },
+    getDisplayAvatarSrc(src, size = 96) {
+      const safe = runtime.sanitizePersistentAvatarSrc(src);
+      if (!safe) return '';
+      const px = Math.max(32, Math.min(320, parseInt(size, 10) || 96));
+      const cacheKey = `${safe}|${px}`;
+      runtime._displayCache = runtime._displayCache || new Map();
+      if (runtime._displayCache.has(cacheKey)) return runtime._displayCache.get(cacheKey);
+
+      let displaySrc = safe;
+      try {
+        const cfg = (typeof _itcGetCloudinaryConfig === 'function' ? _itcGetCloudinaryConfig() : null) || window._ITC_CLOUDINARY || {};
+        const cloudName = String(cfg.cloudName || '').trim();
+        const url = new URL(safe, window.location.href);
+        const isCloudinary = url.protocol === 'https:' && url.hostname === 'res.cloudinary.com' && (!cloudName || url.pathname.startsWith(`/${cloudName}/image/upload/`));
+        if (isCloudinary) {
+          const marker = '/image/upload/';
+          const idx = url.pathname.indexOf(marker);
+          if (idx >= 0) {
+            const before = url.pathname.slice(0, idx + marker.length);
+            const after = url.pathname.slice(idx + marker.length);
+            const firstSegment = after.split('/')[0] || '';
+            const alreadyTransformed = /(^|,)(c_|w_|h_|f_|q_)/.test(firstSegment);
+            if (!alreadyTransformed) {
+              url.pathname = `${before}f_auto,q_auto,w_${px},h_${px},c_fill/${after}`;
+              displaySrc = url.toString();
+            }
+          }
+        }
+      } catch (e) {}
+
+      runtime._displayCache.set(cacheKey, displaySrc);
+      return displaySrc;
+    },
+    preloadAvatar(src, size = 96) {
+      const displaySrc = runtime.getDisplayAvatarSrc(src, size);
+      if (!displaySrc) return '';
+      runtime._preloaded = runtime._preloaded || new Set();
+      if (runtime._preloaded.has(displaySrc)) return displaySrc;
+      runtime._preloaded.add(displaySrc);
+      try {
+        const img = new Image();
+        img.decoding = 'async';
+        img.src = displaySrc;
+      } catch (e) {}
+      return displaySrc;
     },
   };
 
   window._itcAvatarRuntime = runtime;
   return runtime;
 }
+
+function primeUserAvatarFromLocalCache(user) {
+  if (!user?.uid) return '';
+  const runtime = getAvatarRuntime();
+  const localAvatar = runtime.readStoredAvatar(user.uid);
+  const authAvatar = runtime.sanitizePersistentAvatarSrc(user.photoURL || '');
+  const avatarSrc = localAvatar || authAvatar || '';
+  if (avatarSrc) {
+    runtime.rememberAvatar(user.uid, St.myName || user.displayName || '', avatarSrc);
+    runtime.preloadAvatar(avatarSrc, 96);
+  }
+  if (typeof refreshProfileAvatar === 'function') {
+    try { refreshProfileAvatar(); } catch (e) {}
+  }
+  return avatarSrc;
+}
+
 
 function initAuthScreen() {
   const fb = window._FB;
@@ -80,6 +144,7 @@ function initAuthScreen() {
   window._onAuthReady = async user => {
     St.myName = user.displayName || user.email?.split('@')[0] || '플레이어';
     St.myId   = user.uid;
+    primeUserAvatarFromLocalCache(user);
     await loadUserProfile(user);
     if (typeof refreshProfileAvatar === 'function') {
       try { refreshProfileAvatar(); } catch (e) {}
