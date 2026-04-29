@@ -2286,7 +2286,7 @@ async function saveSheet() {
     existing.showPortraitInDialogue = !!metaPatch.showPortraitInDialogue;
     if (_sheetAssignedTo !== undefined) existing.assignedTo = metaPatch.assignedTo;
 
-    saveJournalSheetFB(targetJournalId, data, metaPatch);
+    await saveJournalSheetFB(targetJournalId, data, metaPatch);
   } else {
     const newJ = {
       id: targetJournalId,
@@ -2306,7 +2306,7 @@ async function saveSheet() {
       data.avatar = newAvatar;
       saSetAvatar(targetJournalId, newAvatar);
     }
-    saveJournalFB(newJ);
+    await saveJournalFB(newJ);
     if (_sheetIsNew) {
       _sheetIsNew = false;
       const delBtn = document.querySelector('.sheet-del-btn');

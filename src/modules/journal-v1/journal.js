@@ -985,7 +985,7 @@ function saveJournalNameColorFB(journalId, color) {
 }
 
 function saveJournalSheetFB(journalId, sheetData, metaPatch = {}) {
-  if (!journalId) return;
+  if (!journalId) return Promise.resolve();
 
   const currentJournal = _allJournals.find(j => j.id === journalId) || null;
   const safeMetaPatch = sanitizeJournalMetaPatch(metaPatch, currentJournal);
@@ -997,19 +997,22 @@ function saveJournalSheetFB(journalId, sheetData, metaPatch = {}) {
   else if ('avatar' in safeSheetData) delete safeSheetData.avatar;
 
   if (window._FB?.CONFIGURED) {
-    const { db, ref, update, set } = window._FB;
+    const { db, ref, update } = window._FB;
     const canManage = !currentJournal || canManageJournalEntry(currentJournal);
     const localMetaPatch = { ...safeMetaPatch };
-    const remoteMetaPatch = canManage ? { ...safeMetaPatch } : {
+    const remotePatch = canManage ? {
+      ...safeMetaPatch,
+      sheet: safeSheetData,
+    } : {
       title: safeMetaPatch.title,
-      assignedTokenId: safeMetaPatch.assignedTokenId || null,
       showPortraitInDialogue: !!safeMetaPatch.showPortraitInDialogue,
+      sheet: safeSheetData,
     };
-    if (safeMetaPatch.nameColor !== undefined) remoteMetaPatch.nameColor = safeMetaPatch.nameColor || '';
-    if (safeAvatar) remoteMetaPatch.avatar = safeAvatar;
-    remoteMetaPatch.updatedAt = getJournalServerTimestamp();
-    if (canManage && !remoteMetaPatch.createdAt && !currentJournal?.createdAt) {
-      remoteMetaPatch.createdAt = getJournalServerTimestamp();
+    if (safeMetaPatch.nameColor !== undefined) remotePatch.nameColor = safeMetaPatch.nameColor || '';
+    if (safeAvatar) remotePatch.avatar = safeAvatar;
+    remotePatch.updatedAt = getJournalServerTimestamp();
+    if (canManage && !remotePatch.createdAt && !currentJournal?.createdAt) {
+      remotePatch.createdAt = getJournalServerTimestamp();
     }
     const nextJournal = upsertLocalJournal({
       ...(currentJournal || {}),
@@ -1021,14 +1024,12 @@ function saveJournalSheetFB(journalId, sheetData, metaPatch = {}) {
       renderJournalList();
       saRefreshToolbar();
     }
-    return Promise.all([
-      update(ref(db, `rooms/${St.roomCode}/journals/${journalId}`), remoteMetaPatch),
-      set(ref(db, `rooms/${St.roomCode}/journals/${journalId}/sheet`), safeSheetData),
-    ]).catch(err => {
-      console.error('journal sheet save failed', err);
-      showToast('저널 저장에 실패했어요. 권한을 확인해 주세요.');
-      throw err;
-    });
+    return update(ref(db, `rooms/${St.roomCode}/journals/${journalId}`), remotePatch)
+      .catch(err => {
+        console.error('journal sheet save failed', err);
+        showToast('저널 저장에 실패했어요. 권한을 확인해 주세요.');
+        throw err;
+      });
   } else {
     const nextJournal = upsertLocalJournal({
       ...(currentJournal || {}),
@@ -1037,6 +1038,7 @@ function saveJournalSheetFB(journalId, sheetData, metaPatch = {}) {
       sheet: safeSheetData,
     });
     if (nextJournal) localStorage.setItem(journalKey(), JSON.stringify(_allJournals));
+    return Promise.resolve();
   }
 }
 
@@ -3788,7 +3790,7 @@ async function saveSheet() {
     existing.showPortraitInDialogue = !!metaPatch.showPortraitInDialogue;
     if (_sheetAssignedTo !== undefined) existing.assignedTo = metaPatch.assignedTo;
 
-    saveJournalSheetFB(targetJournalId, data, metaPatch);
+    await saveJournalSheetFB(targetJournalId, data, metaPatch);
   } else {
     const newJ = {
       id: targetJournalId,
@@ -3808,7 +3810,7 @@ async function saveSheet() {
       data.avatar = newAvatar;
       saSetAvatar(targetJournalId, newAvatar);
     }
-    saveJournalFB(newJ);
+    await saveJournalFB(newJ);
     if (_sheetIsNew) {
       _sheetIsNew = false;
       const delBtn = document.querySelector('.sheet-del-btn');
