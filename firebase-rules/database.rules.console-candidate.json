@@ -47,7 +47,10 @@
           ".write": "auth != null && (root.child('rooms').child($roomCode).child('meta').child('ownerId').val() === auth.uid || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('role').val() === 'gm')",
           "$messageId": {
             ".write": "auth != null && root.child('rooms').child($roomCode).child('players').child(auth.uid).exists()"
-          }
+          },
+          ".indexOn": [
+            "dmChannelKey"
+          ]
         },
         "casual": {
           ".read": "auth != null && root.child('rooms').child($roomCode).child('players').child(auth.uid).exists()",
@@ -175,6 +178,14 @@
         "lastRoll": {
           ".read": "auth != null && root.child('rooms').child($roomCode).child('players').child(auth.uid).exists()",
           ".write": "auth != null && root.child('rooms').child($roomCode).child('players').child(auth.uid).exists()"
+        },
+        "dmMessageIndex": {
+          ".read": "auth != null && root.child('rooms').child($roomCode).child('players').child(auth.uid).exists()",
+          "$channelKey": {
+            "$messageId": {
+              ".write": "auth != null && root.child('rooms').child($roomCode).child('players').child(auth.uid).exists() && ((newData.val() === true && ((root.child('rooms').child($roomCode).child('meta').child('ownerId').val() === auth.uid || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('role').val() === 'gm') || root.child('rooms').child($roomCode).child('dmChats').child($channelKey).child('meta').child('participantIds').child('0').val() === auth.uid || root.child('rooms').child($roomCode).child('dmChats').child($channelKey).child('meta').child('participantIds').child('1').val() === auth.uid || root.child('rooms').child($roomCode).child('dmChats').child($channelKey).child('meta').child('participantIds').child('2').val() === auth.uid || root.child('rooms').child($roomCode).child('dmChats').child($channelKey).child('meta').child('participantIds').child('3').val() === auth.uid || root.child('rooms').child($roomCode).child('dmChats').child($channelKey).child('meta').child('participantIds').child('4').val() === auth.uid || root.child('rooms').child($roomCode).child('dmChats').child($channelKey).child('meta').child('participantIds').child('5').val() === auth.uid || root.child('rooms').child($roomCode).child('dmChats').child($channelKey).child('meta').child('participantIds').child('6').val() === auth.uid || root.child('rooms').child($roomCode).child('dmChats').child($channelKey).child('meta').child('participantIds').child('7').val() === auth.uid || root.child('rooms').child($roomCode).child('dmChats').child($channelKey).child('meta').child('participantIds').child('8').val() === auth.uid || root.child('rooms').child($roomCode).child('dmChats').child($channelKey).child('meta').child('participantIds').child('9').val() === auth.uid || root.child('rooms').child($roomCode).child('chat').child($messageId).child('uid').val() === auth.uid)) || (!newData.exists() && (root.child('rooms').child($roomCode).child('meta').child('ownerId').val() === auth.uid || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('role').val() === 'gm')))"
+            }
+          }
         }
       }
     }

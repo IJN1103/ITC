@@ -540,19 +540,23 @@ async function touchDmChannelMetaForMessage(channelKey = 'global', message = {},
   if (!db || !ref || typeof update !== 'function') return;
   const participantIds = normalizeDmParticipantIdsForMeta(safeKey);
   const stamp = getDmMetaWriteTimestamp();
+  const safeMessageKey = String(messageKey || message?._key || '').trim();
   const rootUpdates = {
     [`rooms/${St.roomCode}/dmChats/${safeKey}/meta/latestAt`]: stamp,
-    [`rooms/${St.roomCode}/dmChats/${safeKey}/meta/latestMessageKey`]: String(messageKey || message?._key || ''),
+    [`rooms/${St.roomCode}/dmChats/${safeKey}/meta/latestMessageKey`]: safeMessageKey,
     [`rooms/${St.roomCode}/dmChats/${safeKey}/meta/latestSenderUid`]: String(message?.uid || St.myId || ''),
     [`rooms/${St.roomCode}/dmChats/${safeKey}/meta/latestType`]: String(message?.type || 'normal'),
     [`rooms/${St.roomCode}/dmChats/${safeKey}/meta/updatedAt`]: stamp,
   };
+  if (safeMessageKey) {
+    rootUpdates[`rooms/${St.roomCode}/dmMessageIndex/${safeKey}/${safeMessageKey}`] = true;
+  }
   if (isCurrentUserRoomGm()) {
     rootUpdates[`rooms/${St.roomCode}/dmChats/${safeKey}/meta/participantIds`] = participantIds;
     rootUpdates[`rooms/${St.roomCode}/dmChats/${safeKey}/meta/createdBy`] = String(message?.createdBy || St.myId || '');
   }
   await update(ref(db), rootUpdates).catch((err) => {
-    console.warn('[dm] failed to update channel meta', err);
+    console.warn('[dm] failed to update channel meta/index', err);
   });
 }
 
@@ -567,38 +571,75 @@ function clearDmChannelRuntimeCache(channelKey = 'global') {
   try { if (typeof clearDmUnreadState === 'function') clearDmUnreadState(safeKey); } catch (e) {}
 }
 
+async function collectLegacyDmMessageIdsByQuery(channelKey = 'global') {
+  const safeKey = String(channelKey || 'global').trim() || 'global';
+  if (!safeKey || safeKey === 'global') return [];
+  if (!window._FB?.CONFIGURED || !St.roomCode) return [];
+  const { db, ref, get, query, orderByChild, equalTo } = window._FB;
+  if (!db || !ref || !get || typeof query !== 'function' || typeof orderByChild !== 'function' || typeof equalTo !== 'function') return [];
+
+  const snap = await get(query(
+    ref(db, `rooms/${St.roomCode}/chat`),
+    orderByChild('dmChannelKey'),
+    equalTo(safeKey)
+  )).catch((err) => {
+    console.warn('[dm] failed to query legacy dm messages', err);
+    return null;
+  });
+  const rawMessages = snap?.val?.() || {};
+  return Object.entries(rawMessages || {})
+    .filter(([, message]) => String(message?.dmChannelKey || 'global').trim() === safeKey)
+    .map(([messageId]) => String(messageId || '').trim())
+    .filter(Boolean);
+}
+
 async function deleteDmChannelWithMessages(channelKey = 'global') {
   const safeKey = String(channelKey || 'global').trim() || 'global';
   if (!safeKey || safeKey === 'global') throw new Error('Invalid DM channel key');
   if (!window._FB?.CONFIGURED || !St.roomCode) throw new Error('Firebase is not ready');
   if (!isCurrentUserRoomGm()) throw new Error('Only GM can delete DM rooms');
 
-  const { db, ref, get, update, remove } = window._FB;
+  const { db, ref, get, update } = window._FB;
   if (!db || !ref || !get || !update) throw new Error('Firebase helpers are missing');
 
+  const messageIdsToDelete = new Set();
   const rootUpdates = {};
-  const chatSnap = await get(ref(db, `rooms/${St.roomCode}/chat`)).catch(() => null);
-  const rawMessages = chatSnap?.val?.() || {};
-  Object.entries(rawMessages || {}).forEach(([messageId, message]) => {
-    if (String(message?.dmChannelKey || 'global').trim() === safeKey) {
-      rootUpdates[`rooms/${St.roomCode}/chat/${messageId}`] = null;
+
+  const indexSnap = await get(ref(db, `rooms/${St.roomCode}/dmMessageIndex/${safeKey}`)).catch((err) => {
+    console.warn('[dm] failed to read dm message index', err);
+    return null;
+  });
+  const indexedMessages = indexSnap?.val?.() || {};
+  Object.keys(indexedMessages || {}).forEach((messageId) => {
+    const safeMessageId = String(messageId || '').trim();
+    if (safeMessageId) {
+      messageIdsToDelete.add(safeMessageId);
+      rootUpdates[`rooms/${St.roomCode}/dmMessageIndex/${safeKey}/${safeMessageId}`] = null;
     }
+  });
+
+  const legacyMessageIds = await collectLegacyDmMessageIdsByQuery(safeKey);
+  legacyMessageIds.forEach((messageId) => {
+    messageIdsToDelete.add(messageId);
+    rootUpdates[`rooms/${St.roomCode}/dmMessageIndex/${safeKey}/${messageId}`] = null;
+  });
+
+  messageIdsToDelete.forEach((messageId) => {
+    rootUpdates[`rooms/${St.roomCode}/chat/${messageId}`] = null;
+    rootUpdates[`rooms/${St.roomCode}/dmChats/${safeKey}/messages/${messageId}`] = null;
   });
 
   const dmMessagesSnap = await get(ref(db, `rooms/${St.roomCode}/dmChats/${safeKey}/messages`)).catch(() => null);
   const rawDmMessages = dmMessagesSnap?.val?.() || {};
   Object.keys(rawDmMessages || {}).forEach((messageId) => {
-    rootUpdates[`rooms/${St.roomCode}/dmChats/${safeKey}/messages/${messageId}`] = null;
+    const safeMessageId = String(messageId || '').trim();
+    if (safeMessageId) rootUpdates[`rooms/${St.roomCode}/dmChats/${safeKey}/messages/${safeMessageId}`] = null;
   });
+
+  rootUpdates[`rooms/${St.roomCode}/dmChats/${safeKey}/meta`] = null;
 
   if (Object.keys(rootUpdates).length) {
     await update(ref(db), rootUpdates);
-  }
-
-  if (typeof remove === 'function') {
-    await remove(ref(db, `rooms/${St.roomCode}/dmChats/${safeKey}/meta`)).catch(() => {});
-  } else {
-    await update(ref(db, `rooms/${St.roomCode}/dmChats/${safeKey}`), { meta: null }).catch(() => {});
   }
 
   clearDmChannelRuntimeCache(safeKey);
@@ -622,17 +663,19 @@ async function ensureDmChannelMeta(channelKey = 'global') {
   }).catch(() => {});
 
   const bootstrapKey = `__dm_bootstrap__${safeKey}`;
-  await update(ref(db, `rooms/${St.roomCode}/chat`), {
-    [bootstrapKey]: {
-      type: 'dm-bootstrap',
-      dmChannelKey: safeKey,
-      participantIds,
-      createdBy: St.myId || '',
-      uid: St.myId || '',
-      name: '',
-      text: '',
-      time: typeof serverTimestamp === 'function' ? serverTimestamp() : Date.now(),
-    }
+  const bootstrapMessage = {
+    type: 'dm-bootstrap',
+    dmChannelKey: safeKey,
+    participantIds,
+    createdBy: St.myId || '',
+    uid: St.myId || '',
+    name: '',
+    text: '',
+    time: typeof serverTimestamp === 'function' ? serverTimestamp() : Date.now(),
+  };
+  await update(ref(db), {
+    [`rooms/${St.roomCode}/chat/${bootstrapKey}`]: bootstrapMessage,
+    [`rooms/${St.roomCode}/dmMessageIndex/${safeKey}/${bootstrapKey}`]: true,
   }).catch(() => {});
 }
 
