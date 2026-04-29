@@ -59,6 +59,99 @@ function _itcRevokePreview(url) {
   }
 }
 
+
+
+/* ── Cloudinary 표시용 변환 URL ──
+ * 저장된 원본 URL은 바꾸지 않고, 화면 표시 단계에서만 더 가벼운 파생 URL을 사용한다.
+ */
+
+function _itcIsCloudinaryUploadUrl(src) {
+  const raw = String(src || '').trim();
+  if (!raw) return false;
+  try {
+    const cfg = (typeof _itcGetCloudinaryConfig === 'function' ? _itcGetCloudinaryConfig() : null) || window._ITC_CLOUDINARY || {};
+    const cloudName = String(cfg.cloudName || '').trim();
+    const url = new URL(raw, window.location.href);
+    return url.protocol === 'https:'
+      && url.hostname === 'res.cloudinary.com'
+      && url.pathname.includes('/image/upload/')
+      && (!cloudName || url.pathname.startsWith(`/${cloudName}/image/upload/`));
+  } catch (e) {
+    return false;
+  }
+}
+
+function _itcCloudinaryUrlAlreadyTransformed(pathAfterUpload) {
+  const firstSegment = String(pathAfterUpload || '').split('/')[0] || '';
+  if (!firstSegment || /^v\d+$/i.test(firstSegment)) return false;
+  return /(^|,)(a_|ar_|b_|bo_|c_|co_|dpr_|e_|f_|fl_|g_|h_|o_|q_|r_|t_|w_|x_|y_|z_)/.test(firstSegment);
+}
+
+function _itcGetCloudinaryImageVariant(src, opts = {}) {
+  const raw = String(src || '').trim();
+  if (!raw || !_itcIsCloudinaryUploadUrl(raw)) return raw;
+
+  const cacheKey = JSON.stringify([raw, opts]);
+  _itcGetCloudinaryImageVariant._cache = _itcGetCloudinaryImageVariant._cache || new Map();
+  if (_itcGetCloudinaryImageVariant._cache.has(cacheKey)) return _itcGetCloudinaryImageVariant._cache.get(cacheKey);
+
+  let result = raw;
+  try {
+    const url = new URL(raw, window.location.href);
+    const marker = '/image/upload/';
+    const idx = url.pathname.indexOf(marker);
+    if (idx < 0) return raw;
+
+    const before = url.pathname.slice(0, idx + marker.length);
+    const after = url.pathname.slice(idx + marker.length);
+    if (!after || _itcCloudinaryUrlAlreadyTransformed(after)) return raw;
+
+    const parts = [];
+    const format = opts.format === false ? '' : String(opts.format || 'auto').trim();
+    const quality = opts.quality === false ? '' : String(opts.quality || 'auto').trim();
+    const width = Math.max(1, parseInt(opts.width, 10) || 0);
+    const height = Math.max(1, parseInt(opts.height, 10) || 0);
+    const crop = String(opts.crop || (width && height ? 'fill' : 'limit')).trim();
+
+    if (format) parts.push(`f_${format}`);
+    if (quality) parts.push(`q_${quality}`);
+    if (width) parts.push(`w_${width}`);
+    if (height) parts.push(`h_${height}`);
+    if (crop) parts.push(`c_${crop}`);
+
+    if (parts.length) {
+      url.pathname = `${before}${parts.join(',')}/${after}`;
+      result = url.toString();
+    }
+  } catch (e) {
+    result = raw;
+  }
+
+  _itcGetCloudinaryImageVariant._cache.set(cacheKey, result);
+  return result;
+}
+
+function _itcGetMapLayerThumbSrc(src) {
+  return _itcGetCloudinaryImageVariant(src, { width: 96, height: 96, crop: 'fill' });
+}
+
+function _itcGetMapSceneThumbSrc(src) {
+  return _itcGetCloudinaryImageVariant(src, { width: 360, height: 203, crop: 'fill' });
+}
+
+function _itcGetMapDisplayImageSrc(src, max = 2048) {
+  const px = Math.max(512, Math.min(2560, parseInt(max, 10) || 2048));
+  return _itcGetCloudinaryImageVariant(src, { width: px, height: px, crop: 'limit' });
+}
+
+if (typeof window !== 'undefined') {
+  window._itcIsCloudinaryUploadUrl = _itcIsCloudinaryUploadUrl;
+  window._itcGetCloudinaryImageVariant = _itcGetCloudinaryImageVariant;
+  window._itcGetMapLayerThumbSrc = _itcGetMapLayerThumbSrc;
+  window._itcGetMapSceneThumbSrc = _itcGetMapSceneThumbSrc;
+  window._itcGetMapDisplayImageSrc = _itcGetMapDisplayImageSrc;
+}
+
 /* ── Cloudinary 업로드 (공통) ──
  *
  * 반환: { url: string, publicId: string, contentType: string }

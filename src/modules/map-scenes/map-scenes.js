@@ -346,8 +346,16 @@
     return ROOT.esc(String(value || '')).replace(/'/g, '&#39;');
   }
 
+  function getSceneThumbnailDisplayUrl(url){
+    var raw = String(url || '').trim();
+    if (!raw) return '';
+    if (typeof ROOT._itcGetMapSceneThumbSrc === 'function') return ROOT._itcGetMapSceneThumbSrc(raw);
+    if (typeof _itcGetMapSceneThumbSrc === 'function') return _itcGetMapSceneThumbSrc(raw);
+    return raw;
+  }
+
   function buildSceneThumbStyle(url){
-    var safeUrl = String(url || '').trim();
+    var safeUrl = getSceneThumbnailDisplayUrl(url);
     if (!safeUrl) return '';
     safeUrl = safeUrl.replace(/\\/g, '\\\\').replace(/"/g, '%22').replace(/'/g, '%27').replace(/\)/g, '%29');
     return ' style="background-image:url(&quot;' + escAttr(safeUrl) + '&quot;)"';

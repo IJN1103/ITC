@@ -1090,6 +1090,15 @@ function getPanelTokenImageSource(token) {
   return String(token?.panelImage || token?.panelBackImage || '').trim();
 }
 
+function getPanelTokenDisplayImageSource(token) {
+  const raw = getPanelTokenImageSource(token);
+  if (!raw) return '';
+  if (token?.importedMapObject === true && typeof _itcGetMapDisplayImageSrc === 'function') {
+    return _itcGetMapDisplayImageSrc(raw, 1600);
+  }
+  return raw;
+}
+
 
 const PANEL_TOKEN_CLICK_DELAY_MS = 320;
 let _panelTokenClickTimers = new Map();
@@ -1263,7 +1272,7 @@ function createTokenEl(t) {
   const sz = (t.tokenSize || 1);
   let tokenImgSrc = '';
   if (isPanel) {
-    tokenImgSrc = getPanelTokenImageSource(t);
+    tokenImgSrc = getPanelTokenDisplayImageSource(t);
   } else if (t.standingAsToken && t.standings && t.standings.length > 0) {
     const jForToken = _allJournals.find(j => j.assignedTokenId === t.id);
     const syncedLabel = String(t.currentStandingLabel || '').trim();

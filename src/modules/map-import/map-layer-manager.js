@@ -12,6 +12,13 @@
     return root.St;
   }
 
+  function getLayerPreviewImageUrl(src) {
+    const raw = String(src || '').trim();
+    if (!raw) return '';
+    if (typeof _itcGetMapLayerThumbSrc === 'function') return _itcGetMapLayerThumbSrc(raw);
+    return raw;
+  }
+
   function getLayerEntries() {
     const state = getStateRoot().mapState || {};
     const entries = [];
@@ -415,8 +422,9 @@
       item.className = 'map-layer-item';
       item.draggable = true;
       item.dataset.layerId = id;
-      const previewHtml = entry.previewUrl
-        ? `<img class="map-layer-preview-img" src="${String(entry.previewUrl).replace(/"/g, '&quot;')}" alt="" loading="lazy" decoding="async">`
+      const previewUrl = getLayerPreviewImageUrl(entry.previewUrl);
+      const previewHtml = previewUrl
+        ? `<img class="map-layer-preview-img" src="${String(previewUrl).replace(/"/g, '&quot;')}" alt="" loading="lazy" decoding="async">`
         : '';
       const canDelete = canDeleteLayer(entry);
       item.innerHTML = `

@@ -70,6 +70,17 @@
     return document.getElementById('map-inner');
   }
 
+  function getMapDisplayImageUrl(src, max = 2048) {
+    const raw = String(src || '').trim();
+    if (!raw) return '';
+    if (typeof _itcGetMapDisplayImageSrc === 'function') return _itcGetMapDisplayImageSrc(raw, max);
+    return raw;
+  }
+
+  function cssImageUrl(src) {
+    return String(src || '').replace(/"/g, '%22');
+  }
+
   function clearImportedMapObjects() {
     document.querySelectorAll('.map-import-object[data-map-layer-id]').forEach((el) => el.remove());
   }
@@ -87,7 +98,7 @@
         bgLayer.style.backgroundSize = 'contain';
       } else {
         const fit = String(background.fit || 'contain').trim() || 'contain';
-        bgLayer.style.backgroundImage = `url("${String(background.url).replace(/"/g, '%22')}")`;
+        bgLayer.style.backgroundImage = `url("${cssImageUrl(getMapDisplayImageUrl(background.url, 2048))}")`;
         bgLayer.style.backgroundSize = fit === 'fill' ? '100% 100%' : (fit === 'cover' ? 'cover' : 'contain');
       }
     }
@@ -97,7 +108,7 @@
         fgLayer.style.backgroundSize = 'contain';
       } else {
         const fit = String(foreground.fit || 'contain').trim() || 'contain';
-        fgLayer.style.backgroundImage = `url("${String(foreground.url).replace(/"/g, '%22')}")`;
+        fgLayer.style.backgroundImage = `url("${cssImageUrl(getMapDisplayImageUrl(foreground.url, 2048))}")`;
         fgLayer.style.backgroundSize = fit === 'fill' ? '100% 100%' : (fit === 'cover' ? 'cover' : 'contain');
       }
     }
@@ -115,7 +126,7 @@
       el.style.top = `${Number(item.yPct || 0)}%`;
       el.style.width = `${Number(item.wPct || 0)}%`;
       el.style.height = `${Number(item.hPct || 0)}%`;
-      el.style.backgroundImage = `url("${String(item.url).replace(/"/g, '%22')}")`;
+      el.style.backgroundImage = `url("${cssImageUrl(getMapDisplayImageUrl(item.url, 1600))}")`;
       el.style.transform = `rotate(${Number(item.angle || 0)}deg)`;
       mapInner.appendChild(el);
     });
