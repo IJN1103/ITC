@@ -131,20 +131,39 @@
     return channels.some((channel) => Array.isArray(channel?.participantIds) && channel.participantIds.includes(safeUid) && channelHasUnread(channel.channelKey));
   }
 
+  function metaIncludesViewer(meta, viewerUid) {
+    const safeViewerUid = String(viewerUid || '').trim();
+    if (!safeViewerUid) return false;
+    const participantIds = Array.isArray(meta?.participantIds) ? meta.participantIds : [];
+    return participantIds.map((uid) => String(uid || '').trim()).includes(safeViewerUid);
+  }
+
+  function getDmMetaLatestStamp(meta) {
+    return getMessageStamp({
+      updatedAt: meta?.latestAt || meta?.updatedAt,
+      createdAt: meta?.createdAt,
+      ts: meta?.latestAt || meta?.updatedAt,
+      time: meta?.latestAt || meta?.updatedAt,
+    });
+  }
+
   function rebuildUnreadState(raw) {
     const runtime = getUnreadRuntime();
     const latestByChannel = {};
     const state = getStateRoot();
     const myId = String(state.myId || '').trim();
-    Object.values(raw && typeof raw === 'object' ? raw : {}).forEach((msg) => {
-      const key = String(msg?.dmChannelKey || 'global').trim() || 'global';
-      if (key === 'global') return;
-      const type = String(msg?.type || '').trim();
-      if (type === 'dm-bootstrap') return;
-      if (type === 'whisper' && myId && String(msg?.uid || '') !== myId && String(msg?.whisperTo || '') !== myId) return;
-      const stamp = getMessageStamp(msg);
+    const isGm = typeof ROOT.isDmGmView === 'function' && ROOT.isDmGmView();
+    Object.entries(raw && typeof raw === 'object' ? raw : {}).forEach(([channelKey, entry]) => {
+      const key = String(channelKey || '').trim();
+      if (!key || key === 'global') return;
+      const meta = entry?.meta && typeof entry.meta === 'object' ? entry.meta : entry;
+      if (!meta || typeof meta !== 'object') return;
+      if (!isGm && !metaIncludesViewer(meta, myId)) return;
+      const stamp = getDmMetaLatestStamp(meta);
+      if (!stamp) return;
       latestByChannel[key] = Math.max(Number(latestByChannel[key] || 0), stamp);
     });
+    const prevLatest = runtime.latestByChannel || {};
     runtime.latestByChannel = latestByChannel;
     const seen = loadSeenMap();
     const currentKey = typeof ROOT.getCurrentDmChannelKey === 'function' ? ROOT.getCurrentDmChannelKey() : 'global';
@@ -155,6 +174,11 @@
         saveSeenMap(seen);
       }
     }
+    Object.keys(prevLatest).forEach((key) => {
+      if (!Object.prototype.hasOwnProperty.call(latestByChannel, key) && typeof ROOT.setDmUnreadState === 'function') {
+        ROOT.setDmUnreadState(key, false);
+      }
+    });
     Object.keys(latestByChannel).forEach((key) => {
       const unread = Number(latestByChannel[key] || 0) > Number(seen[key] || 0);
       if (typeof ROOT.setDmUnreadState === 'function') ROOT.setDmUnreadState(key, unread);
@@ -175,7 +199,7 @@
     runtime.roomCode = roomCode;
     runtime.off = null;
     try {
-      runtime.off = onValueFn(refFn(dbRef, `rooms/${roomCode}/chat`), (snap) => {
+      runtime.off = onValueFn(refFn(dbRef, `rooms/${roomCode}/dmChats`), (snap) => {
         rebuildUnreadState(snap.val() || {});
         try {
           document.dispatchEvent(new CustomEvent('itc:dm-unread-change', {

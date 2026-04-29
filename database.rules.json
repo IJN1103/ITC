@@ -60,7 +60,10 @@
           ".read": "auth != null && root.child('rooms').child($roomCode).child('players').child(auth.uid).exists()",
           "$channelKey": {
             "meta": {
-              ".write": "auth != null && (root.child('rooms').child($roomCode).child('meta').child('ownerId').val() === auth.uid || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('role').val() === 'gm')"
+              ".write": "auth != null && (root.child('rooms').child($roomCode).child('meta').child('ownerId').val() === auth.uid || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('role').val() === 'gm')",
+              "$metaField": {
+                ".write": "($metaField === 'latestAt' || $metaField === 'latestMessageKey' || $metaField === 'latestSenderUid' || $metaField === 'latestType' || $metaField === 'updatedAt') && auth != null && root.child('rooms').child($roomCode).child('players').child(auth.uid).exists() && (root.child('rooms').child($roomCode).child('meta').child('ownerId').val() === auth.uid || root.child('rooms').child($roomCode).child('players').child(auth.uid).child('role').val() === 'gm' || data.parent().child('participantIds').child('0').val() === auth.uid || data.parent().child('participantIds').child('1').val() === auth.uid || data.parent().child('participantIds').child('2').val() === auth.uid || data.parent().child('participantIds').child('3').val() === auth.uid || data.parent().child('participantIds').child('4').val() === auth.uid || data.parent().child('participantIds').child('5').val() === auth.uid || data.parent().child('participantIds').child('6').val() === auth.uid || data.parent().child('participantIds').child('7').val() === auth.uid || data.parent().child('participantIds').child('8').val() === auth.uid || data.parent().child('participantIds').child('9').val() === auth.uid)"
+              }
             },
             "messages": {
               "$messageId": {

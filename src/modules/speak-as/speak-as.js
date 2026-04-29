@@ -106,7 +106,17 @@ function saSendMessage(journal, text) {
   if (window._FB?.CONFIGURED) {
     const { db, ref, push } = window._FB;
     const currentChannelKey = String(window._itcActiveChatChannelKey || (typeof getCurrentDmChannelKey === 'function' ? getCurrentDmChannelKey() : 'global') || 'global').trim() || 'global';
-    push(ref(db, `rooms/${St.roomCode}/chat`), { ...msg, dmChannelKey: currentChannelKey, time: getSpeakAsServerTimestamp() });
+    const payload = { ...msg, dmChannelKey: currentChannelKey, time: getSpeakAsServerTimestamp() };
+    push(ref(db, `rooms/${St.roomCode}/chat`), payload)
+      .then((pushedRef) => {
+        if (currentChannelKey && currentChannelKey !== 'global' && typeof window.touchDmChannelMetaForMessage === 'function') {
+          return window.touchDmChannelMetaForMessage(currentChannelKey, payload, pushedRef?.key || '');
+        }
+        return null;
+      })
+      .catch((err) => {
+        console.warn('[dm] speak-as meta update failed', err);
+      });
   } else {
     appendChatMsg({ ...msg, timestamp: msg.time, channel: 'chat' });
   }

@@ -1593,7 +1593,9 @@ async function sendPreparedChatImage(preparedOrDataUrl, imageWide = false, image
     if (window._FB?.CONFIGURED) {
       const { db, ref, push } = window._FB;
       if (!St.roomCode) throw new Error('roomCode missing');
-      return push(ref(db, `rooms/${St.roomCode}/chat`), { ...msg, dmChannelKey: currentChannelKey || 'global', time: getChatServerTimestamp() });
+      const payload = { ...msg, dmChannelKey: currentChannelKey || 'global', time: getChatServerTimestamp() };
+    return push(ref(db, `rooms/${St.roomCode}/chat`), payload)
+      .then((pushedRef) => notifyDmMetaAfterChatPush(currentChannelKey, payload, pushedRef));
     }
     appendChatMsg({ name: msg.name, text: finalSrc, type: 'speak-as-image', uid: St.myId, timestamp: msg.time, speakAsAvatar: saAvatar, speakAsJournalId: saJId, nameColor: msg.nameColor || '', channel: 'chat', imageWide: !!imageWide, imageMeta: normalizedMeta, hideImageMeta: !!hideImageMeta });
     return Promise.resolve();
@@ -1783,6 +1785,19 @@ async function sendChat() {
   }
 }
 
+function notifyDmMetaAfterChatPush(channelKey = 'global', message = {}, pushedRef = null) {
+  const safeKey = String(channelKey || message?.dmChannelKey || 'global').trim() || 'global';
+  if (!safeKey || safeKey === 'global') return Promise.resolve(pushedRef);
+  try {
+    if (typeof window.touchDmChannelMetaForMessage === 'function') {
+      return Promise.resolve(window.touchDmChannelMetaForMessage(safeKey, message, pushedRef?.key || ''))
+        .catch(() => {})
+        .then(() => pushedRef);
+    }
+  } catch (e) {}
+  return Promise.resolve(pushedRef);
+}
+
 function sendMessage(name, text, type = 'normal', extra = null) {
   const localTime = Date.now();
   const msg = { name, text, type, uid: St.myId, time: localTime };
@@ -1792,7 +1807,9 @@ function sendMessage(name, text, type = 'normal', extra = null) {
   if (window._FB?.CONFIGURED) {
     const { db, ref, push } = window._FB;
     if (!St.roomCode) return Promise.reject(new Error('roomCode missing'));
-    return push(ref(db, `rooms/${St.roomCode}/chat`), { ...msg, dmChannelKey: currentChannelKey || 'global', time: getChatServerTimestamp() });
+    const payload = { ...msg, dmChannelKey: currentChannelKey || 'global', time: getChatServerTimestamp() };
+    return push(ref(db, `rooms/${St.roomCode}/chat`), payload)
+      .then((pushedRef) => notifyDmMetaAfterChatPush(currentChannelKey, payload, pushedRef));
   }
   appendChatMsg({ ...msg, timestamp: msg.time, nameColor: msg.nameColor || null, channel: 'chat', imageWide: !!msg.imageWide, imageMeta: msg.imageMeta || null, hideImageMeta: !!msg.hideImageMeta });
   return Promise.resolve();
@@ -2051,7 +2068,9 @@ function sendWhisperMessage(senderName, text, targetUid, targetName, options = {
   if (window._FB?.CONFIGURED) {
     const { db, ref, push } = window._FB;
     if (!St.roomCode) return Promise.reject(new Error('roomCode missing'));
-    return push(ref(db, `rooms/${St.roomCode}/chat`), { ...msg, time: getChatServerTimestamp() });
+    const payload = { ...msg, time: getChatServerTimestamp() };
+    return push(ref(db, `rooms/${St.roomCode}/chat`), payload)
+      .then((pushedRef) => notifyDmMetaAfterChatPush(channelKey, payload, pushedRef));
   }
   appendChatMsg({
     name: msg.name, text, type: 'whisper', uid: St.myId, timestamp: msg.time,

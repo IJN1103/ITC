@@ -518,6 +518,46 @@ function isCurrentUserRoomGm() {
   return !!St.isGM || myRole === 'gm';
 }
 
+function normalizeDmParticipantIdsForMeta(channelKey = 'global') {
+  const parsed = typeof parseDmChannelKey === 'function' ? parseDmChannelKey(channelKey) : [];
+  return Array.from(new Set((Array.isArray(parsed) ? parsed : [])
+    .map((id) => String(id || '').trim())
+    .filter(Boolean)))
+    .sort();
+}
+
+function getDmMetaWriteTimestamp() {
+  return (window._FB?.CONFIGURED && typeof window._FB.serverTimestamp === 'function')
+    ? window._FB.serverTimestamp()
+    : Date.now();
+}
+
+async function touchDmChannelMetaForMessage(channelKey = 'global', message = {}, messageKey = '') {
+  const safeKey = String(channelKey || message?.dmChannelKey || 'global').trim() || 'global';
+  if (!safeKey || safeKey === 'global') return;
+  if (!window._FB?.CONFIGURED || !St.roomCode) return;
+  const { db, ref, update } = window._FB;
+  if (!db || !ref || typeof update !== 'function') return;
+  const participantIds = normalizeDmParticipantIdsForMeta(safeKey);
+  const stamp = getDmMetaWriteTimestamp();
+  const rootUpdates = {
+    [`rooms/${St.roomCode}/dmChats/${safeKey}/meta/latestAt`]: stamp,
+    [`rooms/${St.roomCode}/dmChats/${safeKey}/meta/latestMessageKey`]: String(messageKey || message?._key || ''),
+    [`rooms/${St.roomCode}/dmChats/${safeKey}/meta/latestSenderUid`]: String(message?.uid || St.myId || ''),
+    [`rooms/${St.roomCode}/dmChats/${safeKey}/meta/latestType`]: String(message?.type || 'normal'),
+    [`rooms/${St.roomCode}/dmChats/${safeKey}/meta/updatedAt`]: stamp,
+  };
+  if (isCurrentUserRoomGm()) {
+    rootUpdates[`rooms/${St.roomCode}/dmChats/${safeKey}/meta/participantIds`] = participantIds;
+    rootUpdates[`rooms/${St.roomCode}/dmChats/${safeKey}/meta/createdBy`] = String(message?.createdBy || St.myId || '');
+  }
+  await update(ref(db), rootUpdates).catch((err) => {
+    console.warn('[dm] failed to update channel meta', err);
+  });
+}
+
+window.touchDmChannelMetaForMessage = touchDmChannelMetaForMessage;
+
 function clearDmChannelRuntimeCache(channelKey = 'global') {
   const safeKey = String(channelKey || 'global').trim() || 'global';
   _processedChatKeysByChannel.delete(safeKey);
@@ -945,10 +985,12 @@ function setupFirebaseListeners() {
     if (typeof refreshDmChannelButtons === 'function') refreshDmChannelButtons();
   }));
 
-  trackFirebaseListener(onValue(ref(db, `rooms/${code}/chat`), snap => {
-    const rawMessages = snap.val() || {};
-    syncAvailableDmChannels(buildDmChannelCatalogFromChat(rawMessages));
-    rebuildChatRecordCacheFromRaw(rawMessages);
+  trackFirebaseListener(onValue(ref(db, `rooms/${code}/dmChats`), snap => {
+    const rawChannels = snap.val() || {};
+    const channels = Object.entries(rawChannels || {})
+      .map(([channelKey, raw]) => normalizeDmChannelEntry(channelKey, raw || {}))
+      .filter((entry) => entry.channelKey && entry.channelKey !== 'global' && Array.isArray(entry.participantIds) && entry.participantIds.length > 1);
+    syncAvailableDmChannels(channels);
   }));
   const initialChatChannelKey = typeof getCurrentDmChannelKey === 'function'
     ? getCurrentDmChannelKey()

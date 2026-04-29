@@ -530,7 +530,9 @@ async function sendPreparedChatImage(preparedOrDataUrl, imageWide = false, image
     if (window._FB?.CONFIGURED) {
       const { db, ref, push } = window._FB;
       if (!St.roomCode) throw new Error('roomCode missing');
-      return push(ref(db, `rooms/${St.roomCode}/chat`), { ...msg, dmChannelKey: currentChannelKey || 'global', time: getChatServerTimestamp() });
+      const payload = { ...msg, dmChannelKey: currentChannelKey || 'global', time: getChatServerTimestamp() };
+      return push(ref(db, `rooms/${St.roomCode}/chat`), payload)
+        .then((pushedRef) => notifyDmMetaAfterChatPush(currentChannelKey, payload, pushedRef));
     }
     appendChatMsg({ name: msg.name, text: finalSrc, type: 'speak-as-image', uid: St.myId, timestamp: msg.time, speakAsAvatar: saAvatar, speakAsJournalId: saJId, channel: 'chat', imageWide: !!imageWide, imageMeta: normalizedMeta, hideImageMeta: !!hideImageMeta });
     return Promise.resolve();
