@@ -95,6 +95,76 @@ function clearProfileCropSession(options = {}) {
   setProfileCropBusy(false);
 }
 
+function makeSafeProfileAvatarImg(src, options = {}) {
+  const { size = '100%', radius = 'inherit', priority = false } = options || {};
+  const img = new Image();
+  img.alt = 'avatar';
+  img.decoding = 'async';
+  if (priority) img.fetchPriority = 'high';
+  img.style.width = size;
+  img.style.height = size;
+  img.style.objectFit = 'cover';
+  img.style.borderRadius = radius;
+  img.style.display = 'block';
+  img.style.opacity = '0';
+  img.style.transition = 'opacity 120ms ease';
+  img.dataset.safeAvatarSrc = src;
+  img.onload = () => {
+    if (!img.isConnected || img.dataset.safeAvatarSrc !== src) return;
+    img.style.opacity = '1';
+  };
+  img.onerror = () => {
+    if (!img.isConnected) return;
+    img.remove();
+  };
+  img.src = src;
+  if (img.complete && img.naturalWidth > 0) {
+    img.style.opacity = '1';
+  }
+  return img;
+}
+
+function renderSafeNavAvatar(container, src, initials) {
+  if (!container) return;
+  container.innerHTML = '';
+  container.textContent = initials;
+  container.style.position = 'relative';
+  container.style.overflow = 'hidden';
+  if (!src) return;
+
+  const img = makeSafeProfileAvatarImg(src, { priority: true });
+  img.style.position = 'absolute';
+  img.style.inset = '0';
+  img.style.pointerEvents = 'none';
+  container.appendChild(img);
+}
+
+function renderSafeBigAvatar(container, src, initials) {
+  if (!container) return;
+  container.innerHTML = '';
+  container.style.position = 'relative';
+  container.style.overflow = 'hidden';
+
+  const fallback = document.createElement('span');
+  fallback.textContent = initials;
+  container.appendChild(fallback);
+
+  if (src) {
+    const img = makeSafeProfileAvatarImg(src, { radius: 'inherit' });
+    img.style.position = 'absolute';
+    img.style.inset = '0';
+    img.style.width = '100%';
+    img.style.height = '100%';
+    img.style.pointerEvents = 'none';
+    container.appendChild(img);
+  }
+
+  const overlay = document.createElement('div');
+  overlay.className = 'av-overlay';
+  overlay.textContent = '📷';
+  container.appendChild(overlay);
+}
+
 function refreshProfileAvatar() {
   const user = window._currentUser;
   if (!user) return;
@@ -122,25 +192,9 @@ function refreshProfileAvatar() {
     avatarRuntime.preloadAvatar(saved, 160);
   }
 
-  const navEl = document.getElementById('user-avatar');
-  if (navEl) {
-    if (navSrc) {
-      navEl.innerHTML = `<img src="${navSrc}" alt="avatar" decoding="async" fetchpriority="high" style="width:100%;height:100%;object-fit:cover;border-radius:inherit">`;
-    } else {
-      navEl.textContent = initials;
-    }
-  }
-
-  const bigEl = document.getElementById('profile-avatar-big');
-  if (bigEl) {
-    if (bigSrc) {
-      bigEl.innerHTML = `<img src="${bigSrc}" alt="avatar" decoding="async"><div class="av-overlay">📷</div>`;
-    } else {
-      bigEl.innerHTML = `<span>${initials}</span><div class="av-overlay">📷</div>`;
-    }
-  }
+  renderSafeNavAvatar(document.getElementById('user-avatar'), navSrc, initials);
+  renderSafeBigAvatar(document.getElementById('profile-avatar-big'), bigSrc, initials);
 }
-
 
 
 
