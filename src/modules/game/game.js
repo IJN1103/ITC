@@ -18,6 +18,11 @@ let _playerDigest = '';
 let _roomAvatarSyncBound = false;
 let _lastSyncedRoomAvatar = null;
 let _typingState = {};
+let _presenceHeartbeatTimer = null;
+let _presenceUiTimer = null;
+let _presenceServerOffsetMs = 0;
+const ITC_PRESENCE_HEARTBEAT_MS = 15000;
+const ITC_PRESENCE_STALE_MS = 45000;
 
 let _lastChatDebugLogAt = 0;
 
@@ -43,6 +48,109 @@ function logItcChatDebug(label, detail = {}, options = {}) {
       ...detail,
     });
   } catch (e) {}
+}
+
+function getPresenceNowMs() {
+  return Date.now() + (_presenceServerOffsetMs || 0);
+}
+
+function getPresenceServerTimestampValue() {
+  return (window._FB?.CONFIGURED && typeof window._FB.serverTimestamp === 'function')
+    ? window._FB.serverTimestamp()
+    : Date.now();
+}
+
+function isPlayerPresenceOnline(id, player) {
+  if (!player) return false;
+  if (id === St.myId) return true;
+  if (player.online !== true) return false;
+
+  const lastSeen = Number(player.lastSeen || player.presenceAt || 0);
+  if (!lastSeen) return false;
+
+  return getPresenceNowMs() - lastSeen <= ITC_PRESENCE_STALE_MS;
+}
+
+function clearPresenceTimers() {
+  if (_presenceHeartbeatTimer) {
+    clearInterval(_presenceHeartbeatTimer);
+    _presenceHeartbeatTimer = null;
+  }
+  if (_presenceUiTimer) {
+    clearInterval(_presenceUiTimer);
+    _presenceUiTimer = null;
+  }
+}
+
+function refreshPlayerPresenceUi() {
+  try {
+    const players = St.players || {};
+    Object.entries(players).forEach(([id, p]) => {
+      const chip = document.getElementById('pchip-' + id);
+      if (!chip) return;
+      const online = isPlayerPresenceOnline(id, p || {});
+      chip.classList.toggle('online', online);
+      chip.classList.toggle('offline', !online);
+    });
+  } catch (e) {}
+}
+
+function writeMyPresenceOnline() {
+  if (!window._FB?.CONFIGURED || !St.roomCode || !St.myId) return Promise.resolve();
+  const { db, ref, update } = window._FB;
+  return update(ref(db, `rooms/${St.roomCode}/players/${St.myId}`), {
+    online: true,
+    lastSeen: getPresenceServerTimestampValue(),
+  }).catch(() => {});
+}
+
+function writeMyPresenceOffline(roomCode = St.roomCode, uid = St.myId) {
+  if (!window._FB?.CONFIGURED || !roomCode || !uid) return Promise.resolve();
+  const { db, ref, update } = window._FB;
+  return update(ref(db, `rooms/${roomCode}/players/${uid}`), {
+    online: false,
+    lastSeen: getPresenceServerTimestampValue(),
+  }).catch(() => {});
+}
+
+function setupMyPresence(code) {
+  if (!window._FB?.CONFIGURED || !code || !St.myId) return;
+  clearPresenceTimers();
+
+  const { db, ref, onValue, onDisconnect, update } = window._FB;
+  const uid = St.myId;
+  const playerRef = ref(db, `rooms/${code}/players/${uid}`);
+
+  try {
+    trackFirebaseListener(onValue(ref(db, '.info/serverTimeOffset'), snap => {
+      _presenceServerOffsetMs = Number(snap.val() || 0);
+      refreshPlayerPresenceUi();
+    }));
+  } catch (e) {}
+
+  try {
+    trackFirebaseListener(onValue(ref(db, '.info/connected'), snap => {
+      if (snap.val() !== true) return;
+      try {
+        onDisconnect(playerRef).update({
+          online: false,
+          lastSeen: getPresenceServerTimestampValue(),
+        });
+      } catch (e) {
+        try { onDisconnect(ref(db, `rooms/${code}/players/${uid}/online`)).set(false); } catch (err) {}
+      }
+      update(playerRef, {
+        online: true,
+        lastSeen: getPresenceServerTimestampValue(),
+      }).catch(() => {});
+    }));
+  } catch (e) {
+    writeMyPresenceOnline();
+  }
+
+  writeMyPresenceOnline();
+  _presenceHeartbeatTimer = setInterval(writeMyPresenceOnline, ITC_PRESENCE_HEARTBEAT_MS);
+  _presenceUiTimer = setInterval(refreshPlayerPresenceUi, 10000);
 }
 
 window.itcChatDebugReport = function(channelKey = '') {
@@ -146,6 +254,7 @@ function refreshTopbarProfileSafe() {
 }
 
 function cleanupFirebaseListeners() {
+  clearPresenceTimers();
   cleanupActiveChatChannelListeners();
   _firebaseUnsubs.forEach(unsub => { try { if (typeof unsub === 'function') unsub(); } catch (e) {} });
   _firebaseUnsubs = [];
@@ -782,6 +891,7 @@ function digestPlayers(players) {
       p.name || '',
       p.role || '',
       !!p.online,
+      p.lastSeen || 0,
       p.avatar || '',
       p.casualNick || '',
       p.nameColor || '',
@@ -959,9 +1069,7 @@ function setupFirebaseListeners() {
     showRollResult(roll);
   }));
 
-  const presRef = ref(db, `rooms/${code}/players/${St.myId}/online`);
-  window._FB.set(presRef, true);
-  window._FB.onDisconnect(presRef).set(false);
+  setupMyPresence(code);
 
   _typingState = {};
   trackFirebaseListener(onChildAdded(ref(db, `rooms/${code}/typing`), snap => {
@@ -1056,7 +1164,7 @@ function renderPlayers(players) {
   if (!window._avatarCache) window._avatarCache = {};
   
   Object.entries(players).forEach(([id, p]) => {
-    const online = p.online || id === St.myId;
+    const online = isPlayerPresenceOnline(id, p || {});
     addPlayerChip(id, p.name, id === St.myId, p.role, online);
 
     const av = p.avatarUrl || p.avatar || localStorage.getItem('itc_avatar_' + id);
@@ -1276,6 +1384,7 @@ function saveCharacter() {
 async function leaveRoom() {
   if (!confirm('방에서 완전히 나가시겠습니까?\n(나중에 코드로 다시 입장할 수 있어요)')) return;
   if (typeof clearTypingState === 'function') clearTypingState();
+  await writeMyPresenceOffline();
   cleanupFirebaseListeners();
   if (window._FB?.CONFIGURED) {
     const { db, ref, remove } = window._FB;
@@ -1302,6 +1411,14 @@ window.enterGame = enterGame;
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState !== 'visible') return;
   if (!window._FB?.CONFIGURED || !St.roomCode || !St.myId) return;
-  const { db, ref, set } = window._FB;
-  set(ref(db, `rooms/${St.roomCode}/players/${St.myId}/online`), true);
+  writeMyPresenceOnline();
+});
+
+
+window.addEventListener('pagehide', () => {
+  writeMyPresenceOffline();
+});
+
+window.addEventListener('beforeunload', () => {
+  writeMyPresenceOffline();
 });
