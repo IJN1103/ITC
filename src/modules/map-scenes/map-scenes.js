@@ -456,13 +456,35 @@
     };
   }
 
+  function buildSceneMapStatePayload(scene){
+    const background = scene?.background || null;
+    return {
+      background: background ? deepCopy(background) : null,
+      foreground: null,
+      objects: Array.isArray(scene?.objects) ? deepCopy(scene.objects) : [],
+    };
+  }
+
+  function prefixRoomPayload(prefix, payload){
+    const out = {};
+    Object.entries(payload || {}).forEach(([key, value]) => {
+      out[`${prefix}/${key}`] = value;
+    });
+    return out;
+  }
+
   async function syncSceneMapToRoomBgm(scene){
     if (!ROOT.St?.isGM || !ROOT._FB?.CONFIGURED || !ROOT.St?.roomCode) return;
     try {
       const { db, ref, update } = ROOT._FB;
-      await update(ref(db, `rooms/${ROOT.St.roomCode}/bgm`), buildSceneBgmPayload(scene));
+      const legacyBgmPayload = buildSceneBgmPayload(scene);
+      await update(ref(db, `rooms/${ROOT.St.roomCode}`), {
+        mapState: buildSceneMapStatePayload(scene),
+        mapLayerState: scene?.layerState ? deepCopy(scene.layerState) : null,
+        ...prefixRoomPayload('bgm', legacyBgmPayload),
+      });
     } catch (e) {
-      console.warn('scene bgm sync failed', e);
+      console.warn('scene map sync failed', e);
     }
   }
 

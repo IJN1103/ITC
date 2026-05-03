@@ -735,17 +735,19 @@
       };
       const nextLayerState = buildDefaultImportedMapLayerState(nextMapState);
       const { db, ref, update } = window._FB;
-      await update(ref(db, `rooms/${roomCode}/bgm`), {
-        mapBackground: nextMapState.background.url,
-        mapBackgroundFit: nextMapState.background.fit,
-        mapBackgroundSourceName: nextMapState.background.sourceName || '',
-        mapBackgroundImportedAt: nextMapState.background.importedAt || Date.now(),
-        mapForeground: '',
-        mapForegroundFit: '',
-        mapForegroundSourceName: '',
-        mapForegroundImportedAt: 0,
-        mapObjects: nextMapState.objects || [],
+      await update(ref(db, `rooms/${roomCode}`), {
+        mapState: nextMapState,
         mapLayerState: nextLayerState,
+        'bgm/mapBackground': nextMapState.background.url,
+        'bgm/mapBackgroundFit': nextMapState.background.fit,
+        'bgm/mapBackgroundSourceName': nextMapState.background.sourceName || '',
+        'bgm/mapBackgroundImportedAt': nextMapState.background.importedAt || Date.now(),
+        'bgm/mapForeground': '',
+        'bgm/mapForegroundFit': '',
+        'bgm/mapForegroundSourceName': '',
+        'bgm/mapForegroundImportedAt': 0,
+        'bgm/mapObjects': nextMapState.objects || [],
+        'bgm/mapLayerState': nextLayerState,
       });
       if (window.St) window.St.mapLayerState = nextLayerState;
       setSummary(buildValidationSummary(pendingFile, validated.parsed) + `<br><br><b>맵 이미지 적용 완료</b><br>스크린 패널 ${importedPanelTokens.length}개 생성 / 레이어 항목 유지`);

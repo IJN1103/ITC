@@ -218,6 +218,8 @@
     });
 
     const payload = {
+      mapState: stateRoot.mapState,
+      mapLayerState: nextLayerState,
       'bgm/mapObjects': nextObjects,
       'bgm/mapLayerState': nextLayerState,
     };
@@ -285,6 +287,8 @@
     });
 
     const payload = {
+      mapState: stateRoot.mapState,
+      mapLayerState: nextLayerState,
       'bgm/mapBackground': '',
       'bgm/mapBackgroundFit': '',
       'bgm/mapBackgroundSourceName': '',
@@ -416,6 +420,7 @@
     const roomCode = getLiveRoomCode();
     if (!roomCode || roomCode === 'local') return;
     const payload = {
+      mapLayerState: normalized,
       'bgm/mapLayerState': normalized,
       ...prefixTokenPayload(getImportedPanelPriorityPayload(normalized.order)),
       ...prefixTokenPayload(getImportedPanelVisibilityPayload(normalized.visible)),

@@ -24,6 +24,9 @@ let _presenceServerOffsetMs = 0;
 let _legacyDmRecoveryRooms = new Set();
 let _lastAppliedBgmMapSignature = '';
 let _lastAppliedBgmPlaybackSignature = '';
+let _latestLegacyRoomMapState = { hasValue: false, mapState: { background: null, foreground: null, objects: [] }, layerState: null };
+let _latestDedicatedRoomMapState = { hasValue: false, mapState: null };
+let _latestDedicatedRoomLayerState = { hasValue: false, layerState: null };
 const ITC_PRESENCE_HEARTBEAT_MS = 15000;
 const ITC_PRESENCE_STALE_MS = 45000;
 
@@ -273,6 +276,9 @@ function cleanupFirebaseListeners() {
   _chatRecordsByChannel = new Map();
   _lastAppliedBgmMapSignature = '';
   _lastAppliedBgmPlaybackSignature = '';
+  _latestLegacyRoomMapState = { hasValue: false, mapState: { background: null, foreground: null, objects: [] }, layerState: null };
+  _latestDedicatedRoomMapState = { hasValue: false, mapState: null };
+  _latestDedicatedRoomLayerState = { hasValue: false, layerState: null };
   _activeChatChannelKey = 'global';
   window._itcActiveChatChannelKey = 'global';
   try {
@@ -1133,39 +1139,125 @@ function applyBgmPlaybackStateIfChanged(bgm = {}) {
   }
 }
 
-function buildBgmMapStateSignature(bgm = {}) {
+function cloneRoomMapValue(value, fallback = null) {
+  if (value === undefined || value === null) return fallback;
   try {
-    return JSON.stringify({
-      mapBackground: bgm?.mapBackground || '',
-      mapBackgroundFit: bgm?.mapBackgroundFit || '',
-      mapBackgroundSourceName: bgm?.mapBackgroundSourceName || '',
-      mapBackgroundImportedAt: bgm?.mapBackgroundImportedAt || 0,
-      mapForeground: bgm?.mapForeground || '',
-      mapForegroundFit: bgm?.mapForegroundFit || '',
-      mapObjects: Array.isArray(bgm?.mapObjects) ? bgm.mapObjects : [],
-      mapLayerState: bgm?.mapLayerState || null,
-    });
+    return JSON.parse(JSON.stringify(value));
   } catch (e) {
-    return `${Date.now()}:${Math.random()}`;
+    return fallback;
   }
 }
 
-function applyBgmMapStateIfChanged(bgm = {}) {
-  const signature = buildBgmMapStateSignature(bgm);
+function normalizeRuntimeMapState(value = {}) {
+  const source = value && typeof value === 'object' ? value : {};
+  const background = source.background && typeof source.background === 'object' && source.background.url
+    ? {
+      url: source.background.url,
+      fit: source.background.fit || 'contain',
+      sourceName: source.background.sourceName || '',
+      importedAt: source.background.importedAt || 0,
+    }
+    : null;
+  const foreground = source.foreground && typeof source.foreground === 'object' && source.foreground.url
+    ? {
+      url: source.foreground.url,
+      fit: source.foreground.fit || 'contain',
+      sourceName: source.foreground.sourceName || '',
+      importedAt: source.foreground.importedAt || 0,
+    }
+    : null;
+  return {
+    background,
+    foreground,
+    objects: Array.isArray(source.objects) ? cloneRoomMapValue(source.objects, []) : [],
+  };
+}
+
+function buildLegacyRoomMapStateFromBgm(bgm = {}) {
+  const source = bgm && typeof bgm === 'object' ? bgm : {};
+  return {
+    mapState: {
+      background: source.mapBackground ? {
+        url: source.mapBackground,
+        fit: source.mapBackgroundFit || 'contain',
+        sourceName: source.mapBackgroundSourceName || '',
+        importedAt: source.mapBackgroundImportedAt || 0,
+      } : null,
+      foreground: source.mapForeground ? {
+        url: source.mapForeground,
+        fit: source.mapForegroundFit || 'contain',
+        sourceName: source.mapForegroundSourceName || '',
+        importedAt: source.mapForegroundImportedAt || 0,
+      } : null,
+      objects: Array.isArray(source.mapObjects) ? cloneRoomMapValue(source.mapObjects, []) : [],
+    },
+    layerState: source.mapLayerState && typeof source.mapLayerState === 'object'
+      ? cloneRoomMapValue(source.mapLayerState, null)
+      : null,
+  };
+}
+
+function buildEffectiveRoomMapState() {
+  const fallback = _latestLegacyRoomMapState?.hasValue
+    ? _latestLegacyRoomMapState
+    : { mapState: { background: null, foreground: null, objects: [] }, layerState: null };
+  const mapState = _latestDedicatedRoomMapState?.hasValue
+    ? normalizeRuntimeMapState(_latestDedicatedRoomMapState.mapState || {})
+    : normalizeRuntimeMapState(fallback.mapState || {});
+  const layerState = _latestDedicatedRoomLayerState?.hasValue
+    ? cloneRoomMapValue(_latestDedicatedRoomLayerState.layerState, null)
+    : cloneRoomMapValue(fallback.layerState, null);
+  return { mapState, layerState };
+}
+
+function applyEffectiveRoomMapStateIfChanged(reason = '') {
+  if (!_latestLegacyRoomMapState?.hasValue && !_latestDedicatedRoomMapState?.hasValue && !_latestDedicatedRoomLayerState?.hasValue) return;
+  const effective = buildEffectiveRoomMapState();
+  let signature = '';
+  try {
+    signature = JSON.stringify(effective);
+  } catch (e) {
+    signature = `${Date.now()}:${Math.random()}`;
+  }
   if (signature && signature === _lastAppliedBgmMapSignature) return;
   _lastAppliedBgmMapSignature = signature;
-  St.mapState = {
-    background: bgm.mapBackground ? {
-      url: bgm.mapBackground,
-      fit: bgm.mapBackgroundFit || 'contain',
-      sourceName: bgm.mapBackgroundSourceName || '',
-    } : null,
-    foreground: null,
-    objects: Array.isArray(bgm.mapObjects) ? bgm.mapObjects : [],
-  };
-  St.mapLayerState = bgm.mapLayerState || null;
+  St.mapState = effective.mapState;
+  St.mapLayerState = effective.layerState;
   if (typeof applyImportedMapState === 'function') applyImportedMapState(St.mapState);
   if (typeof refreshMapLayerManager === 'function') refreshMapLayerManager();
+  try {
+    if (window.ITC_DEBUG_MAP === true || localStorage.getItem('ITC_DEBUG_MAP') === 'true') {
+      console.debug('[ITC_MAP_DEBUG] room-map-applied', {
+        reason,
+        dedicatedMapState: !!_latestDedicatedRoomMapState?.hasValue,
+        dedicatedLayerState: !!_latestDedicatedRoomLayerState?.hasValue,
+      });
+    }
+  } catch (e) {}
+}
+
+function applyLegacyBgmMapStateIfChanged(bgm = {}) {
+  _latestLegacyRoomMapState = {
+    hasValue: true,
+    ...buildLegacyRoomMapStateFromBgm(bgm),
+  };
+  applyEffectiveRoomMapStateIfChanged('legacy-bgm-map');
+}
+
+function applyDedicatedRoomMapStateSnapshot(snap) {
+  _latestDedicatedRoomMapState = {
+    hasValue: !!snap?.exists?.(),
+    mapState: snap?.exists?.() ? normalizeRuntimeMapState(snap.val() || {}) : null,
+  };
+  applyEffectiveRoomMapStateIfChanged('dedicated-mapState');
+}
+
+function applyDedicatedRoomLayerStateSnapshot(snap) {
+  _latestDedicatedRoomLayerState = {
+    hasValue: !!snap?.exists?.(),
+    layerState: snap?.exists?.() ? cloneRoomMapValue(snap.val(), null) : null,
+  };
+  applyEffectiveRoomMapStateIfChanged('dedicated-mapLayerState');
 }
 
 function resetRoomScopedUiState() {
@@ -1196,6 +1288,9 @@ function resetRoomScopedUiState() {
   _chatRecordsByChannel = new Map();
   _lastAppliedBgmMapSignature = '';
   _lastAppliedBgmPlaybackSignature = '';
+  _latestLegacyRoomMapState = { hasValue: false, mapState: { background: null, foreground: null, objects: [] }, layerState: null };
+  _latestDedicatedRoomMapState = { hasValue: false, mapState: null };
+  _latestDedicatedRoomLayerState = { hasValue: false, layerState: null };
   _activeChatChannelKey = 'global';
   window._itcActiveChatChannelKey = 'global';
 }
@@ -1372,7 +1467,15 @@ function setupFirebaseListeners() {
   trackFirebaseListener(onValue(ref(db, `rooms/${code}/bgm`), snap => {
     const bgm = snap.val() || {};
     applyBgmPlaybackStateIfChanged(bgm);
-    applyBgmMapStateIfChanged(bgm);
+    applyLegacyBgmMapStateIfChanged(bgm);
+  }));
+
+  trackFirebaseListener(onValue(ref(db, `rooms/${code}/mapState`), snap => {
+    applyDedicatedRoomMapStateSnapshot(snap);
+  }));
+
+  trackFirebaseListener(onValue(ref(db, `rooms/${code}/mapLayerState`), snap => {
+    applyDedicatedRoomLayerStateSnapshot(snap);
   }));
 
   trackFirebaseListener(onValue(ref(db, `rooms/${code}/lastRoll`), snap => {
