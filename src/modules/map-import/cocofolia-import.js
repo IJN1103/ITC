@@ -749,7 +749,22 @@
         'bgm/mapObjects': nextMapState.objects || [],
         'bgm/mapLayerState': nextLayerState,
       });
-      if (window.St) window.St.mapLayerState = nextLayerState;
+      if (window.St) {
+        window.St.mapState = nextMapState;
+        window.St.mapLayerState = nextLayerState;
+      }
+      if (typeof window._itcApplyRoomMapStateLocal === 'function') {
+        try {
+          window._itcApplyRoomMapStateLocal(nextMapState, nextLayerState, 'map-import-local');
+        } catch (e) {
+          console.warn('map import local map state apply failed', e);
+          applyImportedMapState(nextMapState);
+          if (typeof refreshMapLayerManager === 'function') refreshMapLayerManager();
+        }
+      } else {
+        applyImportedMapState(nextMapState);
+        if (typeof refreshMapLayerManager === 'function') refreshMapLayerManager();
+      }
       setSummary(buildValidationSummary(pendingFile, validated.parsed) + `<br><br><b>맵 이미지 적용 완료</b><br>스크린 패널 ${importedPanelTokens.length}개 생성 / 레이어 항목 유지`);
       if (typeof showToast === 'function') showToast('맵 이미지 + 스크린 패널 적용 완료');
     } catch (err) {

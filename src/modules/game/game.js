@@ -1260,6 +1260,29 @@ function applyDedicatedRoomLayerStateSnapshot(snap) {
   applyEffectiveRoomMapStateIfChanged('dedicated-mapLayerState');
 }
 
+function applyLocalRoomMapState(mapState, layerState, reason = 'local-room-map-state') {
+  const hasMapStateArg = arguments.length >= 1 && mapState !== undefined;
+  const hasLayerStateArg = arguments.length >= 2 && layerState !== undefined;
+
+  if (hasMapStateArg) {
+    _latestDedicatedRoomMapState = {
+      hasValue: true,
+      mapState: normalizeRuntimeMapState(mapState || {}),
+    };
+  }
+  if (hasLayerStateArg) {
+    _latestDedicatedRoomLayerState = {
+      hasValue: true,
+      layerState: cloneRoomMapValue(layerState, null),
+    };
+  }
+  applyEffectiveRoomMapStateIfChanged(reason || 'local-room-map-state');
+}
+
+try {
+  window._itcApplyRoomMapStateLocal = applyLocalRoomMapState;
+} catch (e) {}
+
 function resetRoomScopedUiState() {
   if (window.St) {
     St.tokens = {};

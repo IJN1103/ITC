@@ -429,14 +429,26 @@
 
   function applyMapPartToRuntime(scene){
     if (!scene) return;
-    ROOT.St.mapState = {
+    const nextMapState = {
       background: scene.background ? deepCopy(scene.background) : null,
       foreground: null,
       objects: Array.isArray(scene.objects) ? deepCopy(scene.objects) : [],
     };
-    ROOT.St.mapLayerState = scene.layerState ? deepCopy(scene.layerState) : null;
-    if (typeof ROOT.applyImportedMapState === 'function') ROOT.applyImportedMapState(ROOT.St.mapState);
-    requestSceneLayerRefresh('map-part');
+    const nextLayerState = scene.layerState ? deepCopy(scene.layerState) : null;
+    ROOT.St.mapState = nextMapState;
+    ROOT.St.mapLayerState = nextLayerState;
+    if (typeof ROOT._itcApplyRoomMapStateLocal === 'function') {
+      try {
+        ROOT._itcApplyRoomMapStateLocal(nextMapState, nextLayerState, 'scene-map-local');
+      } catch (e) {
+        console.warn('scene local room map state apply failed', e);
+        if (typeof ROOT.applyImportedMapState === 'function') ROOT.applyImportedMapState(ROOT.St.mapState);
+        requestSceneLayerRefresh('map-part');
+      }
+    } else {
+      if (typeof ROOT.applyImportedMapState === 'function') ROOT.applyImportedMapState(ROOT.St.mapState);
+      requestSceneLayerRefresh('map-part');
+    }
   }
 
   function buildSceneBgmPayload(scene){
@@ -1125,6 +1137,33 @@
   }
 
   /* ── render ── */
+  function refreshSceneItemRuntimeClasses(){
+    const listEl = document.getElementById('map-scene-list');
+    if (!listEl) return;
+    listEl.querySelectorAll('.map-scene-item').forEach(function(btn){
+      const sceneId = btn.dataset.sceneId || '';
+      const isSelected = sceneId === state.selectedSceneId;
+      const isActive = sceneId === state.activeSceneId;
+      btn.classList.toggle('is-selected', isSelected);
+      btn.classList.toggle('is-active', isActive);
+      const meta = btn.querySelector('.map-scene-item-meta');
+      if (meta) {
+        const base = String(meta.textContent || '').replace(/^현재 표시 중|^대기 중/, '');
+        meta.textContent = (isActive ? '현재 표시 중' : '대기 중') + base;
+      }
+      const thumb = btn.querySelector('.map-scene-thumb');
+      const badge = thumb?.querySelector('.map-scene-badge');
+      if (thumb && isActive && !badge) {
+        const span = document.createElement('span');
+        span.className = 'map-scene-badge';
+        span.textContent = 'LIVE';
+        thumb.insertBefore(span, thumb.firstChild);
+      } else if (badge && !isActive) {
+        badge.remove();
+      }
+    });
+  }
+
   function renderSceneList(){
     const listEl = document.getElementById('map-scene-list');
     const emptyEl = document.getElementById('map-scene-empty');
@@ -1159,8 +1198,12 @@
           e.preventDefault();
           return;
         }
-        state.selectedSceneId = btn.dataset.sceneId || '';
-        renderSceneList();
+        const nextSelectedId = btn.dataset.sceneId || '';
+        if (!nextSelectedId || state.selectedSceneId === nextSelectedId) return;
+        state.selectedSceneId = nextSelectedId;
+        // 더블클릭 전환은 첫 click 직후 DOM을 갈아끼우면 dblclick 이벤트가 끊길 수 있다.
+        // 선택 표시만 즉시 갱신하고 전체 목록 재렌더는 이름/순서 변경 같은 구조 변경 때만 수행한다.
+        refreshSceneItemRuntimeClasses();
       });
       btn.addEventListener('dblclick', function(e){
         if (Date.now() < _sceneSuppressClickUntil) {

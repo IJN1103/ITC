@@ -91,6 +91,18 @@
     }
   }
 
+  function pushLocalRoomMapState(mapState, layerState, reason) {
+    const root = (typeof window !== 'undefined' ? window : globalThis);
+    if (typeof root._itcApplyRoomMapStateLocal !== 'function') return false;
+    try {
+      root._itcApplyRoomMapStateLocal(mapState, layerState, reason || 'map-layer-local');
+      return true;
+    } catch (e) {
+      console.warn('pushLocalRoomMapState failed', reason || '', e);
+      return false;
+    }
+  }
+
   function getDropInsertIndex(order, targetId, position) {
     const targetIndex = order.indexOf(targetId);
     if (targetIndex < 0) return order.length;
@@ -202,8 +214,10 @@
     removeImportedPanelTokensFromLocalState(removed.map((item) => item?.panelTokenId));
     stateRoot.mapState = { ...currentState, objects: nextObjects };
     stateRoot.mapLayerState = nextLayerState;
-    if (typeof applyImportedMapState === 'function') applyImportedMapState(stateRoot.mapState);
-    applyMapLayerState();
+    if (!pushLocalRoomMapState(stateRoot.mapState, nextLayerState, 'map-layer-delete-local')) {
+      if (typeof applyImportedMapState === 'function') applyImportedMapState(stateRoot.mapState);
+      applyMapLayerState();
+    }
     renderMapLayerList();
     requestActiveSceneSave('map-layer-delete');
 
@@ -272,8 +286,10 @@
     removeImportedPanelTokensFromLocalState(deletable.map((item) => item?.panelTokenId));
     stateRoot.mapState = { ...currentState, background: null, objects: nextObjects };
     stateRoot.mapLayerState = nextLayerState;
-    if (typeof applyImportedMapState === 'function') applyImportedMapState(stateRoot.mapState);
-    applyMapLayerState();
+    if (!pushLocalRoomMapState(stateRoot.mapState, nextLayerState, 'map-layer-delete-all-local')) {
+      if (typeof applyImportedMapState === 'function') applyImportedMapState(stateRoot.mapState);
+      applyMapLayerState();
+    }
     renderMapLayerList();
     requestActiveSceneSave('map-layer-delete');
 
@@ -413,8 +429,10 @@
 
   async function saveMapLayerState(nextState) {
     const normalized = normalizeLayerState(nextState);
-    getStateRoot().mapLayerState = normalized;
+    const stateRoot = getStateRoot();
+    stateRoot.mapLayerState = normalized;
     applyMapLayerState();
+    pushLocalRoomMapState(undefined, normalized, 'map-layer-state-local');
     requestActiveSceneSave('map-layer-state-change');
     if (!window._FB?.CONFIGURED) return;
     const roomCode = getLiveRoomCode();
