@@ -23,6 +23,7 @@ let _presenceUiTimer = null;
 let _presenceServerOffsetMs = 0;
 let _legacyDmRecoveryRooms = new Set();
 let _lastAppliedBgmMapSignature = '';
+let _lastAppliedBgmPlaybackSignature = '';
 const ITC_PRESENCE_HEARTBEAT_MS = 15000;
 const ITC_PRESENCE_STALE_MS = 45000;
 
@@ -271,6 +272,7 @@ function cleanupFirebaseListeners() {
   _chatMessageSignaturesByChannel = new Map();
   _chatRecordsByChannel = new Map();
   _lastAppliedBgmMapSignature = '';
+  _lastAppliedBgmPlaybackSignature = '';
   _activeChatChannelKey = 'global';
   window._itcActiveChatChannelKey = 'global';
   try {
@@ -1082,6 +1084,55 @@ function handleDmChannelChange(ev) {
 }
 
 
+function buildBgmPlaybackState(bgm = {}) {
+  const source = bgm && typeof bgm === 'object' ? bgm : {};
+  const playback = {
+    playlist: Array.isArray(source.playlist) ? source.playlist : [],
+    currentTrack: Number.isInteger(source.currentTrack) ? source.currentTrack : -1,
+    repeatMode: source.repeatMode || 'off',
+    seek: source.seek && typeof source.seek === 'object' ? source.seek : null,
+    playlistUpdatedAt: Number(source.playlistUpdatedAt || 0),
+    playbackPosition: Number(source.playbackPosition || 0),
+    playbackStartedAt: Number(source.playbackStartedAt || 0),
+    playbackUpdatedAt: Number(source.playbackUpdatedAt || 0),
+    playbackBy: source.playbackBy || '',
+  };
+  if (Object.prototype.hasOwnProperty.call(source, 'isPlaying')) playback.isPlaying = source.isPlaying === true;
+  return playback;
+}
+
+function buildBgmPlaybackSignature(bgm = {}) {
+  try {
+    return JSON.stringify(buildBgmPlaybackState(bgm));
+  } catch (e) {
+    return `${Date.now()}:${Math.random()}`;
+  }
+}
+
+function applyBgmPlaybackStateIfChanged(bgm = {}) {
+  const signature = buildBgmPlaybackSignature(bgm);
+  if (signature && signature === _lastAppliedBgmPlaybackSignature) return;
+  _lastAppliedBgmPlaybackSignature = signature;
+
+  const playback = buildBgmPlaybackState(bgm);
+  if (typeof syncBgmRemoteState === 'function') {
+    try {
+      syncBgmRemoteState(playback);
+    } catch (e) {
+      console.warn('[game] syncBgmRemoteState failed', e);
+    }
+    return;
+  }
+
+  if (Array.isArray(playback.playlist)) {
+    St.playlist = playback.playlist;
+    try { if (typeof renderPlaylist === 'function') renderPlaylist(); } catch (e) {}
+  }
+  if (playback.currentTrack !== undefined && playback.currentTrack !== St.currentTrack) {
+    try { if (typeof playTrack === 'function') playTrack(playback.currentTrack, { fromRemote: true }); } catch (e) {}
+  }
+}
+
 function buildBgmMapStateSignature(bgm = {}) {
   try {
     return JSON.stringify({
@@ -1144,6 +1195,7 @@ function resetRoomScopedUiState() {
   _chatMessageSignaturesByChannel = new Map();
   _chatRecordsByChannel = new Map();
   _lastAppliedBgmMapSignature = '';
+  _lastAppliedBgmPlaybackSignature = '';
   _activeChatChannelKey = 'global';
   window._itcActiveChatChannelKey = 'global';
 }
@@ -1319,14 +1371,7 @@ function setupFirebaseListeners() {
 
   trackFirebaseListener(onValue(ref(db, `rooms/${code}/bgm`), snap => {
     const bgm = snap.val() || {};
-    if (typeof syncBgmRemoteState === 'function') {
-      syncBgmRemoteState(bgm);
-    } else {
-      if (Array.isArray(bgm.playlist)) { St.playlist = bgm.playlist; renderPlaylist(); }
-      if (bgm.currentTrack !== undefined && bgm.currentTrack !== St.currentTrack) {
-        playTrack(bgm.currentTrack, { fromRemote: true });
-      }
-    }
+    applyBgmPlaybackStateIfChanged(bgm);
     applyBgmMapStateIfChanged(bgm);
   }));
 
