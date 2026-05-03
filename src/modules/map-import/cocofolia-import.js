@@ -81,6 +81,52 @@
     return String(src || '').replace(/"/g, '%22');
   }
 
+  function buildCssBackgroundImage(src) {
+    const raw = String(src || '').trim();
+    return raw ? `url("${cssImageUrl(raw)}")` : '';
+  }
+
+  function setLazyMapLayerBackground(el, src, max = 1600, shouldLoadNow = true) {
+    if (!el) return;
+    const displaySrc = getMapDisplayImageUrl(src, max);
+    if (!displaySrc) {
+      delete el.dataset.itcMapLazyBgSrc;
+      el.style.backgroundImage = '';
+      return;
+    }
+    const next = String(displaySrc || '').trim();
+    el.dataset.itcMapLazyBgSrc = next;
+    if (shouldLoadNow && !el.classList.contains('map-layer-runtime-hidden')) {
+      el.style.backgroundImage = buildCssBackgroundImage(next);
+    } else {
+      el.style.backgroundImage = '';
+    }
+  }
+
+  function ensureLazyMapLayerElementImage(el) {
+    if (!el) return;
+    const lazyBg = String(el.dataset?.itcMapLazyBgSrc || '').trim();
+    if (lazyBg && !el.style.backgroundImage) {
+      el.style.backgroundImage = buildCssBackgroundImage(lazyBg);
+    }
+    const imgs = el.matches?.('img[data-itc-map-lazy-src]')
+      ? [el]
+      : Array.from(el.querySelectorAll?.('img[data-itc-map-lazy-src]') || []);
+    imgs.forEach((img) => {
+      const src = String(img.dataset.itcMapLazySrc || '').trim();
+      if (!src || img.getAttribute('src') === src) return;
+      img.src = src;
+    });
+  }
+
+  function clearLazyMapLayerElementImage(el) {
+    if (!el) return;
+    const lazyBg = String(el.dataset?.itcMapLazyBgSrc || '').trim();
+    if (lazyBg && el.style.backgroundImage) {
+      el.style.backgroundImage = '';
+    }
+  }
+
   function isMapLayerVisible(layerId) {
     const visible = window.St?.mapLayerState?.visible;
     if (!visible || typeof visible !== 'object') return true;
@@ -90,15 +136,17 @@
   function applyMapLayerElementVisibility(el, visible) {
     if (!el) return;
     if (visible) {
+      el.classList.remove('map-layer-runtime-hidden');
       el.style.display = '';
       el.style.visibility = '';
       el.style.opacity = '';
-      el.classList.remove('map-layer-runtime-hidden');
+      ensureLazyMapLayerElementImage(el);
     } else {
       el.style.display = 'none';
       el.style.visibility = 'hidden';
       el.style.opacity = '0';
       el.classList.add('map-layer-runtime-hidden');
+      clearLazyMapLayerElementImage(el);
     }
   }
 
@@ -115,23 +163,25 @@
     const objects = Array.isArray(mapState?.objects) ? mapState.objects : [];
     if (bgLayer) {
       if (!background?.url) {
-        bgLayer.style.backgroundImage = '';
+        setLazyMapLayerBackground(bgLayer, '');
         bgLayer.style.backgroundSize = 'contain';
       } else {
         const fit = String(background.fit || 'contain').trim() || 'contain';
-        bgLayer.style.backgroundImage = `url("${cssImageUrl(getMapDisplayImageUrl(background.url, 2048))}")`;
+        const bgVisible = isMapLayerVisible('background');
+        setLazyMapLayerBackground(bgLayer, background.url, 2048, bgVisible);
         bgLayer.style.backgroundSize = fit === 'fill' ? '100% 100%' : (fit === 'cover' ? 'cover' : 'contain');
       }
       applyMapLayerElementVisibility(bgLayer, !!background?.url && isMapLayerVisible('background'));
     }
     if (fgLayer) {
       if (!foreground?.url) {
-        fgLayer.style.backgroundImage = '';
+        setLazyMapLayerBackground(fgLayer, '');
         fgLayer.style.backgroundSize = 'contain';
       } else {
         const fit = String(foreground.fit || 'contain').trim() || 'contain';
-        fgLayer.style.backgroundImage = `url("${cssImageUrl(getMapDisplayImageUrl(foreground.url, 2048))}")`;
+        setLazyMapLayerBackground(fgLayer, foreground.url, 2048);
         fgLayer.style.backgroundSize = fit === 'fill' ? '100% 100%' : (fit === 'cover' ? 'cover' : 'contain');
+        ensureLazyMapLayerElementImage(fgLayer);
       }
     }
     clearImportedMapObjects();
@@ -148,9 +198,10 @@
       el.style.top = `${Number(item.yPct || 0)}%`;
       el.style.width = `${Number(item.wPct || 0)}%`;
       el.style.height = `${Number(item.hPct || 0)}%`;
-      el.style.backgroundImage = `url("${cssImageUrl(getMapDisplayImageUrl(item.url, 1600))}")`;
+      const layerVisible = isMapLayerVisible(layerId);
+      setLazyMapLayerBackground(el, item.url, 1600, layerVisible);
       el.style.transform = `rotate(${Number(item.angle || 0)}deg)`;
-      applyMapLayerElementVisibility(el, isMapLayerVisible(layerId));
+      applyMapLayerElementVisibility(el, layerVisible);
       mapInner.appendChild(el);
     });
   }
@@ -297,16 +348,22 @@
     const resources = parsed?.resources || {};
     const version = parsed?.meta?.version || '알 수 없음';
     const gridLabel = room.displayGrid ? '표시' : '숨김';
-    return [
+    const itemCount = Object.keys(items).length;
+    const resourceCount = Object.keys(resources).length;
+    const lines = [
       `<b>검사 완료</b>`,
       `파일명: ${escapeHtml(file.name)}`,
       `버전: ${escapeHtml(version)}`,
       `맵 이미지: ${(room.backgroundUrl || room.foregroundUrl) ? '있음' : '없음'}`,
-      `item 수: ${Object.keys(items).length}개`,
-      `리소스 수: ${Object.keys(resources).length}개`,
+      `item 수: ${itemCount}개`,
+      `리소스 수: ${resourceCount}개`,
       `그리드: ${gridLabel} / 크기 ${Number(room.gridSize || 0) || 0}`,
       `배경 + 전경 + image item 오브젝트 일부를 실제 맵에 적용할 수 있습니다.`,
-    ].join('<br>') + buildApplyActions();
+    ];
+    if (itemCount >= 80 || resourceCount >= 120) {
+      lines.push(`<span style="color:#e6c58a">주의: 오브젝트/리소스 수가 많은 ZIP입니다. 적용 직후 몇 초간 업로드와 렌더링이 무거울 수 있어요.</span>`);
+    }
+    return lines.join('<br>') + buildApplyActions();
   }
 
   function validateParsedCocofoliaData(data) {
@@ -702,6 +759,7 @@
   }
 
   window.applyImportedMapState = applyImportedMapState;
+  window.ensureLazyMapLayerElementImage = ensureLazyMapLayerElementImage;
   window.applyValidatedMapBackground = applyValidatedMapBackground;
   window.openMapImportModal = openMapImportModal;
   window.handleMapImportFile = handleMapImportFile;

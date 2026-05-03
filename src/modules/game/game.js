@@ -22,6 +22,7 @@ let _presenceHeartbeatTimer = null;
 let _presenceUiTimer = null;
 let _presenceServerOffsetMs = 0;
 let _legacyDmRecoveryRooms = new Set();
+let _lastAppliedBgmMapSignature = '';
 const ITC_PRESENCE_HEARTBEAT_MS = 15000;
 const ITC_PRESENCE_STALE_MS = 45000;
 
@@ -269,6 +270,7 @@ function cleanupFirebaseListeners() {
   _processedChatKeysByChannel = new Map();
   _chatMessageSignaturesByChannel = new Map();
   _chatRecordsByChannel = new Map();
+  _lastAppliedBgmMapSignature = '';
   _activeChatChannelKey = 'global';
   window._itcActiveChatChannelKey = 'global';
   try {
@@ -1079,6 +1081,42 @@ function handleDmChannelChange(ev) {
   });
 }
 
+
+function buildBgmMapStateSignature(bgm = {}) {
+  try {
+    return JSON.stringify({
+      mapBackground: bgm?.mapBackground || '',
+      mapBackgroundFit: bgm?.mapBackgroundFit || '',
+      mapBackgroundSourceName: bgm?.mapBackgroundSourceName || '',
+      mapBackgroundImportedAt: bgm?.mapBackgroundImportedAt || 0,
+      mapForeground: bgm?.mapForeground || '',
+      mapForegroundFit: bgm?.mapForegroundFit || '',
+      mapObjects: Array.isArray(bgm?.mapObjects) ? bgm.mapObjects : [],
+      mapLayerState: bgm?.mapLayerState || null,
+    });
+  } catch (e) {
+    return `${Date.now()}:${Math.random()}`;
+  }
+}
+
+function applyBgmMapStateIfChanged(bgm = {}) {
+  const signature = buildBgmMapStateSignature(bgm);
+  if (signature && signature === _lastAppliedBgmMapSignature) return;
+  _lastAppliedBgmMapSignature = signature;
+  St.mapState = {
+    background: bgm.mapBackground ? {
+      url: bgm.mapBackground,
+      fit: bgm.mapBackgroundFit || 'contain',
+      sourceName: bgm.mapBackgroundSourceName || '',
+    } : null,
+    foreground: null,
+    objects: Array.isArray(bgm.mapObjects) ? bgm.mapObjects : [],
+  };
+  St.mapLayerState = bgm.mapLayerState || null;
+  if (typeof applyImportedMapState === 'function') applyImportedMapState(St.mapState);
+  if (typeof refreshMapLayerManager === 'function') refreshMapLayerManager();
+}
+
 function resetRoomScopedUiState() {
   if (window.St) {
     St.tokens = {};
@@ -1105,6 +1143,7 @@ function resetRoomScopedUiState() {
   _processedChatKeysByChannel = new Map();
   _chatMessageSignaturesByChannel = new Map();
   _chatRecordsByChannel = new Map();
+  _lastAppliedBgmMapSignature = '';
   _activeChatChannelKey = 'global';
   window._itcActiveChatChannelKey = 'global';
 }
@@ -1288,18 +1327,7 @@ function setupFirebaseListeners() {
         playTrack(bgm.currentTrack, { fromRemote: true });
       }
     }
-    St.mapState = {
-      background: bgm.mapBackground ? {
-        url: bgm.mapBackground,
-        fit: bgm.mapBackgroundFit || 'contain',
-        sourceName: bgm.mapBackgroundSourceName || '',
-      } : null,
-      foreground: null,
-      objects: Array.isArray(bgm.mapObjects) ? bgm.mapObjects : [],
-    };
-    St.mapLayerState = bgm.mapLayerState || null;
-    if (typeof applyImportedMapState === 'function') applyImportedMapState(St.mapState);
-    if (typeof refreshMapLayerManager === 'function') refreshMapLayerManager();
+    applyBgmMapStateIfChanged(bgm);
   }));
 
   trackFirebaseListener(onValue(ref(db, `rooms/${code}/lastRoll`), snap => {

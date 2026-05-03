@@ -1287,8 +1287,14 @@ function createTokenEl(t) {
   if (tokenImgSrc) {
     el.textContent = '';
     const img = document.createElement('img');
-    img.src = tokenImgSrc;
+    if (isPanel && t.importedMapObject === true && t.importedMapObjectHidden === true) {
+      img.dataset.itcMapLazySrc = tokenImgSrc;
+    } else {
+      img.src = tokenImgSrc;
+    }
     if (isPanel) {
+      img.loading = 'lazy';
+      img.decoding = 'async';
       img.className = 'panel-token-display-img';
       img.style.cssText = 'width:100%;height:100%;object-fit:fill;pointer-events:none;display:block;';
       el.classList.add('panel-token-has-image');

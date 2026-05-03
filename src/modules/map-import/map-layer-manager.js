@@ -123,15 +123,19 @@
   function setLayerElementVisibility(el, visible) {
     if (!el) return;
     if (visible) {
+      el.classList.remove('map-layer-runtime-hidden');
       el.style.display = '';
       el.style.visibility = '';
       el.style.opacity = '';
-      el.classList.remove('map-layer-runtime-hidden');
+      if (typeof window.ensureLazyMapLayerElementImage === 'function') {
+        window.ensureLazyMapLayerElementImage(el);
+      }
     } else {
       el.style.display = 'none';
       el.style.visibility = 'hidden';
       el.style.opacity = '0';
       el.classList.add('map-layer-runtime-hidden');
+      if (el.dataset?.itcMapLazyBgSrc) el.style.backgroundImage = '';
     }
   }
 
