@@ -9,6 +9,40 @@ function getDiceServerTimestamp() {
     : Date.now();
 }
 
+function writeLastRollSafe(rollObj = {}) {
+  if (!window._FB?.CONFIGURED || !St.roomCode) return Promise.resolve(false);
+  const { db, ref, set } = window._FB;
+  if (!db || !ref || typeof set !== 'function') return Promise.resolve(false);
+  return Promise.resolve(set(ref(db, `rooms/${St.roomCode}/lastRoll`), { ...rollObj, time: getDiceServerTimestamp() }))
+    .then(() => true)
+    .catch((err) => {
+      console.warn('[dice] lastRoll write failed', err);
+      return false;
+    });
+}
+
+function sendDiceMessageSafe(senderName, chatText, extra = null, rollObj = null) {
+  if (typeof sendMessage !== 'function') {
+    console.warn('[dice] sendMessage is not ready');
+    if (typeof showToast === 'function') showToast('다이스 전송 준비가 아직 끝나지 않았어요. 잠시 후 다시 시도해주세요.');
+    return Promise.resolve(false);
+  }
+  if (window._FB?.CONFIGURED && !St.roomCode) {
+    if (typeof showToast === 'function') showToast('방 입장 정보가 아직 준비되지 않았어요. 잠시 후 다시 시도해주세요.');
+    return Promise.resolve(false);
+  }
+  return Promise.resolve(sendMessage(senderName, chatText, 'dice', extra))
+    .then(() => {
+      if (rollObj) return writeLastRollSafe(rollObj).then(() => true);
+      return true;
+    })
+    .catch((err) => {
+      console.error('[dice] dice chat send failed', err);
+      if (typeof showToast === 'function') showToast('다이스 결과 전송에 실패했어요. 네트워크/권한 상태를 확인해주세요.');
+      return false;
+    });
+}
+
 const DICE_CONFIGS = {
   coc7: [{l:'D100',s:100,i:'⬡'},{l:'D10',s:10,i:'◆'},{l:'D6',s:6,i:'■'},{l:'D4',s:4,i:'▲'},{l:'D8',s:8,i:'◈'},{l:'D20',s:20,i:'◉'}],
   dx3:  [{l:'DX',s:10,i:'◆',dx:true},{l:'D6',s:6,i:'■'},{l:'D10',s:10,i:'◆'}],
@@ -74,14 +108,9 @@ function rollDice(ci) {
     const extra = speakAsContext
       ? { speakAsAvatar: speakAsContext.speakAsAvatar || null, speakAsJournalId: speakAsContext.speakAsJournalId || null, nameColor: speakAsContext.nameColor || '', tokenId: speakAsContext.tokenId || null, standingLabel: speakAsContext.standingLabel || '' }
       : null;
-    sendMessage(senderName, chatText, 'dice', extra);
+    sendDiceMessageSafe(senderName, chatText, extra, rollObj);
   }
   else addLocalMessage('dice', St.myName, `🎲 [비밀] ${d.l} → ${total}`);
-
-  if (window._FB?.CONFIGURED && !isSecret) {
-    const { db, ref, set } = window._FB;
-    set(ref(db, `rooms/${St.roomCode}/lastRoll`), { ...rollObj, time: getDiceServerTimestamp() });
-  }
 }
 
 function getSkillCheckOutcome(val, r) {
@@ -125,7 +154,16 @@ function sendSkillCheckMessage(name, val, r, outcome) {
         standingLabel: speakAsContext.standingLabel || '',
       }
     : null;
-  sendMessage(senderName, text, 'dice', extra);
+  const rollObj = {
+    playerId: St.myId,
+    player: St.myName,
+    dice: `${name} 판정`,
+    total: Number(r) || 0,
+    rolls: [Number(r) || 0],
+    detail: `${name} 판정(${val}%): ${r}`,
+    time: Date.now(),
+  };
+  sendDiceMessageSafe(senderName, text, extra, rollObj);
 }
 
 function rollSkillCheck(name, val) {
@@ -252,10 +290,6 @@ function rollFromFormula(formula) {
     ? { speakAsAvatar: speakAsContext.speakAsAvatar || null, speakAsJournalId: speakAsContext.speakAsJournalId || null, nameColor: speakAsContext.nameColor || '', tokenId: speakAsContext.tokenId || null, standingLabel: speakAsContext.standingLabel || '' }
     : null;
   showRollResult(rollObj);
-  sendMessage(senderName, chatText, 'dice', extra);
-  if (window._FB?.CONFIGURED) {
-    const { db, ref, set } = window._FB;
-    set(ref(db, `rooms/${St.roomCode}/lastRoll`), { ...rollObj, time: getDiceServerTimestamp() });
-  }
+  sendDiceMessageSafe(senderName, chatText, extra, rollObj);
 }
 

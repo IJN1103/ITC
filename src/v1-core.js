@@ -191,13 +191,36 @@ function editMsg(div) {
   textEl.onblur = () => finishEdit();
 }
 
-function deleteMsg(div) {
-  const key = div.dataset.msgKey;
-  const channel = div.dataset.channel || 'chat';
+async function deleteMsg(div) {
+  const key = String(div?.dataset?.msgKey || '').trim();
+  const channel = String(div?.dataset?.channel || 'chat').trim() || 'chat';
+  if (!key) return;
   if (!confirm('이 메시지를 삭제할까요?')) return;
-  if (window._FB?.CONFIGURED) {
-    const { db, ref, remove } = window._FB;
-    remove(ref(db, `rooms/${St.roomCode}/${channel}/${key}`));
+  const actionButtons = Array.from(div.querySelectorAll('.msg-act-btn'));
+  actionButtons.forEach((btn) => { btn.disabled = true; });
+
+  try {
+    if (window._FB?.CONFIGURED) {
+      const { db, ref, remove } = window._FB;
+      if (!db || !ref || typeof remove !== 'function') throw new Error('Firebase remove helper missing');
+      if (!St.roomCode) throw new Error('roomCode missing');
+      await remove(ref(db, `rooms/${St.roomCode}/${channel}/${key}`));
+
+      if (channel === 'chat') {
+        const activeDmKey = String(window._itcActiveChatChannelKey || '').trim();
+        if (activeDmKey && activeDmKey !== 'global') {
+          try { await remove(ref(db, `rooms/${St.roomCode}/dmMessageIndex/${activeDmKey}/${key}`)); } catch (e) {}
+          try { await remove(ref(db, `rooms/${St.roomCode}/dmChats/${activeDmKey}/messages/${key}`)); } catch (e) {}
+        }
+      }
+    }
+
+    if (channel === 'casual' && typeof removeCasualMsg === 'function') removeCasualMsg(key);
+    else if (typeof removeChatMsg === 'function') removeChatMsg(key, channel);
+  } catch (err) {
+    console.error('deleteMsg failed', err);
+    showToast('메시지 삭제에 실패했어요. 새로고침 후 다시 시도해주세요.');
+    actionButtons.forEach((btn) => { btn.disabled = false; });
   }
 }
 

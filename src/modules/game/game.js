@@ -405,6 +405,19 @@ function cacheChannelMessages(channelKey = 'global', records = [], options = {})
   }
 }
 
+function removeCachedChannelMessage(channelKey = 'global', messageKey = '') {
+  const safeKey = String(channelKey || 'global').trim() || 'global';
+  const safeMessageKey = String(messageKey || '').trim();
+  if (!safeMessageKey) return false;
+  const records = Array.isArray(_chatRecordsByChannel.get(safeKey)) ? _chatRecordsByChannel.get(safeKey) : [];
+  if (!records.length) return false;
+  const next = records.filter((record) => String(record?._key || '') !== safeMessageKey);
+  if (next.length === records.length) return false;
+  _chatRecordsByChannel.set(safeKey, next);
+  return true;
+}
+
+
 window.getChatRecordsForChannel = function(channelKey = 'global') {
   const safeKey = String(channelKey || 'global').trim() || 'global';
   const records = Array.isArray(_chatRecordsByChannel.get(safeKey)) ? _chatRecordsByChannel.get(safeKey) : [];
@@ -896,8 +909,8 @@ window.loadOlderMessagesForPopout = async function(channel = 'chat', channelKey 
 function switchActiveChatChannel(channelKey = 'global') {
   if (!window._FB?.CONFIGURED || !St.roomCode) return;
   const safeChannelKey = String(channelKey || 'global').trim() || 'global';
-  const { db, ref, onValue, query, limitToLast, orderByChild, equalTo } = window._FB;
-  if (safeChannelKey === _activeChatChannelKey && _activeChatChannelUnsubs.length === 1) {
+  const { db, ref, onValue, onChildRemoved, query, limitToLast, orderByChild, equalTo } = window._FB;
+  if (safeChannelKey === _activeChatChannelKey && _activeChatChannelUnsubs.length > 0) {
     window._itcActiveChatChannelKey = safeChannelKey;
     logItcChatDebug('switch-active-channel-skip-same', { channelKey: safeChannelKey }, { throttleMs: 1000 });
     try {
@@ -1035,6 +1048,21 @@ function switchActiveChatChannel(channelKey = 'global') {
     logItcChatDebug('active-channel-snapshot', { channelKey: safeChannelKey, ...debugStats });
     hasSeenSnapshot = true;
   }));
+
+  if (typeof onChildRemoved === 'function') {
+    trackActiveChatChannelListener(onChildRemoved(chatBaseRef, snap => {
+      if (listenerVersion !== _activeChatChannelListenerVersion) return;
+      const key = String(snap.key || '').trim();
+      if (!key) return;
+      const removedMessage = { ...(snap.val() || {}), _key: key };
+      if (!shouldShowChatMessage(removedMessage)) return;
+      removeCachedChannelMessage(safeChannelKey, key);
+      removeChatMsg(key, 'chat');
+      processed.delete(key);
+      signatures.delete(key);
+      logItcChatDebug('active-channel-child-removed', { channelKey: safeChannelKey, messageKey: key }, { throttleMs: 500 });
+    }));
+  }
 }
 
 function handleDmChannelChange(ev) {
