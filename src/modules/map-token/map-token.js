@@ -992,6 +992,18 @@ function isTrueLike(value) {
   return value === true || value === 1 || value === '1' || String(value).toLowerCase() === 'true';
 }
 
+function isFalseLike(value) {
+  return value === false || value === 0 || value === '0' || String(value).toLowerCase() === 'false';
+}
+
+function readExplicitBooleanFlag(obj, key) {
+  if (!obj || !Object.prototype.hasOwnProperty.call(obj, key)) return null;
+  const value = obj[key];
+  if (isTrueLike(value)) return true;
+  if (isFalseLike(value)) return false;
+  return null;
+}
+
 function getTokenIdFromElement(el) {
   const rawId = String(el?.id || '');
   return rawId ? rawId.replace(/^tok-/, '') : '';
@@ -1013,15 +1025,18 @@ function isImportedMapSettingToken(token) {
 
 function isTokenPositionLocked(token) {
   if (!token) return false;
+
+  // 패널 토큰 편집창에서 위치 고정을 해제한 값이
+  // 코코포리아 원본 meta.locked/freezed 또는 과거 legacy lock 필드보다 우선해야 한다.
+  // 그렇지 않으면 체크를 해제해도 sourceMeta.locked=true 때문에 계속 움직이지 않는 토큰이 생긴다.
+  const explicitFlagOrder = ['panelLockPosition', 'lockPosition', 'positionLocked', 'locked'];
+  for (const key of explicitFlagOrder) {
+    const explicitValue = readExplicitBooleanFlag(token, key);
+    if (explicitValue !== null) return explicitValue;
+  }
+
   const sourceMeta = token.importedMapObjectMeta?.sourceMeta || {};
-  return !!(
-    isTrueLike(token.panelLockPosition) ||
-    isTrueLike(token.lockPosition) ||
-    isTrueLike(token.positionLocked) ||
-    isTrueLike(token.locked) ||
-    isTrueLike(sourceMeta.locked) ||
-    isTrueLike(sourceMeta.freezed)
-  );
+  return !!(isTrueLike(sourceMeta.locked) || isTrueLike(sourceMeta.freezed));
 }
 
 function shouldPanMapFromLockedMapSettingToken(token) {
@@ -2057,6 +2072,8 @@ async function savePanelTokenEdit() {
   const actionType = normalizePanelTokenActionType(document.getElementById('pte-action-type')?.value || 'none');
   const actionText = String(document.getElementById('pte-action-text')?.value || '').trim();
   if (!validatePanelTokenActionConfig(actionType, actionText)) return;
+  const nextPanelLockPosition = !!document.getElementById('pte-lock-pos')?.checked;
+  const nextPanelLockSize = !!document.getElementById('pte-lock-size')?.checked;
 
   const next = {
     ...t,
@@ -2072,8 +2089,14 @@ async function savePanelTokenEdit() {
     panelImage: frontUrl,
     panelBackImage: backUrl,
     panelFace: (t.panelFace === 'back' && backUrl) ? 'back' : 'front',
-    panelLockPosition: !!document.getElementById('pte-lock-pos')?.checked,
-    panelLockSize: !!document.getElementById('pte-lock-size')?.checked,
+    panelLockPosition: nextPanelLockPosition,
+    // 과거 빌드/임포트 데이터에 남아 있는 legacy lock 필드도 함께 정리한다.
+    // 이 값들이 true로 남으면 위치 고정 체크를 해제해도 드래그가 막힐 수 있다.
+    lockPosition: nextPanelLockPosition,
+    positionLocked: nextPanelLockPosition,
+    locked: nextPanelLockPosition,
+    panelLockSize: nextPanelLockSize,
+    lockSize: nextPanelLockSize,
     panelActionType: actionType,
     panelActionText: actionType === 'none' ? '' : actionText,
   };

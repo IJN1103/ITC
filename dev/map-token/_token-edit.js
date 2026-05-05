@@ -513,6 +513,8 @@ async function savePanelTokenEdit() {
   const actionType = normalizePanelTokenActionType(document.getElementById('pte-action-type')?.value || 'none');
   const actionText = String(document.getElementById('pte-action-text')?.value || '').trim();
   if (!validatePanelTokenActionConfig(actionType, actionText)) return;
+  const nextPanelLockPosition = !!document.getElementById('pte-lock-pos')?.checked;
+  const nextPanelLockSize = !!document.getElementById('pte-lock-size')?.checked;
 
   const next = {
     ...t,
@@ -528,8 +530,14 @@ async function savePanelTokenEdit() {
     panelImage: frontUrl,
     panelBackImage: backUrl,
     panelFace: (t.panelFace === 'back' && backUrl) ? 'back' : 'front',
-    panelLockPosition: !!document.getElementById('pte-lock-pos')?.checked,
-    panelLockSize: !!document.getElementById('pte-lock-size')?.checked,
+    panelLockPosition: nextPanelLockPosition,
+    // 과거 빌드/임포트 데이터에 남아 있는 legacy lock 필드도 함께 정리한다.
+    // 이 값들이 true로 남으면 위치 고정 체크를 해제해도 드래그가 막힐 수 있다.
+    lockPosition: nextPanelLockPosition,
+    positionLocked: nextPanelLockPosition,
+    locked: nextPanelLockPosition,
+    panelLockSize: nextPanelLockSize,
+    lockSize: nextPanelLockSize,
     panelActionType: actionType,
     panelActionText: actionType === 'none' ? '' : actionText,
   };
