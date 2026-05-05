@@ -8,8 +8,10 @@ let _processedChatKeysByChannel = new Map();
 let _chatMessageSignaturesByChannel = new Map();
 let _chatRecordsByChannel = new Map();
 let _activeChatChannelKey = 'global';
+let _activeChatChannelRoomCode = '';
 let _activeChatChannelUnsubs = [];
 let _activeChatChannelListenerVersion = 0;
+let _dmChannelChangeSeq = 0;
 let _chatHistoryCursorByChannel = new Map();
 let _casualHistoryCursor = '';
 let _processedCasualKeys = new Set();
@@ -54,6 +56,7 @@ function logItcChatDebug(label, detail = {}, options = {}) {
     console.debug('[ITC_CHAT_DEBUG]', label, {
       roomCode: St.roomCode || '',
       activeChannelKey: _activeChatChannelKey || 'global',
+      activeChannelRoomCode: _activeChatChannelRoomCode || '',
       listenerVersion: _activeChatChannelListenerVersion,
       activeListenerCount: _activeChatChannelUnsubs.length,
       ...detail,
@@ -172,6 +175,7 @@ window.itcChatDebugReport = function(channelKey = '') {
   const report = {
     roomCode: St.roomCode || '',
     activeChannelKey: _activeChatChannelKey || 'global',
+    activeChannelRoomCode: _activeChatChannelRoomCode || '',
     requestedChannelKey: safeKey,
     listenerVersion: _activeChatChannelListenerVersion,
     activeChatChannelListenerCount: _activeChatChannelUnsubs.length,
@@ -271,6 +275,7 @@ function cleanupFirebaseListeners() {
     if (typeof clearTypingState === 'function') clearTypingState(cleanupRoomCode, cleanupUid);
   } catch (e) {}
   clearPresenceTimers();
+  _dmChannelChangeSeq += 1;
   cleanupActiveChatChannelListeners();
   _firebaseUnsubs.forEach(unsub => { try { if (typeof unsub === 'function') unsub(); } catch (e) {} });
   _firebaseUnsubs = [];
@@ -298,6 +303,7 @@ function cleanupFirebaseListeners() {
     _legacyRoomMapBackfillTimer = null;
   }
   _activeChatChannelKey = 'global';
+  _activeChatChannelRoomCode = '';
   window._itcActiveChatChannelKey = 'global';
   _activeFirebaseRoomCode = '';
   try {
@@ -937,11 +943,13 @@ window.loadOlderMessagesForPopout = async function(channel = 'chat', channelKey 
 
 function switchActiveChatChannel(channelKey = 'global') {
   if (!window._FB?.CONFIGURED || !St.roomCode) return;
+  const activeRoomCode = String(St.roomCode || '').trim();
+  if (!activeRoomCode) return;
   const safeChannelKey = String(channelKey || 'global').trim() || 'global';
   const { db, ref, onValue, onChildRemoved, query, limitToLast, orderByChild, equalTo } = window._FB;
-  if (safeChannelKey === _activeChatChannelKey && _activeChatChannelUnsubs.length > 0) {
+  if (safeChannelKey === _activeChatChannelKey && _activeChatChannelUnsubs.length > 0 && _activeChatChannelRoomCode === activeRoomCode) {
     window._itcActiveChatChannelKey = safeChannelKey;
-    logItcChatDebug('switch-active-channel-skip-same', { channelKey: safeChannelKey }, { throttleMs: 1000 });
+    logItcChatDebug('switch-active-channel-skip-same', { channelKey: safeChannelKey, roomCode: activeRoomCode }, { throttleMs: 1000 });
     try {
       document.dispatchEvent(new CustomEvent('itc:dm-active-channel-applied', {
         detail: { channelKey: safeChannelKey }
@@ -952,6 +960,7 @@ function switchActiveChatChannel(channelKey = 'global') {
   }
   cleanupActiveChatChannelListeners();
   _activeChatChannelKey = safeChannelKey;
+  _activeChatChannelRoomCode = activeRoomCode;
   window._itcActiveChatChannelKey = safeChannelKey;
   logItcChatDebug('switch-active-channel', { channelKey: safeChannelKey });
   _chatHistoryCursorByChannel.delete(safeChannelKey);
@@ -971,7 +980,7 @@ function switchActiveChatChannel(channelKey = 'global') {
   let newestSeenKey = '';
   const processed = getProcessedChatKeySet(safeChannelKey);
   const signatures = getChatMessageSignatureStore(safeChannelKey);
-  const chatBaseRef = ref(db, `rooms/${St.roomCode}/chat`);
+  const chatBaseRef = ref(db, `rooms/${activeRoomCode}/chat`);
   const listenRef = (safeChannelKey !== 'global' && query && orderByChild && equalTo && limitToLast)
     ? query(chatBaseRef, orderByChild('dmChannelKey'), equalTo(safeChannelKey), limitToLast(300))
     : ((query && limitToLast) ? query(chatBaseRef, limitToLast(300)) : chatBaseRef);
@@ -991,7 +1000,16 @@ function switchActiveChatChannel(channelKey = 'global') {
   });
 
   trackActiveChatChannelListener(onValue(listenRef, snap => {
-    if (listenerVersion !== _activeChatChannelListenerVersion) {
+    const currentRoomCode = String(St.roomCode || '').trim();
+    if (listenerVersion !== _activeChatChannelListenerVersion || currentRoomCode !== activeRoomCode) {
+      if (currentRoomCode !== activeRoomCode) {
+        logItcChatDebug('stale-listener-room-ignored', {
+          channelKey: safeChannelKey,
+          snapshotRoomCode: activeRoomCode,
+          currentRoomCode,
+        }, { throttleMs: 1000 });
+        return;
+      }
       logItcChatDebug('stale-listener-snapshot-ignored', {
         channelKey: safeChannelKey,
         snapshotListenerVersion: listenerVersion,
@@ -1080,7 +1098,7 @@ function switchActiveChatChannel(channelKey = 'global') {
 
   if (typeof onChildRemoved === 'function') {
     trackActiveChatChannelListener(onChildRemoved(chatBaseRef, snap => {
-      if (listenerVersion !== _activeChatChannelListenerVersion) return;
+      if (listenerVersion !== _activeChatChannelListenerVersion || String(St.roomCode || '').trim() !== activeRoomCode) return;
       const key = String(snap.key || '').trim();
       if (!key) return;
       const removedMessage = { ...(snap.val() || {}), _key: key };
@@ -1097,13 +1115,21 @@ function switchActiveChatChannel(channelKey = 'global') {
 function handleDmChannelChange(ev) {
   const detail = ev?.detail || {};
   const nextChannelKey = String(detail.channelKey || (typeof getCurrentDmChannelKey === 'function' ? getCurrentDmChannelKey() : 'global') || 'global').trim() || 'global';
-  if (!St.roomCode || !window._FB?.CONFIGURED) return;
+  const roomCodeAtRequest = String(St.roomCode || '').trim();
+  if (!roomCodeAtRequest || !window._FB?.CONFIGURED) return;
+
+  const changeSeq = ++_dmChannelChangeSeq;
   const myRole = String(St.players?.[St.myId]?.role || '').trim().toLowerCase();
   const canCreateDmChannel = !!St.isGM || myRole === 'gm';
   const runner = (nextChannelKey === 'global' || !canCreateDmChannel) ? Promise.resolve() : ensureDmChannelMeta(nextChannelKey).catch((err) => {
     console.error('ensureDmChannelMeta failed', err);
   });
   runner.finally(() => {
+    if (changeSeq !== _dmChannelChangeSeq) return;
+    if (roomCodeAtRequest !== String(St.roomCode || '').trim()) return;
+    const wantedChannelKey = String((typeof getCurrentDmChannelKey === 'function' ? getCurrentDmChannelKey() : nextChannelKey) || 'global').trim() || 'global';
+    const activeKey = String(window._itcActiveChatChannelKey || 'global').trim() || 'global';
+    if (wantedChannelKey !== nextChannelKey && activeKey !== nextChannelKey) return;
     switchActiveChatChannel(nextChannelKey);
   });
 }
@@ -1419,6 +1445,7 @@ function resetRoomScopedUiState() {
     _legacyRoomMapBackfillTimer = null;
   }
   _activeChatChannelKey = 'global';
+  _activeChatChannelRoomCode = '';
   window._itcActiveChatChannelKey = 'global';
 }
 
