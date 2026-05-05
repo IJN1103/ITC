@@ -136,7 +136,10 @@ function addMsgActions(div, uid, msgKey, channel, text, type) {
   const wrap = document.createElement('div');
   wrap.className = 'msg-actions';
   const canEdit = type !== 'dice' && type !== 'image' && type !== 'speak-as-image';
-  if (canEdit && isMine) {
+  const canMobileEdit = !!(canEdit && isMine);
+  div.dataset.mobileCanEdit = canMobileEdit ? '1' : '0';
+  div.dataset.mobileCanDelete = '1';
+  if (canMobileEdit) {
     const editBtn = document.createElement('button');
     editBtn.className = 'msg-act-btn';
     editBtn.textContent = '수정';
@@ -149,6 +152,135 @@ function addMsgActions(div, uid, msgKey, channel, text, type) {
   delBtn.onclick = (e) => { e.stopPropagation(); deleteMsg(div); };
   wrap.appendChild(delBtn);
   div.appendChild(wrap);
+  bindMobileMsgActions(div);
+}
+
+function isMobileMsgActionMode() {
+  try {
+    return window.matchMedia && window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+  } catch (e) {
+    return false;
+  }
+}
+
+function getTouchPoint(e) {
+  const t = e?.touches?.[0] || e?.changedTouches?.[0] || e;
+  return { x: Number(t?.clientX || 0), y: Number(t?.clientY || 0) };
+}
+
+function bindMobileMsgActions(div) {
+  if (!div || div.dataset.mobileActionBound === '1') return;
+  div.dataset.mobileActionBound = '1';
+
+  let longPressTimer = 0;
+  let startX = 0;
+  let startY = 0;
+  let moved = false;
+
+  const clearLongPress = () => {
+    if (longPressTimer) {
+      clearTimeout(longPressTimer);
+      longPressTimer = 0;
+    }
+  };
+
+  const isIgnoredTarget = (target) => {
+    if (!target) return false;
+    return !!target.closest?.('button, input, textarea, select, a, .msg-actions, .msg-mobile-action-sheet, .msg-text.editing');
+  };
+
+  div.addEventListener('touchstart', (e) => {
+    if (!isMobileMsgActionMode()) return;
+    if (isIgnoredTarget(e.target)) return;
+    clearLongPress();
+    const pt = getTouchPoint(e);
+    startX = pt.x;
+    startY = pt.y;
+    moved = false;
+    longPressTimer = setTimeout(() => {
+      longPressTimer = 0;
+      if (moved || !div.isConnected) return;
+      openMobileMsgActionSheet(div);
+    }, 560);
+  }, { passive: true });
+
+  div.addEventListener('touchmove', (e) => {
+    if (!longPressTimer) return;
+    const pt = getTouchPoint(e);
+    if (Math.abs(pt.x - startX) > 12 || Math.abs(pt.y - startY) > 12) {
+      moved = true;
+      clearLongPress();
+    }
+  }, { passive: true });
+
+  div.addEventListener('touchend', clearLongPress, { passive: true });
+  div.addEventListener('touchcancel', clearLongPress, { passive: true });
+
+  div.addEventListener('contextmenu', (e) => {
+    if (!isMobileMsgActionMode()) return;
+    if (isIgnoredTarget(e.target)) return;
+    e.preventDefault();
+    clearLongPress();
+    openMobileMsgActionSheet(div);
+  });
+}
+
+function closeMobileMsgActionSheet() {
+  const layer = document.getElementById('msg-mobile-action-layer');
+  if (layer) layer.remove();
+}
+
+function openMobileMsgActionSheet(div) {
+  if (!div || !div.isConnected || !isMobileMsgActionMode()) return;
+  const canEdit = div.dataset.mobileCanEdit === '1';
+  const canDelete = div.dataset.mobileCanDelete === '1';
+  if (!canEdit && !canDelete) return;
+
+  closeMobileMsgActionSheet();
+
+  const layer = document.createElement('div');
+  layer.id = 'msg-mobile-action-layer';
+  layer.className = 'msg-mobile-action-layer';
+  layer.innerHTML = `
+    <div class="msg-mobile-action-backdrop" data-close="1"></div>
+    <div class="msg-mobile-action-sheet" role="dialog" aria-modal="true" aria-label="채팅 메시지 작업">
+      <div class="msg-mobile-action-title">메시지 작업</div>
+      <div class="msg-mobile-action-list"></div>
+      <button type="button" class="msg-mobile-action-btn muted" data-close="1">닫기</button>
+    </div>
+  `;
+
+  const list = layer.querySelector('.msg-mobile-action-list');
+  if (canEdit) {
+    const editBtn = document.createElement('button');
+    editBtn.type = 'button';
+    editBtn.className = 'msg-mobile-action-btn';
+    editBtn.textContent = '수정';
+    editBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      closeMobileMsgActionSheet();
+      editMsg(div);
+    });
+    list.appendChild(editBtn);
+  }
+
+  if (canDelete) {
+    const delBtn = document.createElement('button');
+    delBtn.type = 'button';
+    delBtn.className = 'msg-mobile-action-btn danger';
+    delBtn.textContent = '삭제';
+    delBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      closeMobileMsgActionSheet();
+      deleteMsg(div);
+    });
+    list.appendChild(delBtn);
+  }
+
+  layer.addEventListener('click', (e) => {
+    if (e.target?.dataset?.close === '1') closeMobileMsgActionSheet();
+  });
+  document.body.appendChild(layer);
 }
 
 function editMsg(div) {

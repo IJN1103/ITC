@@ -1423,3 +1423,85 @@ to{transform:translateX(0);opacity:1;}
   .bgm-vol-icon{display:none;}
   .bgm-title{max-width:112px;}
 }
+
+/* Mobile-only chat action sheet: PC hover actions stay unchanged. */
+@media (hover: none) and (pointer: coarse){
+  .chat-msg .msg-actions,
+  .chat-msg:hover .msg-actions{
+    display:none!important;
+    opacity:0!important;
+    pointer-events:none!important;
+  }
+  .chat-msg[data-mobile-action-bound="1"]{
+    -webkit-touch-callout:none;
+  }
+  .msg-mobile-action-layer{
+    position:fixed;
+    inset:0;
+    z-index:12000;
+    display:flex;
+    align-items:flex-end;
+    justify-content:center;
+    padding:0 14px 14px;
+    box-sizing:border-box;
+  }
+  .msg-mobile-action-backdrop{
+    position:absolute;
+    inset:0;
+    background:rgba(0,0,0,.46);
+    backdrop-filter:blur(2px);
+  }
+  .msg-mobile-action-sheet{
+    position:relative;
+    z-index:1;
+    width:min(360px,calc(100vw - 28px));
+    padding:12px;
+    border:1px solid var(--border2);
+    border-radius:18px;
+    background:rgba(18,18,18,.98);
+    box-shadow:0 -12px 40px rgba(0,0,0,.46);
+    color:var(--dim);
+    animation:mobileActionUp .14s ease-out;
+  }
+  .msg-mobile-action-title{
+    padding:3px 5px 10px;
+    color:var(--accent);
+    font-size:12px;
+    font-weight:700;
+    letter-spacing:.08em;
+  }
+  .msg-mobile-action-list{
+    display:flex;
+    flex-direction:column;
+    gap:7px;
+  }
+  .msg-mobile-action-btn{
+    width:100%;
+    min-height:44px;
+    border:1px solid var(--border);
+    border-radius:12px;
+    background:var(--s2);
+    color:var(--text);
+    font:inherit;
+    font-size:14px;
+    cursor:pointer;
+  }
+  .msg-mobile-action-btn:active{
+    transform:translateY(1px);
+    border-color:var(--accent);
+  }
+  .msg-mobile-action-btn.danger{
+    color:#f0aaaa;
+    border-color:rgba(220,90,90,.28);
+    background:rgba(120,38,38,.18);
+  }
+  .msg-mobile-action-btn.muted{
+    margin-top:8px;
+    color:var(--muted);
+    background:transparent;
+  }
+  @keyframes mobileActionUp{
+    from{transform:translateY(12px);opacity:.72;}
+    to{transform:translateY(0);opacity:1;}
+  }
+}
