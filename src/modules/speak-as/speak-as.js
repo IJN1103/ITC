@@ -66,10 +66,117 @@ function saGetJournalNameColor(journalId, fallbackJournal = null) {
   return safeColor;
 }
 
+function normalizeStandingLabel(value = '') {
+  return String(value || '')
+    .trim()
+    .replace(/^@+/, '')
+    .trim();
+}
+
+function normalizeStandingMatchKey(value = '') {
+  return normalizeStandingLabel(value)
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .replace(/[.,!?;:，。！？；：、]+$/g, '')
+    .trim()
+    .toLowerCase();
+}
+
+function getStandingAtLabelFromText(text = '') {
+  const match = String(text || '').match(/(^|\s)@([^\s@]+)/);
+  if (!match) return '';
+  return normalizeStandingLabel(match[2]).replace(/[.,!?;:，。！？；：、]+$/g, '').trim();
+}
+
+function findStandingByLabel(standings = [], label = '') {
+  const key = normalizeStandingMatchKey(label);
+  if (!key) return null;
+  return (Array.isArray(standings) ? standings : []).find((standing) => {
+    if (!standing?.img) return false;
+    return normalizeStandingMatchKey(standing.label || '') === key;
+  }) || null;
+}
+
+function applyStandingSelectionLocal(journalOrId, tokenId, standingLabel, options = {}) {
+  const journalId = typeof journalOrId === 'string' ? journalOrId : String(journalOrId?.id || '');
+  const safeTokenId = String(tokenId || '').trim();
+  const safeLabel = String(standingLabel || '').trim();
+  if (!journalId || !safeTokenId || !safeLabel || !St?.tokens?.[safeTokenId]) return null;
+
+  const token = St.tokens[safeTokenId];
+  const standing = findStandingByLabel(token.standings || [], safeLabel);
+  const finalLabel = standing?.label || safeLabel;
+
+  token.currentStandingLabel = finalLabel;
+  token.currentStandingJournalId = journalId;
+  _vnCurrentStanding[journalId] = finalLabel;
+
+  if (options.render !== false) {
+    if (typeof addOrUpdateSingleToken === 'function') addOrUpdateSingleToken(safeTokenId, token);
+    else if (typeof updateTokenStandingOnMap === 'function') updateTokenStandingOnMap(journalId);
+    if (typeof refreshQuickStandingMenuForToken === 'function') refreshQuickStandingMenuForToken(safeTokenId);
+    else if (typeof refreshQuickStandingMenuIfOpen === 'function') refreshQuickStandingMenuIfOpen();
+  }
+
+  return { token, standing, label: finalLabel, tokenId: safeTokenId, journalId };
+}
+
+async function persistStandingSelection(command = {}) {
+  const safeTokenId = String(command?.tokenId || '').trim();
+  const safeJournalId = String(command?.journalId || '').trim();
+  const safeLabel = String(command?.label || '').trim();
+  if (!safeTokenId || !safeJournalId || !safeLabel || !window._FB?.CONFIGURED || !St.roomCode) return;
+  const { db, ref, update } = window._FB;
+  if (!db || !ref || typeof update !== 'function') return;
+  await update(ref(db, `rooms/${St.roomCode}/tokens/${safeTokenId}`), {
+    currentStandingLabel: safeLabel,
+    currentStandingJournalId: safeJournalId,
+  });
+}
+
+function resolveStandingForJournal(journal, text = '') {
+  const token = getJournalToken(journal);
+  if (!journal?.id || !token) return null;
+
+  const standings = Array.isArray(token.standings) ? token.standings : [];
+  const hasStandings = standings.length > 0 && standings.some(s => s?.img);
+  if (!hasStandings) return token.tokenImg ? { img: token.tokenImg, label: '', token, explicit: false } : null;
+
+  const requestedLabel = getStandingAtLabelFromText(text);
+  if (requestedLabel) {
+    const found = findStandingByLabel(standings, requestedLabel);
+    if (found) {
+      const applied = applyStandingSelectionLocal(journal, token.id, found.label, { render: true });
+      return { img: found.img, label: applied?.label || found.label, token, standing: found, explicit: true };
+    }
+  }
+
+  if (token.currentStandingLabel) {
+    const synced = findStandingByLabel(standings, token.currentStandingLabel);
+    if (synced) {
+      _vnCurrentStanding[journal.id] = synced.label;
+      return { img: synced.img, label: synced.label, token, standing: synced, explicit: false };
+    }
+  }
+
+  if (_vnCurrentStanding[journal.id]) {
+    const prev = findStandingByLabel(standings, _vnCurrentStanding[journal.id]);
+    if (prev) return { img: prev.img, label: prev.label, token, standing: prev, explicit: false };
+  }
+
+  const first = standings.find(s => s?.img);
+  if (first) {
+    _vnCurrentStanding[journal.id] = first.label;
+    return { img: first.img, label: first.label, token, standing: first, explicit: false };
+  }
+
+  if (token.tokenImg) return { img: token.tokenImg, label: '', token, explicit: false };
+  return null;
+}
+
 function saBuildMessageContext(journal, text = '') {
   if (!journal?.id) return null;
   const avatar = saGetAvatar(journal.id);
-  resolveStandingImage(journal, text);
+  const standingContext = resolveStandingForJournal(journal, text);
   const showPortrait = journal.showPortraitInDialogue === true || journal.sheet?.showPortraitInDialogue === true;
   const payload = {
     name: journal.title || '무제',
@@ -79,9 +186,18 @@ function saBuildMessageContext(journal, text = '') {
     showPortraitInDialogue: !!showPortrait,
     dialoguePortrait: showPortrait && avatar ? avatar : '',
   };
-  if (journal.assignedTokenId) {
-    payload.tokenId = journal.assignedTokenId;
-    payload.standingLabel = _vnCurrentStanding[journal.id] || '';
+  const assignedTokenId = journal.assignedTokenId || standingContext?.token?.id || '';
+  if (assignedTokenId) {
+    payload.tokenId = assignedTokenId;
+    payload.standingLabel = standingContext?.label || _vnCurrentStanding[journal.id] || '';
+    payload.standingImg = standingContext?.img || '';
+    if (standingContext?.explicit && payload.standingLabel) {
+      payload._standingCommand = {
+        tokenId: assignedTokenId,
+        journalId: journal.id,
+        label: payload.standingLabel,
+      };
+    }
   }
   return payload;
 }
@@ -95,31 +211,47 @@ function saGetSelectedJournalContext(text = '') {
 
 function saSendMessage(journal, text) {
   const context = saBuildMessageContext(journal, text);
-  if (!context) return;
+  if (!context) return Promise.resolve();
+  const { _standingCommand, ...sendContext } = context;
   const msg = {
-    ...context,
+    ...sendContext,
     text,
     type: 'speak-as',
     uid: St.myId,
     time: Date.now(),
   };
+
+  const standingPromise = _standingCommand
+    ? persistStandingSelection(_standingCommand).catch((err) => {
+        console.warn('[standing] @ standing persist failed', err);
+        if (typeof showToast === 'function') showToast('스탠딩 변경 저장에 실패했어요. 권한을 확인해 주세요.');
+      })
+    : Promise.resolve();
+
   if (window._FB?.CONFIGURED) {
     const { db, ref, push } = window._FB;
     const currentChannelKey = String(window._itcActiveChatChannelKey || (typeof getCurrentDmChannelKey === 'function' ? getCurrentDmChannelKey() : 'global') || 'global').trim() || 'global';
     const payload = { ...msg, dmChannelKey: currentChannelKey, time: getSpeakAsServerTimestamp() };
-    push(ref(db, `rooms/${St.roomCode}/chat`), payload)
+    const chatPromise = push(ref(db, `rooms/${St.roomCode}/chat`), payload)
       .then((pushedRef) => {
         if (currentChannelKey && currentChannelKey !== 'global' && typeof window.touchDmChannelMetaForMessage === 'function') {
-          return window.touchDmChannelMetaForMessage(currentChannelKey, payload, pushedRef?.key || '');
+          return window.touchDmChannelMetaForMessage(currentChannelKey, payload, pushedRef?.key || '').then(() => pushedRef);
         }
-        return null;
+        return pushedRef;
       })
       .catch((err) => {
-        console.warn('[dm] speak-as meta update failed', err);
+        console.warn('[dm] speak-as message send/meta update failed', err);
+        throw err;
       });
-  } else {
-    appendChatMsg({ ...msg, timestamp: msg.time, channel: 'chat' });
+    return Promise.allSettled([standingPromise, chatPromise]).then((results) => {
+      const chatResult = results[1];
+      if (chatResult?.status === 'rejected') throw chatResult.reason;
+      return chatResult?.value || null;
+    });
   }
+
+  appendChatMsg({ ...msg, timestamp: msg.time, channel: 'chat' });
+  return standingPromise;
 }
 
 let _vnCurrentStanding = {};  // journalId → 현재 스탠딩 라벨
@@ -132,46 +264,7 @@ function getJournalToken(journal) {
 }
 
 function resolveStandingImage(journal, text) {
-  const token = getJournalToken(journal);
-  if (!token) return null;
-
-  const standings = token.standings || [];
-  const hasStandings = standings.length > 0 && standings.some(s => s.img);
-
-  const atMatch = text.match(/@(\S+)/);
-  if (atMatch && hasStandings) {
-    const label = atMatch[1];
-    const found = standings.find(s => s.label && s.label.replace(/^@/, '') === label && s.img);
-    if (found) {
-      _vnCurrentStanding[journal.id] = found.label;
-      return found.img;
-    }
-  }
-
-  if (hasStandings && token.currentStandingLabel) {
-    const synced = standings.find(s => s.label === token.currentStandingLabel && s.img);
-    if (synced) {
-      _vnCurrentStanding[journal.id] = synced.label;
-      return synced.img;
-    }
-  }
-
-  if (hasStandings && _vnCurrentStanding[journal.id]) {
-    const prev = standings.find(s => s.label === _vnCurrentStanding[journal.id] && s.img);
-    if (prev) return prev.img;
-  }
-
-  if (hasStandings) {
-    const first = standings.find(s => s.img);
-    if (first) {
-      _vnCurrentStanding[journal.id] = first.label;
-      return first.img;
-    }
-  }
-
-  if (token.tokenImg) return token.tokenImg;
-
-  return null;
+  return resolveStandingForJournal(journal, text)?.img || null;
 }
 
 function cleanDialogueText(text) {
@@ -295,8 +388,11 @@ function showDialogueBoxFromMsg(name, text, journalId, standingImg, tokenId, sta
     if (token) {
       const standings = token.standings || [];
       if (standingLabel) {
-        const found = standings.find(s => s.label === standingLabel && s.img);
-        if (found) finalStanding = found.img;
+        const found = findStandingByLabel(standings, standingLabel);
+        if (found) {
+          finalStanding = found.img;
+          if (journalId) applyStandingSelectionLocal(journalId, tokenId, found.label, { render: true });
+        }
       }
       if (!finalStanding && !standingLabel) {
         const first = standings.find(s => s.img);
