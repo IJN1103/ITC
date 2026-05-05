@@ -460,6 +460,7 @@ function resolveUserAvatarDisplaySrc(name, uid, size = 64) {
 }
 
 function getAvatarHtml(name, uid) {
+  const avatarRuntime = window._itcAvatarRuntime || null;
   const imgSrc = resolveUserAvatarDisplaySrc(name, uid, 64);
   const initial = (name || '?')[0].toUpperCase();
   const shape_class = St.avatarShape === 'circle' ? 'shape-circle' : 'shape-rounded';
