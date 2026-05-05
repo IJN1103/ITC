@@ -14,6 +14,7 @@ let _chatHistoryCursorByChannel = new Map();
 let _casualHistoryCursor = '';
 let _processedCasualKeys = new Set();
 let _firebaseUnsubs = [];
+let _activeFirebaseRoomCode = '';
 let _playerDigest = '';
 let _roomAvatarSyncBound = false;
 let _lastSyncedRoomAvatar = null;
@@ -264,6 +265,11 @@ function refreshTopbarProfileSafe() {
 }
 
 function cleanupFirebaseListeners() {
+  const cleanupRoomCode = String(_activeFirebaseRoomCode || St.roomCode || '').trim();
+  const cleanupUid = String(St.myId || '').trim();
+  try {
+    if (typeof clearTypingState === 'function') clearTypingState(cleanupRoomCode, cleanupUid);
+  } catch (e) {}
   clearPresenceTimers();
   cleanupActiveChatChannelListeners();
   _firebaseUnsubs.forEach(unsub => { try { if (typeof unsub === 'function') unsub(); } catch (e) {} });
@@ -293,6 +299,7 @@ function cleanupFirebaseListeners() {
   }
   _activeChatChannelKey = 'global';
   window._itcActiveChatChannelKey = 'global';
+  _activeFirebaseRoomCode = '';
   try {
     if (typeof resetRenderedMessages === 'function') {
       resetRenderedMessages('chat');
@@ -1451,6 +1458,7 @@ function setupFirebaseListeners() {
 
   const { db, ref, onValue, onChildAdded, onChildChanged, onChildRemoved, query, limitToLast } = window._FB;
   const code = St.roomCode;
+  _activeFirebaseRoomCode = String(code || '').trim();
 
   _processedChatKeys.clear();
   _processedCasualKeys.clear();
