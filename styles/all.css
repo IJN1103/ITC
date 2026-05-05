@@ -826,6 +826,9 @@ to{transform:translateX(0);opacity:1;}
 .bgm-add{background:none;border:1px dashed var(--border2);border-radius:var(--r);color:var(--muted);padding:4px 10px;cursor:pointer;font-family:inherit;font-size:11px;transition:var(--t);white-space:nowrap;}
 .bgm-add:hover{border-color:var(--accent);color:var(--accent);}
 .bgm-add:disabled{opacity:.55;cursor:wait;}
+.bgm-mobile-unlock{display:none;align-items:center;justify-content:center;height:28px;padding:0 10px;border:1px solid rgba(184,154,96,.42);border-radius:999px;background:rgba(184,154,96,.12);color:var(--accent);font-family:inherit;font-size:11px;white-space:nowrap;cursor:pointer;transition:var(--t);}
+.bgm-mobile-unlock.active{display:inline-flex;}
+.bgm-mobile-unlock:hover{background:rgba(184,154,96,.18);border-color:var(--accent);}
 
 .bgm-expanded-panel{height:0;max-height:0;overflow:hidden;background:linear-gradient(180deg,var(--s1),#0d0d0d);border-top:1px solid var(--border);box-shadow:0 -14px 34px rgba(0,0,0,.28);transition:max-height .24s ease,height .24s ease;flex-shrink:0;}
 .bgm-expanded-panel.open{height:var(--bgm-expanded-height);max-height:var(--bgm-expanded-height);}
@@ -900,7 +903,7 @@ to{transform:translateX(0);opacity:1;}
 .modal-note{font-size:11px;color:var(--muted);line-height:1.65;}
 .modal-info{font-size:12px;color:var(--dim);line-height:1.8;}
 .modal-info b{color:var(--text);}
-#yt-player{display:none;}
+#yt-player{position:fixed;left:-9999px;bottom:0;width:1px;height:1px;opacity:.001;pointer-events:none;overflow:hidden;z-index:-1;}#yt-player iframe{width:1px!important;height:1px!important;display:block!important;}
 
 .map-token.multi-selected{box-shadow:0 0 0 4px var(--a-glow);}
 .map-token.has-img.multi-selected{
@@ -1402,6 +1405,7 @@ to{transform:translateX(0);opacity:1;}
   .bgm-vol{flex:0 0 auto;}
   .bgm-vol input[type=range]{width:58px;}
   .bgm-add{height:30px;padding:0 9px;flex:0 0 auto;}
+  .bgm-mobile-unlock.active{display:inline-flex;height:30px;flex:0 0 auto;padding:0 10px;font-size:11px;}
   .bgm-progress-row{left:10px;right:10px;bottom:5px;}
   .bgm-expanded-inner{grid-template-columns:1fr;gap:10px;padding:12px;overflow-y:auto;}
   .bgm-expanded-current{grid-template-columns:104px 1fr;gap:8px 10px;}

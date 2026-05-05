@@ -21,6 +21,10 @@ let _bgmContinuityTimer = null;
 let _bgmContinuityMissCount = 0;
 let _bgmLastContinuityActionAt = 0;
 let _lastRemoteBgmSnapshot = null;
+let _bgmMobileActivationBound = false;
+let _bgmMobileActivationLastAt = 0;
+let _bgmMobilePromptReason = '';
+let _bgmLastBlockedStateLogAt = 0;
 
 const BGM_EMPTY_TITLE = '재생되고 있는 BGM이 없어요.';
 const BGM_REPEAT_MODES = ['off', 'one', 'all'];
@@ -41,14 +45,16 @@ window.onYouTubeIframeAPIReady = () => {
   ytPlayer = new YT.Player('yt-player', {
     height: '1',
     width: '1',
-    playerVars: { autoplay: 0, controls: 0, playsinline: 1 },
+    playerVars: { autoplay: 0, controls: 0, playsinline: 1, enablejsapi: 1, origin: window.location.origin },
     events: {
       onReady: () => {
         applyStoredBgmVolume();
+        bindBgmMobileActivationListeners();
         flushPendingBgmTrack();
         startBgmProgressTimer();
         startBgmContinuityTimer();
         updateBgmProgressUI();
+        scheduleBgmPlaybackStateCheck('yt-ready');
       },
       onStateChange: e => {
         handleBgmPlayerStateChange(e?.data);
@@ -76,6 +82,163 @@ function syncBgmPermissionUI() {
   });
   updateBgmProgressAccess();
 }
+
+function isTouchBgmEnvironment() {
+  try {
+    if (window.matchMedia?.('(hover: none), (pointer: coarse)')?.matches) return true;
+  } catch (_) {}
+  return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '');
+}
+
+function getBgmUnlockButton() {
+  const bar = document.getElementById('bgm-bar');
+  if (!bar) return null;
+  let btn = document.getElementById('bgm-mobile-unlock-btn');
+  if (!btn) {
+    btn = document.createElement('button');
+    btn.type = 'button';
+    btn.id = 'bgm-mobile-unlock-btn';
+    btn.className = 'bgm-mobile-unlock';
+    btn.textContent = 'BGM 켜기';
+    btn.title = '모바일 브라우저에서 BGM 재생을 활성화합니다.';
+    btn.addEventListener('click', event => {
+      event.preventDefault();
+      event.stopPropagation();
+      attemptBgmUserActivation('unlock-button');
+    });
+    const progress = document.getElementById('bgm-progress-row');
+    if (progress && progress.parentElement === bar) bar.insertBefore(btn, progress);
+    else bar.appendChild(btn);
+  }
+  return btn;
+}
+
+function setBgmUnlockPromptVisible(visible, reason = '') {
+  const btn = getBgmUnlockButton();
+  if (!btn) return;
+  const shouldShow = !!visible && isTouchBgmEnvironment() && !!St.isPlaying && !!getCurrentBgmTrack();
+  _bgmMobilePromptReason = shouldShow ? String(reason || '') : '';
+  btn.classList.toggle('active', shouldShow);
+  btn.hidden = !shouldShow;
+  btn.setAttribute('aria-hidden', shouldShow ? 'false' : 'true');
+  if (shouldShow) {
+    btn.textContent = 'BGM 켜기';
+    btn.title = '이 기기에서 BGM 소리가 나지 않으면 한 번 터치해 주세요.';
+  }
+}
+
+function getBgmDebugStatus() {
+  return {
+    isTouch: isTouchBgmEnvironment(),
+    roomCode: St.roomCode || '',
+    isPlaying: !!St.isPlaying,
+    currentTrack: St.currentTrack,
+    track: getCurrentBgmTrack(),
+    ytReady: !!ytReady,
+    hasPlayer: !!ytPlayer,
+    loadedVideoId: getLoadedYoutubeVideoId(),
+    playerState: getBgmPlayerState(),
+    currentTime: getBgmCurrentTime(),
+    duration: getBgmDuration(),
+    volume: (() => {
+      try { return ytPlayer?.getVolume?.(); } catch (_) { return null; }
+    })(),
+    promptVisible: !!document.getElementById('bgm-mobile-unlock-btn')?.classList?.contains('active'),
+    promptReason: _bgmMobilePromptReason,
+    userAgent: navigator.userAgent || '',
+  };
+}
+
+function logBgmBlockedState(reason, err = null) {
+  const now = Date.now();
+  if (now - _bgmLastBlockedStateLogAt < 5000) return;
+  _bgmLastBlockedStateLogAt = now;
+  if (err) console.warn('[bgm-mobile] playback activation needs user gesture or retry', reason, getBgmDebugStatus(), err);
+  else console.warn('[bgm-mobile] playback is not running yet', reason, getBgmDebugStatus());
+}
+
+function shouldPromptBgmUnlock() {
+  if (!isTouchBgmEnvironment() || !St.isPlaying || !getCurrentBgmTrack()) return false;
+  if (!ytReady || !ytPlayer) return true;
+  const state = getBgmPlayerState();
+  return state !== YT.PlayerState.PLAYING && state !== YT.PlayerState.BUFFERING;
+}
+
+function scheduleBgmPlaybackStateCheck(reason = 'check', delay = 1200) {
+  if (!isTouchBgmEnvironment()) return;
+  setTimeout(() => {
+    if (!St.isPlaying || !getCurrentBgmTrack()) {
+      setBgmUnlockPromptVisible(false);
+      return;
+    }
+    if (shouldPromptBgmUnlock()) {
+      setBgmUnlockPromptVisible(true, reason);
+      logBgmBlockedState(reason);
+    } else {
+      setBgmUnlockPromptVisible(false);
+    }
+  }, delay);
+}
+
+function attemptBgmUserActivation(reason = 'gesture') {
+  if (!St.isPlaying || !getCurrentBgmTrack()) {
+    setBgmUnlockPromptVisible(false);
+    return;
+  }
+  const now = Date.now();
+  if (now - _bgmMobileActivationLastAt < 900) return;
+  _bgmMobileActivationLastAt = now;
+
+  const track = getCurrentBgmTrack();
+  const seconds = getLatestRemoteBgmSeconds();
+  loadYTApi();
+  applyStoredBgmVolume();
+
+  if (!ytReady || !ytPlayer) {
+    ensureYoutubeReadyForTrack(St.currentTrack, true, seconds);
+    setBgmUnlockPromptVisible(true, `${reason}:yt-pending`);
+    scheduleBgmPlaybackStateCheck(`${reason}:yt-pending`, 1800);
+    return;
+  }
+
+  try {
+    const loadedId = getLoadedYoutubeVideoId();
+    if (!loadedId || loadedId !== track.videoId) {
+      const loadArg = Number.isFinite(Number(seconds)) && Number(seconds) > 0
+        ? { videoId: track.videoId, startSeconds: normalizeBgmSeconds(seconds) }
+        : track.videoId;
+      ytPlayer.loadVideoById(loadArg);
+    } else {
+      const current = getBgmCurrentTime();
+      if (Number.isFinite(seconds) && Math.abs(current - seconds) > 6) {
+        ytPlayer.seekTo(normalizeBgmSeconds(seconds), true);
+      }
+      ytPlayer.playVideo();
+    }
+    updateBgmProgressUI();
+    scheduleBgmPlaybackStateCheck(reason, 1400);
+  } catch (err) {
+    setBgmUnlockPromptVisible(true, reason);
+    logBgmBlockedState(reason, err);
+  }
+}
+
+function handleBgmPotentialUserGesture() {
+  if (!shouldPromptBgmUnlock()) return;
+  attemptBgmUserActivation('page-gesture');
+}
+
+function bindBgmMobileActivationListeners() {
+  if (_bgmMobileActivationBound) return;
+  _bgmMobileActivationBound = true;
+  getBgmUnlockButton();
+  const opts = { passive: true, capture: true };
+  document.addEventListener('touchend', handleBgmPotentialUserGesture, opts);
+  document.addEventListener('pointerup', handleBgmPotentialUserGesture, opts);
+  document.addEventListener('click', handleBgmPotentialUserGesture, opts);
+}
+
+window.getBgmDebugStatus = getBgmDebugStatus;
 
 function loadYTApi() {
   if (document.getElementById('yt-api-script')) return;
@@ -281,7 +444,10 @@ function recoverBgmContinuity(reason = 'watchdog') {
     updateBgmProgressUI();
   } catch (err) {
     console.warn('bgm continuity recovery failed', reason, err);
+    setBgmUnlockPromptVisible(true, `continuity:${reason}`);
+    logBgmBlockedState(`continuity:${reason}`, err);
   }
+  scheduleBgmPlaybackStateCheck(`continuity:${reason}`, 1400);
 }
 
 function checkBgmContinuity() {
@@ -303,16 +469,19 @@ function handleBgmPlayerStateChange(state) {
   }
   if (state === YT.PlayerState.PLAYING) {
     resetBgmContinuityMisses();
+    setBgmUnlockPromptVisible(false);
     return;
   }
   if (shouldAttemptBgmContinuityRecovery(state)) {
     recoverBgmContinuity('statechange');
   }
+  scheduleBgmPlaybackStateCheck(`state:${state}`, 1200);
 }
 
 function handleBgmPlayerError(event) {
   console.warn('bgm player error', event?.data ?? event);
   if (!St.isPlaying || !getCurrentBgmTrack()) return;
+  setBgmUnlockPromptVisible(true, `error:${event?.data ?? ''}`);
   setTimeout(() => recoverBgmContinuity('error'), 1200);
 }
 
@@ -327,6 +496,7 @@ function seekBgmPlayer(seconds, tries = 0) {
     ytPlayer.seekTo(safeSeconds, true);
     if (St.isPlaying) ytPlayer.playVideo();
     updateBgmProgressUI();
+    if (St.isPlaying) scheduleBgmPlaybackStateCheck('seek', 1200);
   } catch (err) {
     if (tries < 8) setTimeout(() => seekBgmPlayer(safeSeconds, tries + 1), 250);
     else console.warn('bgm seek failed', err);
@@ -489,9 +659,14 @@ function ensureBgmPlaybackStarted(track, startSeconds = null, tries = 0) {
     updateBgmProgressUI();
   } catch (err) {
     if (tries >= 10) console.warn('bgm resume after refresh failed', err);
+    if (tries >= 3) {
+      setBgmUnlockPromptVisible(true, 'resume-error');
+      logBgmBlockedState('resume-error', err);
+    }
   }
 
   if (tries < 10) setTimeout(() => ensureBgmPlaybackStarted(track, startSeconds, tries + 1), 450);
+  else scheduleBgmPlaybackStateCheck('resume-final', 600);
 }
 
 function ensureYoutubeReadyForTrack(idx, shouldPlay, startSeconds = null) {
@@ -520,6 +695,7 @@ function applyBgmPlayerState(track, shouldPlay, startSeconds = null) {
 
   if (!ytReady || !ytPlayer) {
     ensureYoutubeReadyForTrack(St.currentTrack, shouldPlay, safeStart);
+    if (shouldPlay) scheduleBgmPlaybackStateCheck('player-not-ready', 1800);
     return;
   }
 
@@ -537,9 +713,15 @@ function applyBgmPlayerState(track, shouldPlay, startSeconds = null) {
       else ytPlayer.pauseVideo();
     }
     if (shouldPlay) ensureBgmPlaybackStarted(track, safeStart, 0);
+    if (shouldPlay) scheduleBgmPlaybackStateCheck('apply-state', 1400);
+    else setBgmUnlockPromptVisible(false);
   } catch (err) {
     console.warn('bgm player state failed', err);
-    if (shouldPlay) ensureBgmPlaybackStarted(track, safeStart, 1);
+    if (shouldPlay) {
+      setBgmUnlockPromptVisible(true, 'apply-state-error');
+      logBgmBlockedState('apply-state-error', err);
+      ensureBgmPlaybackStarted(track, safeStart, 1);
+    }
   }
 }
 
@@ -684,6 +866,7 @@ async function setBgmPlaying(playing, options = {}) {
     St.isPlaying = false;
     setBgmTitle(null);
     updatePlayBtn();
+    setBgmUnlockPromptVisible(false);
     if (!fromRemote) await writeBgmState({ isPlaying: false });
     return;
   }
@@ -694,6 +877,8 @@ async function setBgmPlaying(playing, options = {}) {
   updatePlayBtn();
   updateBgmProgressAccess();
   applyBgmPlayerState(track, St.isPlaying, remoteStartSeconds);
+  if (St.isPlaying) scheduleBgmPlaybackStateCheck(fromRemote ? 'remote-playing' : 'local-playing', 1500);
+  else setBgmUnlockPromptVisible(false);
   if (!fromRemote) {
     await writeBgmState({
       isPlaying: St.isPlaying,
@@ -926,6 +1111,7 @@ async function removeTrack(i) {
 }
 
 function syncBgmRemoteState(bgm = {}) {
+  bindBgmMobileActivationListeners();
   _lastRemoteBgmSnapshot = bgm && typeof bgm === 'object' ? { ...bgm } : null;
   const nextPlaylist = Array.isArray(bgm.playlist) ? bgm.playlist : [];
   const nextTrack = Number.isInteger(bgm.currentTrack) ? bgm.currentTrack : -1;
@@ -948,6 +1134,7 @@ function syncBgmRemoteState(bgm = {}) {
     updateRepeatBtn();
     updateBgmProgressAccess();
     updateBgmProgressUI();
+    setBgmUnlockPromptVisible(false);
     try { ytPlayer?.pauseVideo?.(); } catch (_) {}
     return;
   }
@@ -971,6 +1158,8 @@ function syncBgmRemoteState(bgm = {}) {
   if (remoteSeek && seekUpdatedAt > playbackUpdatedAt) applyRemoteBgmSeek(remoteSeek);
   updateBgmProgressAccess();
   updateBgmProgressUI();
+  if (nextPlaying) scheduleBgmPlaybackStateCheck('sync-remote', 1600);
+  else setBgmUnlockPromptVisible(false);
 }
 
 function toggleBgmExpanded() {
@@ -981,6 +1170,7 @@ function toggleBgmExpanded() {
 // 초기 UI 안전 반영
 setTimeout(() => {
   applyStoredBgmVolume();
+  bindBgmMobileActivationListeners();
   updatePlayBtn();
   updateRepeatBtn();
   syncBgmPermissionUI();
