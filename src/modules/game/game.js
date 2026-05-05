@@ -27,6 +27,10 @@ let _lastAppliedBgmPlaybackSignature = '';
 let _latestLegacyRoomMapState = { hasValue: false, mapState: { background: null, foreground: null, objects: [] }, layerState: null };
 let _latestDedicatedRoomMapState = { hasValue: false, mapState: null };
 let _latestDedicatedRoomLayerState = { hasValue: false, layerState: null };
+let _dedicatedRoomMapStateSnapshotLoaded = false;
+let _dedicatedRoomLayerStateSnapshotLoaded = false;
+let _legacyRoomMapBackfillSignature = '';
+let _legacyRoomMapBackfillTimer = null;
 const ITC_PRESENCE_HEARTBEAT_MS = 15000;
 const ITC_PRESENCE_STALE_MS = 45000;
 
@@ -279,6 +283,13 @@ function cleanupFirebaseListeners() {
   _latestLegacyRoomMapState = { hasValue: false, mapState: { background: null, foreground: null, objects: [] }, layerState: null };
   _latestDedicatedRoomMapState = { hasValue: false, mapState: null };
   _latestDedicatedRoomLayerState = { hasValue: false, layerState: null };
+  _dedicatedRoomMapStateSnapshotLoaded = false;
+  _dedicatedRoomLayerStateSnapshotLoaded = false;
+  _legacyRoomMapBackfillSignature = '';
+  if (_legacyRoomMapBackfillTimer) {
+    clearTimeout(_legacyRoomMapBackfillTimer);
+    _legacyRoomMapBackfillTimer = null;
+  }
   _activeChatChannelKey = 'global';
   window._itcActiveChatChannelKey = 'global';
   try {
@@ -1201,12 +1212,26 @@ function buildEffectiveRoomMapState() {
   const fallback = _latestLegacyRoomMapState?.hasValue
     ? _latestLegacyRoomMapState
     : { mapState: { background: null, foreground: null, objects: [] }, layerState: null };
-  const mapState = _latestDedicatedRoomMapState?.hasValue
+  const hasDedicatedMapState = !!_latestDedicatedRoomMapState?.hasValue;
+  const hasDedicatedLayerState = !!_latestDedicatedRoomLayerState?.hasValue;
+
+  const mapState = hasDedicatedMapState
     ? normalizeRuntimeMapState(_latestDedicatedRoomMapState.mapState || {})
     : normalizeRuntimeMapState(fallback.mapState || {});
-  const layerState = _latestDedicatedRoomLayerState?.hasValue
-    ? cloneRoomMapValue(_latestDedicatedRoomLayerState.layerState, null)
-    : cloneRoomMapValue(fallback.layerState, null);
+
+  let layerState = null;
+  if (hasDedicatedMapState) {
+    // mapState 전용 경로가 존재하면 새 경로를 기준으로 삼는다.
+    // 단, mapLayerState listener가 아직 첫 snapshot을 받기 전에는 기존 legacy layerState로 임시 보정해
+    // 새로고침 직후 배경/오브젝트가 순간적으로 모두 켜지는 깜빡임을 줄인다.
+    layerState = _dedicatedRoomLayerStateSnapshotLoaded
+      ? (hasDedicatedLayerState ? cloneRoomMapValue(_latestDedicatedRoomLayerState.layerState, null) : null)
+      : cloneRoomMapValue(fallback.layerState, null);
+  } else if (hasDedicatedLayerState) {
+    layerState = cloneRoomMapValue(_latestDedicatedRoomLayerState.layerState, null);
+  } else {
+    layerState = cloneRoomMapValue(fallback.layerState, null);
+  }
   return { mapState, layerState };
 }
 
@@ -1236,23 +1261,87 @@ function applyEffectiveRoomMapStateIfChanged(reason = '') {
   } catch (e) {}
 }
 
+function hasUsefulRoomMapStatePayload(mapState, layerState) {
+  const normalized = normalizeRuntimeMapState(mapState || {});
+  if (normalized.background?.url || normalized.foreground?.url) return true;
+  if (Array.isArray(normalized.objects) && normalized.objects.length > 0) return true;
+  if (layerState && typeof layerState === 'object') {
+    if (Array.isArray(layerState.order) && layerState.order.length > 0) return true;
+    if (layerState.visible && typeof layerState.visible === 'object' && Object.keys(layerState.visible).length > 0) return true;
+  }
+  return false;
+}
+
+function canWriteRoomMapStateForBackfill() {
+  try {
+    if (St?.isGM) return true;
+    const myRole = String(St?.players?.[St.myId]?.role || '').trim().toLowerCase();
+    if (myRole === 'gm') return true;
+    if (typeof hasPerm === 'function' && hasPerm('manageMap')) return true;
+  } catch (e) {}
+  return false;
+}
+
+function scheduleLegacyRoomMapBackfill(reason = 'legacy-room-map-backfill') {
+  if (!window._FB?.CONFIGURED || !St?.roomCode) return;
+  if (!canWriteRoomMapStateForBackfill()) return;
+  if (!_dedicatedRoomMapStateSnapshotLoaded) return;
+  if (_latestDedicatedRoomMapState?.hasValue) return;
+  if (!_latestLegacyRoomMapState?.hasValue) return;
+  const legacyMapState = normalizeRuntimeMapState(_latestLegacyRoomMapState.mapState || {});
+  const legacyLayerState = cloneRoomMapValue(_latestLegacyRoomMapState.layerState, null);
+  if (!hasUsefulRoomMapStatePayload(legacyMapState, legacyLayerState)) return;
+
+  let signature = '';
+  try {
+    signature = JSON.stringify({ roomCode: St.roomCode, mapState: legacyMapState, layerState: legacyLayerState });
+  } catch (e) {
+    signature = `${St.roomCode || ''}:${Date.now()}`;
+  }
+  if (signature && signature === _legacyRoomMapBackfillSignature) return;
+  _legacyRoomMapBackfillSignature = signature;
+  if (_legacyRoomMapBackfillTimer) clearTimeout(_legacyRoomMapBackfillTimer);
+  _legacyRoomMapBackfillTimer = setTimeout(async () => {
+    _legacyRoomMapBackfillTimer = null;
+    if (!window._FB?.CONFIGURED || !St?.roomCode) return;
+    if (!canWriteRoomMapStateForBackfill()) return;
+    if (_latestDedicatedRoomMapState?.hasValue) return;
+    try {
+      const { db, ref, update } = window._FB;
+      await update(ref(db, `rooms/${St.roomCode}`), {
+        mapState: legacyMapState,
+        mapLayerState: legacyLayerState || null,
+      });
+      if (window.ITC_DEBUG_MAP === true || localStorage.getItem('ITC_DEBUG_MAP') === 'true') {
+        console.debug('[ITC_MAP_DEBUG] legacy map state backfilled', { reason });
+      }
+    } catch (e) {
+      console.warn('[game] legacy map state backfill failed', e);
+    }
+  }, 450);
+}
+
 function applyLegacyBgmMapStateIfChanged(bgm = {}) {
   _latestLegacyRoomMapState = {
     hasValue: true,
     ...buildLegacyRoomMapStateFromBgm(bgm),
   };
+  scheduleLegacyRoomMapBackfill('legacy-bgm-map');
   applyEffectiveRoomMapStateIfChanged('legacy-bgm-map');
 }
 
 function applyDedicatedRoomMapStateSnapshot(snap) {
+  _dedicatedRoomMapStateSnapshotLoaded = true;
   _latestDedicatedRoomMapState = {
     hasValue: !!snap?.exists?.(),
     mapState: snap?.exists?.() ? normalizeRuntimeMapState(snap.val() || {}) : null,
   };
+  scheduleLegacyRoomMapBackfill('dedicated-mapState-empty');
   applyEffectiveRoomMapStateIfChanged('dedicated-mapState');
 }
 
 function applyDedicatedRoomLayerStateSnapshot(snap) {
+  _dedicatedRoomLayerStateSnapshotLoaded = true;
   _latestDedicatedRoomLayerState = {
     hasValue: !!snap?.exists?.(),
     layerState: snap?.exists?.() ? cloneRoomMapValue(snap.val(), null) : null,
@@ -1314,6 +1403,13 @@ function resetRoomScopedUiState() {
   _latestLegacyRoomMapState = { hasValue: false, mapState: { background: null, foreground: null, objects: [] }, layerState: null };
   _latestDedicatedRoomMapState = { hasValue: false, mapState: null };
   _latestDedicatedRoomLayerState = { hasValue: false, layerState: null };
+  _dedicatedRoomMapStateSnapshotLoaded = false;
+  _dedicatedRoomLayerStateSnapshotLoaded = false;
+  _legacyRoomMapBackfillSignature = '';
+  if (_legacyRoomMapBackfillTimer) {
+    clearTimeout(_legacyRoomMapBackfillTimer);
+    _legacyRoomMapBackfillTimer = null;
+  }
   _activeChatChannelKey = 'global';
   window._itcActiveChatChannelKey = 'global';
 }
