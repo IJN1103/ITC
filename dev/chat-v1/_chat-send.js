@@ -468,7 +468,10 @@ function getAvatarHtml(name, uid) {
   const fallbackHtml = `<div class="msg-avatar-inner" style="border-radius:${r}">${esc(initial)}</div>`;
   if (imgSrc) {
     const safeSrc = esc(imgSrc);
-    return `<div class="msg-avatar ${shape_class}" data-avatar-holder="1"${dataSrcAttr}>${fallbackHtml}<img class="msg-avatar-img" src="${safeSrc}" alt="" decoding="async" loading="lazy" style="border-radius:${r}" onload="this.classList.add('is-loaded')" onerror="this.remove()"></div>`;
+    const isLoaded = !!(avatarRuntime?.isDisplayAvatarLoaded && avatarRuntime.isDisplayAvatarLoaded(imgSrc));
+    const loadedClass = isLoaded ? ' is-loaded' : '';
+    const onload = `this.classList.add('is-loaded');try{window._itcAvatarRuntime&&window._itcAvatarRuntime.markDisplayAvatarLoaded&&window._itcAvatarRuntime.markDisplayAvatarLoaded(this.currentSrc||this.src)}catch(e){}`;
+    return `<div class="msg-avatar ${shape_class}" data-avatar-holder="1"${dataSrcAttr}>${fallbackHtml}<img class="msg-avatar-img${loadedClass}" src="${safeSrc}" alt="" decoding="async" loading="eager" style="border-radius:${r}" onload="${onload}" onerror="this.remove()"></div>`;
   }
   return `<div class="msg-avatar ${shape_class}" data-avatar-holder="1"${dataSrcAttr}>${fallbackHtml}</div>`;
 }

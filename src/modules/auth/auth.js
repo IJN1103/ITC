@@ -61,7 +61,10 @@ function getAvatarRuntime() {
         if (safe) window._avatarCache[name] = safe;
         else delete window._avatarCache[name];
       }
-      if (safe) runtime.preloadAvatar(safe, 96);
+      if (safe) {
+        runtime.preloadAvatar(safe, 64);
+        runtime.preloadAvatar(safe, 96);
+      }
       return safe;
     },
     getDisplayAvatarSrc(src, size = 96) {
@@ -97,16 +100,39 @@ function getAvatarRuntime() {
       runtime._displayCache.set(cacheKey, displaySrc);
       return displaySrc;
     },
+    markDisplayAvatarLoaded(src) {
+      const safe = runtime.sanitizePersistentAvatarSrc(src);
+      if (!safe) return '';
+      runtime._loadedDisplaySrcs = runtime._loadedDisplaySrcs || new Set();
+      runtime._loadedDisplaySrcs.add(safe);
+      return safe;
+    },
+    isDisplayAvatarLoaded(src) {
+      const safe = runtime.sanitizePersistentAvatarSrc(src);
+      if (!safe) return false;
+      return !!(runtime._loadedDisplaySrcs && runtime._loadedDisplaySrcs.has(safe));
+    },
     preloadAvatar(src, size = 96) {
       const displaySrc = runtime.getDisplayAvatarSrc(src, size);
       if (!displaySrc) return '';
+      runtime._loadedDisplaySrcs = runtime._loadedDisplaySrcs || new Set();
       runtime._preloaded = runtime._preloaded || new Set();
-      if (runtime._preloaded.has(displaySrc)) return displaySrc;
+      runtime._preloadImages = runtime._preloadImages || new Map();
+      if (runtime._loadedDisplaySrcs.has(displaySrc) || runtime._preloaded.has(displaySrc)) return displaySrc;
       runtime._preloaded.add(displaySrc);
       try {
         const img = new Image();
         img.decoding = 'async';
+        img.onload = () => {
+          runtime.markDisplayAvatarLoaded(displaySrc);
+          try { runtime._preloadImages.delete(displaySrc); } catch (e) {}
+        };
+        img.onerror = () => {
+          try { runtime._preloaded.delete(displaySrc); runtime._preloadImages.delete(displaySrc); } catch (e) {}
+        };
+        runtime._preloadImages.set(displaySrc, img);
         img.src = displaySrc;
+        if (img.complete && img.naturalWidth > 0) runtime.markDisplayAvatarLoaded(displaySrc);
       } catch (e) {}
       return displaySrc;
     },

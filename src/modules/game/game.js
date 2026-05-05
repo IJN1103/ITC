@@ -211,8 +211,14 @@ function syncMyAvatarToRoom(avatarOverride = undefined, force = false) {
   try { avatarStoragePath = localStorage.getItem('itc_avatar_path_' + St.myId) || ''; } catch (e) {}
 
   if (!window._avatarCache) window._avatarCache = {};
-  window._avatarCache[St.myId] = nextAvatar;
-  if (St.myName) window._avatarCache[St.myName] = nextAvatar;
+  const avatarRuntime = window._itcAvatarRuntime || null;
+  const previousAvatar = window._avatarCache[St.myId] || (St.myName ? window._avatarCache[St.myName] : '') || '';
+  if (avatarRuntime?.rememberAvatar) avatarRuntime.rememberAvatar(St.myId, St.myName, nextAvatar);
+  else {
+    window._avatarCache[St.myId] = nextAvatar;
+    if (St.myName) window._avatarCache[St.myName] = nextAvatar;
+  }
+  const avatarChangedForDom = String(previousAvatar || '') !== String(nextAvatar || '');
 
   if (!force && _lastSyncedRoomAvatar === nextAvatar) return Promise.resolve();
   _lastSyncedRoomAvatar = nextAvatar;
@@ -231,7 +237,7 @@ function syncMyAvatarToRoom(avatarOverride = undefined, force = false) {
       avatarStoragePath,
     }).catch(() => {}),
   ]).then(() => {
-    if (typeof rerenderExistingChatAvatars === 'function') rerenderExistingChatAvatars();
+    if (avatarChangedForDom && typeof rerenderExistingChatAvatars === 'function') rerenderExistingChatAvatars();
   });
 }
 
@@ -1733,6 +1739,7 @@ function renderPlayers(players) {
   refreshPermUI();
   if (!window._avatarCache) window._avatarCache = {};
   
+  let avatarCacheChanged = false;
   Object.entries(players).forEach(([id, p]) => {
     const online = isPlayerPresenceOnline(id, p || {});
     addPlayerChip(id, p.name, id === St.myId, p.role, online);
@@ -1740,24 +1747,31 @@ function renderPlayers(players) {
     const avatarRuntime = window._itcAvatarRuntime || null;
     const rawAvatar = p.avatarUrl || p.avatar || (() => { try { return localStorage.getItem('itc_avatar_' + id); } catch (e) { return ''; } })();
     const av = avatarRuntime?.sanitizePersistentAvatarSrc ? avatarRuntime.sanitizePersistentAvatarSrc(rawAvatar) : rawAvatar;
+    const prevById = String(window._avatarCache[id] || '').trim();
+    const prevByName = p.name ? String(window._avatarCache[p.name] || '').trim() : '';
     if (av) {
       try { localStorage.setItem('itc_avatar_' + id, av); } catch (e) {}
       if (p.avatarStoragePath) {
         try { localStorage.setItem('itc_avatar_path_' + id, p.avatarStoragePath); } catch (e) {}
       }
-      window._avatarCache[id] = av;
-      window._avatarCache[p.name] = av;
+      if (avatarRuntime?.rememberAvatar) avatarRuntime.rememberAvatar(id, p.name, av);
+      else {
+        window._avatarCache[id] = av;
+        if (p.name) window._avatarCache[p.name] = av;
+      }
+      if (prevById !== av || (p.name && prevByName !== av)) avatarCacheChanged = true;
     } else {
       try {
         localStorage.removeItem('itc_avatar_' + id);
         localStorage.removeItem('itc_avatar_path_' + id);
       } catch (e) {}
+      if (prevById || prevByName) avatarCacheChanged = true;
       delete window._avatarCache[id];
       if (p.name) delete window._avatarCache[p.name];
     }
   });
 
-  if (typeof rerenderExistingChatAvatars === 'function') {
+  if (avatarCacheChanged && typeof rerenderExistingChatAvatars === 'function') {
     rerenderExistingChatAvatars();
   }
 }
