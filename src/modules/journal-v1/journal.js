@@ -3134,7 +3134,10 @@ async function selectQuickStanding(journal, token, standing) {
 function toggleQuickStandingView(event) {
   if (event) { event.preventDefault(); event.stopPropagation(); }
   const menu = getQuickStandingMenuEl();
-  if (menu && menu.style.display !== 'none' && menu.innerHTML.trim()) return;
+  if (menu && menu.style.display !== 'none' && menu.innerHTML.trim()) {
+    closeQuickStandingMenu();
+    return;
+  }
   closeQuickJournalMenu();
   renderQuickStandingMenu();
 }
