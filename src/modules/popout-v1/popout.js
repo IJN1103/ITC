@@ -60,6 +60,23 @@ function getSharedAvatarRuntime() {
  */
 
 let _popoutWins = [];
+let _popoutMirrorBound = false;
+let _popoutMirrorCleanup = null;
+
+function cleanupPopoutMirror() {
+  if (typeof _popoutMirrorCleanup === 'function') {
+    try { _popoutMirrorCleanup(); } catch (e) {}
+  }
+  _popoutMirrorCleanup = null;
+  _popoutMirrorBound = false;
+  try {
+    if (window.forcePopoutSync && window.forcePopoutSync.__itcPopoutMirrorOwned) {
+      window.forcePopoutSync = null;
+    }
+  } catch (e) {}
+}
+
+window.cleanupPopoutMirror = cleanupPopoutMirror;
 
 
 function buildPopoutHtml() {
@@ -566,30 +583,46 @@ function popoutChat() {
 
   window.forcePopoutSync = schedulePopoutSync;
 
-  const bindPopoutMirror = (() => {
-    let bound = false;
-    let chatObs = null;
-    let casualObs = null;
-    return () => {
-      if (bound) return;
-      bound = true;
-      const chatEl = document.getElementById('chat-messages');
-      const casualEl = document.getElementById('casual-messages');
-      if (chatEl && typeof MutationObserver !== 'undefined') {
-        chatObs = new MutationObserver(() => schedulePopoutSync());
-        chatObs.observe(chatEl, { childList: true, subtree: true, characterData: true });
-      }
-      if (casualEl && typeof MutationObserver !== 'undefined') {
-        casualObs = new MutationObserver(() => schedulePopoutSync());
-        casualObs.observe(casualEl, { childList: true, subtree: true, characterData: true });
-      }
-      document.addEventListener('itc:dm-channel-change', schedulePopoutSync);
-      document.addEventListener('itc:dm-unread-change', schedulePopoutSync);
-      document.addEventListener('itc:dm-channel-catalog-change', schedulePopoutSync);
-      document.addEventListener('itc:dm-active-channel-applied', schedulePopoutSync);
-    };
-  })();
+  function bindPopoutMirror() {
+    if (_popoutMirrorBound) return;
+    _popoutMirrorBound = true;
 
+    const mirrorSync = () => {
+      try {
+        if (typeof window.forcePopoutSync === 'function') window.forcePopoutSync();
+      } catch (e) {}
+    };
+
+    const cleanups = [];
+    const chatEl = document.getElementById('chat-messages');
+    const casualEl = document.getElementById('casual-messages');
+
+    if (chatEl && typeof MutationObserver !== 'undefined') {
+      const chatObs = new MutationObserver(mirrorSync);
+      chatObs.observe(chatEl, { childList: true, subtree: true, characterData: true });
+      cleanups.push(() => chatObs.disconnect());
+    }
+    if (casualEl && typeof MutationObserver !== 'undefined') {
+      const casualObs = new MutationObserver(mirrorSync);
+      casualObs.observe(casualEl, { childList: true, subtree: true, characterData: true });
+      cleanups.push(() => casualObs.disconnect());
+    }
+
+    const addDocListener = (type) => {
+      document.addEventListener(type, mirrorSync);
+      cleanups.push(() => document.removeEventListener(type, mirrorSync));
+    };
+    addDocListener('itc:dm-channel-change');
+    addDocListener('itc:dm-unread-change');
+    addDocListener('itc:dm-channel-catalog-change');
+    addDocListener('itc:dm-active-channel-applied');
+
+    _popoutMirrorCleanup = () => {
+      cleanups.splice(0).forEach((fn) => { try { fn(); } catch (e) {} });
+    };
+  }
+
+  try { schedulePopoutSync.__itcPopoutMirrorOwned = true; } catch (e) {}
   bindPopoutMirror();
   let tries = 0;
   const t = setInterval(() => { tries++; if ((win && win._popReady) || tries > 15) { clearInterval(t); syncExisting(); } }, 200);

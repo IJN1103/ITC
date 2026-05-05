@@ -271,6 +271,7 @@ function cleanupFirebaseListeners() {
   _typingState = {};
   refreshTypingIndicators();
   try { if (typeof window.cleanupDmUnreadListener === 'function') window.cleanupDmUnreadListener(); } catch (e) {}
+  try { if (typeof window.cleanupPopoutMirror === 'function') window.cleanupPopoutMirror(); } catch (e) {}
   _processedChatKeys.clear();
   _processedCasualKeys.clear();
   _chatHistoryCursorByChannel.clear();
