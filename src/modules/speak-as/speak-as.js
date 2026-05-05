@@ -426,7 +426,7 @@ function showDialogueBoxFromMsg(name, text, journalId, standingImg, tokenId, sta
 }
 
 function toggleSpeakAsDropdown(e) {
-  e.stopPropagation();
+  if (e) { e.preventDefault?.(); e.stopPropagation?.(); }
   const dd = document.getElementById('speak-as-dropdown');
   if (!dd) return;
   if (dd.classList.contains('open')) { dd.classList.remove('open'); return; }
@@ -447,7 +447,7 @@ function saBuildDropdown() {
   const self = document.createElement('div');
   self.className = 'sa-dd-item' + (!St.speakAsJournalId ? ' selected' : '');
   self.innerHTML = `<div class="sa-dd-icon"><svg width="12" height="12" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="5" r="3" stroke="currentColor" stroke-width="1.5"/><path d="M2 12c0-2.21 2.239-4 5-4s5 1.79 5 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></div><span>나 (기본)</span>`;
-  self.onclick = () => saSetJournal(null);
+  self.onclick = (ev) => { ev?.preventDefault?.(); ev?.stopPropagation?.(); saSetJournal(null); };
   dd.appendChild(self);
 
   const journals = loadJournals();
@@ -464,7 +464,7 @@ function saBuildDropdown() {
         ? `<div class="sa-dd-icon"><img src="${esc(av)}" alt=""></div>`
         : `<div class="sa-dd-icon">${esc(init)}</div>`;
       item.innerHTML = `${iconHtml}<span>${esc(j.title || '무제')}</span>`;
-      item.onclick = () => saSetJournal(j.id);
+      item.onclick = (ev) => { ev?.preventDefault?.(); ev?.stopPropagation?.(); saSetJournal(j.id); };
       dd.appendChild(item);
     });
   } else {
