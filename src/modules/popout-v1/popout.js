@@ -169,9 +169,11 @@ body{font-family:'DM Sans',sans-serif;background:#101010;color:#e8e3da;font-size
 .sa-dd-item.sel{color:#b89a60}
 .sa-dd-av{width:20px;height:20px;border-radius:5px;background:#1e1e1e;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:11px;overflow:hidden;border:1px solid #2e2e2e}
 .sa-dd-av img{width:100%;height:100%;object-fit:cover}
-.iw{padding:8px;display:flex;gap:6px;flex-shrink:0}
-textarea{flex:1;background:#161616;border:1px solid #1f1f1f;border-radius:6px;color:#e8e3da;padding:7px 10px;font-size:13px;resize:none;height:34px;font-family:inherit;outline:none}
+.iw{padding:8px;display:flex;gap:6px;flex-shrink:0;align-items:flex-end}
+textarea{flex:1;background:#161616;border:1px solid #1f1f1f;border-radius:6px;color:#e8e3da;padding:7px 10px;font-size:13px;resize:none;min-height:34px;height:34px;max-height:220px;overflow-y:auto;font-family:inherit;outline:none}
 textarea:focus{border-color:#b89a60}
+textarea.resize-edge-hover,textarea.is-resizing{border-color:#b89a60;box-shadow:0 0 0 1px rgba(184,154,96,.18)}
+body.pop-input-is-resizing,body.pop-input-is-resizing *{cursor:ns-resize!important;user-select:none!important}
 textarea::-webkit-scrollbar{width:3px}
 textarea::-webkit-scrollbar-thumb{background:#2e2e2e;border-radius:2px}
 .sb{width:34px;height:34px;background:#b89a60;border:none;border-radius:6px;color:#080808;cursor:pointer;font-size:15px;flex-shrink:0}
@@ -430,6 +432,8 @@ L.push('window.renderDmBar=renderDmBar;');
   L.push('if(whisperUid){window.opener.sendWhisperMessage(saJId?(journals.find(function(j){return j.id===saJId})||{}).title||window.opener.St.myName:window.opener.St.myName,t,whisperUid,whisperName,{targetJournalId:whisperJournalId||null,speakAsJournalId:saJId||null,channelKey:getCurrentDmChannelKey()});return}');
   L.push('window.opener.sendChatFromPopout(t,aTab,getCurrentDmChannelKey())}');
 
+  L.push('function bindPopInputResize(){var i=document.getElementById("pi");if(!i||i.dataset.resizeBound==="1")return;i.dataset.resizeBound="1";var st={drag:false,edge:"",y:0,h:0,key:"itc_popout_chat_input_height"};function clamp(v){var min=34,max=Math.min(220,Math.max(96,Math.floor((window.innerHeight||600)*0.36)));v=Number(v)||min;return Math.max(min,Math.min(max,v))}function apply(v,skip){var h=clamp(v);i.style.height=h+"px";i.style.overflowY="auto";if(!skip){try{localStorage.setItem(st.key,String(Math.round(h)))}catch(e){}}}function edge(ev){if(!ev||ev.pointerType==="touch")return "";var r=i.getBoundingClientRect(),y=Number(ev.clientY||0)-r.top,es=7;if(y>=0&&y<=es)return "top";if(r.bottom-Number(ev.clientY||0)>=0&&r.bottom-Number(ev.clientY||0)<=es)return "bottom";return ""}try{var saved=Number(localStorage.getItem(st.key)||0);if(saved)apply(saved,true)}catch(e){}i.addEventListener("pointermove",function(ev){if(st.drag){ev.preventDefault();var dy=Number(ev.clientY||0)-st.y;apply(st.edge==="top"?st.h-dy:st.h+dy);return}var ed=edge(ev);i.classList.toggle("resize-edge-hover",!!ed);i.style.cursor=ed?"ns-resize":""});i.addEventListener("pointerleave",function(){if(st.drag)return;i.classList.remove("resize-edge-hover");i.style.cursor=""});i.addEventListener("pointerdown",function(ev){var ed=edge(ev);if(!ed||ev.button!==0)return;ev.preventDefault();ev.stopPropagation();st.drag=true;st.edge=ed;st.y=Number(ev.clientY||0);st.h=i.getBoundingClientRect().height;i.classList.add("is-resizing");document.body.classList.add("pop-input-is-resizing");try{i.setPointerCapture(ev.pointerId)}catch(e){}});function stop(ev){if(!st.drag)return;st.drag=false;st.edge="";i.classList.remove("is-resizing");document.body.classList.remove("pop-input-is-resizing");i.style.cursor="";try{i.releasePointerCapture(ev.pointerId)}catch(e){}}i.addEventListener("pointerup",stop);i.addEventListener("pointercancel",stop)}');
+  L.push('bindPopInputResize();');
   L.push('document.getElementById("sb").onclick=send;');
   L.push('document.getElementById("pi").onkeydown=function(ev){if(ev.key==="Enter"&&!ev.shiftKey){ev.preventDefault();send()}};');
   L.push('document.getElementById("pi").oninput=function(){if(window.opener&&window.opener.broadcastTyping)window.opener.broadcastTyping()};');

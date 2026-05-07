@@ -720,6 +720,7 @@ window.clearPendingChatImages = clearPendingChatImages;
 window.refreshChatActionButtons = refreshChatActionButtons;
 window.clearAllChatHistory = clearAllChatHistory;
 window.toggleDescMode = toggleDescMode;
+window.initChatInputResize = initChatInputResize;
 window.broadcastTyping = broadcastTyping;
 window.queueMessageRender = queueMessageRender;
 window.replaceRenderedMessage = replaceRenderedMessage;

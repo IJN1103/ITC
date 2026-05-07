@@ -478,7 +478,7 @@ to{opacity:1}
 .msg-image-shell.is-loading::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg, rgba(255,255,255,0), rgba(255,255,255,.06), rgba(255,255,255,0));animation:chatImgPulse 1.2s linear infinite;}
 .msg-image-shell:not(.is-wide){aspect-ratio:auto !important;}
 
-.chat-input-wrap{padding:8px;display:flex;gap:6px;}
+.chat-input-wrap{padding:8px;display:flex;gap:6px;align-items:flex-end;}
 .shared-input-area{flex-shrink:0;border-top:1px solid var(--border);}
 .typing-indicator{min-height:0;padding:0 10px;font-size:11px;color:var(--muted);font-style:italic;transition:all .2s ease;overflow:hidden;flex-shrink:0}
 .typing-indicator:empty{padding:0}
@@ -685,8 +685,11 @@ to{transform:translateX(0);opacity:1;}
 .sheet-custom-skill-context-menu button:hover{background:rgba(184,154,96,.12);color:var(--accent);}
 .sheet-footer{display:flex;align-items:center;gap:10px;padding:12px 20px;border-top:1px solid var(--border);flex-shrink:0;background:var(--s2);}
 .sheet-hint{font-size:11px;color:var(--muted);flex:1;}
-.chat-input{flex:1;background:var(--s2);border:1px solid var(--border);border-radius:var(--r);color:var(--text);padding:7px 10px;font-size:13px;resize:none;min-height:34px;max-height:100px;transition:var(--t);font-family:inherit;}
+.chat-input{flex:1;background:var(--s2);border:1px solid var(--border);border-radius:var(--r);color:var(--text);padding:7px 10px;font-size:13px;resize:none;min-height:34px;max-height:220px;transition:var(--t);font-family:inherit;overflow-y:auto;}
 .chat-input:focus{border-color:var(--accent);}
+.chat-input.chat-input-resizable.resize-edge-hover,.chat-input.chat-input-resizable.is-resizing{border-color:var(--accent);box-shadow:0 0 0 1px rgba(184,154,96,.18);}
+body.chat-input-is-resizing,body.chat-input-is-resizing *{cursor:ns-resize!important;user-select:none!important;}
+
 .send-btn{width:34px;height:34px;background:var(--accent);border:none;border-radius:var(--r);color:#080808;cursor:pointer;font-size:15px;display:flex;align-items:center;justify-content:center;transition:var(--t);flex-shrink:0;}
 .send-btn:hover{opacity:.85;}
 .chat-toolbar{display:none;padding:8px 8px 4px;gap:6px;border-top:1px solid var(--border);flex-wrap:wrap;align-items:center;}

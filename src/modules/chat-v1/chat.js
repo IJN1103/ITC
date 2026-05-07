@@ -9,6 +9,122 @@ function getChatServerTimestamp() {
  * 채팅, 잡담, 귓말, 타이핑, 이미지 업로드
  */
 
+
+const _chatInputResizeState = {
+  boundInput: null,
+  dragging: false,
+  edge: '',
+  startY: 0,
+  startHeight: 0,
+  storageKey: 'itc_chat_input_height',
+};
+
+function clampChatInputHeight(value, input = null) {
+  const raw = Number(value || 0);
+  const min = input ? Math.max(34, Number.parseFloat(getComputedStyle(input).minHeight || '34') || 34) : 34;
+  const viewportMax = Math.max(96, Math.floor((window.innerHeight || 720) * 0.34));
+  const max = Math.min(220, viewportMax);
+  return Math.max(min, Math.min(max, raw || min));
+}
+
+function applyChatInputHeight(input, value, options = {}) {
+  if (!input) return;
+  const height = clampChatInputHeight(value, input);
+  input.style.height = `${height}px`;
+  input.style.overflowY = 'auto';
+  if (!options.skipStore) {
+    try { localStorage.setItem(_chatInputResizeState.storageKey, String(Math.round(height))); } catch (e) {}
+  }
+}
+
+function getChatInputResizeEdge(event, input) {
+  if (!event || !input || event.pointerType === 'touch') return '';
+  const rect = input.getBoundingClientRect();
+  const y = Number(event.clientY || 0) - rect.top;
+  const edgeSize = 7;
+  if (y >= 0 && y <= edgeSize) return 'top';
+  if (rect.bottom - Number(event.clientY || 0) >= 0 && rect.bottom - Number(event.clientY || 0) <= edgeSize) return 'bottom';
+  return '';
+}
+
+function initChatInputResize(input = null) {
+  const inp = input || document.getElementById('chat-input');
+  if (!inp || inp.dataset.chatResizeBound === '1') return;
+  inp.dataset.chatResizeBound = '1';
+  inp.classList.add('chat-input-resizable');
+
+  try {
+    const saved = Number(localStorage.getItem(_chatInputResizeState.storageKey) || 0);
+    if (saved) applyChatInputHeight(inp, saved, { skipStore: true });
+  } catch (e) {}
+
+  inp.addEventListener('pointermove', (event) => {
+    if (_chatInputResizeState.dragging) return;
+    const edge = getChatInputResizeEdge(event, inp);
+    inp.classList.toggle('resize-edge-hover', !!edge);
+    inp.style.cursor = edge ? 'ns-resize' : '';
+  });
+
+  inp.addEventListener('pointerleave', () => {
+    if (_chatInputResizeState.dragging) return;
+    inp.classList.remove('resize-edge-hover');
+    inp.style.cursor = '';
+  });
+
+  inp.addEventListener('pointerdown', (event) => {
+    const edge = getChatInputResizeEdge(event, inp);
+    if (!edge || event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    _chatInputResizeState.dragging = true;
+    _chatInputResizeState.edge = edge;
+    _chatInputResizeState.boundInput = inp;
+    _chatInputResizeState.startY = event.clientY;
+    _chatInputResizeState.startHeight = inp.getBoundingClientRect().height;
+    inp.classList.add('is-resizing');
+    document.body.classList.add('chat-input-is-resizing');
+    try { inp.setPointerCapture(event.pointerId); } catch (e) {}
+  });
+
+  inp.addEventListener('pointerup', (event) => {
+    if (!_chatInputResizeState.dragging || _chatInputResizeState.boundInput !== inp) return;
+    _chatInputResizeState.dragging = false;
+    _chatInputResizeState.edge = '';
+    inp.classList.remove('is-resizing');
+    document.body.classList.remove('chat-input-is-resizing');
+    inp.style.cursor = '';
+    try { inp.releasePointerCapture(event.pointerId); } catch (e) {}
+  });
+
+  inp.addEventListener('pointercancel', () => {
+    if (_chatInputResizeState.boundInput !== inp) return;
+    _chatInputResizeState.dragging = false;
+    _chatInputResizeState.edge = '';
+    inp.classList.remove('is-resizing');
+    document.body.classList.remove('chat-input-is-resizing');
+    inp.style.cursor = '';
+  });
+
+  inp.addEventListener('pointermove', (event) => {
+    if (!_chatInputResizeState.dragging || _chatInputResizeState.boundInput !== inp) return;
+    event.preventDefault();
+    const dy = Number(event.clientY || 0) - Number(_chatInputResizeState.startY || 0);
+    const next = _chatInputResizeState.edge === 'top'
+      ? Number(_chatInputResizeState.startHeight || 0) - dy
+      : Number(_chatInputResizeState.startHeight || 0) + dy;
+    applyChatInputHeight(inp, next);
+  });
+}
+
+
+function scheduleChatInputResizeInit() {
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => initChatInputResize(), { once: true });
+  } else {
+    setTimeout(() => initChatInputResize(), 0);
+  }
+}
+
 const _chatInputGuard = {
   boundInput: null,
   composing: false,
@@ -42,6 +158,8 @@ function getChatInputGuard() {
     inp.addEventListener('input', () => {
       clearChatImeEchoIfNeeded(inp);
     });
+
+    initChatInputResize(inp);
   }
   return _chatInputGuard;
 }
@@ -2625,6 +2743,8 @@ window.clearPendingChatImages = clearPendingChatImages;
 window.refreshChatActionButtons = refreshChatActionButtons;
 window.clearAllChatHistory = clearAllChatHistory;
 window.toggleDescMode = toggleDescMode;
+scheduleChatInputResizeInit();
+window.initChatInputResize = initChatInputResize;
 window.broadcastTyping = broadcastTyping;
 window.queueMessageRender = queueMessageRender;
 window.getRenderedNodeByKey = getRenderedNodeByKey;
