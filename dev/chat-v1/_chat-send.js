@@ -1,10 +1,18 @@
 async function sendChat() {
-  const inp = document.getElementById('chat-input');
+  const inp = bindChatImeGuards() || document.getElementById('chat-input');
   if (!inp) return;
+  if (shouldDeferChatSendForIme(inp)) return;
   const raw = inp.value.trim();
   const hasImages = _pendingChatImages.length > 0;
   const currentChannelKey = String(window._itcActiveChatChannelKey || (typeof getCurrentDmChannelKey === 'function' ? getCurrentDmChannelKey() : 'global') || 'global').trim() || 'global';
   if (!raw && !hasImages) return;
+  if (shouldIgnoreLikelyImeEcho(raw, hasImages)) {
+    inp.value = '';
+    try { clearTypingState(); } catch (e) {}
+    return;
+  }
+  if (shouldBlockRepeatedChatSend(raw, hasImages, currentChannelKey)) return;
+  const imeSendToken = raw ? markChatSendStarted(raw) : 0;
 
   const restoreInput = () => {
     try { inp.value = raw; inp.focus(); } catch (e) {}
@@ -12,6 +20,7 @@ async function sendChat() {
 
   try {
     clearTypingState();
+    if (imeSendToken) scheduleImeEchoClear(inp, raw, imeSendToken);
 
     if (hasImages && _activeRightTab === 'casual') {
       showToast('이미지 첨부는 메인 채팅에서만 보낼 수 있어요.');

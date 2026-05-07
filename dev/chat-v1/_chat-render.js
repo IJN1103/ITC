@@ -9,8 +9,126 @@ function getChatServerTimestamp() {
  * 채팅, 잡담, 귓말, 타이핑, 이미지 업로드
  */
 
+function getChatImeRuntime() {
+  if (!window._itcChatImeRuntime) {
+    window._itcChatImeRuntime = {
+      composing: false,
+      lastCompositionEndAt: 0,
+      pendingSendTimer: 0,
+      lastAttemptSig: '',
+      lastAttemptAt: 0,
+      lastSentRaw: '',
+      lastSentAt: 0,
+      lastSentToken: 0,
+      boundInput: null,
+    };
+  }
+  return window._itcChatImeRuntime;
+}
+
+function isTouchLikeChatInputDevice() {
+  try {
+    return !!(window.matchMedia && window.matchMedia('(hover: none) and (pointer: coarse)').matches);
+  } catch (e) {
+    return false;
+  }
+}
+
+function getLastTextUnit(text) {
+  const units = Array.from(String(text || '').trim());
+  return units.length ? units[units.length - 1] : '';
+}
+
+function isLikelyImeEchoText(echoText, sentText) {
+  const echo = String(echoText || '').trim();
+  const sent = String(sentText || '').trim();
+  if (!echo || !sent) return false;
+  if (echo === sent) return true;
+  const last = getLastTextUnit(sent);
+  if (echo === last) return true;
+  return echo.length <= 2 && sent.endsWith(echo);
+}
+
+function bindChatImeGuards() {
+  const inp = document.getElementById('chat-input');
+  if (!inp) return null;
+  const rt = getChatImeRuntime();
+  if (rt.boundInput === inp) return inp;
+  rt.boundInput = inp;
+  inp.addEventListener('compositionstart', () => {
+    const r = getChatImeRuntime();
+    r.composing = true;
+  });
+  inp.addEventListener('compositionend', () => {
+    const r = getChatImeRuntime();
+    r.composing = false;
+    r.lastCompositionEndAt = Date.now();
+  });
+  return inp;
+}
+
+function shouldDeferChatSendForIme(inp) {
+  if (!inp || !isTouchLikeChatInputDevice()) return false;
+  const rt = getChatImeRuntime();
+  const now = Date.now();
+  const isComposing = !!rt.composing || inp.dataset.imeComposing === '1';
+  const justEnded = rt.lastCompositionEndAt && (now - rt.lastCompositionEndAt < 90);
+  if (!isComposing && !justEnded) return false;
+  if (!rt.pendingSendTimer) {
+    rt.pendingSendTimer = setTimeout(() => {
+      const r = getChatImeRuntime();
+      r.pendingSendTimer = 0;
+      try { sendChat(); } catch (e) { console.error('deferred sendChat failed', e); }
+    }, 130);
+  }
+  return true;
+}
+
+function shouldIgnoreLikelyImeEcho(raw, hasImages = false) {
+  if (hasImages || !raw || !isTouchLikeChatInputDevice()) return false;
+  const rt = getChatImeRuntime();
+  if (!rt.lastSentRaw || Date.now() - Number(rt.lastSentAt || 0) > 1600) return false;
+  return isLikelyImeEchoText(raw, rt.lastSentRaw);
+}
+
+function shouldBlockRepeatedChatSend(raw, hasImages, channelKey) {
+  const rt = getChatImeRuntime();
+  const now = Date.now();
+  const sig = [String(_activeRightTab || ''), String(channelKey || 'global'), hasImages ? 'img' : 'txt', String(raw || '')].join('|');
+  if (rt.lastAttemptSig === sig && now - Number(rt.lastAttemptAt || 0) < 650) return true;
+  rt.lastAttemptSig = sig;
+  rt.lastAttemptAt = now;
+  return false;
+}
+
+function markChatSendStarted(raw) {
+  const rt = getChatImeRuntime();
+  rt.lastSentRaw = String(raw || '').trim();
+  rt.lastSentAt = Date.now();
+  rt.lastSentToken = (Number(rt.lastSentToken || 0) + 1) % 1000000;
+  return rt.lastSentToken;
+}
+
+function scheduleImeEchoClear(inp, sentRaw, token) {
+  if (!inp || !sentRaw || !isTouchLikeChatInputDevice()) return;
+  [30, 120, 260].forEach((delay) => {
+    setTimeout(() => {
+      const rt = getChatImeRuntime();
+      if (rt.lastSentToken !== token) return;
+      const current = String(inp.value || '').trim();
+      if (isLikelyImeEchoText(current, sentRaw)) inp.value = '';
+    }, delay);
+  });
+}
+
 function chatKeydown(e) {
-  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); }
+  bindChatImeGuards();
+  if (e.key === 'Enter' && !e.shiftKey) {
+    const rt = getChatImeRuntime();
+    if (e.isComposing || e.keyCode === 229 || rt.composing) return;
+    e.preventDefault();
+    sendChat();
+  }
 }
 
 function toggleDescMode() {
