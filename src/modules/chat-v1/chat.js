@@ -9,126 +9,164 @@ function getChatServerTimestamp() {
  * 채팅, 잡담, 귓말, 타이핑, 이미지 업로드
  */
 
-function getChatImeRuntime() {
-  if (!window._itcChatImeRuntime) {
-    window._itcChatImeRuntime = {
-      composing: false,
-      lastCompositionEndAt: 0,
-      pendingSendTimer: 0,
-      lastAttemptSig: '',
-      lastAttemptAt: 0,
-      lastSentRaw: '',
-      lastSentAt: 0,
-      lastSentToken: 0,
-      boundInput: null,
-    };
-  }
-  return window._itcChatImeRuntime;
-}
+const _chatInputGuard = {
+  boundInput: null,
+  composing: false,
+  compositionEndedAt: 0,
+  pendingEnterToken: 0,
+  lastEnterAt: 0,
+  lastSubmitAt: 0,
+  lastSubmitText: '',
+  lastSubmitTail: '',
+  lastSubmitChannel: '',
+  lastSubmitTab: '',
+  echoBlockUntil: 0,
+  echoClearTimers: [],
+};
 
-function isTouchLikeChatInputDevice() {
-  try {
-    return !!(window.matchMedia && window.matchMedia('(hover: none) and (pointer: coarse)').matches);
-  } catch (e) {
-    return false;
-  }
-}
-
-function getLastTextUnit(text) {
-  const units = Array.from(String(text || '').trim());
-  return units.length ? units[units.length - 1] : '';
-}
-
-function isLikelyImeEchoText(echoText, sentText) {
-  const echo = String(echoText || '').trim();
-  const sent = String(sentText || '').trim();
-  if (!echo || !sent) return false;
-  if (echo === sent) return true;
-  const last = getLastTextUnit(sent);
-  if (echo === last) return true;
-  return echo.length <= 2 && sent.endsWith(echo);
-}
-
-function bindChatImeGuards() {
+function getChatInputGuard() {
   const inp = document.getElementById('chat-input');
-  if (!inp) return null;
-  const rt = getChatImeRuntime();
-  if (rt.boundInput === inp) return inp;
-  rt.boundInput = inp;
-  inp.addEventListener('compositionstart', () => {
-    const r = getChatImeRuntime();
-    r.composing = true;
-  });
-  inp.addEventListener('compositionend', () => {
-    const r = getChatImeRuntime();
-    r.composing = false;
-    r.lastCompositionEndAt = Date.now();
-  });
-  return inp;
-}
+  if (inp && _chatInputGuard.boundInput !== inp) {
+    _chatInputGuard.boundInput = inp;
+    _chatInputGuard.composing = false;
 
-function shouldDeferChatSendForIme(inp) {
-  if (!inp || !isTouchLikeChatInputDevice()) return false;
-  const rt = getChatImeRuntime();
-  const now = Date.now();
-  const isComposing = !!rt.composing || inp.dataset.imeComposing === '1';
-  const justEnded = rt.lastCompositionEndAt && (now - rt.lastCompositionEndAt < 90);
-  if (!isComposing && !justEnded) return false;
-  if (!rt.pendingSendTimer) {
-    rt.pendingSendTimer = setTimeout(() => {
-      const r = getChatImeRuntime();
-      r.pendingSendTimer = 0;
-      try { sendChat(); } catch (e) { console.error('deferred sendChat failed', e); }
-    }, 130);
+    inp.addEventListener('compositionstart', () => {
+      _chatInputGuard.composing = true;
+    });
+
+    inp.addEventListener('compositionend', () => {
+      _chatInputGuard.composing = false;
+      _chatInputGuard.compositionEndedAt = Date.now();
+    });
+
+    inp.addEventListener('input', () => {
+      clearChatImeEchoIfNeeded(inp);
+    });
   }
-  return true;
+  return _chatInputGuard;
 }
 
-function shouldIgnoreLikelyImeEcho(raw, hasImages = false) {
-  if (hasImages || !raw || !isTouchLikeChatInputDevice()) return false;
-  const rt = getChatImeRuntime();
-  if (!rt.lastSentRaw || Date.now() - Number(rt.lastSentAt || 0) > 1600) return false;
-  return isLikelyImeEchoText(raw, rt.lastSentRaw);
+function getChatImeTail(text = '') {
+  const trimmed = String(text || '').trim();
+  if (!trimmed) return '';
+  const chars = Array.from(trimmed);
+  return chars[chars.length - 1] || '';
 }
 
-function shouldBlockRepeatedChatSend(raw, hasImages, channelKey) {
-  const rt = getChatImeRuntime();
+function isLikelyChatImeEcho(raw = '', channelKey = '') {
+  const guard = getChatInputGuard();
   const now = Date.now();
-  const sig = [String(_activeRightTab || ''), String(channelKey || 'global'), hasImages ? 'img' : 'txt', String(raw || '')].join('|');
-  if (rt.lastAttemptSig === sig && now - Number(rt.lastAttemptAt || 0) < 650) return true;
-  rt.lastAttemptSig = sig;
-  rt.lastAttemptAt = now;
+  const text = String(raw || '').trim();
+  if (!text || now > Number(guard.echoBlockUntil || 0)) return false;
+
+  const lastText = String(guard.lastSubmitText || '').trim();
+  if (!lastText || text === lastText) return false;
+
+  const sameChannel = !guard.lastSubmitChannel || !channelKey || String(guard.lastSubmitChannel) === String(channelKey);
+  if (!sameChannel) return false;
+
+  const textLen = Array.from(text).length;
+  if (text === guard.lastSubmitTail && lastText.endsWith(text)) return true;
+  if (textLen <= 2 && Array.from(lastText).length > textLen && lastText.endsWith(text)) return true;
   return false;
 }
 
-function markChatSendStarted(raw) {
-  const rt = getChatImeRuntime();
-  rt.lastSentRaw = String(raw || '').trim();
-  rt.lastSentAt = Date.now();
-  rt.lastSentToken = (Number(rt.lastSentToken || 0) + 1) % 1000000;
-  return rt.lastSentToken;
+function shouldSuppressChatSubmit(raw = '', channelKey = '') {
+  const guard = getChatInputGuard();
+  const now = Date.now();
+  const text = String(raw || '').trim();
+  if (!text) return false;
+
+  if (isLikelyChatImeEcho(text, channelKey)) return true;
+
+  const sameText = text === String(guard.lastSubmitText || '').trim();
+  const sameChannel = !guard.lastSubmitChannel || !channelKey || String(guard.lastSubmitChannel) === String(channelKey);
+  if (sameText && sameChannel && now - Number(guard.lastSubmitAt || 0) < 650) return true;
+
+  return false;
 }
 
-function scheduleImeEchoClear(inp, sentRaw, token) {
-  if (!inp || !sentRaw || !isTouchLikeChatInputDevice()) return;
-  [30, 120, 260].forEach((delay) => {
-    setTimeout(() => {
-      const rt = getChatImeRuntime();
-      if (rt.lastSentToken !== token) return;
-      const current = String(inp.value || '').trim();
-      if (isLikelyImeEchoText(current, sentRaw)) inp.value = '';
+function markChatSubmitForImeGuard(raw = '', channelKey = '') {
+  const guard = getChatInputGuard();
+  const text = String(raw || '').trim();
+  if (!text) return;
+
+  guard.lastSubmitAt = Date.now();
+  guard.lastSubmitText = text;
+  guard.lastSubmitTail = getChatImeTail(text);
+  guard.lastSubmitChannel = String(channelKey || '').trim();
+  guard.lastSubmitTab = String(typeof _activeRightTab !== 'undefined' ? _activeRightTab : '').trim();
+  guard.echoBlockUntil = guard.lastSubmitAt + 1400;
+
+  clearChatImeEchoTimers();
+  const inp = document.getElementById('chat-input');
+  if (!inp || !guard.lastSubmitTail) return;
+
+  [40, 140, 320].forEach((delay) => {
+    const timer = setTimeout(() => {
+      clearChatImeEchoIfNeeded(inp);
     }, delay);
+    guard.echoClearTimers.push(timer);
   });
 }
 
-function chatKeydown(e) {
-  bindChatImeGuards();
-  if (e.key === 'Enter' && !e.shiftKey) {
-    const rt = getChatImeRuntime();
-    if (e.isComposing || e.keyCode === 229 || rt.composing) return;
-    e.preventDefault();
-    sendChat();
+function cancelChatSubmitForImeGuard(raw = '', channelKey = '') {
+  const guard = getChatInputGuard();
+  const text = String(raw || '').trim();
+  if (!text) return;
+  const sameText = text === String(guard.lastSubmitText || '').trim();
+  const sameChannel = !guard.lastSubmitChannel || !channelKey || String(guard.lastSubmitChannel) === String(channelKey);
+  if (sameText && sameChannel) {
+    guard.echoBlockUntil = 0;
+    guard.lastSubmitText = '';
+    guard.lastSubmitTail = '';
   }
+}
+
+function clearChatImeEchoTimers() {
+  const guard = getChatInputGuard();
+  const timers = Array.isArray(guard.echoClearTimers) ? guard.echoClearTimers.splice(0) : [];
+  timers.forEach((timer) => {
+    try { clearTimeout(timer); } catch (e) {}
+  });
+}
+
+function clearChatImeEchoIfNeeded(inp = null) {
+  const guard = getChatInputGuard();
+  const input = inp || document.getElementById('chat-input');
+  if (!input) return;
+  const now = Date.now();
+  if (now > Number(guard.echoBlockUntil || 0)) return;
+  const value = String(input.value || '').trim();
+  if (!value) return;
+  if (isLikelyChatImeEcho(value, guard.lastSubmitChannel || '')) {
+    input.value = '';
+  }
+}
+
+function chatKeydown(e) {
+  if (e.key !== 'Enter' || e.shiftKey) return;
+
+  const guard = getChatInputGuard();
+  const now = Date.now();
+  e.preventDefault();
+
+  const isComposing = !!(e.isComposing || e.keyCode === 229 || guard.composing);
+  const justComposed = now - Number(guard.compositionEndedAt || 0) < 70;
+
+  if (isComposing || justComposed) {
+    const token = ++guard.pendingEnterToken;
+    setTimeout(() => {
+      const latest = getChatInputGuard();
+      if (token !== latest.pendingEnterToken || latest.composing) return;
+      sendChat();
+    }, isComposing ? 90 : 35);
+    return;
+  }
+
+  if (now - Number(guard.lastEnterAt || 0) < 80) return;
+  guard.lastEnterAt = now;
+  sendChat();
 }
 
 function toggleDescMode() {
@@ -1766,28 +1804,31 @@ function initChatImageComposer() {
 
 
 async function sendChat() {
-  const inp = bindChatImeGuards() || document.getElementById('chat-input');
+  const inp = document.getElementById('chat-input');
   if (!inp) return;
-  if (shouldDeferChatSendForIme(inp)) return;
+  getChatInputGuard();
   const raw = inp.value.trim();
   const hasImages = _pendingChatImages.length > 0;
   const currentChannelKey = String(window._itcActiveChatChannelKey || (typeof getCurrentDmChannelKey === 'function' ? getCurrentDmChannelKey() : 'global') || 'global').trim() || 'global';
   if (!raw && !hasImages) return;
-  if (shouldIgnoreLikelyImeEcho(raw, hasImages)) {
+
+  if (raw && !hasImages && shouldSuppressChatSubmit(raw, currentChannelKey)) {
     inp.value = '';
     try { clearTypingState(); } catch (e) {}
     return;
   }
-  if (shouldBlockRepeatedChatSend(raw, hasImages, currentChannelKey)) return;
-  const imeSendToken = raw ? markChatSendStarted(raw) : 0;
 
+  let imeGuardMarked = false;
   const restoreInput = () => {
     try { inp.value = raw; inp.focus(); } catch (e) {}
   };
 
   try {
     clearTypingState();
-    if (imeSendToken) scheduleImeEchoClear(inp, raw, imeSendToken);
+    if (raw && !hasImages) {
+      markChatSubmitForImeGuard(raw, currentChannelKey);
+      imeGuardMarked = true;
+    }
 
     if (hasImages && _activeRightTab === 'casual') {
       showToast('이미지 첨부는 메인 채팅에서만 보낼 수 있어요.');
@@ -1907,6 +1948,7 @@ async function sendChat() {
     }
   } catch (err) {
     console.error('sendChat failed', err);
+    if (imeGuardMarked) cancelChatSubmitForImeGuard(raw, currentChannelKey);
     restoreInput();
     showToast('메시지 전송에 실패했어요. 다시 시도해주세요.');
   }
