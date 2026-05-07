@@ -686,6 +686,7 @@ to{transform:translateX(0);opacity:1;}
 .sheet-footer{display:flex;align-items:center;gap:10px;padding:12px 20px;border-top:1px solid var(--border);flex-shrink:0;background:var(--s2);}
 .sheet-hint{font-size:11px;color:var(--muted);flex:1;}
 .chat-input{flex:1;background:var(--s2);border:1px solid var(--border);border-radius:var(--r);color:var(--text);padding:7px 10px;font-size:13px;resize:none;min-height:34px;max-height:220px;transition:var(--t);font-family:inherit;overflow-y:auto;}
+.chat-composer-stack .chat-input{flex:0 0 auto;width:100%;box-sizing:border-box;}
 .chat-input:focus{border-color:var(--accent);}
 .chat-input.chat-input-resizable.resize-edge-hover,.chat-input.chat-input-resizable.is-resizing{border-color:var(--accent);box-shadow:0 0 0 1px rgba(184,154,96,.18);}
 body.chat-input-is-resizing,body.chat-input-is-resizing *{cursor:ns-resize!important;user-select:none!important;}

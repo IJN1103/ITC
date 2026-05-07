@@ -16,6 +16,8 @@ const _chatInputResizeState = {
   edge: '',
   startY: 0,
   startHeight: 0,
+  pointerId: null,
+  docBound: false,
   storageKey: 'itc_chat_input_height',
 };
 
@@ -47,11 +49,51 @@ function getChatInputResizeEdge(event, input) {
   return '';
 }
 
+function bindChatInputResizeDocumentEvents() {
+  if (_chatInputResizeState.docBound) return;
+  _chatInputResizeState.docBound = true;
+
+  document.addEventListener('pointermove', (event) => {
+    const st = _chatInputResizeState;
+    const input = st.boundInput;
+    if (!st.dragging || !input) return;
+    event.preventDefault();
+    const dy = Number(event.clientY || 0) - Number(st.startY || 0);
+    const next = st.edge === 'top'
+      ? Number(st.startHeight || 0) - dy
+      : Number(st.startHeight || 0) + dy;
+    applyChatInputHeight(input, next);
+  }, { passive: false });
+
+  const stop = (event = null) => {
+    const st = _chatInputResizeState;
+    const input = st.boundInput;
+    if (!st.dragging && !input) return;
+    if (input) {
+      input.classList.remove('is-resizing', 'resize-edge-hover');
+      input.style.cursor = '';
+      try {
+        if (event && st.pointerId != null) input.releasePointerCapture(st.pointerId);
+      } catch (e) {}
+    }
+    st.dragging = false;
+    st.edge = '';
+    st.boundInput = null;
+    st.pointerId = null;
+    document.body.classList.remove('chat-input-is-resizing');
+  };
+
+  document.addEventListener('pointerup', stop, true);
+  document.addEventListener('pointercancel', stop, true);
+  window.addEventListener('blur', stop);
+}
+
 function initChatInputResize(input = null) {
   const inp = input || document.getElementById('chat-input');
   if (!inp || inp.dataset.chatResizeBound === '1') return;
   inp.dataset.chatResizeBound = '1';
   inp.classList.add('chat-input-resizable');
+  bindChatInputResizeDocumentEvents();
 
   try {
     const saved = Number(localStorage.getItem(_chatInputResizeState.storageKey) || 0);
@@ -79,40 +121,12 @@ function initChatInputResize(input = null) {
     _chatInputResizeState.dragging = true;
     _chatInputResizeState.edge = edge;
     _chatInputResizeState.boundInput = inp;
+    _chatInputResizeState.pointerId = event.pointerId;
     _chatInputResizeState.startY = event.clientY;
     _chatInputResizeState.startHeight = inp.getBoundingClientRect().height;
     inp.classList.add('is-resizing');
     document.body.classList.add('chat-input-is-resizing');
     try { inp.setPointerCapture(event.pointerId); } catch (e) {}
-  });
-
-  inp.addEventListener('pointerup', (event) => {
-    if (!_chatInputResizeState.dragging || _chatInputResizeState.boundInput !== inp) return;
-    _chatInputResizeState.dragging = false;
-    _chatInputResizeState.edge = '';
-    inp.classList.remove('is-resizing');
-    document.body.classList.remove('chat-input-is-resizing');
-    inp.style.cursor = '';
-    try { inp.releasePointerCapture(event.pointerId); } catch (e) {}
-  });
-
-  inp.addEventListener('pointercancel', () => {
-    if (_chatInputResizeState.boundInput !== inp) return;
-    _chatInputResizeState.dragging = false;
-    _chatInputResizeState.edge = '';
-    inp.classList.remove('is-resizing');
-    document.body.classList.remove('chat-input-is-resizing');
-    inp.style.cursor = '';
-  });
-
-  inp.addEventListener('pointermove', (event) => {
-    if (!_chatInputResizeState.dragging || _chatInputResizeState.boundInput !== inp) return;
-    event.preventDefault();
-    const dy = Number(event.clientY || 0) - Number(_chatInputResizeState.startY || 0);
-    const next = _chatInputResizeState.edge === 'top'
-      ? Number(_chatInputResizeState.startHeight || 0) - dy
-      : Number(_chatInputResizeState.startHeight || 0) + dy;
-    applyChatInputHeight(inp, next);
   });
 }
 
