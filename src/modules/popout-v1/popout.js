@@ -62,6 +62,16 @@ function getSharedAvatarRuntime() {
 let _popoutWins = [];
 let _popoutMirrorBound = false;
 let _popoutMirrorCleanup = null;
+let _popoutSyncDebugState = {
+  requested: 0,
+  completed: 0,
+  errors: 0,
+  lastRequestedAt: 0,
+  lastCompletedAt: 0,
+  lastWindowCount: 0,
+  lastChannels: [],
+  lastError: '',
+};
 
 // PHASE 6 NOTE — Popout chat channel independence
 // 팝아웃창은 본창 active chat channel과 독립적으로 전체/DM 채널을 볼 수 있어야 한다.
@@ -642,12 +652,27 @@ function popoutChat() {
   const schedulePopoutSync = (() => {
     let timer = 0;
     return () => {
+      try {
+        _popoutSyncDebugState.requested += 1;
+        _popoutSyncDebugState.lastRequestedAt = Date.now();
+      } catch (e) {}
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => {
         timer = 0;
-        _popoutWins = _popoutWins.filter(w => w && !w.closed);
-        pruneUnusedPopoutChannelWatchers();
-        _popoutWins.forEach(syncPopoutWindow);
+        try {
+          _popoutWins = _popoutWins.filter(w => w && !w.closed);
+          _popoutSyncDebugState.lastWindowCount = _popoutWins.length;
+          _popoutSyncDebugState.lastChannels = getOpenPopoutChatChannelKeys();
+          pruneUnusedPopoutChannelWatchers();
+          _popoutWins.forEach(syncPopoutWindow);
+          _popoutSyncDebugState.completed += 1;
+          _popoutSyncDebugState.lastCompletedAt = Date.now();
+        } catch (err) {
+          try {
+            _popoutSyncDebugState.errors += 1;
+            _popoutSyncDebugState.lastError = err && (err.stack || err.message || String(err)) || '';
+          } catch (e) {}
+        }
       }, 40);
     };
   })();
@@ -723,6 +748,36 @@ function getPopoutAvatarUrl(name, uid) {
 function normalizePopoutChatChannelKey(channelKey = 'global') {
   return String(channelKey || 'global').trim() || 'global';
 }
+
+// PHASE 6-5 SECTION — Popout final regression guard/debug status
+// 기능 동작은 바꾸지 않고, 본창/팝아웃 채널 독립성 및 sync 상태를 콘솔에서 확인하기 위한 안전 점검 helper다.
+function getPopoutChatSyncDebugStatus() {
+  const wins = Array.isArray(_popoutWins) ? _popoutWins.filter((w) => w && !w.closed) : [];
+  const popouts = wins.map((w, index) => {
+    let channelKey = 'global';
+    let ready = false;
+    let activeTab = '';
+    let chatSignature = '';
+    try { ready = !!w._popReady; } catch (e) {}
+    try { channelKey = typeof w.getCurrentDmChannelKey === 'function' ? normalizePopoutChatChannelKey(w.getCurrentDmChannelKey()) : 'global'; } catch (e) {}
+    try { activeTab = w.aTab || ''; } catch (e) {}
+    try { chatSignature = w._popoutMessageSignatures && w._popoutMessageSignatures.chat || ''; } catch (e) {}
+    return { index, ready, channelKey, activeTab, hasChatSignature: !!chatSignature };
+  });
+  let openerChannels = [];
+  let watcherStatus = [];
+  try { openerChannels = typeof window.getOpenPopoutChatChannelKeys === 'function' ? window.getOpenPopoutChatChannelKeys() : []; } catch (e) {}
+  try { watcherStatus = typeof window.getPopoutChatWatcherDebugStatus === 'function' ? window.getPopoutChatWatcherDebugStatus() : []; } catch (e) {}
+  return {
+    openPopoutCount: wins.length,
+    activeMainChannelKey: normalizePopoutChatChannelKey(window._itcActiveChatChannelKey || 'global'),
+    popoutChannels: openerChannels,
+    popouts,
+    watcherStatus,
+    sync: { ..._popoutSyncDebugState },
+  };
+}
+window.getPopoutChatSyncDebugStatus = getPopoutChatSyncDebugStatus;
 
 function requestPopoutChannelSync(channelKey = 'global') {
   const safeKey = normalizePopoutChatChannelKey(channelKey);
