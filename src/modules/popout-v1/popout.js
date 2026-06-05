@@ -534,14 +534,39 @@ function popoutChat() {
     }
   };
 
+
+  const getPopoutChatListForChannel = (channelKey = 'global') => {
+    const safeKey = String(channelKey || 'global').trim() || 'global';
+    let records = null;
+    try {
+      if (typeof window.getChatRecordsForChannel === 'function') records = window.getChatRecordsForChannel(safeKey);
+    } catch (e) {
+      records = null;
+    }
+    if (Array.isArray(records) && records.length) {
+      return records.map((m) => normalizePopoutTransferRecord(m, 'chat'));
+    }
+    try {
+      const activeKey = String(window._itcActiveChatChannelKey || 'global').trim() || 'global';
+      if (safeKey === activeKey && typeof window.getChatRenderSnapshot === 'function') {
+        const snapshot = window.getChatRenderSnapshot('chat', { limit: 0 });
+        if (Array.isArray(snapshot) && snapshot.length) {
+          return snapshot.map((m) => normalizePopoutTransferRecord(m, 'chat'));
+        }
+      }
+    } catch (e) {}
+    try {
+      const activeKey = String(window._itcActiveChatChannelKey || 'global').trim() || 'global';
+      if (safeKey === activeKey) return getPaneSnapshot('#chat-messages > div', 'chat');
+    } catch (e) {}
+    return [];
+  };
+
   const syncPopoutWindow = (targetWin) => {
     if (!targetWin || targetWin.closed || !targetWin._popReady) return;
     try {
       const channelKey = typeof targetWin.getCurrentDmChannelKey === 'function' ? targetWin.getCurrentDmChannelKey() : (typeof getCurrentDmChannelKey === 'function' ? getCurrentDmChannelKey() : 'global');
-      const records = typeof window.getChatRecordsForChannel === 'function' ? window.getChatRecordsForChannel(channelKey) : [];
-      const list = Array.isArray(records)
-        ? records.map((m) => normalizePopoutTransferRecord(m, 'chat'))
-        : getPaneSnapshot('#chat-messages > div', 'chat');
+      const list = getPopoutChatListForChannel(channelKey);
       if (targetWin.setMessages) targetWin.setMessages('chat', list);
     } catch (e) {}
     try {
@@ -644,49 +669,79 @@ function getPopoutAvatarUrl(name, uid) {
   return '';
 }
 
+
+function schedulePopoutSyncSoon() {
+  const sync = () => {
+    try {
+      if (typeof window.forcePopoutSync === 'function') window.forcePopoutSync();
+    } catch (e) {}
+  };
+  sync();
+  try { requestAnimationFrame(sync); } catch (e) {}
+  setTimeout(sync, 80);
+  setTimeout(sync, 220);
+}
+
+
 function sendDescFromPopout(text, channelKey = 'global') {
   const prevChannelKey = String(window._itcActiveChatChannelKey || 'global').trim() || 'global';
   const nextChannelKey = String(channelKey || 'global').trim() || 'global';
   window._itcActiveChatChannelKey = nextChannelKey;
+  let result;
   try {
-    return sendMessage(St.myName, text, 'desc');
+    result = sendMessage(St.myName, text, 'desc');
   } finally {
     window._itcActiveChatChannelKey = prevChannelKey;
   }
+  Promise.resolve(result).finally(() => schedulePopoutSyncSoon());
+  return result;
 }
 window.sendDescFromPopout = sendDescFromPopout;
 
 function sendChatFromPopout(text, tab, channelKey = 'global') {
-  if (tab === 'casual') { sendCasualMsg(_casualNickname || St.myName, text); return; }
+  if (tab === 'casual') {
+    const result = sendCasualMsg(_casualNickname || St.myName, text);
+    Promise.resolve(result).finally(() => schedulePopoutSyncSoon());
+    return result;
+  }
   const prevChannelKey = String(window._itcActiveChatChannelKey || 'global').trim() || 'global';
   const nextChannelKey = String(channelKey || 'global').trim() || 'global';
   window._itcActiveChatChannelKey = nextChannelKey;
+  let result;
   try {
     if (St.speakAsJournalId) {
       const j = loadJournals().find(x => x.id === St.speakAsJournalId);
-      if (j) return saSendMessage(j, text);
+      if (j) result = saSendMessage(j, text);
     }
-    return sendMessage(St.myName, text, 'normal');
+    if (!result) result = sendMessage(St.myName, text, 'normal');
   } finally {
     window._itcActiveChatChannelKey = prevChannelKey;
   }
+  Promise.resolve(result).finally(() => schedulePopoutSyncSoon());
+  return result;
 }
 
 const _baseAppend = appendChatMsg;
 appendChatMsg = function(msg = {}) {
-  _baseAppend(msg);
+  const result = _baseAppend(msg);
+  schedulePopoutSyncSoon();
+  return result;
 };
 
 const _baseReplace = typeof replaceChatMsg === 'function' ? replaceChatMsg : null;
 if (_baseReplace) {
   replaceChatMsg = function(msg = {}) {
-    _baseReplace(msg);
+    const result = _baseReplace(msg);
+    schedulePopoutSyncSoon();
+    return result;
   };
 }
 
 const _baseRemove = typeof removeChatMsg === 'function' ? removeChatMsg : null;
 if (_baseRemove) {
   removeChatMsg = function(msgKey, channel = 'chat') {
-    _baseRemove(msgKey, channel);
+    const result = _baseRemove(msgKey, channel);
+    schedulePopoutSyncSoon();
+    return result;
   };
 }
