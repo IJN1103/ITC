@@ -317,9 +317,12 @@ function buildPopoutScript(journalJson, playersJson, isGmJson) {
   L.push('window.switchTab=switchTab;');
   L.push('function getOpenerState(){try{return window.opener||null}catch(e){return null}}');
   L.push('function getCurrentDmChannelKey(){return String(popDmChannelKey||"global").trim()||"global"}');
-  L.push('function setCurrentDmChannelKey(key){popDmChannelKey=String(key||"global").trim()||"global";popDmPendingTargetIds=null;try{var op=getOpenerState();if(op&&typeof op.setCurrentDmChannelKey==="function"){op.setCurrentDmChannelKey(popDmChannelKey)}else if(op&&popDmChannelKey!=="global"&&op.isDmGmView&&op.isDmGmView()&&typeof op.ensureDmChannelMeta==="function"){op.ensureDmChannelMeta(popDmChannelKey).catch(function(){})}if(op&&typeof op.markDmChannelSeen==="function")op.markDmChannelSeen(popDmChannelKey);if(op&&typeof op.forcePopoutSync==="function"){op.forcePopoutSync();setTimeout(function(){try{op.forcePopoutSync()}catch(e){}},120);setTimeout(function(){try{op.forcePopoutSync()}catch(e){}},360);setTimeout(function(){try{op.forcePopoutSync()}catch(e){}},800)}}catch(e){}renderDmBar();syncDmUnreadDots();return popDmChannelKey}');
-  L.push('window.getCurrentDmChannelKey=getCurrentDmChannelKey;window.setCurrentDmChannelKey=setCurrentDmChannelKey;');
+  L.push('function scheduleOpenerPopoutSync(){try{var op=getOpenerState();if(op&&typeof op.forcePopoutSync==="function"){op.forcePopoutSync();setTimeout(function(){try{op.forcePopoutSync()}catch(e){}},80);setTimeout(function(){try{op.forcePopoutSync()}catch(e){}},220);setTimeout(function(){try{op.forcePopoutSync()}catch(e){}},520)}}catch(e){}}');
+  L.push('function requestPopoutChannelWatch(key){var next=String(key||"global").trim()||"global";try{var op=getOpenerState();if(!op){return Promise.resolve([])}var jobs=[];if(next!=="global"&&op.isDmGmView&&op.isDmGmView()&&typeof op.ensureDmChannelMeta==="function"){jobs.push(Promise.resolve(op.ensureDmChannelMeta(next)).catch(function(){}))}if(typeof op.watchPopoutChatChannel==="function"){jobs.push(Promise.resolve(op.watchPopoutChatChannel(next)).catch(function(){return[]}))}if(typeof op.markDmChannelSeen==="function")op.markDmChannelSeen(next);scheduleOpenerPopoutSync();return Promise.all(jobs).then(function(){scheduleOpenerPopoutSync();return[]})}catch(e){return Promise.resolve([])}}');
+  L.push('function setCurrentDmChannelKey(key){popDmChannelKey=String(key||"global").trim()||"global";popDmPendingTargetIds=null;requestPopoutChannelWatch(popDmChannelKey);renderDmBar();syncDmUnreadDots();return popDmChannelKey}');
+  L.push('window.getCurrentDmChannelKey=getCurrentDmChannelKey;window.setCurrentDmChannelKey=setCurrentDmChannelKey;window.requestPopoutChannelWatch=requestPopoutChannelWatch;');
   L.push('try{var __op=getOpenerState();if(__op&&typeof __op.getCurrentDmChannelKey==="function")popDmChannelKey=String(__op.getCurrentDmChannelKey()||"global")||"global"}catch(e){}');
+  L.push('try{requestPopoutChannelWatch(popDmChannelKey)}catch(e){}');
   L.push('function escHtml(v){return String(v||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;")}');
   L.push('function normalizeMsgType(t){t=String(t||"normal").trim();if(t==="desc"||t==="dsec"||t==="msg-dsec")return "desc";if(t==="system")return "sys";return t||"normal"}');
   L.push('function fmtPopText(v){var s=escHtml(v);s=s.replace(/\\*\\*\\*([\\s\\S]+?)\\*\\*\\*/g,"<b><i>$1</i></b>");s=s.replace(/\\*\\*([\\s\\S]+?)\\*\\*/g,"<b>$1</b>");s=s.replace(/\\*([\\s\\S]+?)\\*/g,"<i>$1</i>");s=s.replace(/\\n/g,"<br>");return s}');
@@ -566,6 +569,7 @@ function popoutChat() {
     if (!targetWin || targetWin.closed || !targetWin._popReady) return;
     try {
       const channelKey = typeof targetWin.getCurrentDmChannelKey === 'function' ? targetWin.getCurrentDmChannelKey() : (typeof getCurrentDmChannelKey === 'function' ? getCurrentDmChannelKey() : 'global');
+      try { if (typeof window.watchPopoutChatChannel === 'function') window.watchPopoutChatChannel(channelKey); } catch (e) {}
       const list = getPopoutChatListForChannel(channelKey);
       if (targetWin.setMessages) targetWin.setMessages('chat', list);
     } catch (e) {}
@@ -686,6 +690,7 @@ function schedulePopoutSyncSoon() {
 function sendDescFromPopout(text, channelKey = 'global') {
   const prevChannelKey = String(window._itcActiveChatChannelKey || 'global').trim() || 'global';
   const nextChannelKey = String(channelKey || 'global').trim() || 'global';
+  try { if (typeof window.watchPopoutChatChannel === 'function') window.watchPopoutChatChannel(nextChannelKey); } catch (e) {}
   window._itcActiveChatChannelKey = nextChannelKey;
   let result;
   try {
@@ -693,7 +698,10 @@ function sendDescFromPopout(text, channelKey = 'global') {
   } finally {
     window._itcActiveChatChannelKey = prevChannelKey;
   }
-  Promise.resolve(result).finally(() => schedulePopoutSyncSoon());
+  Promise.resolve(result).finally(() => {
+    try { if (typeof window.watchPopoutChatChannel === 'function') window.watchPopoutChatChannel(nextChannelKey); } catch (e) {}
+    schedulePopoutSyncSoon();
+  });
   return result;
 }
 window.sendDescFromPopout = sendDescFromPopout;
@@ -706,6 +714,7 @@ function sendChatFromPopout(text, tab, channelKey = 'global') {
   }
   const prevChannelKey = String(window._itcActiveChatChannelKey || 'global').trim() || 'global';
   const nextChannelKey = String(channelKey || 'global').trim() || 'global';
+  try { if (typeof window.watchPopoutChatChannel === 'function') window.watchPopoutChatChannel(nextChannelKey); } catch (e) {}
   window._itcActiveChatChannelKey = nextChannelKey;
   let result;
   try {
@@ -717,7 +726,10 @@ function sendChatFromPopout(text, tab, channelKey = 'global') {
   } finally {
     window._itcActiveChatChannelKey = prevChannelKey;
   }
-  Promise.resolve(result).finally(() => schedulePopoutSyncSoon());
+  Promise.resolve(result).finally(() => {
+    try { if (typeof window.watchPopoutChatChannel === 'function') window.watchPopoutChatChannel(nextChannelKey); } catch (e) {}
+    schedulePopoutSyncSoon();
+  });
   return result;
 }
 

@@ -10,6 +10,7 @@ let _chatRecordsByChannel = new Map();
 let _activeChatChannelKey = 'global';
 let _activeChatChannelRoomCode = '';
 let _activeChatChannelUnsubs = [];
+let _popoutChatChannelWatchers = new Map();
 let _activeChatChannelListenerVersion = 0;
 let _dmChannelChangeSeq = 0;
 let _chatHistoryCursorByChannel = new Map();
@@ -283,6 +284,7 @@ function cleanupFirebaseListeners() {
   clearPresenceTimers();
   _dmChannelChangeSeq += 1;
   cleanupActiveChatChannelListeners();
+  cleanupPopoutChatChannelWatchers();
   _firebaseUnsubs.forEach(unsub => { try { if (typeof unsub === 'function') unsub(); } catch (e) {} });
   _firebaseUnsubs = [];
   _typingState = {};
@@ -335,6 +337,92 @@ function trackActiveChatChannelListener(unsub) {
     logItcChatDebug('active-listener-registered', { registeredListenerCount: _activeChatChannelUnsubs.length });
   }
 }
+
+
+function cleanupPopoutChatChannelWatchers() {
+  const prevCount = _popoutChatChannelWatchers.size;
+  _popoutChatChannelWatchers.forEach((watcher) => {
+    try { if (typeof watcher?.unsub === 'function') watcher.unsub(); } catch (e) {}
+  });
+  _popoutChatChannelWatchers = new Map();
+  logItcChatDebug('popout-channel-watch-cleanup', { previousWatcherCount: prevCount }, { throttleMs: 1000 });
+}
+
+function watchPopoutChatChannel(channelKey = 'global') {
+  if (!window._FB?.CONFIGURED || !St.roomCode) return Promise.resolve([]);
+  const safeKey = String(channelKey || 'global').trim() || 'global';
+  const activeRoomCode = String(St.roomCode || '').trim();
+  if (!activeRoomCode) return Promise.resolve([]);
+  const existing = _popoutChatChannelWatchers.get(safeKey);
+  if (existing && existing.roomCode === activeRoomCode) {
+    return existing.ready || Promise.resolve(window.getChatRecordsForChannel ? window.getChatRecordsForChannel(safeKey) : []);
+  }
+  if (existing && typeof existing.unsub === 'function') {
+    try { existing.unsub(); } catch (e) {}
+  }
+
+  const { db, ref, onValue, query, limitToLast, orderByChild, equalTo } = window._FB;
+  if (!db || !ref || typeof onValue !== 'function') return Promise.resolve([]);
+  const chatBaseRef = ref(db, `rooms/${activeRoomCode}/chat`);
+  const listenLimit = safeKey === 'global' ? 900 : 450;
+  const listenRef = (safeKey !== 'global' && query && orderByChild && equalTo && limitToLast)
+    ? query(chatBaseRef, orderByChild('dmChannelKey'), equalTo(safeKey), limitToLast(listenLimit))
+    : ((query && limitToLast) ? query(chatBaseRef, limitToLast(listenLimit)) : chatBaseRef);
+
+  let resolveReady;
+  const ready = new Promise((resolve) => { resolveReady = resolve; });
+  const watcher = { roomCode: activeRoomCode, unsub: null, ready, visibleKeys: new Set() };
+  _popoutChatChannelWatchers.set(safeKey, watcher);
+
+  watcher.unsub = onValue(listenRef, (snap) => {
+    if (String(St.roomCode || '').trim() !== activeRoomCode) return;
+    const raw = snap.val() || {};
+    const filtered = Object.entries(raw)
+      .map(([k, m]) => ({ ...(m || {}), _key: k }))
+      .filter((m) => shouldShowChatMessageForChannel(safeKey, m))
+      .sort((a, b) => {
+        const at = Number(a.time || a.timestamp || 0);
+        const bt = Number(b.time || b.timestamp || 0);
+        if (at && bt && at !== bt) return at - bt;
+        return String(a._key || '').localeCompare(String(b._key || ''));
+      });
+    const nextKeys = new Set(filtered.map((m) => String(m?._key || '').trim()).filter(Boolean));
+    watcher.visibleKeys.forEach((key) => {
+      if (!nextKeys.has(key)) removeCachedChannelMessage(safeKey, key);
+    });
+    watcher.visibleKeys = nextKeys;
+    cacheChannelMessages(safeKey, filtered, { merge: true, seed: false });
+    try { if (typeof window.forcePopoutSync === 'function') window.forcePopoutSync(); } catch (e) {}
+    try {
+      document.dispatchEvent(new CustomEvent('itc:popout-channel-cache-change', {
+        detail: { channelKey: safeKey, count: filtered.length }
+      }));
+    } catch (e) {}
+    if (resolveReady) {
+      const done = resolveReady;
+      resolveReady = null;
+      done(window.getChatRecordsForChannel ? window.getChatRecordsForChannel(safeKey) : []);
+    }
+    logItcChatDebug('popout-channel-watch-snapshot', {
+      channelKey: safeKey,
+      rawCount: Object.keys(raw || {}).length,
+      visibleCount: filtered.length,
+    }, { throttleMs: 1000 });
+  }, (err) => {
+    console.warn('[popout] chat channel watch failed', safeKey, err);
+    if (resolveReady) {
+      const done = resolveReady;
+      resolveReady = null;
+      done(window.getChatRecordsForChannel ? window.getChatRecordsForChannel(safeKey) : []);
+    }
+  });
+
+  return ready;
+}
+
+window.cleanupPopoutChatChannelWatchers = cleanupPopoutChatChannelWatchers;
+window.watchPopoutChatChannel = watchPopoutChatChannel;
+window.loadPopoutChatChannelSnapshot = watchPopoutChatChannel;
 
 function getProcessedChatKeySet(channelKey = 'global') {
   const safeKey = String(channelKey || 'global').trim() || 'global';
@@ -1464,6 +1552,7 @@ function resetRoomScopedUiState() {
   } catch (e) {
     console.warn('[game] refreshMapLayerManager reset failed', e);
   }
+  cleanupPopoutChatChannelWatchers();
   _processedChatKeysByChannel = new Map();
   _chatMessageSignaturesByChannel = new Map();
   _chatRecordsByChannel = new Map();
