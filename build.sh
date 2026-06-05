@@ -23,6 +23,12 @@ cat dev/chat-v1/_chat-input.js \
     dev/chat-v1/_chat-image-upload.js \
     dev/chat-v1/_chat-image.js \
     dev/chat-v1/_chat-send.js \
+    dev/chat-v1/_chat-send-message.js \
+    dev/chat-v1/_chat-casual-state.js \
+    dev/chat-v1/_chat-typing.js \
+    dev/chat-v1/_chat-casual-render.js \
+    dev/chat-v1/_chat-whisper.js \
+    dev/chat-v1/_chat-lightbox.js \
     dev/chat-v1/_chat-avatar.js \
     dev/chat-v1/_chat-message.js \
     > src/modules/chat-v1/chat.js
