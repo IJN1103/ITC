@@ -1,4 +1,3 @@
-
 /* ==========================================================================
  * CHAT SECTION: IMAGE DISPLAY HELPERS
  * 채팅 이미지 class/style, 비율, placeholder 계산
@@ -617,5 +616,6 @@ function initChatImageComposer() {
   bindMessageViewport('chat');
   bindMessageViewport('casual');
 }
+
 
 

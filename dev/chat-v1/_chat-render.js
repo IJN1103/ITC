@@ -43,6 +43,12 @@ async function clearAllChatHistory() {
   }
 }
 
+
+/* ==========================================================================
+ * CHAT SECTION: RENDER STATE
+ * 채팅/잡담/DM 채널별 렌더 큐, 캐시, 스크롤 상태 저장
+ * ========================================================================== */
+
 const _renderState = {
   chat: {
     containerId: 'chat-messages',
@@ -168,6 +174,12 @@ function scrollToBottom(el) {
   if (!el) return;
   el.scrollTop = el.scrollHeight;
 }
+
+
+/* ==========================================================================
+ * CHAT SECTION: MESSAGE KEY AND ORDER INDEX
+ * Firebase key/timestamp 기준 저장 메시지 정렬 및 중복 DOM 방어
+ * ========================================================================== */
 
 function makeStoredMessageKey(channel = 'chat', key = '') {
   return key || `__local_${channel}_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
@@ -297,6 +309,12 @@ function syncStickyState(channel = 'chat', el = null) {
   }
 }
 
+
+
+/* ==========================================================================
+ * CHAT SECTION: VIRTUAL WINDOW RENDERING
+ * 대량 메시지용 가상 window 렌더링과 spacer 높이 계산
+ * ========================================================================== */
 
 function isVirtualChannel(channel = 'chat') {
   return !!getRenderState(channel).virtualEnabled;
@@ -474,6 +492,12 @@ function scheduleVirtualRender(channel = 'chat', options = {}) {
   });
 }
 
+
+/* ==========================================================================
+ * CHAT SECTION: MESSAGE STORE AND SNAPSHOT
+ * 렌더 이전 단계의 메시지 정규화, 메모리 캐시, 팝아웃 전달용 스냅샷
+ * ========================================================================== */
+
 function upsertStoredMessage(channel = 'chat', key, record, options = {}) {
   const state = getRenderState(channel);
   const safeKey = makeStoredMessageKey(channel, key);
@@ -639,6 +663,12 @@ function getChatRenderSnapshot(channel = 'chat', options = {}) {
     })
     .filter(Boolean);
 }
+
+
+/* ==========================================================================
+ * CHAT SECTION: DOM MUTATION AND RENDER QUEUE
+ * 저장 메시지를 DOM 노드로 변환하고 append/replace/remove 처리
+ * ========================================================================== */
 
 function buildMessageNodeFromRecord(channel = 'chat', record) {
   if (!record) return null;
@@ -871,6 +901,12 @@ function removeRenderedMessage(channel = 'chat', key) {
 }
 
 
+
+/* ==========================================================================
+ * CHAT SECTION: HISTORY PAGING AND CHANNEL ACTIVATION
+ * 상단 스크롤 시 이전 채팅을 로드하고 채널 전환 시 렌더 상태를 재구성
+ * ========================================================================== */
+
 function configureHistoryPaging(channel = 'chat', options = {}) {
   const state = getRenderState(channel);
   state.historyLoader = typeof options.loadOlder === 'function' ? options.loadOlder : null;
@@ -1032,4 +1068,5 @@ function activateChatRenderChannel(channel = 'chat') {
     });
   }
 }
+
 

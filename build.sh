@@ -15,6 +15,8 @@ cat dev/chat-v1/_chat-input.js \
     dev/chat-v1/_chat-render.js \
     dev/chat-v1/_chat-image.js \
     dev/chat-v1/_chat-send.js \
+    dev/chat-v1/_chat-avatar.js \
+    dev/chat-v1/_chat-message.js \
     > src/modules/chat-v1/chat.js
 
 cat dev/map-token/_map-viewport.js \
