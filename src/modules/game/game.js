@@ -816,11 +816,37 @@ async function ensureDmChannelMeta(channelKey = 'global') {
   if (!window._FB?.CONFIGURED || !St.roomCode || safeKey === 'global') return;
   const participantIds = typeof parseDmChannelKey === 'function' ? parseDmChannelKey(safeKey) : [];
   if (!participantIds.length) return;
-  const { db, ref, update, serverTimestamp } = window._FB;
-  await update(ref(db, `rooms/${St.roomCode}/dmChats/${safeKey}/meta`), {
+  const { db, ref, get, update, serverTimestamp } = window._FB;
+  if (!db || !ref || !update) return;
+
+  const metaRef = ref(db, `rooms/${St.roomCode}/dmChats/${safeKey}/meta`);
+  const existingSnap = typeof get === 'function' ? await get(metaRef).catch(() => null) : null;
+  const existingMeta = existingSnap?.exists?.() ? (existingSnap.val() || {}) : null;
+
+  if (existingMeta && typeof existingMeta === 'object') {
+    const updates = {};
+    const currentParticipants = Array.isArray(existingMeta.participantIds)
+      ? existingMeta.participantIds.map((id) => String(id || '').trim()).filter(Boolean).sort()
+      : [];
+    const nextParticipants = participantIds.map((id) => String(id || '').trim()).filter(Boolean).sort();
+    if (JSON.stringify(currentParticipants) !== JSON.stringify(nextParticipants)) {
+      updates.participantIds = nextParticipants;
+    }
+    if (!String(existingMeta.createdBy || '').trim()) {
+      updates.createdBy = St.myId || '';
+    }
+    if (Object.keys(updates).length) {
+      await update(metaRef, updates).catch(() => {});
+    }
+    return;
+  }
+
+  const stamp = typeof serverTimestamp === 'function' ? serverTimestamp() : Date.now();
+  await update(metaRef, {
     participantIds,
     createdBy: St.myId || '',
-    updatedAt: typeof serverTimestamp === 'function' ? serverTimestamp() : Date.now(),
+    createdAt: stamp,
+    updatedAt: stamp,
   }).catch(() => {});
 
   const bootstrapKey = `__dm_bootstrap__${safeKey}`;
@@ -832,7 +858,7 @@ async function ensureDmChannelMeta(channelKey = 'global') {
     uid: St.myId || '',
     name: '',
     text: '',
-    time: typeof serverTimestamp === 'function' ? serverTimestamp() : Date.now(),
+    time: stamp,
   };
   await update(ref(db), {
     [`rooms/${St.roomCode}/chat/${bootstrapKey}`]: bootstrapMessage,
@@ -873,12 +899,14 @@ async function loadOlderChatHistoryForChannel(channelKey = 'global') {
   if (!cursorKey) cursorKey = getOldestCachedChatKey(safeKey);
   if (!cursorKey) return { count: 0, exhausted: true };
 
-  const pageLimit = 120;
+  const pageLimit = safeKey === 'global' ? 300 : 220;
+  const targetVisibleCount = safeKey === 'global' ? 120 : 90;
+  const maxScanPages = safeKey === 'global' ? 14 : 10;
   const collected = [];
   let exhausted = false;
   let guard = 0;
 
-  while (guard < 4 && collected.length < 50 && cursorKey) {
+  while (guard < maxScanPages && collected.length < targetVisibleCount && cursorKey) {
     guard += 1;
     const snap = await get(query(ref(db, `rooms/${St.roomCode}/chat`), orderByKey(), endBefore(cursorKey), limitToLast(pageLimit)));
     const raw = snap.val() || {};
@@ -897,7 +925,7 @@ async function loadOlderChatHistoryForChannel(channelKey = 'global') {
       exhausted = true;
       break;
     }
-    if (matched.length > 0) break;
+    if (matched.length > 0 && collected.length >= targetVisibleCount) break;
   }
 
   if (!collected.length) return { count: 0, exhausted };
@@ -987,9 +1015,10 @@ function switchActiveChatChannel(channelKey = 'global') {
   const processed = getProcessedChatKeySet(safeChannelKey);
   const signatures = getChatMessageSignatureStore(safeChannelKey);
   const chatBaseRef = ref(db, `rooms/${activeRoomCode}/chat`);
+  const activeListenLimit = safeChannelKey === 'global' ? 600 : 300;
   const listenRef = (safeChannelKey !== 'global' && query && orderByChild && equalTo && limitToLast)
-    ? query(chatBaseRef, orderByChild('dmChannelKey'), equalTo(safeChannelKey), limitToLast(300))
-    : ((query && limitToLast) ? query(chatBaseRef, limitToLast(300)) : chatBaseRef);
+    ? query(chatBaseRef, orderByChild('dmChannelKey'), equalTo(safeChannelKey), limitToLast(activeListenLimit))
+    : ((query && limitToLast) ? query(chatBaseRef, limitToLast(activeListenLimit)) : chatBaseRef);
 
   const shouldShowChatMessage = (m) => shouldShowChatMessageForChannel(safeChannelKey, m);
 

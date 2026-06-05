@@ -139,12 +139,9 @@
   }
 
   function getDmMetaLatestStamp(meta) {
-    return getMessageStamp({
-      updatedAt: meta?.latestAt || meta?.updatedAt,
-      createdAt: meta?.createdAt,
-      ts: meta?.latestAt || meta?.updatedAt,
-      time: meta?.latestAt || meta?.updatedAt,
-    });
+    const latestAt = Number(meta?.latestAt || 0);
+    if (Number.isFinite(latestAt) && latestAt > 0) return latestAt;
+    return 0;
   }
 
   function rebuildUnreadState(raw) {
