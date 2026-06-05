@@ -1,3 +1,9 @@
+
+/* ==========================================================================
+ * CHAT SECTION: IMAGE DISPLAY HELPERS
+ * 채팅 이미지 class/style, 비율, placeholder 계산
+ * ========================================================================== */
+
 function getChatImageClassName(imageWide = false) {
   return imageWide ? 'msg-image is-wide' : 'msg-image';
 }
@@ -5,6 +11,12 @@ function getChatImageClassName(imageWide = false) {
 function getChatImageInlineStyle(imageWide = false) {
   return imageWide ? 'width:100%;max-width:none;height:auto;object-fit:contain;' : '';
 }
+
+
+/* ==========================================================================
+ * CHAT SECTION: DEFERRED IMAGE LOADING
+ * IntersectionObserver 기반 lazy image 로딩과 깜빡임 방어
+ * ========================================================================== */
 
 const CHAT_IMAGE_PLACEHOLDER = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==';
 let _deferredChatImageObserver = null;
@@ -87,6 +99,12 @@ const _pendingChatImages = [];
 let _pendingChatImageWide = false;
 let _pendingChatImageHideMeta = false;
 let _chatUploadStatusDepth = 0;
+
+
+/* ==========================================================================
+ * CHAT SECTION: IMAGE COMPOSER UI
+ * 이미지 업로드 상태, pending queue, 프리뷰 순서/옵션 UI
+ * ========================================================================== */
 
 function ensureChatUploadStatusEl() {
   const composer = document.querySelector('.chat-composer-stack');
@@ -236,6 +254,12 @@ function togglePendingChatImageWide(checked) {
 function togglePendingChatImageHideMeta(checked) {
   _pendingChatImageHideMeta = !!checked;
 }
+
+
+/* ==========================================================================
+ * CHAT SECTION: IMAGE PREPARE AND ENCODE
+ * 파일/캔버스/메타데이터 변환과 업로드용 Blob 생성
+ * ========================================================================== */
 
 function getCloudinaryRuntimeConfig() { return _itcGetCloudinaryConfig(); }
 
@@ -434,6 +458,12 @@ async function queuePendingChatImages(files) {
   renderPendingChatImages();
 }
 
+
+/* ==========================================================================
+ * CHAT SECTION: IMAGE UPLOAD TRANSPORT
+ * Cloudinary/Storage 업로드 경로와 timeout 보조 함수
+ * ========================================================================== */
+
 function withTimeout(promise, ms = 3500) { return _itcWithTimeout(promise, ms); }
 
 async function getStorageApiQuick() {
@@ -484,6 +514,11 @@ async function uploadChatImageDataUrl(dataUrl, roomCode, preparedItem = null) {
     contentType: uploadedCloudinary.contentType || blobInfo.contentType || 'image/jpeg',
   };
 }
+
+/* ==========================================================================
+ * CHAT SECTION: IMAGE SEND AND INIT
+ * 준비된 이미지 메시지 전송, pending queue 전송, composer 바인딩
+ * ========================================================================== */
 
 async function sendPreparedChatImage(preparedOrDataUrl, imageWide = false, imageMeta = null, hideImageMeta = false) {
   const saJId = St.speakAsJournalId;

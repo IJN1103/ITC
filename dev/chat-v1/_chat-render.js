@@ -1,3 +1,9 @@
+
+/* ==========================================================================
+ * CHAT SECTION: CORE UTILITIES
+ * Firebase serverTimestamp fallback 등 채팅 공통 유틸리티
+ * ========================================================================== */
+
 function getChatServerTimestamp() {
   return (window._FB?.CONFIGURED && typeof window._FB.serverTimestamp === 'function')
     ? window._FB.serverTimestamp()
@@ -6,9 +12,24 @@ function getChatServerTimestamp() {
 
 /**
  * ITC TRPG — Chat 모듈
- * 채팅, 잡담, 귓말, 타이핑, 이미지 업로드
+ *
+ * dev/chat-v1/_chat-render.js 담당 범위:
+ * - 입력창 resize / 한글 IME guard
+ * - 채팅 렌더 상태, 메시지 저장 인덱스, DOM window 관리
+ * - 이전 채팅 히스토리 로딩, 스크롤 위치 보존
+ * - 채널 전환 시 렌더 상태 초기화/복구
+ *
+ * 주의:
+ * - 이 파일은 build.sh에서 _chat-image.js, _chat-send.js와 합쳐져
+ *   src/modules/chat-v1/chat.js가 됩니다.
+ * - 기능 수정 시 src와 dev가 다시 어긋나지 않도록 dev 기준으로 수정해야 합니다.
  */
 
+
+/* ==========================================================================
+ * CHAT SECTION: INPUT RESIZE STATE
+ * 본래창 채팅 입력창 PC resize 상태와 localStorage 높이 보존
+ * ========================================================================== */
 
 const _chatInputResizeState = {
   boundInput: null,
@@ -138,6 +159,12 @@ function scheduleChatInputResizeInit() {
     setTimeout(() => initChatInputResize(), 0);
   }
 }
+
+
+/* ==========================================================================
+ * CHAT SECTION: INPUT IME GUARD
+ * 한글 IME 조합 입력, 마지막 글자 echo, 중복 전송 방어
+ * ========================================================================== */
 
 const _chatInputGuard = {
   boundInput: null,
@@ -301,6 +328,12 @@ function chatKeydown(e) {
   sendChat();
 }
 
+
+/* ==========================================================================
+ * CHAT SECTION: INPUT MODE AND ADMIN ACTIONS
+ * desc 모드, 채팅 버튼 표시, GM 전체 삭제 처리
+ * ========================================================================== */
+
 function toggleDescMode() {
   if (!hasPerm('sendDesc')) return;
   St.descMode = !St.descMode;
@@ -358,6 +391,12 @@ async function clearAllChatHistory() {
     showToast('채팅 내역 삭제에 실패했어요.');
   }
 }
+
+
+/* ==========================================================================
+ * CHAT SECTION: RENDER STATE
+ * 채팅/잡담/DM 채널별 렌더 큐, 캐시, 스크롤 상태 저장
+ * ========================================================================== */
 
 const _renderState = {
   chat: {
@@ -484,6 +523,12 @@ function scrollToBottom(el) {
   if (!el) return;
   el.scrollTop = el.scrollHeight;
 }
+
+
+/* ==========================================================================
+ * CHAT SECTION: MESSAGE KEY AND ORDER INDEX
+ * Firebase key/timestamp 기준 저장 메시지 정렬 및 중복 DOM 방어
+ * ========================================================================== */
 
 function makeStoredMessageKey(channel = 'chat', key = '') {
   return key || `__local_${channel}_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
@@ -613,6 +658,12 @@ function syncStickyState(channel = 'chat', el = null) {
   }
 }
 
+
+
+/* ==========================================================================
+ * CHAT SECTION: VIRTUAL WINDOW RENDERING
+ * 대량 메시지용 가상 window 렌더링과 spacer 높이 계산
+ * ========================================================================== */
 
 function isVirtualChannel(channel = 'chat') {
   return !!getRenderState(channel).virtualEnabled;
@@ -790,6 +841,12 @@ function scheduleVirtualRender(channel = 'chat', options = {}) {
   });
 }
 
+
+/* ==========================================================================
+ * CHAT SECTION: MESSAGE STORE AND SNAPSHOT
+ * 렌더 이전 단계의 메시지 정규화, 메모리 캐시, 팝아웃 전달용 스냅샷
+ * ========================================================================== */
+
 function upsertStoredMessage(channel = 'chat', key, record, options = {}) {
   const state = getRenderState(channel);
   const safeKey = makeStoredMessageKey(channel, key);
@@ -955,6 +1012,12 @@ function getChatRenderSnapshot(channel = 'chat', options = {}) {
     })
     .filter(Boolean);
 }
+
+
+/* ==========================================================================
+ * CHAT SECTION: DOM MUTATION AND RENDER QUEUE
+ * 저장 메시지를 DOM 노드로 변환하고 append/replace/remove 처리
+ * ========================================================================== */
 
 function buildMessageNodeFromRecord(channel = 'chat', record) {
   if (!record) return null;
@@ -1186,6 +1249,12 @@ function removeRenderedMessage(channel = 'chat', key) {
   syncStickyState(channel, el);
 }
 
+
+
+/* ==========================================================================
+ * CHAT SECTION: HISTORY PAGING AND CHANNEL ACTIVATION
+ * 상단 스크롤 시 이전 채팅을 로드하고 채널 전환 시 렌더 상태를 재구성
+ * ========================================================================== */
 
 function configureHistoryPaging(channel = 'chat', options = {}) {
   const state = getRenderState(channel);

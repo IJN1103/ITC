@@ -1,3 +1,9 @@
+
+/* ==========================================================================
+ * CHAT SECTION: CORE UTILITIES
+ * Firebase serverTimestamp fallback 등 채팅 공통 유틸리티
+ * ========================================================================== */
+
 function getChatServerTimestamp() {
   return (window._FB?.CONFIGURED && typeof window._FB.serverTimestamp === 'function')
     ? window._FB.serverTimestamp()
@@ -6,9 +12,24 @@ function getChatServerTimestamp() {
 
 /**
  * ITC TRPG — Chat 모듈
- * 채팅, 잡담, 귓말, 타이핑, 이미지 업로드
+ *
+ * dev/chat-v1/_chat-render.js 담당 범위:
+ * - 입력창 resize / 한글 IME guard
+ * - 채팅 렌더 상태, 메시지 저장 인덱스, DOM window 관리
+ * - 이전 채팅 히스토리 로딩, 스크롤 위치 보존
+ * - 채널 전환 시 렌더 상태 초기화/복구
+ *
+ * 주의:
+ * - 이 파일은 build.sh에서 _chat-image.js, _chat-send.js와 합쳐져
+ *   src/modules/chat-v1/chat.js가 됩니다.
+ * - 기능 수정 시 src와 dev가 다시 어긋나지 않도록 dev 기준으로 수정해야 합니다.
  */
 
+
+/* ==========================================================================
+ * CHAT SECTION: INPUT RESIZE STATE
+ * 본래창 채팅 입력창 PC resize 상태와 localStorage 높이 보존
+ * ========================================================================== */
 
 const _chatInputResizeState = {
   boundInput: null,
@@ -138,6 +159,12 @@ function scheduleChatInputResizeInit() {
     setTimeout(() => initChatInputResize(), 0);
   }
 }
+
+
+/* ==========================================================================
+ * CHAT SECTION: INPUT IME GUARD
+ * 한글 IME 조합 입력, 마지막 글자 echo, 중복 전송 방어
+ * ========================================================================== */
 
 const _chatInputGuard = {
   boundInput: null,
@@ -301,6 +328,12 @@ function chatKeydown(e) {
   sendChat();
 }
 
+
+/* ==========================================================================
+ * CHAT SECTION: INPUT MODE AND ADMIN ACTIONS
+ * desc 모드, 채팅 버튼 표시, GM 전체 삭제 처리
+ * ========================================================================== */
+
 function toggleDescMode() {
   if (!hasPerm('sendDesc')) return;
   St.descMode = !St.descMode;
@@ -358,6 +391,12 @@ async function clearAllChatHistory() {
     showToast('채팅 내역 삭제에 실패했어요.');
   }
 }
+
+
+/* ==========================================================================
+ * CHAT SECTION: RENDER STATE
+ * 채팅/잡담/DM 채널별 렌더 큐, 캐시, 스크롤 상태 저장
+ * ========================================================================== */
 
 const _renderState = {
   chat: {
@@ -484,6 +523,12 @@ function scrollToBottom(el) {
   if (!el) return;
   el.scrollTop = el.scrollHeight;
 }
+
+
+/* ==========================================================================
+ * CHAT SECTION: MESSAGE KEY AND ORDER INDEX
+ * Firebase key/timestamp 기준 저장 메시지 정렬 및 중복 DOM 방어
+ * ========================================================================== */
 
 function makeStoredMessageKey(channel = 'chat', key = '') {
   return key || `__local_${channel}_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
@@ -613,6 +658,12 @@ function syncStickyState(channel = 'chat', el = null) {
   }
 }
 
+
+
+/* ==========================================================================
+ * CHAT SECTION: VIRTUAL WINDOW RENDERING
+ * 대량 메시지용 가상 window 렌더링과 spacer 높이 계산
+ * ========================================================================== */
 
 function isVirtualChannel(channel = 'chat') {
   return !!getRenderState(channel).virtualEnabled;
@@ -790,6 +841,12 @@ function scheduleVirtualRender(channel = 'chat', options = {}) {
   });
 }
 
+
+/* ==========================================================================
+ * CHAT SECTION: MESSAGE STORE AND SNAPSHOT
+ * 렌더 이전 단계의 메시지 정규화, 메모리 캐시, 팝아웃 전달용 스냅샷
+ * ========================================================================== */
+
 function upsertStoredMessage(channel = 'chat', key, record, options = {}) {
   const state = getRenderState(channel);
   const safeKey = makeStoredMessageKey(channel, key);
@@ -955,6 +1012,12 @@ function getChatRenderSnapshot(channel = 'chat', options = {}) {
     })
     .filter(Boolean);
 }
+
+
+/* ==========================================================================
+ * CHAT SECTION: DOM MUTATION AND RENDER QUEUE
+ * 저장 메시지를 DOM 노드로 변환하고 append/replace/remove 처리
+ * ========================================================================== */
 
 function buildMessageNodeFromRecord(channel = 'chat', record) {
   if (!record) return null;
@@ -1187,6 +1250,12 @@ function removeRenderedMessage(channel = 'chat', key) {
 }
 
 
+
+/* ==========================================================================
+ * CHAT SECTION: HISTORY PAGING AND CHANNEL ACTIVATION
+ * 상단 스크롤 시 이전 채팅을 로드하고 채널 전환 시 렌더 상태를 재구성
+ * ========================================================================== */
+
 function configureHistoryPaging(channel = 'chat', options = {}) {
   const state = getRenderState(channel);
   state.historyLoader = typeof options.loadOlder === 'function' ? options.loadOlder : null;
@@ -1349,6 +1418,12 @@ function activateChatRenderChannel(channel = 'chat') {
   }
 }
 
+
+/* ==========================================================================
+ * CHAT SECTION: IMAGE DISPLAY HELPERS
+ * 채팅 이미지 class/style, 비율, placeholder 계산
+ * ========================================================================== */
+
 function getChatImageClassName(imageWide = false) {
   return imageWide ? 'msg-image is-wide' : 'msg-image';
 }
@@ -1356,6 +1431,12 @@ function getChatImageClassName(imageWide = false) {
 function getChatImageInlineStyle(imageWide = false) {
   return imageWide ? 'width:100%;max-width:none;height:auto;object-fit:contain;' : '';
 }
+
+
+/* ==========================================================================
+ * CHAT SECTION: DEFERRED IMAGE LOADING
+ * IntersectionObserver 기반 lazy image 로딩과 깜빡임 방어
+ * ========================================================================== */
 
 const CHAT_IMAGE_PLACEHOLDER = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==';
 let _deferredChatImageObserver = null;
@@ -1438,6 +1519,12 @@ const _pendingChatImages = [];
 let _pendingChatImageWide = false;
 let _pendingChatImageHideMeta = false;
 let _chatUploadStatusDepth = 0;
+
+
+/* ==========================================================================
+ * CHAT SECTION: IMAGE COMPOSER UI
+ * 이미지 업로드 상태, pending queue, 프리뷰 순서/옵션 UI
+ * ========================================================================== */
 
 function ensureChatUploadStatusEl() {
   const composer = document.querySelector('.chat-composer-stack');
@@ -1587,6 +1674,12 @@ function togglePendingChatImageWide(checked) {
 function togglePendingChatImageHideMeta(checked) {
   _pendingChatImageHideMeta = !!checked;
 }
+
+
+/* ==========================================================================
+ * CHAT SECTION: IMAGE PREPARE AND ENCODE
+ * 파일/캔버스/메타데이터 변환과 업로드용 Blob 생성
+ * ========================================================================== */
 
 function getCloudinaryRuntimeConfig() { return _itcGetCloudinaryConfig(); }
 
@@ -1785,6 +1878,12 @@ async function queuePendingChatImages(files) {
   renderPendingChatImages();
 }
 
+
+/* ==========================================================================
+ * CHAT SECTION: IMAGE UPLOAD TRANSPORT
+ * Cloudinary/Storage 업로드 경로와 timeout 보조 함수
+ * ========================================================================== */
+
 function withTimeout(promise, ms = 3500) { return _itcWithTimeout(promise, ms); }
 
 async function getStorageApiQuick() {
@@ -1835,6 +1934,11 @@ async function uploadChatImageDataUrl(dataUrl, roomCode, preparedItem = null) {
     contentType: uploadedCloudinary.contentType || blobInfo.contentType || 'image/jpeg',
   };
 }
+
+/* ==========================================================================
+ * CHAT SECTION: IMAGE SEND AND INIT
+ * 준비된 이미지 메시지 전송, pending queue 전송, composer 바인딩
+ * ========================================================================== */
 
 async function sendPreparedChatImage(preparedOrDataUrl, imageWide = false, imageMeta = null, hideImageMeta = false) {
   const saJId = St.speakAsJournalId;
@@ -1934,6 +2038,12 @@ function initChatImageComposer() {
   bindMessageViewport('casual');
 }
 
+
+
+/* ==========================================================================
+ * CHAT SECTION: MAIN SEND DISPATCH
+ * 입력값/이미지/desc/귓말/주사위/저널 speak-as 분기 처리
+ * ========================================================================== */
 
 async function sendChat() {
   const inp = document.getElementById('chat-input');
@@ -2086,6 +2196,12 @@ async function sendChat() {
   }
 }
 
+
+/* ==========================================================================
+ * CHAT SECTION: FIREBASE MESSAGE PUSH AND DM META
+ * 실제 메시지 push와 DM latestAt meta 갱신
+ * ========================================================================== */
+
 function notifyDmMetaAfterChatPush(channelKey = 'global', message = {}, pushedRef = null) {
   const safeKey = String(channelKey || message?.dmChannelKey || 'global').trim() || 'global';
   if (!safeKey || safeKey === 'global') return Promise.resolve(pushedRef);
@@ -2115,6 +2231,12 @@ function sendMessage(name, text, type = 'normal', extra = null) {
   appendChatMsg({ ...msg, timestamp: msg.time, nameColor: msg.nameColor || null, channel: 'chat', imageWide: !!msg.imageWide, imageMeta: msg.imageMeta || null, hideImageMeta: !!msg.hideImageMeta });
   return Promise.resolve();
 }
+
+
+/* ==========================================================================
+ * CHAT SECTION: CASUAL TAB SEND AND PROFILE STATE
+ * 잡담탭 전송, 닉네임, 이름색 저장/동기화
+ * ========================================================================== */
 
 function sendCasual() {
   const inp = document.getElementById('chat-input');
@@ -2217,6 +2339,12 @@ let _typingTimer = null;
 let _lastTypingBroadcast = 0;
 let _lastTypingRoomCode = '';
 let _lastTypingUid = '';
+
+/* ==========================================================================
+ * CHAT SECTION: TYPING INDICATOR
+ * typing 상태 broadcast, indicator 렌더링, timeout cleanup
+ * ========================================================================== */
+
 function broadcastTyping() {
   if (!window._FB?.CONFIGURED || !St.roomCode || !St.myId) return;
   const now = Date.now();
@@ -2277,6 +2405,12 @@ function clearTypingState(roomCodeOverride = '', uidOverride = '') {
   return remove(ref(db, `rooms/${roomCode}/typing/${uid}`)).catch(() => {});
 }
 
+
+/* ==========================================================================
+ * CHAT SECTION: CASUAL TAB RENDERING
+ * 잡담 메시지 DOM 생성/append/replace/remove
+ * ========================================================================== */
+
 function saSendCasual(journal, text) {
   const name = journal.title || '무제';
   const avatar = saGetAvatar(journal.id);
@@ -2326,6 +2460,12 @@ function replaceCasualMsg(name, text, uid, timestamp, msgKey, nameColor) {
 function removeCasualMsg(msgKey) {
   removeRenderedMessage('casual', msgKey);
 }
+
+
+/* ==========================================================================
+ * CHAT SECTION: WHISPER SEND FLOW
+ * 귓말 대상/저널 speak-as context 확인 및 전송
+ * ========================================================================== */
 
 function getActiveWhisperChannelKey(options = {}) {
   const fromOptions = String(options?.channelKey || '').trim();
@@ -2398,6 +2538,12 @@ function sendWhisperMessage(senderName, text, targetUid, targetName, options = {
   return Promise.resolve();
 }
 
+
+/* ==========================================================================
+ * CHAT SECTION: LEGACY IMAGE ENTRY AND LIGHTBOX
+ * 기존 이미지 업로드 진입점과 이미지 lightbox
+ * ========================================================================== */
+
 async function handleChatImageUpload(input) {
   const files = Array.from(input.files || []);
   if (!files.length) return;
@@ -2417,6 +2563,12 @@ function openLightbox(src) {
 }
 
 function addLocalMessage(type, name, text) { appendChatMsg({ name, text, type }); }
+
+
+/* ==========================================================================
+ * CHAT SECTION: AVATAR RESOLUTION AND CACHE
+ * 프로필 이미지 fallback, 런타임 캐시, 기존 메시지 아바타 재렌더
+ * ========================================================================== */
 
 function resolveUserAvatarDisplaySrc(name, uid, size = 64) {
   let imgSrc = null;
@@ -2470,6 +2622,12 @@ function rerenderExistingChatAvatars() {
   refreshCasualNickDisplay();
 }
 
+
+
+/* ==========================================================================
+ * CHAT SECTION: STANDARD CHAT MESSAGE DOM
+ * 일반/이미지/귓말/desc 메시지 DOM 생성과 액션 버튼 연결
+ * ========================================================================== */
 
 function buildStandardChatImageSection(name, time, src, avatarHtml, imageWide = false, imageMeta = null, extraNameClass = '', extraNameStyle = '', hideImageMeta = false) {
   const imageHtml = buildChatImageHtml(src, imageWide, imageMeta);
@@ -2610,6 +2768,12 @@ function buildChatMsgElement(msg = {}) {
   return div;
 }
 
+
+/* ==========================================================================
+ * CHAT SECTION: DICE RESULT DISPLAY
+ * 주사위 판정 메타와 대사 표시 텍스트 생성
+ * ========================================================================== */
+
 function getDiceJudgmentMeta(text = '') {
   const normalized = String(text || '').trim();
   if (!normalized) return null;
@@ -2632,6 +2796,12 @@ function formatDiceDialogueText(text = '') {
   const judgment = parts[1] || '';
   return `${formula} ${result}${judgment ? ` (${judgment})` : ''}`.trim();
 }
+
+
+/* ==========================================================================
+ * CHAT SECTION: CHAT DOM APPLY HELPERS
+ * 메인 채팅 append/replace/remove 진입점
+ * ========================================================================== */
 
 function appendChatMsg(msg = {}) {
   const actualChannel = msg.channel || 'chat';
@@ -2680,6 +2850,12 @@ if (document.readyState === 'loading') {
 } else {
   initChatImageComposer();
 }
+
+
+/* ==========================================================================
+ * CHAT SECTION: POPOUT AND EXTERNAL CASUAL SYNC
+ * 팝아웃/외부 호출에서 잡담 프로필과 이름색 동기화
+ * ========================================================================== */
 
 function getCasualProfileForPopout() {
   let avatar = '';

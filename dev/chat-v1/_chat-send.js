@@ -1,3 +1,9 @@
+
+/* ==========================================================================
+ * CHAT SECTION: MAIN SEND DISPATCH
+ * 입력값/이미지/desc/귓말/주사위/저널 speak-as 분기 처리
+ * ========================================================================== */
+
 async function sendChat() {
   const inp = document.getElementById('chat-input');
   if (!inp) return;
@@ -149,6 +155,12 @@ async function sendChat() {
   }
 }
 
+
+/* ==========================================================================
+ * CHAT SECTION: FIREBASE MESSAGE PUSH AND DM META
+ * 실제 메시지 push와 DM latestAt meta 갱신
+ * ========================================================================== */
+
 function notifyDmMetaAfterChatPush(channelKey = 'global', message = {}, pushedRef = null) {
   const safeKey = String(channelKey || message?.dmChannelKey || 'global').trim() || 'global';
   if (!safeKey || safeKey === 'global') return Promise.resolve(pushedRef);
@@ -178,6 +190,12 @@ function sendMessage(name, text, type = 'normal', extra = null) {
   appendChatMsg({ ...msg, timestamp: msg.time, nameColor: msg.nameColor || null, channel: 'chat', imageWide: !!msg.imageWide, imageMeta: msg.imageMeta || null, hideImageMeta: !!msg.hideImageMeta });
   return Promise.resolve();
 }
+
+
+/* ==========================================================================
+ * CHAT SECTION: CASUAL TAB SEND AND PROFILE STATE
+ * 잡담탭 전송, 닉네임, 이름색 저장/동기화
+ * ========================================================================== */
 
 function sendCasual() {
   const inp = document.getElementById('chat-input');
@@ -280,6 +298,12 @@ let _typingTimer = null;
 let _lastTypingBroadcast = 0;
 let _lastTypingRoomCode = '';
 let _lastTypingUid = '';
+
+/* ==========================================================================
+ * CHAT SECTION: TYPING INDICATOR
+ * typing 상태 broadcast, indicator 렌더링, timeout cleanup
+ * ========================================================================== */
+
 function broadcastTyping() {
   if (!window._FB?.CONFIGURED || !St.roomCode || !St.myId) return;
   const now = Date.now();
@@ -340,6 +364,12 @@ function clearTypingState(roomCodeOverride = '', uidOverride = '') {
   return remove(ref(db, `rooms/${roomCode}/typing/${uid}`)).catch(() => {});
 }
 
+
+/* ==========================================================================
+ * CHAT SECTION: CASUAL TAB RENDERING
+ * 잡담 메시지 DOM 생성/append/replace/remove
+ * ========================================================================== */
+
 function saSendCasual(journal, text) {
   const name = journal.title || '무제';
   const avatar = saGetAvatar(journal.id);
@@ -389,6 +419,12 @@ function replaceCasualMsg(name, text, uid, timestamp, msgKey, nameColor) {
 function removeCasualMsg(msgKey) {
   removeRenderedMessage('casual', msgKey);
 }
+
+
+/* ==========================================================================
+ * CHAT SECTION: WHISPER SEND FLOW
+ * 귓말 대상/저널 speak-as context 확인 및 전송
+ * ========================================================================== */
 
 function getActiveWhisperChannelKey(options = {}) {
   const fromOptions = String(options?.channelKey || '').trim();
@@ -461,6 +497,12 @@ function sendWhisperMessage(senderName, text, targetUid, targetName, options = {
   return Promise.resolve();
 }
 
+
+/* ==========================================================================
+ * CHAT SECTION: LEGACY IMAGE ENTRY AND LIGHTBOX
+ * 기존 이미지 업로드 진입점과 이미지 lightbox
+ * ========================================================================== */
+
 async function handleChatImageUpload(input) {
   const files = Array.from(input.files || []);
   if (!files.length) return;
@@ -480,6 +522,12 @@ function openLightbox(src) {
 }
 
 function addLocalMessage(type, name, text) { appendChatMsg({ name, text, type }); }
+
+
+/* ==========================================================================
+ * CHAT SECTION: AVATAR RESOLUTION AND CACHE
+ * 프로필 이미지 fallback, 런타임 캐시, 기존 메시지 아바타 재렌더
+ * ========================================================================== */
 
 function resolveUserAvatarDisplaySrc(name, uid, size = 64) {
   let imgSrc = null;
@@ -533,6 +581,12 @@ function rerenderExistingChatAvatars() {
   refreshCasualNickDisplay();
 }
 
+
+
+/* ==========================================================================
+ * CHAT SECTION: STANDARD CHAT MESSAGE DOM
+ * 일반/이미지/귓말/desc 메시지 DOM 생성과 액션 버튼 연결
+ * ========================================================================== */
 
 function buildStandardChatImageSection(name, time, src, avatarHtml, imageWide = false, imageMeta = null, extraNameClass = '', extraNameStyle = '', hideImageMeta = false) {
   const imageHtml = buildChatImageHtml(src, imageWide, imageMeta);
@@ -673,6 +727,12 @@ function buildChatMsgElement(msg = {}) {
   return div;
 }
 
+
+/* ==========================================================================
+ * CHAT SECTION: DICE RESULT DISPLAY
+ * 주사위 판정 메타와 대사 표시 텍스트 생성
+ * ========================================================================== */
+
 function getDiceJudgmentMeta(text = '') {
   const normalized = String(text || '').trim();
   if (!normalized) return null;
@@ -695,6 +755,12 @@ function formatDiceDialogueText(text = '') {
   const judgment = parts[1] || '';
   return `${formula} ${result}${judgment ? ` (${judgment})` : ''}`.trim();
 }
+
+
+/* ==========================================================================
+ * CHAT SECTION: CHAT DOM APPLY HELPERS
+ * 메인 채팅 append/replace/remove 진입점
+ * ========================================================================== */
 
 function appendChatMsg(msg = {}) {
   const actualChannel = msg.channel || 'chat';
@@ -743,6 +809,12 @@ if (document.readyState === 'loading') {
 } else {
   initChatImageComposer();
 }
+
+
+/* ==========================================================================
+ * CHAT SECTION: POPOUT AND EXTERNAL CASUAL SYNC
+ * 팝아웃/외부 호출에서 잡담 프로필과 이름색 동기화
+ * ========================================================================== */
 
 function getCasualProfileForPopout() {
   let avatar = '';
