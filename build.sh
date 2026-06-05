@@ -13,6 +13,10 @@ echo "🔨 Building..."
 
 cat dev/chat-v1/_chat-input.js \
     dev/chat-v1/_chat-render.js \
+    dev/chat-v1/_chat-image-display.js \
+    dev/chat-v1/_chat-image-queue.js \
+    dev/chat-v1/_chat-image-prepare.js \
+    dev/chat-v1/_chat-image-upload.js \
     dev/chat-v1/_chat-image.js \
     dev/chat-v1/_chat-send.js \
     dev/chat-v1/_chat-avatar.js \
