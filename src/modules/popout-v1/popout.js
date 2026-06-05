@@ -63,6 +63,12 @@ let _popoutWins = [];
 let _popoutMirrorBound = false;
 let _popoutMirrorCleanup = null;
 
+// PHASE 6 NOTE — Popout chat channel independence
+// 팝아웃창은 본창 active chat channel과 독립적으로 전체/DM 채널을 볼 수 있어야 한다.
+// 팝아웃에서 채널을 바꾸기 위해 opener.setCurrentDmChannelKey()를 직접 호출하면
+// 본창 채널까지 같이 전환되는 회귀가 생기므로, 채널 수신은 game.js의
+// watchPopoutChatChannel() 기반 전용 watcher로 처리한다.
+
 function cleanupPopoutMirror() {
   if (typeof _popoutMirrorCleanup === 'function') {
     try { _popoutMirrorCleanup(); } catch (e) {}
@@ -446,6 +452,9 @@ L.push('window.renderDmBar=renderDmBar;');
   return L.join('\n');
 }
 
+// PHASE 6 SECTION — Popout window bootstrap and mirror sync
+// 이 블록은 팝아웃 창 생성, 본창→팝아웃 메시지 동기화, 팝아웃 전용 채널 캐시 조회를 담당한다.
+// 기능 회귀 방지를 위해 채널 독립성, forcePopoutSync, MutationObserver 보강 흐름을 분리해서 유지한다.
 function popoutChat() {
   _popoutWins = _popoutWins.filter(w => w && !w.closed);
   if (_popoutWins.length >= 3) { showToast('최대 3개까지 분리할 수 있어요.'); return; }
@@ -700,6 +709,9 @@ function schedulePopoutSyncSoon() {
 }
 
 
+// PHASE 6 SECTION — Popout outbound message bridge
+// 팝아웃에서 보낸 메시지는 target channel에만 기록되어야 하며, 본창의 현재 채널 선택은 복구되어야 한다.
+// prevChannelKey 복구 로직을 제거하면 본창/팝아웃 채널 독립성이 깨질 수 있다.
 function sendDescFromPopout(text, channelKey = 'global') {
   const prevChannelKey = String(window._itcActiveChatChannelKey || 'global').trim() || 'global';
   const nextChannelKey = String(channelKey || 'global').trim() || 'global';
@@ -746,6 +758,9 @@ function sendChatFromPopout(text, tab, channelKey = 'global') {
   return result;
 }
 
+// PHASE 6 SECTION — Popout sync hooks
+// 본창 채팅 DOM/캐시 변경 후 팝아웃에 짧게 재동기화를 요청하는 안전망이다.
+// 팝아웃은 각 창의 getCurrentDmChannelKey() 기준으로 독립 채널을 갱신한다.
 const _baseAppend = appendChatMsg;
 appendChatMsg = function(msg = {}) {
   const result = _baseAppend(msg);

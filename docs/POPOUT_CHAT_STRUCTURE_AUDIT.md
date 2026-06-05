@@ -1,0 +1,130 @@
+# POP_OUT CHAT STRUCTURE AUDIT — PHASE 6-1
+
+## 목적
+
+팝아웃 채팅 구조를 정리하기 전에, 현재 정상 동작 중인 기능을 깨지 않기 위한 기준선을 문서화한다. 이번 단계는 기능 변경이 아니라 구조 점검/주석화 단계다.
+
+## 현재 유지해야 하는 핵심 동작
+
+- 본창과 팝아웃창은 서로 다른 채팅 채널을 볼 수 있어야 한다.
+  - 본창: 전체 / 팝아웃: DM 가능
+  - 본창: DM / 팝아웃: 전체 가능
+  - 본창: A DM / 팝아웃: B DM 가능
+- 팝아웃에서 채널을 선택해도 본창의 active DM 채널이 강제로 바뀌면 안 된다.
+- 팝아웃에서 메시지를 보내면 해당 팝아웃 채널에만 기록되어야 한다.
+- 팝아웃에서 메시지를 보낸 후 본창의 기존 채널 선택은 유지되어야 한다.
+- 본인이 보낸 DM은 본인에게 unread DOT를 만들면 안 된다.
+- 현재 본창 또는 팝아웃에서 보고 있는 DM방은 read 상태로 처리되어야 한다.
+- 팝아웃 전체 채팅/DM 채팅/잡담탭은 기존 렌더링, 이미지, dice, desc, speak-as 표시를 유지해야 한다.
+
+## 관련 파일과 책임
+
+### `src/modules/popout-v1/popout.js`
+
+담당 영역:
+
+- 팝아웃 HTML 생성
+- 팝아웃 내부 스크립트 생성
+- 팝아웃 창 목록 관리
+- 본창 → 팝아웃 메시지 동기화
+- 팝아웃 → 본창 메시지 전송 bridge
+- 팝아웃별 현재 채널 추적
+- 팝아웃 잡담/문서/색상 UI 동기화
+
+주의 지점:
+
+- 팝아웃 내부의 `popDmChannelKey`는 본창의 `_itcActiveChatChannelKey`와 분리되어야 한다.
+- 팝아웃에서 `opener.setCurrentDmChannelKey()`를 직접 호출하면 본창 채널까지 바뀌는 회귀가 생길 수 있다.
+- `sendChatFromPopout()`과 `sendDescFromPopout()`은 전송 중에만 임시로 target channel을 적용하고, 반드시 이전 채널을 복구해야 한다.
+
+### `src/modules/game/game.js`
+
+담당 영역:
+
+- 본창 active chat listener
+- 팝아웃 전용 chat channel watcher
+- 채널별 메시지 캐시
+- 팝아웃에 제공할 채널 메시지 getter
+
+주의 지점:
+
+- `watchPopoutChatChannel()`은 팝아웃 전용 watcher다.
+- 이 함수는 본창 active channel을 바꾸면 안 된다.
+- 팝아웃이 보고 있는 채널의 메시지는 `_chatRecordsByChannel` 캐시에 쌓이고, `getChatRecordsForChannel()`을 통해 복사본으로 전달된다.
+
+### `src/modules/chat-dm/dm-ui.js`
+
+담당 영역:
+
+- DM방 목록/버튼 UI
+- unread DOT 판단
+- visible DM channel 목록
+- seen 상태 관리
+
+주의 지점:
+
+- unread 판단 기준은 실제 메시지(`latestAt`, `latestMessageKey`, `latestSenderUid`) 중심이어야 한다.
+- `updatedAt`은 단순 meta 갱신에도 바뀔 수 있으므로 unread 판단 기준으로 쓰면 안 된다.
+- 본창과 팝아웃에서 열람 중인 DM방 모두 active/read 후보로 봐야 한다.
+
+## 팝아웃 동기화 흐름
+
+### 본창에서 팝아웃으로
+
+1. 본창 채팅 listener가 Firebase 메시지를 수신한다.
+2. 채널별 캐시에 메시지가 저장된다.
+3. `forcePopoutSync()`가 예약된다.
+4. 각 팝아웃창의 `getCurrentDmChannelKey()`를 확인한다.
+5. 해당 팝아웃창이 보고 있는 채널의 메시지 목록만 전달한다.
+
+### 팝아웃에서 메시지 전송
+
+1. 팝아웃 내부 입력창에서 전송한다.
+2. `window.opener.sendChatFromPopout(text, tab, channelKey)`를 호출한다.
+3. 본창은 기존 active channel을 저장한다.
+4. 전송할 channelKey를 임시 적용한다.
+5. 기존 `sendMessage()` / `saSendMessage()` 흐름으로 Firebase에 메시지를 저장한다.
+6. 본창 active channel을 이전 값으로 복구한다.
+7. 팝아웃 sync를 짧은 간격으로 재요청한다.
+
+## 현재 단계에서 하지 않은 것
+
+- 팝아웃 구조 대규모 리팩토링
+- 팝아웃 HTML/script string 생성 방식 변경
+- Firebase 경로 변경
+- DM 저장 구조 변경
+- unread 알고리즘 변경
+- 본창/팝아웃 공통 렌더 함수 추출
+
+## 회귀 방지 체크리스트
+
+PHASE 6 이후 관련 패치가 있을 때 최소 확인할 것:
+
+1. 본창 전체 / 팝아웃 DM 조합 가능
+2. 본창 DM / 팝아웃 전체 조합 가능
+3. 본창 A DM / 팝아웃 B DM 조합 가능
+4. 팝아웃 전체 채팅 전송 즉시 표시
+5. 팝아웃 DM 채팅 전송 즉시 표시
+6. 본창 전송 메시지가 팝아웃에 반영
+7. 팝아웃 전송 메시지가 본창에 반영
+8. 본인 DM 전송 시 본인 unread DOT 없음
+9. 타인이 DM 전송 시 수신자에게만 unread DOT 표시
+10. 팝아웃에서 보고 있는 DM방은 read 처리
+11. DM방 클릭만으로 unread DOT가 생기지 않음
+12. 팝아웃 잡담/문서/저널/색상 기능 유지
+
+## 다음 권장 단계
+
+다음 단계는 `PHASE 6-2: popout sync bridge 정리`로 두는 것이 안전하다.
+
+추천 범위:
+
+- 기능 변경 없이 `popout.js` 내부 동기화 함수 이름/구역 추가 정리
+- 중복 sync 예약 호출 위치 점검
+- `forcePopoutSync`, `schedulePopoutSyncSoon`, `watchPopoutChatChannel` 호출 관계 문서화
+
+비추천 범위:
+
+- 팝아웃 스크립트 생성 방식을 한 번에 갈아엎기
+- 본창/팝아웃 렌더 함수를 즉시 공통화하기
+- DM 저장 경로 변경

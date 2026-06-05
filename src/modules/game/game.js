@@ -11,6 +11,9 @@ let _activeChatChannelKey = 'global';
 let _activeChatChannelRoomCode = '';
 let _activeChatChannelUnsubs = [];
 let _popoutChatChannelWatchers = new Map();
+// PHASE 6 NOTE — Popout-only chat channel watchers
+// 본창 active listener와 별도로 팝아웃창이 보고 있는 채널을 수신하는 watcher 묶음이다.
+// 팝아웃 채널 독립성을 유지하기 위해 이 watcher는 _activeChatChannelKey를 변경하지 않아야 한다.
 let _activeChatChannelListenerVersion = 0;
 let _dmChannelChangeSeq = 0;
 let _chatHistoryCursorByChannel = new Map();
@@ -348,6 +351,9 @@ function cleanupPopoutChatChannelWatchers() {
   logItcChatDebug('popout-channel-watch-cleanup', { previousWatcherCount: prevCount }, { throttleMs: 1000 });
 }
 
+// PHASE 6 SECTION — Popout-only channel watch
+// 팝아웃창이 전체/DM 중 어떤 채널을 보고 있는지와 무관하게 본창 채널은 유지한다.
+// 이 함수는 해당 채널 메시지를 _chatRecordsByChannel에 캐시하고 forcePopoutSync로 팝아웃만 갱신한다.
 function watchPopoutChatChannel(channelKey = 'global') {
   if (!window._FB?.CONFIGURED || !St.roomCode) return Promise.resolve([]);
   const safeKey = String(channelKey || 'global').trim() || 'global';
@@ -547,6 +553,8 @@ function removeCachedChannelMessage(channelKey = 'global', messageKey = '') {
 }
 
 
+// PHASE 6 SECTION — Popout channel cache access
+// popout.js가 독립 채널 메시지를 읽는 공개 getter. 원본 캐시 보호를 위해 복사본만 반환한다.
 window.getChatRecordsForChannel = function(channelKey = 'global') {
   const safeKey = String(channelKey || 'global').trim() || 'global';
   const records = Array.isArray(_chatRecordsByChannel.get(safeKey)) ? _chatRecordsByChannel.get(safeKey) : [];
