@@ -12,7 +12,11 @@ cd "$(dirname "$0")"
 echo "🔨 Building..."
 
 cat dev/chat-v1/_chat-input.js \
+    dev/chat-v1/_chat-render-state.js \
+    dev/chat-v1/_chat-render-virtual.js \
+    dev/chat-v1/_chat-store.js \
     dev/chat-v1/_chat-render.js \
+    dev/chat-v1/_chat-history.js \
     dev/chat-v1/_chat-image-display.js \
     dev/chat-v1/_chat-image-queue.js \
     dev/chat-v1/_chat-image-prepare.js \
