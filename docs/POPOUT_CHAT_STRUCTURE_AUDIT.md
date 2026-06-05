@@ -158,3 +158,37 @@ PHASE 6 이후 관련 패치가 있을 때 최소 확인할 것:
 - `itc:popout-channel-cache-change` 이벤트는 팝아웃 표시 갱신용이며 unread 판단 기준으로 쓰면 안 된다.
 
 다음 단계에서는 `popout.js` 내부의 HTML 문자열 생성 방식까지 건드리지 말고, 먼저 팝아웃 채널 독립성 회귀 테스트를 통과한 뒤 다음 정리를 판단한다.
+
+---
+
+## PHASE 6-3 추가 정리: popout watcher lifecycle 정리
+
+이번 단계에서는 팝아웃 채팅 채널 독립성을 유지하면서, 팝아웃 전용 Firebase watcher가 불필요하게 누적되지 않도록 수명주기를 정리했다.
+
+정리된 helper:
+
+- `getOpenPopoutChatChannelKeys()`
+  - 현재 열려 있는 팝아웃창들이 보고 있는 채널 key를 수집한다.
+  - 전체 채팅은 `global`, DM은 해당 `dmChannelKey`로 유지한다.
+- `pruneUnusedPopoutChannelWatchers()`
+  - 팝아웃 sync 시점에 열려 있는 팝아웃 채널만 보존하도록 본창 watcher 정리를 요청한다.
+- `prunePopoutChatChannelWatchers(keepKeys)`
+  - `game.js`에서 팝아웃 전용 watcher 중 더 이상 필요한 채널이 아닌 watcher를 unsubscribe한다.
+- `getPopoutChatWatcherDebugStatus()`
+  - 콘솔에서 팝아웃 전용 watcher 상태를 확인할 수 있는 디버깅 helper다.
+
+보존해야 하는 규칙:
+
+- watcher 정리는 팝아웃 전용 watcher에만 적용한다.
+- 본창 active chat listener는 건드리지 않는다.
+- 팝아웃에서 보고 있는 채널 watcher는 유지한다.
+- 닫힌 팝아웃 또는 더 이상 보고 있지 않은 DM 채널 watcher만 정리한다.
+- 팝아웃 채널을 다시 선택하면 `watchPopoutChatChannel()`이 필요한 watcher를 다시 생성할 수 있어야 한다.
+
+점검 포인트:
+
+- 본창 전체 / 팝아웃 DM 조합 유지
+- 본창 DM / 팝아웃 전체 조합 유지
+- 본창 A DM / 팝아웃 B DM 조합 유지
+- 여러 DM방을 오가도 이전 DM watcher가 과도하게 누적되지 않음
+- 팝아웃을 닫거나 방을 나갈 때 watcher가 정리됨

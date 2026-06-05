@@ -355,6 +355,54 @@ function normalizePopoutWatchChannelKey(channelKey = 'global') {
   return String(channelKey || 'global').trim() || 'global';
 }
 
+function normalizePopoutWatchChannelKeyList(keys = []) {
+  const source = Array.isArray(keys) ? keys : [];
+  const result = [];
+  const seen = new Set();
+  source.forEach((key) => {
+    const safeKey = normalizePopoutWatchChannelKey(key);
+    if (!safeKey || seen.has(safeKey)) return;
+    seen.add(safeKey);
+    result.push(safeKey);
+  });
+  return result;
+}
+
+// PHASE 6-3 SECTION — Popout-only watcher lifecycle
+// 팝아웃창이 채널을 바꾸거나 닫힌 뒤에도 이전 DM watcher가 남으면 불필요한 Firebase 구독이 누적될 수 있다.
+// 본창 active listener와 별개로, 현재 열려 있는 팝아웃 채널만 보존하고 나머지는 정리한다.
+function prunePopoutChatChannelWatchers(keepKeys = []) {
+  const keepSet = new Set(normalizePopoutWatchChannelKeyList(keepKeys));
+  let removed = 0;
+  _popoutChatChannelWatchers.forEach((watcher, key) => {
+    const safeKey = normalizePopoutWatchChannelKey(key);
+    if (keepSet.has(safeKey)) return;
+    try { if (typeof watcher?.unsub === 'function') watcher.unsub(); } catch (e) {}
+    _popoutChatChannelWatchers.delete(key);
+    removed += 1;
+  });
+  if (removed > 0) {
+    logItcChatDebug('popout-channel-watch-prune', {
+      keepKeys: Array.from(keepSet),
+      removedWatcherCount: removed,
+      remainingWatcherCount: _popoutChatChannelWatchers.size,
+    }, { throttleMs: 1000 });
+  }
+}
+
+function getPopoutChatWatcherDebugStatus() {
+  try {
+    return Array.from(_popoutChatChannelWatchers.entries()).map(([key, watcher]) => ({
+      channelKey: normalizePopoutWatchChannelKey(key),
+      roomCode: watcher?.roomCode || '',
+      visibleCount: watcher?.visibleKeys instanceof Set ? watcher.visibleKeys.size : 0,
+      hasUnsub: typeof watcher?.unsub === 'function',
+    }));
+  } catch (e) {
+    return [];
+  }
+}
+
 function notifyPopoutChatChannelCacheChanged(channelKey = 'global', count = 0) {
   const safeKey = normalizePopoutWatchChannelKey(channelKey);
   try { if (typeof window.forcePopoutSync === 'function') window.forcePopoutSync(); } catch (e) {}
@@ -436,6 +484,8 @@ function watchPopoutChatChannel(channelKey = 'global') {
 }
 
 window.cleanupPopoutChatChannelWatchers = cleanupPopoutChatChannelWatchers;
+window.prunePopoutChatChannelWatchers = prunePopoutChatChannelWatchers;
+window.getPopoutChatWatcherDebugStatus = getPopoutChatWatcherDebugStatus;
 window.watchPopoutChatChannel = watchPopoutChatChannel;
 window.loadPopoutChatChannelSnapshot = watchPopoutChatChannel;
 

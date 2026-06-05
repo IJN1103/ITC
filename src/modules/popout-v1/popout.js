@@ -80,6 +80,9 @@ function cleanupPopoutMirror() {
       window.forcePopoutSync = null;
     }
   } catch (e) {}
+  try {
+    if (typeof window.prunePopoutChatChannelWatchers === 'function') window.prunePopoutChatChannelWatchers([]);
+  } catch (e) {}
 }
 
 window.cleanupPopoutMirror = cleanupPopoutMirror;
@@ -611,6 +614,28 @@ function popoutChat() {
     syncPopoutWindow(win);
   };
 
+  const getOpenPopoutChatChannelKeys = () => {
+    try {
+      const keys = _popoutWins
+        .filter((w) => w && !w.closed)
+        .map((w) => {
+          try { return typeof w.getCurrentDmChannelKey === 'function' ? w.getCurrentDmChannelKey() : 'global'; } catch (e) { return 'global'; }
+        })
+        .map((key) => normalizePopoutChatChannelKey(key));
+      return Array.from(new Set(keys.length ? keys : ['global']));
+    } catch (e) {
+      return ['global'];
+    }
+  };
+
+  const pruneUnusedPopoutChannelWatchers = () => {
+    try {
+      if (typeof window.prunePopoutChatChannelWatchers === 'function') {
+        window.prunePopoutChatChannelWatchers(getOpenPopoutChatChannelKeys());
+      }
+    } catch (e) {}
+  };
+
   const schedulePopoutSync = (() => {
     let timer = 0;
     return () => {
@@ -618,21 +643,17 @@ function popoutChat() {
       timer = setTimeout(() => {
         timer = 0;
         _popoutWins = _popoutWins.filter(w => w && !w.closed);
+        pruneUnusedPopoutChannelWatchers();
         _popoutWins.forEach(syncPopoutWindow);
       }, 40);
     };
   })();
 
   window.forcePopoutSync = schedulePopoutSync;
+  window.getOpenPopoutChatChannelKeys = getOpenPopoutChatChannelKeys;
   window.getOpenPopoutDmChannelKeys = function () {
     try {
-      return _popoutWins
-        .filter((w) => w && !w.closed)
-        .map((w) => {
-          try { return typeof w.getCurrentDmChannelKey === 'function' ? w.getCurrentDmChannelKey() : 'global'; } catch (e) { return 'global'; }
-        })
-        .map((key) => String(key || '').trim())
-        .filter((key) => key && key !== 'global');
+      return getOpenPopoutChatChannelKeys().filter((key) => key && key !== 'global');
     } catch (e) {
       return [];
     }
