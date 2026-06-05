@@ -26,6 +26,7 @@ cat dev/chat-v1/_chat-input.js \
     dev/chat-v1/_chat-send-message.js \
     dev/chat-v1/_chat-casual-state.js \
     dev/chat-v1/_chat-typing.js \
+    dev/chat-v1/_chat-actions.js \
     dev/chat-v1/_chat-casual-render.js \
     dev/chat-v1/_chat-whisper.js \
     dev/chat-v1/_chat-lightbox.js \
