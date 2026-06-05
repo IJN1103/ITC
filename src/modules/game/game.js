@@ -529,7 +529,7 @@ function restoreCachedChannelMessages(channelKey = 'global') {
   const signatures = getChatMessageSignatureStore(safeKey);
   processed.clear();
   signatures.clear();
-  const visibleRecords = records.slice(-300);
+  const visibleRecords = records.slice(-320);
   visibleRecords.forEach((record) => {
     const key = String(record?._key || '').trim();
     if (!key) return;
@@ -899,9 +899,9 @@ async function loadOlderChatHistoryForChannel(channelKey = 'global') {
   if (!cursorKey) cursorKey = getOldestCachedChatKey(safeKey);
   if (!cursorKey) return { count: 0, exhausted: true };
 
-  const pageLimit = safeKey === 'global' ? 300 : 220;
-  const targetVisibleCount = safeKey === 'global' ? 120 : 90;
-  const maxScanPages = safeKey === 'global' ? 14 : 10;
+  const pageLimit = safeKey === 'global' ? 420 : 260;
+  const targetVisibleCount = safeKey === 'global' ? 160 : 110;
+  const maxScanPages = safeKey === 'global' ? 18 : 12;
   const collected = [];
   let exhausted = false;
   let guard = 0;
@@ -948,7 +948,7 @@ async function loadOlderCasualHistory() {
   }
   if (!cursorKey) return { count: 0, exhausted: true };
 
-  const pageLimit = 80;
+  const pageLimit = 120;
   const snap = await get(query(ref(db, `rooms/${St.roomCode}/casual`), orderByKey(), endBefore(cursorKey), limitToLast(pageLimit)));
   const entries = Object.entries(snap.val() || {}).sort((a, b) => String(a[0]).localeCompare(String(b[0])));
   if (!entries.length) return { count: 0, exhausted: true };
@@ -1015,7 +1015,7 @@ function switchActiveChatChannel(channelKey = 'global') {
   const processed = getProcessedChatKeySet(safeChannelKey);
   const signatures = getChatMessageSignatureStore(safeChannelKey);
   const chatBaseRef = ref(db, `rooms/${activeRoomCode}/chat`);
-  const activeListenLimit = safeChannelKey === 'global' ? 600 : 300;
+  const activeListenLimit = safeChannelKey === 'global' ? 900 : 450;
   const listenRef = (safeChannelKey !== 'global' && query && orderByChild && equalTo && limitToLast)
     ? query(chatBaseRef, orderByChild('dmChannelKey'), equalTo(safeChannelKey), limitToLast(activeListenLimit))
     : ((query && limitToLast) ? query(chatBaseRef, limitToLast(activeListenLimit)) : chatBaseRef);
@@ -1571,7 +1571,7 @@ function setupFirebaseListeners() {
   switchActiveChatChannel(initialChatChannelKey || 'global');
 
   const casualBaseRef = ref(db, `rooms/${code}/casual`);
-  const casualRef = (query && limitToLast) ? query(casualBaseRef, limitToLast(100)) : casualBaseRef;
+  const casualRef = (query && limitToLast) ? query(casualBaseRef, limitToLast(160)) : casualBaseRef;
 
   const addCasualRecord = (key, m) => {
     if (!m || _processedCasualKeys.has(key)) return;

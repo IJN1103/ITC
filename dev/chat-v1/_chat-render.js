@@ -11,23 +11,78 @@ function buildMessageNodeFromRecord(channel = 'chat', record) {
   return buildChatMsgElement({ ...record, msgKey: record._key, channel });
 }
 
-function trimRenderedMessages(channel = 'chat', direction = 'top') {
+function getRenderedMessageNodes(channel = 'chat') {
+  const el = getRenderContainer(channel);
+  if (!el) return [];
+  return Array.from(el.children).filter((node) => {
+    if (!(node instanceof HTMLElement)) return false;
+    return node.classList.contains('chat-msg') && !!node.dataset.msgKey;
+  });
+}
+
+function getRenderedMessageCount(channel = 'chat') {
+  return getRenderedMessageNodes(channel).length;
+}
+
+function captureRenderedScrollAnchor(channel = 'chat') {
+  const el = getRenderContainer(channel);
+  if (!el) return null;
+  const nodes = getRenderedMessageNodes(channel);
+  if (!nodes.length) return null;
+  const viewportTop = el.getBoundingClientRect().top;
+  const visibleTop = el.scrollTop;
+  const visibleBottom = visibleTop + el.clientHeight;
+  let anchor = null;
+  for (const node of nodes) {
+    const nodeTop = node.offsetTop;
+    const nodeBottom = nodeTop + (node.offsetHeight || 0);
+    if (nodeBottom >= visibleTop - 4 && nodeTop <= visibleBottom + 4) {
+      anchor = node;
+      break;
+    }
+  }
+  if (!anchor) anchor = nodes[0];
+  const key = String(anchor?.dataset?.msgKey || '').trim();
+  if (!key) return null;
+  return {
+    key,
+    topDelta: anchor.getBoundingClientRect().top - viewportTop,
+    scrollTop: el.scrollTop,
+  };
+}
+
+function restoreRenderedScrollAnchor(channel = 'chat', anchor = null) {
+  const el = getRenderContainer(channel);
+  if (!el || !anchor?.key) return false;
+  const node = getRenderedNodeByKey(channel, anchor.key);
+  if (!node || node.parentNode !== el) return false;
+  const viewportTop = el.getBoundingClientRect().top;
+  const nextDelta = node.getBoundingClientRect().top - viewportTop;
+  const diff = nextDelta - Number(anchor.topDelta || 0);
+  if (Number.isFinite(diff) && Math.abs(diff) > 0.5) {
+    el.scrollTop += diff;
+  }
+  return true;
+}
+
+function trimRenderedMessages(channel = 'chat', direction = 'top', options = {}) {
   const state = getRenderState(channel);
   const el = getRenderContainer(channel);
   if (!el) return;
   if (state.virtualEnabled) return;
   const trimFromBottom = direction === 'bottom';
-  while (el.children.length > state.max) {
-    let removable = trimFromBottom ? el.lastElementChild : el.firstElementChild;
+  const preserveKey = String(options?.preserveKey || '').trim();
+
+  while (getRenderedMessageCount(channel) > state.max) {
+    const nodes = getRenderedMessageNodes(channel);
+    let removable = trimFromBottom ? nodes[nodes.length - 1] : nodes[0];
     if (!removable) break;
-    if (removable.classList.contains('chat-history-notice')) {
-      removable = trimFromBottom ? removable.previousElementSibling : removable.nextElementSibling;
+
+    if (preserveKey && String(removable.dataset.msgKey || '') === preserveKey && nodes.length > 1) {
+      removable = trimFromBottom ? nodes[nodes.length - 2] : nodes[1];
     }
-    if (!removable) break;
-    if (!removable.classList.contains('chat-msg')) {
-      removable = trimFromBottom ? removable.previousElementSibling : removable.nextElementSibling;
-      if (!removable) break;
-    }
+    if (!removable || (preserveKey && String(removable.dataset.msgKey || '') === preserveKey)) break;
+
     const key = removable.dataset.msgKey || '';
     if (key) state.map.delete(key);
     removable.remove();
@@ -72,7 +127,7 @@ function prependStoredWindow(channel = 'chat', count = 0) {
   const keysToAdd = state.storeOrder.slice(start, firstIndex);
   if (!keysToAdd.length) return false;
 
-  const prevHeight = el.scrollHeight;
+  const anchor = captureRenderedScrollAnchor(channel);
   const prevTop = el.scrollTop;
   const frag = document.createDocumentFragment();
 
@@ -93,10 +148,11 @@ function prependStoredWindow(channel = 'chat', count = 0) {
     el.prepend(frag);
   }
 
-  trimRenderedMessages(channel, 'bottom');
+  trimRenderedMessages(channel, 'bottom', { preserveKey: anchor?.key || firstRenderedKey });
   primeDeferredChatImages(el);
-  const nextHeight = el.scrollHeight;
-  el.scrollTop = prevTop + (nextHeight - prevHeight);
+  if (!restoreRenderedScrollAnchor(channel, anchor)) {
+    el.scrollTop = prevTop;
+  }
   return true;
 }
 
@@ -117,6 +173,7 @@ function appendStoredWindow(channel = 'chat', count = 0) {
   if (!keysToAdd.length) return false;
 
   const keepBottom = isNearBottom(el);
+  const anchor = keepBottom ? null : captureRenderedScrollAnchor(channel);
   const frag = document.createDocumentFragment();
   keysToAdd.forEach(key => {
     if (getRenderedNodeByKey(channel, key)) return;
@@ -128,9 +185,10 @@ function appendStoredWindow(channel = 'chat', count = 0) {
     frag.appendChild(node);
   });
   el.appendChild(frag);
-  trimRenderedMessages(channel);
+  trimRenderedMessages(channel, 'top', { preserveKey: anchor?.key || '' });
   primeDeferredChatImages(el);
   if (keepBottom) requestAnimationFrame(() => scrollToBottom(el));
+  else restoreRenderedScrollAnchor(channel, anchor);
   return true;
 }
 
@@ -149,6 +207,7 @@ function flushMessageRender(channel = 'chat') {
 
   ensureHistoryNotice(channel);
   const keepBottom = isNearBottom(el);
+  const anchor = (keepBottom || state.stickyToBottom) ? null : captureRenderedScrollAnchor(channel);
   const items = state.queue.splice(0, state.queue.length);
 
   items.forEach((item) => {
@@ -158,7 +217,7 @@ function flushMessageRender(channel = 'chat') {
   });
 
   removeDuplicateRenderedMessages(channel);
-  trimRenderedMessages(channel);
+  trimRenderedMessages(channel, 'top', { preserveKey: anchor?.key || '' });
   primeDeferredChatImages(el);
 
   if (keepBottom || state.stickyToBottom) {
@@ -169,6 +228,7 @@ function flushMessageRender(channel = 'chat') {
     });
   } else {
     state.pendingBottomNotice += items.length;
+    restoreRenderedScrollAnchor(channel, anchor);
     syncStickyState(channel, el);
   }
 }
