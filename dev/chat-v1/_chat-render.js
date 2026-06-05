@@ -497,6 +497,109 @@ function getRenderedKeyList(channel = 'chat') {
     .filter(Boolean);
 }
 
+function getRenderedNodeByKey(channel = 'chat', key = '') {
+  const safeKey = String(key || '').trim();
+  if (!safeKey) return null;
+  const state = getRenderState(channel);
+  const mapped = state.map.get(safeKey);
+  if (mapped && mapped.parentNode) return mapped;
+  const el = getRenderContainer(channel);
+  if (!el) return null;
+  try {
+    return el.querySelector(`.chat-msg[data-msg-key="${CSS.escape(safeKey)}"]`);
+  } catch (e) {
+    return null;
+  }
+}
+
+function getStoredMessageSortTime(record = {}) {
+  const n = Number(record?.timestamp || record?.time || 0);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function compareStoredMessageKeys(channel = 'chat', leftKey = '', rightKey = '') {
+  const state = getRenderState(channel);
+  const left = state.storeMap.get(leftKey) || {};
+  const right = state.storeMap.get(rightKey) || {};
+  const lt = getStoredMessageSortTime(left);
+  const rt = getStoredMessageSortTime(right);
+  if (lt && rt && lt !== rt) return lt - rt;
+  return String(leftKey || '').localeCompare(String(rightKey || ''));
+}
+
+function insertStoredKeyInOrder(channel = 'chat', key = '') {
+  const safeKey = String(key || '').trim();
+  if (!safeKey) return;
+  const state = getRenderState(channel);
+  const prevIdx = state.storeOrder.indexOf(safeKey);
+  if (prevIdx >= 0) state.storeOrder.splice(prevIdx, 1);
+
+  let insertAt = state.storeOrder.length;
+  for (let i = 0; i < state.storeOrder.length; i += 1) {
+    if (compareStoredMessageKeys(channel, safeKey, state.storeOrder[i]) < 0) {
+      insertAt = i;
+      break;
+    }
+  }
+  state.storeOrder.splice(insertAt, 0, safeKey);
+}
+
+function insertRenderedNodeInStoredOrder(channel = 'chat', node, key = '') {
+  const state = getRenderState(channel);
+  const el = getRenderContainer(channel);
+  if (!el || !node) return false;
+  const safeKey = String(key || node?.dataset?.msgKey || '').trim();
+  if (!safeKey) {
+    el.appendChild(node);
+    return true;
+  }
+
+  const current = getRenderedNodeByKey(channel, safeKey);
+  if (current && current !== node && current.parentNode === el) {
+    el.replaceChild(node, current);
+    state.map.set(safeKey, node);
+    return true;
+  }
+
+  const orderIndex = state.storeOrder.indexOf(safeKey);
+  if (orderIndex < 0) {
+    el.appendChild(node);
+    state.map.set(safeKey, node);
+    return true;
+  }
+
+  for (let i = orderIndex + 1; i < state.storeOrder.length; i += 1) {
+    const nextKey = state.storeOrder[i];
+    const nextNode = state.map.get(nextKey) || getRenderedNodeByKey(channel, nextKey);
+    if (nextNode && nextNode.parentNode === el && nextNode !== node) {
+      el.insertBefore(node, nextNode);
+      state.map.set(safeKey, node);
+      return true;
+    }
+  }
+
+  el.appendChild(node);
+  state.map.set(safeKey, node);
+  return true;
+}
+
+function removeDuplicateRenderedMessages(channel = 'chat') {
+  const state = getRenderState(channel);
+  const el = getRenderContainer(channel);
+  if (!el) return;
+  const seen = new Set();
+  Array.from(el.querySelectorAll('.chat-msg[data-msg-key]')).forEach((node) => {
+    const key = String(node?.dataset?.msgKey || '').trim();
+    if (!key) return;
+    if (seen.has(key)) {
+      node.remove();
+      return;
+    }
+    seen.add(key);
+    state.map.set(key, node);
+  });
+}
+
 function syncStickyState(channel = 'chat', el = null) {
   const target = el || getRenderContainer(channel);
   const state = getRenderState(channel);
@@ -690,14 +793,10 @@ function scheduleVirtualRender(channel = 'chat', options = {}) {
 function upsertStoredMessage(channel = 'chat', key, record, options = {}) {
   const state = getRenderState(channel);
   const safeKey = makeStoredMessageKey(channel, key);
-  const existing = state.storeMap.has(safeKey);
-  const position = options?.position === 'prepend' ? 'prepend' : 'append';
-
-  if (!existing) {
-    if (position === 'prepend') state.storeOrder.unshift(safeKey);
-    else state.storeOrder.push(safeKey);
-  }
-  state.storeMap.set(safeKey, { ...(record || {}), _key: safeKey });
+  const previous = state.storeMap.get(safeKey) || {};
+  const nextRecord = { ...previous, ...(record || {}), _key: safeKey };
+  state.storeMap.set(safeKey, nextRecord);
+  insertStoredKeyInOrder(channel, safeKey);
 
   while (state.storeOrder.length > state.maxMemory) {
     const dropKey = state.storeOrder.shift();
@@ -736,6 +835,8 @@ function storeMessageRecord(channel = 'chat', record = {}, key = '', options = {
     standingImg: record.standingImg,
     tokenId: record.tokenId,
     standingLabel: record.standingLabel,
+    dialoguePortrait: record.dialoguePortrait,
+    showPortraitInDialogue: record.showPortraitInDialogue,
     imageWide: record.imageWide,
     hideImageMeta: record.hideImageMeta,
     imageMeta: normalizeChatImageMeta(record.imageMeta),
@@ -759,6 +860,8 @@ function coerceHistoryRecordForStore(record = {}) {
     standingImg: record.standingImg,
     tokenId: record.tokenId,
     standingLabel: record.standingLabel,
+    dialoguePortrait: record.dialoguePortrait,
+    showPortraitInDialogue: record.showPortraitInDialogue,
     imageWide: !!record.imageWide,
     hideImageMeta: !!record.hideImageMeta,
     imageMeta: normalizeChatImageMeta(record.imageMeta),
@@ -831,6 +934,8 @@ function normalizeStoredRecordForSnapshot(channel = 'chat', key = '', record = {
     standingImg: record.standingImg || '',
     tokenId: record.tokenId || '',
     standingLabel: record.standingLabel || '',
+    dialoguePortrait: record.dialoguePortrait || '',
+    showPortraitInDialogue: record.showPortraitInDialogue === true,
     imageWide: !!record.imageWide,
     hideImageMeta: !!record.hideImageMeta,
     imageMeta: normalizeChatImageMeta(record.imageMeta),
@@ -854,7 +959,7 @@ function getChatRenderSnapshot(channel = 'chat', options = {}) {
 function buildMessageNodeFromRecord(channel = 'chat', record) {
   if (!record) return null;
   if (channel === 'casual') {
-    return buildCasualMsgElement(record.name, record.text, record.uid, record.timestamp, record._key);
+    return buildCasualMsgElement(record.name, record.text, record.uid, record.timestamp, record._key, record.nameColor || '');
   }
   return buildChatMsgElement({ ...record, msgKey: record._key, channel });
 }
@@ -925,6 +1030,7 @@ function prependStoredWindow(channel = 'chat', count = 0) {
   const frag = document.createDocumentFragment();
 
   keysToAdd.forEach(key => {
+    if (getRenderedNodeByKey(channel, key)) return;
     const record = getStoredRecord(channel, key);
     const node = buildMessageNodeFromRecord(channel, record);
     if (!node) return;
@@ -966,6 +1072,7 @@ function appendStoredWindow(channel = 'chat', count = 0) {
   const keepBottom = isNearBottom(el);
   const frag = document.createDocumentFragment();
   keysToAdd.forEach(key => {
+    if (getRenderedNodeByKey(channel, key)) return;
     const record = getStoredRecord(channel, key);
     const node = buildMessageNodeFromRecord(channel, record);
     if (!node) return;
@@ -1000,16 +1107,10 @@ function flushMessageRender(channel = 'chat') {
   items.forEach((item) => {
     const { node, key } = item;
     if (!node || !key) return;
-    const current = state.map.get(key);
-    if (current && current.parentNode === el) {
-      el.replaceChild(node, current);
-      state.map.set(key, node);
-      return;
-    }
-    state.map.set(key, node);
-    el.appendChild(node);
+    insertRenderedNodeInStoredOrder(channel, node, key);
   });
 
+  removeDuplicateRenderedMessages(channel);
   trimRenderedMessages(channel);
   primeDeferredChatImages(el);
 
@@ -1029,16 +1130,19 @@ function queueMessageRender(channel = 'chat', node, key = '', autoscroll = true)
   const state = getRenderState(channel);
   const el = getRenderContainer(channel);
   if (!el || !node) return;
-  if (state.virtualEnabled) {
-    if (autoscroll) syncStickyState(channel, el);
-    state.queue.push({ node, key });
-    if (state.raf) return;
-    state.raf = requestAnimationFrame(() => flushMessageRender(channel));
-    return;
+  const safeKey = String(key || node?.dataset?.msgKey || '').trim();
+  if (safeKey) {
+    node.dataset.msgKey = safeKey;
+    const queuedIdx = state.queue.findIndex(item => item?.key === safeKey);
+    if (queuedIdx >= 0) {
+      state.queue[queuedIdx] = { node, key: safeKey };
+    } else {
+      state.queue.push({ node, key: safeKey });
+    }
+  } else {
+    state.queue.push({ node, key: safeKey });
   }
-  if (key) node.dataset.msgKey = key;
   if (autoscroll) syncStickyState(channel, el);
-  state.queue.push({ node, key });
   if (state.raf) return;
   state.raf = requestAnimationFrame(() => flushMessageRender(channel));
 }
@@ -1245,5 +1349,3 @@ function activateChatRenderChannel(channel = 'chat') {
   }
 }
 
-
-try { scheduleChatInputResizeInit(); } catch (e) {}

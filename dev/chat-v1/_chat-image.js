@@ -519,7 +519,7 @@ async function sendPreparedChatImage(preparedOrDataUrl, imageWide = false, image
       time: Date.now(),
       speakAsAvatar: saAvatar,
       speakAsJournalId: saJId,
-      nameColor: saJournal.nameColor || '',
+      nameColor: (typeof saGetJournalNameColor === 'function' ? saGetJournalNameColor(saJId, saJournal) : (saJournal.nameColor || saJournal.sheet?.nameColor || '')),
       imageWide: !!imageWide,
       hideImageMeta: !!hideImageMeta,
       imageMeta: normalizedMeta,
@@ -531,10 +531,10 @@ async function sendPreparedChatImage(preparedOrDataUrl, imageWide = false, image
       const { db, ref, push } = window._FB;
       if (!St.roomCode) throw new Error('roomCode missing');
       const payload = { ...msg, dmChannelKey: currentChannelKey || 'global', time: getChatServerTimestamp() };
-      return push(ref(db, `rooms/${St.roomCode}/chat`), payload)
-        .then((pushedRef) => notifyDmMetaAfterChatPush(currentChannelKey, payload, pushedRef));
+    return push(ref(db, `rooms/${St.roomCode}/chat`), payload)
+      .then((pushedRef) => notifyDmMetaAfterChatPush(currentChannelKey, payload, pushedRef));
     }
-    appendChatMsg({ name: msg.name, text: finalSrc, type: 'speak-as-image', uid: St.myId, timestamp: msg.time, speakAsAvatar: saAvatar, speakAsJournalId: saJId, channel: 'chat', imageWide: !!imageWide, imageMeta: normalizedMeta, hideImageMeta: !!hideImageMeta });
+    appendChatMsg({ name: msg.name, text: finalSrc, type: 'speak-as-image', uid: St.myId, timestamp: msg.time, speakAsAvatar: saAvatar, speakAsJournalId: saJId, nameColor: msg.nameColor || '', channel: 'chat', imageWide: !!imageWide, imageMeta: normalizedMeta, hideImageMeta: !!hideImageMeta });
     return Promise.resolve();
   }
 
