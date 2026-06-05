@@ -1,4 +1,4 @@
-# POP_OUT CHAT STRUCTURE AUDIT — PHASE 6-1
+# POP_OUT CHAT STRUCTURE AUDIT — PHASE 6-1 / 6-2
 
 ## 목적
 
@@ -128,3 +128,33 @@ PHASE 6 이후 관련 패치가 있을 때 최소 확인할 것:
 - 팝아웃 스크립트 생성 방식을 한 번에 갈아엎기
 - 본창/팝아웃 렌더 함수를 즉시 공통화하기
 - DM 저장 경로 변경
+
+
+---
+
+## PHASE 6-2 추가 정리: popout sync bridge
+
+이번 단계에서는 기능을 바꾸지 않고, 팝아웃 동기화 bridge의 호출 경로를 한 곳에서 추적하기 쉽도록 정리했다.
+
+정리된 helper:
+
+- `normalizePopoutChatChannelKey()`
+  - 팝아웃 전용 채널 key를 항상 `global` 또는 DM key로 정규화한다.
+- `requestPopoutChannelSync()`
+  - 팝아웃이 보고 있는 채널의 watcher/cache 갱신을 요청한다.
+- `finishPopoutBridgeSync()`
+  - 전송 후 watcher 갱신과 팝아웃 재동기화를 같이 예약한다.
+- `withTemporaryPopoutTargetChannel()`
+  - 팝아웃 메시지 전송 중에만 본창의 `_itcActiveChatChannelKey`를 임시로 target channel에 맞추고, 전송 직후 반드시 이전 값으로 복구한다.
+- `notifyPopoutChatChannelCacheChanged()`
+  - `game.js`의 팝아웃 전용 watcher가 메시지 캐시를 갱신했을 때 팝아웃 sync를 요청하고 이벤트를 발생시킨다.
+
+보존해야 하는 규칙:
+
+- 팝아웃에서 메시지를 보내도 본창의 현재 채널 선택은 바뀌면 안 된다.
+- 본창과 팝아웃은 서로 다른 채널을 볼 수 있어야 한다.
+- 팝아웃 watcher는 본창 active listener를 대체하지 않는다.
+- `watchPopoutChatChannel()`은 팝아웃 표시용 캐시를 채우는 보조 watcher로만 유지한다.
+- `itc:popout-channel-cache-change` 이벤트는 팝아웃 표시 갱신용이며 unread 판단 기준으로 쓰면 안 된다.
+
+다음 단계에서는 `popout.js` 내부의 HTML 문자열 생성 방식까지 건드리지 말고, 먼저 팝아웃 채널 독립성 회귀 테스트를 통과한 뒤 다음 정리를 판단한다.

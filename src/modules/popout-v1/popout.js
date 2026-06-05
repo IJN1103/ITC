@@ -578,8 +578,8 @@ function popoutChat() {
     if (!targetWin || targetWin.closed || !targetWin._popReady) return;
     try {
       const channelKey = typeof targetWin.getCurrentDmChannelKey === 'function' ? targetWin.getCurrentDmChannelKey() : (typeof getCurrentDmChannelKey === 'function' ? getCurrentDmChannelKey() : 'global');
-      try { if (typeof window.watchPopoutChatChannel === 'function') window.watchPopoutChatChannel(channelKey); } catch (e) {}
-      const list = getPopoutChatListForChannel(channelKey);
+      const syncChannelKey = requestPopoutChannelSync(channelKey);
+      const list = getPopoutChatListForChannel(syncChannelKey);
       if (targetWin.setMessages) targetWin.setMessages('chat', list);
     } catch (e) {}
     try {
@@ -671,6 +671,7 @@ function popoutChat() {
     addDocListener('itc:dm-unread-change');
     addDocListener('itc:dm-channel-catalog-change');
     addDocListener('itc:dm-active-channel-applied');
+    addDocListener('itc:popout-channel-cache-change');
 
     _popoutMirrorCleanup = () => {
       cleanups.splice(0).forEach((fn) => { try { fn(); } catch (e) {} });
@@ -695,6 +696,35 @@ function getPopoutAvatarUrl(name, uid) {
   return '';
 }
 
+function normalizePopoutChatChannelKey(channelKey = 'global') {
+  return String(channelKey || 'global').trim() || 'global';
+}
+
+function requestPopoutChannelSync(channelKey = 'global') {
+  const safeKey = normalizePopoutChatChannelKey(channelKey);
+  try {
+    if (typeof window.watchPopoutChatChannel === 'function') window.watchPopoutChatChannel(safeKey);
+  } catch (e) {}
+  return safeKey;
+}
+
+function finishPopoutBridgeSync(channelKey = 'global') {
+  const safeKey = requestPopoutChannelSync(channelKey);
+  schedulePopoutSyncSoon();
+  return safeKey;
+}
+
+function withTemporaryPopoutTargetChannel(channelKey = 'global', callback = null) {
+  const prevChannelKey = normalizePopoutChatChannelKey(window._itcActiveChatChannelKey || 'global');
+  const nextChannelKey = requestPopoutChannelSync(channelKey);
+  window._itcActiveChatChannelKey = nextChannelKey;
+  try {
+    return typeof callback === 'function' ? callback(nextChannelKey, prevChannelKey) : undefined;
+  } finally {
+    window._itcActiveChatChannelKey = prevChannelKey;
+  }
+}
+
 
 function schedulePopoutSyncSoon() {
   const sync = () => {
@@ -711,22 +741,17 @@ function schedulePopoutSyncSoon() {
 
 // PHASE 6 SECTION — Popout outbound message bridge
 // 팝아웃에서 보낸 메시지는 target channel에만 기록되어야 하며, 본창의 현재 채널 선택은 복구되어야 한다.
-// prevChannelKey 복구 로직을 제거하면 본창/팝아웃 채널 독립성이 깨질 수 있다.
+// withTemporaryPopoutTargetChannel()은 이 복구 규칙을 한 곳에서 보장하는 안전 bridge다.
 function sendDescFromPopout(text, channelKey = 'global') {
-  const prevChannelKey = String(window._itcActiveChatChannelKey || 'global').trim() || 'global';
-  const nextChannelKey = String(channelKey || 'global').trim() || 'global';
-  try { if (typeof window.watchPopoutChatChannel === 'function') window.watchPopoutChatChannel(nextChannelKey); } catch (e) {}
-  window._itcActiveChatChannelKey = nextChannelKey;
+  const nextChannelKey = normalizePopoutChatChannelKey(channelKey);
   let result;
   try {
-    result = sendMessage(St.myName, text, 'desc');
-  } finally {
-    window._itcActiveChatChannelKey = prevChannelKey;
+    result = withTemporaryPopoutTargetChannel(nextChannelKey, () => sendMessage(St.myName, text, 'desc'));
+  } catch (err) {
+    finishPopoutBridgeSync(nextChannelKey);
+    throw err;
   }
-  Promise.resolve(result).finally(() => {
-    try { if (typeof window.watchPopoutChatChannel === 'function') window.watchPopoutChatChannel(nextChannelKey); } catch (e) {}
-    schedulePopoutSyncSoon();
-  });
+  Promise.resolve(result).finally(() => finishPopoutBridgeSync(nextChannelKey));
   return result;
 }
 window.sendDescFromPopout = sendDescFromPopout;
@@ -737,24 +762,22 @@ function sendChatFromPopout(text, tab, channelKey = 'global') {
     Promise.resolve(result).finally(() => schedulePopoutSyncSoon());
     return result;
   }
-  const prevChannelKey = String(window._itcActiveChatChannelKey || 'global').trim() || 'global';
-  const nextChannelKey = String(channelKey || 'global').trim() || 'global';
-  try { if (typeof window.watchPopoutChatChannel === 'function') window.watchPopoutChatChannel(nextChannelKey); } catch (e) {}
-  window._itcActiveChatChannelKey = nextChannelKey;
+  const nextChannelKey = normalizePopoutChatChannelKey(channelKey);
   let result;
   try {
-    if (St.speakAsJournalId) {
-      const j = loadJournals().find(x => x.id === St.speakAsJournalId);
-      if (j) result = saSendMessage(j, text);
-    }
-    if (!result) result = sendMessage(St.myName, text, 'normal');
-  } finally {
-    window._itcActiveChatChannelKey = prevChannelKey;
+    result = withTemporaryPopoutTargetChannel(nextChannelKey, () => {
+      let sent;
+      if (St.speakAsJournalId) {
+        const j = loadJournals().find(x => x.id === St.speakAsJournalId);
+        if (j) sent = saSendMessage(j, text);
+      }
+      return sent || sendMessage(St.myName, text, 'normal');
+    });
+  } catch (err) {
+    finishPopoutBridgeSync(nextChannelKey);
+    throw err;
   }
-  Promise.resolve(result).finally(() => {
-    try { if (typeof window.watchPopoutChatChannel === 'function') window.watchPopoutChatChannel(nextChannelKey); } catch (e) {}
-    schedulePopoutSyncSoon();
-  });
+  Promise.resolve(result).finally(() => finishPopoutBridgeSync(nextChannelKey));
   return result;
 }
 

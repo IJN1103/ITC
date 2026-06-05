@@ -351,12 +351,26 @@ function cleanupPopoutChatChannelWatchers() {
   logItcChatDebug('popout-channel-watch-cleanup', { previousWatcherCount: prevCount }, { throttleMs: 1000 });
 }
 
+function normalizePopoutWatchChannelKey(channelKey = 'global') {
+  return String(channelKey || 'global').trim() || 'global';
+}
+
+function notifyPopoutChatChannelCacheChanged(channelKey = 'global', count = 0) {
+  const safeKey = normalizePopoutWatchChannelKey(channelKey);
+  try { if (typeof window.forcePopoutSync === 'function') window.forcePopoutSync(); } catch (e) {}
+  try {
+    document.dispatchEvent(new CustomEvent('itc:popout-channel-cache-change', {
+      detail: { channelKey: safeKey, count }
+    }));
+  } catch (e) {}
+}
+
 // PHASE 6 SECTION — Popout-only channel watch
 // 팝아웃창이 전체/DM 중 어떤 채널을 보고 있는지와 무관하게 본창 채널은 유지한다.
 // 이 함수는 해당 채널 메시지를 _chatRecordsByChannel에 캐시하고 forcePopoutSync로 팝아웃만 갱신한다.
 function watchPopoutChatChannel(channelKey = 'global') {
   if (!window._FB?.CONFIGURED || !St.roomCode) return Promise.resolve([]);
-  const safeKey = String(channelKey || 'global').trim() || 'global';
+  const safeKey = normalizePopoutWatchChannelKey(channelKey);
   const activeRoomCode = String(St.roomCode || '').trim();
   if (!activeRoomCode) return Promise.resolve([]);
   const existing = _popoutChatChannelWatchers.get(safeKey);
@@ -398,12 +412,7 @@ function watchPopoutChatChannel(channelKey = 'global') {
     });
     watcher.visibleKeys = nextKeys;
     cacheChannelMessages(safeKey, filtered, { merge: true, seed: false });
-    try { if (typeof window.forcePopoutSync === 'function') window.forcePopoutSync(); } catch (e) {}
-    try {
-      document.dispatchEvent(new CustomEvent('itc:popout-channel-cache-change', {
-        detail: { channelKey: safeKey, count: filtered.length }
-      }));
-    } catch (e) {}
+    notifyPopoutChatChannelCacheChanged(safeKey, filtered.length);
     if (resolveReady) {
       const done = resolveReady;
       resolveReady = null;
