@@ -97,15 +97,75 @@
   }
 
   function getUnreadRuntime() {
-    if (!ROOT.__DM_UI_UNREAD) ROOT.__DM_UI_UNREAD = { roomCode: '', off: null, latestByChannel: {} };
+    if (!ROOT.__DM_UI_UNREAD) {
+      ROOT.__DM_UI_UNREAD = { roomCode: '', off: null, latestByChannel: {}, latestMetaByChannel: {} };
+    }
+    if (!ROOT.__DM_UI_UNREAD.latestByChannel) ROOT.__DM_UI_UNREAD.latestByChannel = {};
+    if (!ROOT.__DM_UI_UNREAD.latestMetaByChannel) ROOT.__DM_UI_UNREAD.latestMetaByChannel = {};
     return ROOT.__DM_UI_UNREAD;
+  }
+
+  function getLatestStampForChannel(channelKey) {
+    const key = String(channelKey || '').trim();
+    if (!key || key === 'global') return 0;
+    const runtime = getUnreadRuntime();
+    const direct = Number(runtime.latestByChannel?.[key] || 0);
+    if (Number.isFinite(direct) && direct > 0) return direct;
+    const fromMeta = Number(runtime.latestMetaByChannel?.[key]?.latestAt || 0);
+    return Number.isFinite(fromMeta) && fromMeta > 0 ? fromMeta : 0;
+  }
+
+  function getLatestMetaForChannel(channelKey) {
+    const key = String(channelKey || '').trim();
+    if (!key || key === 'global') return null;
+    const runtime = getUnreadRuntime();
+    const meta = runtime.latestMetaByChannel?.[key];
+    return meta && typeof meta === 'object' ? meta : null;
+  }
+
+  function isSelfLatestSender(channelKey) {
+    const state = getStateRoot();
+    const myId = String(state.myId || '').trim();
+    if (!myId) return false;
+    const meta = getLatestMetaForChannel(channelKey);
+    const sender = String(meta?.latestSenderUid || '').trim();
+    return !!sender && sender === myId;
+  }
+
+  function getOpenPopoutChannelKeys() {
+    try {
+      if (typeof ROOT.getOpenPopoutDmChannelKeys === 'function') {
+        const keys = ROOT.getOpenPopoutDmChannelKeys();
+        return Array.isArray(keys) ? keys : [];
+      }
+    } catch (e) {}
+    return [];
+  }
+
+  function getActivelyViewedDmChannelKeys() {
+    const keys = new Set();
+    try {
+      const current = typeof ROOT.getCurrentDmChannelKey === 'function' ? ROOT.getCurrentDmChannelKey() : 'global';
+      const safeCurrent = String(current || '').trim();
+      if (safeCurrent && safeCurrent !== 'global') keys.add(safeCurrent);
+    } catch (e) {}
+    getOpenPopoutChannelKeys().forEach((key) => {
+      const safeKey = String(key || '').trim();
+      if (safeKey && safeKey !== 'global') keys.add(safeKey);
+    });
+    return Array.from(keys);
+  }
+
+  function isChannelActivelyViewed(channelKey) {
+    const key = String(channelKey || '').trim();
+    if (!key || key === 'global') return false;
+    return getActivelyViewedDmChannelKeys().includes(key);
   }
 
   function markChannelSeen(channelKey) {
     const key = String(channelKey || '').trim();
     if (!key || key === 'global') return;
-    const runtime = getUnreadRuntime();
-    const latest = Number(runtime.latestByChannel?.[key] || 0);
+    const latest = getLatestStampForChannel(key);
     if (!latest) {
       if (typeof ROOT.clearDmUnreadState === 'function') ROOT.clearDmUnreadState(key);
       return;
@@ -144,9 +204,20 @@
     return 0;
   }
 
+  function normalizeUnreadMeta(channelKey, meta, stamp) {
+    return {
+      channelKey: String(channelKey || '').trim(),
+      latestAt: Number(stamp || 0) || 0,
+      latestMessageKey: String(meta?.latestMessageKey || '').trim(),
+      latestSenderUid: String(meta?.latestSenderUid || '').trim(),
+      latestType: String(meta?.latestType || '').trim(),
+    };
+  }
+
   function rebuildUnreadState(raw) {
     const runtime = getUnreadRuntime();
     const latestByChannel = {};
+    const latestMetaByChannel = {};
     const state = getStateRoot();
     const myId = String(state.myId || '').trim();
     const isGm = typeof ROOT.isDmGmView === 'function' && ROOT.isDmGmView();
@@ -158,26 +229,49 @@
       if (!isGm && !metaIncludesViewer(meta, myId)) return;
       const stamp = getDmMetaLatestStamp(meta);
       if (!stamp) return;
-      latestByChannel[key] = Math.max(Number(latestByChannel[key] || 0), stamp);
+      if (stamp >= Number(latestByChannel[key] || 0)) {
+        latestByChannel[key] = stamp;
+        latestMetaByChannel[key] = normalizeUnreadMeta(key, meta, stamp);
+      }
     });
     const prevLatest = runtime.latestByChannel || {};
     runtime.latestByChannel = latestByChannel;
+    runtime.latestMetaByChannel = latestMetaByChannel;
     const seen = loadSeenMap();
-    const currentKey = typeof ROOT.getCurrentDmChannelKey === 'function' ? ROOT.getCurrentDmChannelKey() : 'global';
-    if (currentKey && currentKey !== 'global') {
-      const latest = Number(latestByChannel[currentKey] || 0);
-      if (latest && Number(seen[currentKey] || 0) < latest) {
-        seen[currentKey] = latest;
-        saveSeenMap(seen);
+    let seenChanged = false;
+
+    getActivelyViewedDmChannelKeys().forEach((key) => {
+      const latest = Number(latestByChannel[key] || 0);
+      if (latest && Number(seen[key] || 0) < latest) {
+        seen[key] = latest;
+        seenChanged = true;
       }
-    }
+    });
+
+    Object.keys(latestByChannel).forEach((key) => {
+      const latest = Number(latestByChannel[key] || 0);
+      const meta = latestMetaByChannel[key] || {};
+      const latestSenderUid = String(meta.latestSenderUid || '').trim();
+      if (latest && myId && latestSenderUid && latestSenderUid === myId && Number(seen[key] || 0) < latest) {
+        seen[key] = latest;
+        seenChanged = true;
+      }
+    });
+
+    if (seenChanged) saveSeenMap(seen);
+
     Object.keys(prevLatest).forEach((key) => {
       if (!Object.prototype.hasOwnProperty.call(latestByChannel, key) && typeof ROOT.setDmUnreadState === 'function') {
         ROOT.setDmUnreadState(key, false);
       }
     });
     Object.keys(latestByChannel).forEach((key) => {
-      const unread = Number(latestByChannel[key] || 0) > Number(seen[key] || 0);
+      const latest = Number(latestByChannel[key] || 0);
+      const meta = latestMetaByChannel[key] || {};
+      const latestSenderUid = String(meta.latestSenderUid || '').trim();
+      const sentByMe = !!(myId && latestSenderUid && latestSenderUid === myId);
+      const activelyViewed = isChannelActivelyViewed(key);
+      const unread = !sentByMe && !activelyViewed && latest > Number(seen[key] || 0);
       if (typeof ROOT.setDmUnreadState === 'function') ROOT.setDmUnreadState(key, unread);
     });
   }
@@ -630,6 +724,7 @@
     runtime.off = null;
     runtime.roomCode = '';
     runtime.latestByChannel = {};
+    runtime.latestMetaByChannel = {};
   }
 
   ROOT.cleanupDmUnreadListener = cleanupDmUnreadListener;
@@ -638,6 +733,19 @@
   ROOT.getDmButtonAlias = getAliasForUid;
   ROOT.setDmButtonAlias = setAliasForUid;
   ROOT.markDmChannelSeen = markChannelSeen;
+  ROOT.getDmUnreadDebugStatus = function () {
+    const runtime = getUnreadRuntime();
+    return {
+      roomCode: runtime.roomCode || '',
+      myId: String(getStateRoot().myId || '').trim(),
+      currentChannelKey: typeof ROOT.getCurrentDmChannelKey === 'function' ? ROOT.getCurrentDmChannelKey() : 'global',
+      openPopoutChannelKeys: getOpenPopoutChannelKeys(),
+      activelyViewedChannelKeys: getActivelyViewedDmChannelKeys(),
+      latestByChannel: { ...(runtime.latestByChannel || {}) },
+      latestMetaByChannel: { ...(runtime.latestMetaByChannel || {}) },
+      seen: loadSeenMap(),
+    };
+  };
   document.addEventListener('itc:dm-channel-catalog-change', () => {
     try { renderDmChannelButtons(); } catch (e) {}
   });

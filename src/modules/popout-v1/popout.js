@@ -319,7 +319,7 @@ function buildPopoutScript(journalJson, playersJson, isGmJson) {
   L.push('function getCurrentDmChannelKey(){return String(popDmChannelKey||"global").trim()||"global"}');
   L.push('function scheduleOpenerPopoutSync(){try{var op=getOpenerState();if(op&&typeof op.forcePopoutSync==="function"){op.forcePopoutSync();setTimeout(function(){try{op.forcePopoutSync()}catch(e){}},80);setTimeout(function(){try{op.forcePopoutSync()}catch(e){}},220);setTimeout(function(){try{op.forcePopoutSync()}catch(e){}},520)}}catch(e){}}');
   L.push('function requestPopoutChannelWatch(key){var next=String(key||"global").trim()||"global";try{var op=getOpenerState();if(!op){return Promise.resolve([])}var jobs=[];if(next!=="global"&&op.isDmGmView&&op.isDmGmView()&&typeof op.ensureDmChannelMeta==="function"){jobs.push(Promise.resolve(op.ensureDmChannelMeta(next)).catch(function(){}))}if(typeof op.watchPopoutChatChannel==="function"){jobs.push(Promise.resolve(op.watchPopoutChatChannel(next)).catch(function(){return[]}))}if(typeof op.markDmChannelSeen==="function")op.markDmChannelSeen(next);scheduleOpenerPopoutSync();return Promise.all(jobs).then(function(){scheduleOpenerPopoutSync();return[]})}catch(e){return Promise.resolve([])}}');
-  L.push('function setCurrentDmChannelKey(key){popDmChannelKey=String(key||"global").trim()||"global";popDmPendingTargetIds=null;requestPopoutChannelWatch(popDmChannelKey);renderDmBar();syncDmUnreadDots();return popDmChannelKey}');
+  L.push('function setCurrentDmChannelKey(key){popDmChannelKey=String(key||"global").trim()||"global";popDmPendingTargetIds=null;requestPopoutChannelWatch(popDmChannelKey);try{var op=getOpenerState();if(op&&typeof op.markDmChannelSeen==="function")op.markDmChannelSeen(popDmChannelKey);if(op&&typeof op.refreshDmChannelButtons==="function")op.refreshDmChannelButtons()}catch(e){}renderDmBar();syncDmUnreadDots();return popDmChannelKey}');
   L.push('window.getCurrentDmChannelKey=getCurrentDmChannelKey;window.setCurrentDmChannelKey=setCurrentDmChannelKey;window.requestPopoutChannelWatch=requestPopoutChannelWatch;');
   L.push('try{var __op=getOpenerState();if(__op&&typeof __op.getCurrentDmChannelKey==="function")popDmChannelKey=String(__op.getCurrentDmChannelKey()||"global")||"global"}catch(e){}');
   L.push('try{requestPopoutChannelWatch(popDmChannelKey)}catch(e){}');
@@ -615,6 +615,19 @@ function popoutChat() {
   })();
 
   window.forcePopoutSync = schedulePopoutSync;
+  window.getOpenPopoutDmChannelKeys = function () {
+    try {
+      return _popoutWins
+        .filter((w) => w && !w.closed)
+        .map((w) => {
+          try { return typeof w.getCurrentDmChannelKey === 'function' ? w.getCurrentDmChannelKey() : 'global'; } catch (e) { return 'global'; }
+        })
+        .map((key) => String(key || '').trim())
+        .filter((key) => key && key !== 'global');
+    } catch (e) {
+      return [];
+    }
+  };
 
   function bindPopoutMirror() {
     if (_popoutMirrorBound) return;
