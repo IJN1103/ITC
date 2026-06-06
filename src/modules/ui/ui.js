@@ -136,7 +136,7 @@ function renderSettingsModal() {
       header.appendChild(nameDiv);
 
       const roleTag = document.createElement('div');
-      roleTag.style.cssText = 'font-size:10px;padding:2px 8px;border-radius:4px;' + (isGM ? 'background:rgba(184,154,96,.15);color:var(--accent);border:1px solid rgba(184,154,96,.3)' : 'background:var(--s3);color:var(--muted);border:1px solid var(--border)');
+      roleTag.style.cssText = 'font-size:10px;padding:2px 8px;border-radius:4px;' + (isGM ? 'background:rgba(37,99,235,.12);color:var(--accent-text);border:1px solid rgba(37,99,235,.3)' : 'background:#eef1f5;color:var(--muted);border:1px solid var(--border2)');
       roleTag.textContent = isGM ? 'GM' : '플레이어';
       header.appendChild(roleTag);
 
@@ -162,7 +162,7 @@ function renderSettingsModal() {
           bulkRow.style.cssText = 'display:flex;gap:6px;margin-top:2px;margin-bottom:6px';
 
           const grantBtn = document.createElement('button');
-          grantBtn.style.cssText = 'flex:1;font:inherit;font-size:10px;padding:5px 8px;border-radius:6px;cursor:pointer;transition:.15s ease;border:1px solid rgba(184,154,96,.35);background:rgba(184,154,96,.10);color:var(--accent)';
+          grantBtn.style.cssText = 'flex:1;font:inherit;font-size:10px;padding:5px 8px;border-radius:6px;cursor:pointer;transition:.15s ease;border:1px solid rgba(37,99,235,.5);background:rgba(37,99,235,.14);color:var(--accent-text);font-weight:600';
           grantBtn.textContent = '전체 권한 부여';
           grantBtn.title = '토큰, 맵, BGM, desc 권한을 모두 부여합니다.';
           grantBtn.onclick = () => setPlayerPermPreset(uid, true);
@@ -185,13 +185,13 @@ function renderSettingsModal() {
           if (St.isGM) {
             const btn = document.createElement('button');
             btn.title = pm.desc;
-            btn.style.cssText = 'font:inherit;font-size:10px;padding:3px 8px;border-radius:4px;cursor:pointer;transition:.15s ease;border:1px solid '+(has?'rgba(90,158,114,.4)':'var(--border)')+';background:'+(has?'rgba(90,158,114,.12)':'var(--s3)')+';color:'+(has?'var(--green)':'var(--muted)');
+            btn.style.cssText = 'font:inherit;font-size:10px;padding:3px 8px;border-radius:4px;cursor:pointer;transition:.15s ease;border:1px solid '+(has?'rgba(74,158,106,.4)':'var(--border2)')+';background:'+(has?'rgba(74,158,106,.12)':'#eef1f5')+';color:'+(has?'var(--green)':'var(--muted)');
             btn.textContent = (has?'\u2713 ':'')+pm.label;
             btn.onclick = () => togglePerm(uid, pm.key, !has);
             permWrap.appendChild(btn);
           } else {
             const span = document.createElement('span');
-            span.style.cssText = 'font-size:10px;padding:3px 8px;border-radius:4px;border:1px solid '+(has?'rgba(90,158,114,.4)':'var(--border)')+';background:'+(has?'rgba(90,158,114,.12)':'var(--s3)')+';color:'+(has?'var(--green)':'var(--muted)');
+            span.style.cssText = 'font-size:10px;padding:3px 8px;border-radius:4px;border:1px solid '+(has?'rgba(74,158,106,.4)':'var(--border2)')+';background:'+(has?'rgba(74,158,106,.12)':'#eef1f5')+';color:'+(has?'var(--green)':'var(--muted)');
             span.textContent = (has?'\u2713 ':'\u2715 ')+pm.label;
             permWrap.appendChild(span);
           }
