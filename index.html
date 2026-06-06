@@ -2,6 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
+<script>try{var t=localStorage.getItem('itc_theme');if(t==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}</script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ITC</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -244,6 +245,14 @@ window._FB = {
   <nav class="lobby-nav">
     <div class="nav-logo">ITC</div>
     <div class="spacer"></div>
+    <label class="theme-toggle" title="라이트/다크 모드 전환">
+      <input type="checkbox" id="theme-toggle-lobby" onchange="toggleTheme(this.checked)">
+      <span class="theme-toggle-track">
+        <span class="theme-toggle-thumb"></span>
+        <span class="theme-toggle-icon theme-toggle-sun">☀</span>
+        <span class="theme-toggle-icon theme-toggle-moon">🌙</span>
+      </span>
+    </label>
     <div class="nav-user">
       <button class="nav-profile-btn" onclick="openModal('modal-profile')" title="프로필 수정">
         <div class="user-avatar" id="user-avatar">?</div>
@@ -343,7 +352,14 @@ window._FB = {
     <div id="gm-badge" style="display:none;align-items:center;gap:4px;background:rgba(37,99,235,.12);border:1px solid rgba(37,99,235,.35);border-radius:4px;padding:3px 9px;font-size:10px;letter-spacing:.1em;color:var(--accent-text)">GM</div>
     <div class="spacer"></div>
     <div class="players-row" id="players-row"></div>
-
+    <label class="theme-toggle" title="라이트/다크 모드 전환" style="margin-right:4px;">
+      <input type="checkbox" id="theme-toggle-session" onchange="toggleTheme(this.checked)">
+      <span class="theme-toggle-track">
+        <span class="theme-toggle-thumb"></span>
+        <span class="theme-toggle-icon theme-toggle-sun">☀</span>
+        <span class="theme-toggle-icon theme-toggle-moon">🌙</span>
+      </span>
+    </label>
     <button class="topbar-btn" onclick="openModal('modal-settings')">⚙</button>
   </div>
 
@@ -1443,5 +1459,29 @@ window._FB = {
 <script src="src/modules/journal-v1/journal.js"></script>
 <script src="src/modules/speak-as/speak-as.js"></script>
 <script src="src/v1-core.js"></script>
+<script>
+(function() {
+  const STORAGE_KEY = 'itc_theme';
+
+  function applyTheme(dark) {
+    document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+    // 두 토글 체크박스 모두 동기화
+    ['theme-toggle-lobby', 'theme-toggle-session'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.checked = dark;
+    });
+  }
+
+  window.toggleTheme = function(dark) {
+    applyTheme(dark);
+    try { localStorage.setItem(STORAGE_KEY, dark ? 'dark' : 'light'); } catch(e) {}
+  };
+
+  // 페이지 로드 시 저장된 테마 복원
+  let saved = 'light';
+  try { saved = localStorage.getItem(STORAGE_KEY) || 'light'; } catch(e) {}
+  applyTheme(saved === 'dark');
+})();
+</script>
 </body>
 </html>
