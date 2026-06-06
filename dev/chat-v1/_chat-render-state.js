@@ -223,6 +223,18 @@ function compareStoredMessageKeys(channel = 'chat', leftKey = '', rightKey = '')
   return String(leftKey || '').localeCompare(String(rightKey || ''));
 }
 
+function findStoredKeyInsertIndex(channel = 'chat', key = '') {
+  const state = getRenderState(channel);
+  let low = 0;
+  let high = state.storeOrder.length;
+  while (low < high) {
+    const mid = (low + high) >> 1;
+    if (compareStoredMessageKeys(channel, key, state.storeOrder[mid]) < 0) high = mid;
+    else low = mid + 1;
+  }
+  return low;
+}
+
 function insertStoredKeyInOrder(channel = 'chat', key = '') {
   const safeKey = String(key || '').trim();
   if (!safeKey) return;
@@ -230,13 +242,7 @@ function insertStoredKeyInOrder(channel = 'chat', key = '') {
   const prevIdx = state.storeOrder.indexOf(safeKey);
   if (prevIdx >= 0) state.storeOrder.splice(prevIdx, 1);
 
-  let insertAt = state.storeOrder.length;
-  for (let i = 0; i < state.storeOrder.length; i += 1) {
-    if (compareStoredMessageKeys(channel, safeKey, state.storeOrder[i]) < 0) {
-      insertAt = i;
-      break;
-    }
-  }
+  const insertAt = findStoredKeyInsertIndex(channel, safeKey);
   state.storeOrder.splice(insertAt, 0, safeKey);
 }
 
