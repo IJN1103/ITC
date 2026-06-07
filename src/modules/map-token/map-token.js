@@ -1301,6 +1301,15 @@ function createTokenEl(t) {
     const priority = Number(t.panelPriority || 1);
     el.style.zIndex = String(Number.isFinite(priority) ? Math.max(1, priority) : 1);
     if (t.importedMapObjectHidden) el.style.display = 'none';
+  } else {
+    // 캐릭터 토큰: 맵세팅 레이어(최대 수백)보다 항상 위에 있어야 하므로 1000 이상 보장
+    // panelPriority가 명시적으로 1000+ 대역으로 저장된 경우 그 값을 존중하고,
+    // 없거나 1000 미만(과거 저장값)이면 CSS 기본값(z-index:1000)을 사용한다.
+    const savedPriority = Number(t.panelPriority || 0);
+    if (Number.isFinite(savedPriority) && savedPriority >= 1000) {
+      el.style.zIndex = String(savedPriority);
+    }
+    // 1000 미만이면 CSS z-index:1000을 그대로 사용 (el.style.zIndex 미설정)
   }
   el.style.left = storedTokenPercentToDisplay(t.x, 'x') + '%'; el.style.top = storedTokenPercentToDisplay(t.y, 'y') + '%';
   if (t.rotation) el.style.transform = `translate(-50%,-50%) rotate(${t.rotation}deg)`;
@@ -1536,7 +1545,10 @@ function tokCtxAction(action) {
     }
     case 'toBack': {
       const el = getTokenEl(id);
-      if (el) el.style.zIndex = '1';
+      if (el) {
+        // 패널 토큰(맵세팅 포함)은 z:1, 캐릭터 토큰은 캐릭터 대역 최솟값(1000)
+        el.style.zIndex = isPanelToken(t) ? '1' : '1000';
+      }
       break;
     }
     case 'own': {
@@ -2230,9 +2242,12 @@ function _changeTokenLayerOrder(tokenId, direction) {
   }
 
   // ── 일반 패널/캐릭터 토큰: panelPriority + DOM z-index 조작 ──
-  // 같은 타입 토큰들의 현재 priority를 수집해 상대적 순서를 계산
+  // 캐릭터 토큰은 기본적으로 맵세팅 레이어(1~N)보다 항상 위에 있어야 하므로
+  // z-index 기준값을 1000으로 설정해 맵세팅 패널과 완전히 분리한다.
+  // 앞뒤 보내기로 순서를 조정할 때도 1000+ 대역 안에서만 움직인다.
+  const CHAR_Z_BASE = 1000;  // 캐릭터 토큰 z-index 최솟값
+
   const allTokens = Object.values(stateRoot.tokens || {});
-  // 패널 토큰끼리, 캐릭터 토큰끼리 별도 정렬
   const peers = allTokens
     .filter(t => t && t.id && isPanelToken(t) === isPanelTok && !t.importedMapObject)
     .sort((a, b) => Number(a.panelPriority || 1) - Number(b.panelPriority || 1));
@@ -2240,7 +2255,6 @@ function _changeTokenLayerOrder(tokenId, direction) {
   const myIdx = peers.findIndex(t => t.id === tokenId);
   if (myIdx < 0) return;
 
-  // 이동 후 새 peers 배열 생성
   const nextPeers = peers.slice();
   if (direction === 'layerFront') {
     nextPeers.splice(myIdx, 1);
@@ -2251,15 +2265,16 @@ function _changeTokenLayerOrder(tokenId, direction) {
   } else if (direction === 'layerForward') {
     if (myIdx === nextPeers.length - 1) { showToast('이미 맨 앞입니다.'); return; }
     [nextPeers[myIdx], nextPeers[myIdx + 1]] = [nextPeers[myIdx + 1], nextPeers[myIdx]];
-  } else { // layerBackward
+  } else {
     if (myIdx === 0) { showToast('이미 맨 뒤입니다.'); return; }
     [nextPeers[myIdx - 1], nextPeers[myIdx]] = [nextPeers[myIdx], nextPeers[myIdx - 1]];
   }
 
-  // priority 재할당 (1-based 연속값)
+  // 캐릭터 토큰: CHAR_Z_BASE + i (1000, 1001, 1002 ...)
+  // 패널 토큰(importedMapObject 아닌 일반 패널): 기존 1-based 유지
   const fbPayload = {};
   nextPeers.forEach((t, i) => {
-    const newPriority = i + 1;
+    const newPriority = isPanelTok ? (i + 1) : (CHAR_Z_BASE + i);
     t.panelPriority = newPriority;
     const el = getTokenEl(t.id);
     if (el) el.style.zIndex = String(newPriority);
