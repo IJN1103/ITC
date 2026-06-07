@@ -631,6 +631,7 @@
     const item = document.createElement('div');
     item.className = 'map-layer-item map-layer-item--token map-layer-item--dblclick';
     item.draggable = true;
+    item.style.userSelect = 'none';
     item.dataset.charTokenId = entry.tokenId;
     const previewUrl = getLayerPreviewImageUrl(entry.previewUrl);
     const previewHtml = previewUrl
@@ -1045,54 +1046,47 @@
      - 캐릭터 토큰: panelPriority 기반 z(1000+)
      - 두 그룹을 현재 z-index 기준으로 정렬 후 타깃을 이동, 결과를 각 그룹에 역산 */
   /* 캐릭터 토큰 드래그 드롭: 다른 캐릭터 토큰 위에 드롭 */
-  function _dropCharTokenOnto(dragTokenId, targetEntry, dropPos) {
-    // 통합 배열에서 drag 위치를 before/after target으로 이동 후 z 재계산
-    _applyCharTokenDrop(dragTokenId, { kind: 'char', tokenId: targetEntry.tokenId }, dropPos);
-  }
-
-  /* 캐릭터 토큰 드래그 드롭: 맵세팅 레이어 위에 드롭 */
-  function _dropCharTokenOntoMapLayer(dragTokenId, targetLayerId, dropPos) {
-    _applyCharTokenDrop(dragTokenId, { kind: 'map', layerId: targetLayerId }, dropPos);
-  }
-
-  /* 공통 드롭 처리: 통합 배열에서 drag 항목을 target 전/후로 이동 */
-  function _applyCharTokenDrop(dragTokenId, target, dropPos) {
+  /* ── 통합 z-order 배열 빌더 ──
+     renderMapLayerList 표시 순서, _changeLayerOrderUnified, _applyCharTokenDrop
+     세 곳이 모두 동일한 순서로 배열을 구성해야 UI = 실제 z-order가 보장된다.
+     panelPriority < 1000 캐릭터는 맵세팅 레이어 사이에 끼워 넣고,
+     panelPriority >= 1000 캐릭터는 맵세팅 전체보다 뒤(z 높음)에 배치한다.
+     반환: [{ kind:'map', layerId }, ... { kind:'char', tokenId, z } ...]
+     순서: z 오름차순 (배열 앞 = z 낮음 = UI 하단) */
+  function _buildUnifiedLayerOrder() {
     const stateRoot = getStateRoot();
     const tokens = stateRoot.tokens || {};
     const layerState = stateRoot.mapLayerState || {};
     const order = Array.isArray(layerState.order) ? layerState.order.slice() : [];
 
-    // 통합 배열 구성 (_changeLayerOrderUnified와 동일)
-    const mapItems = order.map(layerId => ({ kind: 'map', layerId }));
     const charItems = Object.values(tokens)
       .filter(t => t && t.id && !_isLayerManagerPanelToken(t) && !t.importedMapObject)
-      .sort((a, b) => Number(a.panelPriority || 1000) - Number(b.panelPriority || 1000))
-      .map(t => ({ kind: 'char', tokenId: t.id }));
+      .map(t => ({ kind: 'char', tokenId: t.id, z: Number(t.panelPriority || 1000) }))
+      .sort((a, b) => a.z - b.z);
 
-    const unified = [...mapItems, ...charItems];
+    const charBelow = charItems.filter(c => c.z < 1000);
+    const charAbove = charItems.filter(c => c.z >= 1000);
 
-    const fromIdx = unified.findIndex(it => it.kind === 'char' && it.tokenId === dragTokenId);
-    let toIdx = target.kind === 'char'
-      ? unified.findIndex(it => it.kind === 'char' && it.tokenId === target.tokenId)
-      : unified.findIndex(it => it.kind === 'map' && it.layerId === target.layerId);
+    const unified = [];
+    let ci = 0;
+    for (let i = 0; i < order.length; i++) {
+      while (ci < charBelow.length && charBelow[ci].z <= i) {
+        unified.push(charBelow[ci]); ci++;
+      }
+      unified.push({ kind: 'map', layerId: order[i], mapIdx: i });
+    }
+    while (ci < charBelow.length) { unified.push(charBelow[ci]); ci++; }
+    charAbove.forEach(c => unified.push(c));
 
-    if (fromIdx < 0 || toIdx < 0 || fromIdx === toIdx) return;
+    return { unified, order };
+  }
 
-    // 배열에서 drag 항목 제거 후 target 위치 기준으로 삽입
-    const next = unified.slice();
-    const [moved] = next.splice(fromIdx, 1);
-    // splice 후 toIdx 보정
-    let insertIdx = unified.findIndex((it, i) => {
-      if (target.kind === 'char') return it.kind === 'char' && it.tokenId === target.tokenId;
-      return it.kind === 'map' && it.layerId === target.layerId;
-    });
-    // fromIdx가 insertIdx보다 앞이면 splice 후 한 칸 당겨짐
-    if (fromIdx < insertIdx) insertIdx--;
-    insertIdx = dropPos === 'after' ? insertIdx + 1 : insertIdx;
-    insertIdx = Math.max(0, Math.min(next.length, insertIdx));
-    next.splice(insertIdx, 0, moved);
+  /* unified 배열을 이동시킨 뒤 각 항목의 z 재계산 + 저장 */
+  function _applyUnifiedOrder(next, originalOrder) {
+    const stateRoot = getStateRoot();
+    const tokens = stateRoot.tokens || {};
+    const layerState = stateRoot.mapLayerState || {};
 
-    // 결과 역산: 맵레이어 순서 + 캐릭터 z
     const mapCount = next.filter(it => it.kind === 'map').length;
     const nextMapOrder = next.filter(it => it.kind === 'map').map(it => it.layerId);
     const fbTokenPayload = {};
@@ -1108,114 +1102,8 @@
       fbTokenPayload[`${item.tokenId}/panelPriority`] = newZ;
     });
 
-    const mapOrderChanged = nextMapOrder.some((id, i) => id !== order[i]);
+    const mapOrderChanged = nextMapOrder.some((id, i) => id !== originalOrder[i]);
     const charChanged = Object.keys(fbTokenPayload).length > 0;
-    if (!mapOrderChanged && !charChanged) return;
-
-    if (mapOrderChanged) {
-      const nextLayerState = { ...layerState, order: nextMapOrder };
-      stateRoot.mapLayerState = nextLayerState;
-      if (typeof applyMapLayerState === 'function') applyMapLayerState();
-      if (typeof window.requestActiveMapSceneSave === 'function') window.requestActiveMapSceneSave('layer-drag', 260);
-      if (window._FB?.CONFIGURED) {
-        const roomCode = getLiveRoomCode();
-        if (roomCode) {
-          const { db, ref, update } = window._FB;
-          const payload = { mapLayerState: nextLayerState, 'bgm/mapLayerState': nextLayerState };
-          Object.entries(fbTokenPayload).forEach(([k, v]) => { payload[`tokens/${k}`] = v; });
-          update(ref(db, `rooms/${roomCode}`), payload).catch(e => console.warn('drag drop sync failed', e));
-        }
-      }
-    } else if (charChanged) {
-      if (window._FB?.CONFIGURED) {
-        const roomCode = getLiveRoomCode();
-        if (roomCode) {
-          const { db, ref, update } = window._FB;
-          update(ref(db, `rooms/${roomCode}/tokens`), fbTokenPayload)
-            .catch(e => console.warn('char drag drop sync failed', e));
-        }
-      }
-    }
-    renderMapLayerList();
-  }
-
-    function _changeLayerOrderUnified(tokenId, direction) {
-    const stateRoot = getStateRoot();
-    const tokens = stateRoot.tokens || {};
-    const layerState = stateRoot.mapLayerState || {};
-    const order = Array.isArray(layerState.order) ? layerState.order.slice() : [];
-
-    // ── 통합 순서 배열 구성 ──
-    // 맵세팅 레이어: layerState.order 순서 그대로
-    // 캐릭터 토큰: panelPriority 오름차순
-    // 두 그룹을 순서대로 이어 붙여 하나의 선형 배열로 만든다.
-    // (UI 레이어 매니저에서 보이는 순서와 동일)
-
-    const mapItems = order.map((layerId) => {
-      const linked = Object.values(tokens).find(
-        t => t && String(t.mapLayerId || '') === layerId && t.importedMapObject === true
-      );
-      return { kind: 'map', layerId, panelTokenId: linked?.id || null };
-    });
-
-    const charItems = Object.values(tokens)
-      .filter(t => t && t.id && !_isLayerManagerPanelToken(t) && !t.importedMapObject)
-      .sort((a, b) => Number(a.panelPriority || 1000) - Number(b.panelPriority || 1000))
-      .map(t => ({ kind: 'char', tokenId: t.id }));
-
-    // 현재 캐릭터 토큰의 panelPriority 기반 위치를 맵 레이어 사이에 삽입
-    // panelPriority < 1000 이면 맵세팅 레이어 사이에 끼어있는 것
-    // panelPriority >= 1000 이면 맵세팅 레이어 전체 뒤(앞)에 있는 것
-    // → 통합 배열은 [맵세팅..., 캐릭터...] 순서로 단순히 이어붙인다.
-    //   사용자가 앞뒤 이동할 때 이 배열 안에서 위치가 바뀐다.
-    const unified = [...mapItems, ...charItems];
-
-    const myIdx = unified.findIndex(it => it.kind === 'char' && it.tokenId === tokenId);
-    if (myIdx < 0) return;
-
-    // ── 이동 ──
-    const next = unified.slice();
-    if (direction === 'layerFront') {
-      if (myIdx === next.length - 1) { if (typeof showToast === 'function') showToast('이미 맨 앞입니다.'); return; }
-      const [item] = next.splice(myIdx, 1);
-      next.push(item);
-    } else if (direction === 'layerBack') {
-      if (myIdx === 0) { if (typeof showToast === 'function') showToast('이미 맨 뒤입니다.'); return; }
-      const [item] = next.splice(myIdx, 1);
-      next.unshift(item);
-    } else if (direction === 'layerForward') {
-      if (myIdx === next.length - 1) { if (typeof showToast === 'function') showToast('이미 맨 앞입니다.'); return; }
-      [next[myIdx], next[myIdx + 1]] = [next[myIdx + 1], next[myIdx]];
-    } else { // layerBackward
-      if (myIdx === 0) { if (typeof showToast === 'function') showToast('이미 맨 뒤입니다.'); return; }
-      [next[myIdx - 1], next[myIdx]] = [next[myIdx], next[myIdx - 1]];
-    }
-
-    // ── 결과를 각 그룹에 역산 ──
-    // 새 배열에서 map 항목의 순서 → nextMapOrder
-    // 새 배열에서 char 항목의 위치(globalIdx) → z값 결정
-    //   globalIdx < (맵 항목 수): 맵세팅 레이어 사이에 끼어든 것 → z = globalIdx (맵과 같은 대역)
-    //   globalIdx >= (맵 항목 수): 맵세팅 레이어 전부보다 앞 → z = 1000 + (globalIdx - mapCount)
-    const mapCount = next.filter(it => it.kind === 'map').length;
-    const nextMapOrder = next.filter(it => it.kind === 'map').map(it => it.layerId);
-    const fbTokenPayload = {};
-
-    next.forEach((item, globalIdx) => {
-      if (item.kind !== 'char') return;
-      const t = tokens[item.tokenId];
-      if (!t) return;
-      const newZ = globalIdx >= mapCount
-        ? 1000 + (globalIdx - mapCount)
-        : Math.max(1, globalIdx);
-      t.panelPriority = newZ;
-      const el = document.getElementById(`tok-${item.tokenId}`);
-      if (el) el.style.zIndex = String(newZ);
-      fbTokenPayload[`${item.tokenId}/panelPriority`] = newZ;
-    });
-
-    const mapOrderChanged = nextMapOrder.some((id, i) => id !== order[i]);
-    const charChanged = Object.keys(fbTokenPayload).length > 0;
-
     if (!mapOrderChanged && !charChanged) return;
 
     if (mapOrderChanged) {
@@ -1227,13 +1115,9 @@
         const roomCode = getLiveRoomCode();
         if (roomCode) {
           const { db, ref, update } = window._FB;
-          const payload = {
-            mapLayerState: nextLayerState,
-            'bgm/mapLayerState': nextLayerState,
-          };
+          const payload = { mapLayerState: nextLayerState, 'bgm/mapLayerState': nextLayerState };
           Object.entries(fbTokenPayload).forEach(([k, v]) => { payload[`tokens/${k}`] = v; });
-          update(ref(db, `rooms/${roomCode}`), payload)
-            .catch(e => console.warn('unified layer order sync failed', e));
+          update(ref(db, `rooms/${roomCode}`), payload).catch(e => console.warn('layer order sync failed', e));
         }
       }
     } else if (charChanged) {
@@ -1242,12 +1126,67 @@
         if (roomCode) {
           const { db, ref, update } = window._FB;
           update(ref(db, `rooms/${roomCode}/tokens`), fbTokenPayload)
-            .catch(e => console.warn('char layer order sync failed', e));
+            .catch(e => console.warn('char order sync failed', e));
         }
       }
     }
+    renderMapLayerList();
+  }
 
-    if (typeof refreshMapLayerManager === 'function') refreshMapLayerManager();
+  function _dropCharTokenOnto(dragTokenId, target, dropPos) {
+    const { unified, order } = _buildUnifiedLayerOrder();
+    const fromIdx = unified.findIndex(it => it.kind === 'char' && it.tokenId === dragTokenId);
+    const toIdx   = unified.findIndex(it => it.kind === 'char' && it.tokenId === target.tokenId);
+    if (fromIdx < 0 || toIdx < 0 || fromIdx === toIdx) return;
+    const next = unified.slice();
+    const [moved] = next.splice(fromIdx, 1);
+    let ins = next.findIndex(it => it.kind === 'char' && it.tokenId === target.tokenId);
+    ins = dropPos === 'after' ? ins + 1 : ins;
+    next.splice(Math.max(0, Math.min(next.length, ins)), 0, moved);
+    _applyUnifiedOrder(next, order);
+  }
+
+  function _dropCharTokenOntoMapLayer(dragTokenId, targetLayerId, dropPos) {
+    const { unified, order } = _buildUnifiedLayerOrder();
+    const fromIdx = unified.findIndex(it => it.kind === 'char' && it.tokenId === dragTokenId);
+    const toIdx   = unified.findIndex(it => it.kind === 'map' && it.layerId === targetLayerId);
+    if (fromIdx < 0 || toIdx < 0) return;
+    const next = unified.slice();
+    const [moved] = next.splice(fromIdx, 1);
+    let ins = next.findIndex(it => it.kind === 'map' && it.layerId === targetLayerId);
+    ins = dropPos === 'after' ? ins + 1 : ins;
+    next.splice(Math.max(0, Math.min(next.length, ins)), 0, moved);
+    _applyUnifiedOrder(next, order);
+  }
+
+
+  /* ── 통합 z-order 배열 빌더 ──
+     renderMapLayerList 표시 순서, _changeLayerOrderUnified, _applyCharTokenDrop
+     세 곳이 모두 동일한 순서로 배열을 구성해야 UI = 실제 z-order가 보장된다.
+     panelPriority < 1000 캐릭터는 맵세팅 레이어 사이에 끼워 넣고,
+     panelPriority >= 1000 캐릭터는 맵세팅 전체보다 뒤(z 높음)에 배치한다.
+     반환: [{ kind:'map', layerId }, ... { kind:'char', tokenId, z } ...]
+     순서: z 오름차순 (배열 앞 = z 낮음 = UI 하단) */
+  function _changeLayerOrderUnified(tokenId, direction) {
+    const { unified, order } = _buildUnifiedLayerOrder();
+    const myIdx = unified.findIndex(it => it.kind === 'char' && it.tokenId === tokenId);
+    if (myIdx < 0) return;
+
+    const next = unified.slice();
+    if (direction === 'layerFront') {
+      if (myIdx === next.length - 1) { if (typeof showToast === 'function') showToast('이미 맨 앞입니다.'); return; }
+      const [item] = next.splice(myIdx, 1); next.push(item);
+    } else if (direction === 'layerBack') {
+      if (myIdx === 0) { if (typeof showToast === 'function') showToast('이미 맨 뒤입니다.'); return; }
+      const [item] = next.splice(myIdx, 1); next.unshift(item);
+    } else if (direction === 'layerForward') {
+      if (myIdx === next.length - 1) { if (typeof showToast === 'function') showToast('이미 맨 앞입니다.'); return; }
+      [next[myIdx], next[myIdx + 1]] = [next[myIdx + 1], next[myIdx]];
+    } else {
+      if (myIdx === 0) { if (typeof showToast === 'function') showToast('이미 맨 뒤입니다.'); return; }
+      [next[myIdx - 1], next[myIdx]] = [next[myIdx], next[myIdx - 1]];
+    }
+    _applyUnifiedOrder(next, order);
   }
 
   function _shiftMapLayerOrder(layerId, direction) {
