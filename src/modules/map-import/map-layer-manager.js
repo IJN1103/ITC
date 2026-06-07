@@ -603,6 +603,10 @@
         _openTokenEditAboveLayerModal(entry.panelTokenId);
       });
     }
+    // 우클릭 컨텍스트 메뉴
+    item.addEventListener('contextmenu', (e) => {
+      showLayerItemCtx(e, entry);
+    });
     // 드래그 (맵세팅 레이어만)
     if (!entry.isTokenEntry) {
       item.addEventListener('dragstart', (e) => {
@@ -711,6 +715,10 @@
       e.preventDefault(); e.stopPropagation();
       _openTokenEditAboveLayerModal(entry.tokenId);
     });
+    // 우클릭 컨텍스트 메뉴
+    item.addEventListener('contextmenu', (e) => {
+      showLayerItemCtx(e, entry);
+    });
     return item;
   }
 
@@ -815,32 +823,152 @@
     renderMapLayerList();
   }
 
-  /* 레이어 모달(z-index:200) 위에 토큰 편집창이 뜨도록 te-overlay z-index를 일시 상향 */
+  /* 레이어 모달 위에 토큰 편집창이 뜨도록:
+     modal-map-layers의 z-index를 일시적으로 190으로 낮추고,
+     토큰 편집창이 닫히면 원래대로 복원한다.
+     (캐릭터 토큰 = te-overlay z-index:500 / 패널 토큰 = .overlay z-index:200
+      둘 다 레이어 모달을 190으로 낮추면 확실히 앞에 뜬다.) */
   function _openTokenEditAboveLayerModal(tokenId) {
     if (typeof openTokenEdit !== 'function') return;
+
+    const layerModal = document.getElementById('modal-map-layers');
+
+    // 레이어 모달 z-index를 일시 낮춤
+    if (layerModal) layerModal.style.zIndex = '190';
+
+    const restore = () => {
+      if (layerModal) layerModal.style.zIndex = '';
+    };
+
     openTokenEdit(tokenId);
-    // te-overlay가 열린 뒤 z-index 적용
+
+    // 토큰 편집창이 어떤 엘리먼트로 열렸는지 rAF 후 감지
     requestAnimationFrame(() => {
+      // 케이스 A: 캐릭터 토큰 → te-overlay
       const teOverlay = document.getElementById('te-overlay');
-      if (teOverlay) {
-        teOverlay.style.zIndex = '210';
-        // 창이 닫힐 때 원래 값으로 복원
-        const restore = () => {
-          teOverlay.style.zIndex = '';
-          teOverlay.removeEventListener('click', onOverlayClick);
+      if (teOverlay && teOverlay.classList.contains('open')) {
+        const onTeClose = () => {
+          restore();
+          teOverlay.removeEventListener('transitionend', onTeClose);
+          observer.disconnect();
         };
-        // te-overlay 배경 클릭(닫기) 또는 닫기 버튼 클릭 감지
-        const onOverlayClick = (ev) => {
-          if (ev.target === teOverlay) restore();
-        };
-        teOverlay.addEventListener('click', onOverlayClick);
-        // 닫기 버튼에도 restore 연결 (1회)
-        const closeBtn = teOverlay.querySelector('.te-close, [onclick*="closeTokenEdit"]');
-        if (closeBtn && !closeBtn._layerRestoreBound) {
-          closeBtn._layerRestoreBound = true;
-          closeBtn.addEventListener('click', restore, { once: true });
-        }
+        // classList에서 'open' 제거 감지
+        const observer = new MutationObserver(() => {
+          if (!teOverlay.classList.contains('open')) {
+            restore();
+            observer.disconnect();
+          }
+        });
+        observer.observe(teOverlay, { attributes: true, attributeFilter: ['class'] });
+        return;
       }
+      // 케이스 B: 패널 토큰 → modal-panel-token-edit (.overlay)
+      const panelModal = document.getElementById('modal-panel-token-edit');
+      if (panelModal && panelModal.classList.contains('open')) {
+        const observer = new MutationObserver(() => {
+          if (!panelModal.classList.contains('open')) {
+            restore();
+            observer.disconnect();
+          }
+        });
+        observer.observe(panelModal, { attributes: true, attributeFilter: ['class'] });
+      }
+    });
+  }
+
+  /* ── 레이어 박스 우클릭 컨텍스트 메뉴 ── */
+  let _layerCtxEntry = null;  // 현재 우클릭된 엔트리
+
+  function showLayerItemCtx(e, entry) {
+    e.preventDefault();
+    e.stopPropagation();
+    _layerCtxEntry = entry;
+    const ctx = document.getElementById('layer-item-ctx');
+    if (!ctx) return;
+    // 맵세팅 레이어(importedMapObject)는 order 배열 기반이므로 항상 활성
+    // 캐릭터 토큰도 panelPriority 기반으로 항상 활성
+    ctx.style.display = 'block';
+    // 화면 경계 처리
+    const x = Math.min(e.clientX, window.innerWidth - 180);
+    const y = Math.min(e.clientY, window.innerHeight - 130);
+    ctx.style.left = x + 'px';
+    ctx.style.top  = y + 'px';
+  }
+
+  function hideLayerItemCtx() {
+    const ctx = document.getElementById('layer-item-ctx');
+    if (ctx) ctx.style.display = 'none';
+    _layerCtxEntry = null;
+  }
+
+  window.layerItemCtxAction = function(action) {
+    const entry = _layerCtxEntry;
+    hideLayerItemCtx();
+    if (!entry) return;
+
+    const tokenId = entry.isTokenEntry
+      ? String(entry.tokenId || '')
+      : String(entry.panelTokenId || '');
+
+    // _changeTokenLayerOrder는 map-token.js에 정의됨
+    // mapLayerId가 있는 맵세팅 레이어는 importedMapObject 토큰을 통해 처리
+    if (tokenId && typeof _changeTokenLayerOrder === 'function') {
+      _changeTokenLayerOrder(tokenId, action);
+      return;
+    }
+    // 맵세팅 레이어 자체(layerState.order 직접 조작)
+    if (!entry.isTokenEntry) {
+      _shiftMapLayerOrder(entry.id, action);
+    }
+  };
+
+  /* layerState.order만 있고 panelTokenId가 없는 항목(배경 이미지 등) 전용 */
+  function _shiftMapLayerOrder(layerId, direction) {
+    const stateRoot = getStateRoot();
+    const layerState = stateRoot.mapLayerState;
+    if (!layerState?.order) return;
+    const order = layerState.order.slice();
+    const idx = order.indexOf(layerId);
+    if (idx < 0) { if (typeof showToast === 'function') showToast('레이어를 찾을 수 없어요.'); return; }
+    let nextOrder;
+    if (direction === 'layerFront') {
+      nextOrder = [...order.filter(id => id !== layerId), layerId];
+    } else if (direction === 'layerBack') {
+      nextOrder = [layerId, ...order.filter(id => id !== layerId)];
+    } else if (direction === 'layerForward') {
+      if (idx === order.length - 1) { if (typeof showToast === 'function') showToast('이미 맨 앞입니다.'); return; }
+      nextOrder = order.slice();
+      [nextOrder[idx], nextOrder[idx + 1]] = [nextOrder[idx + 1], nextOrder[idx]];
+    } else {
+      if (idx === 0) { if (typeof showToast === 'function') showToast('이미 맨 뒤입니다.'); return; }
+      nextOrder = order.slice();
+      [nextOrder[idx - 1], nextOrder[idx]] = [nextOrder[idx], nextOrder[idx - 1]];
+    }
+    const nextLayerState = { ...layerState, order: nextOrder };
+    stateRoot.mapLayerState = nextLayerState;
+    if (typeof applyMapLayerState === 'function') applyMapLayerState();
+    if (typeof window.requestActiveMapSceneSave === 'function') window.requestActiveMapSceneSave('layer-order', 260);
+    if (window._FB?.CONFIGURED) {
+      const roomCode = getLiveRoomCode();
+      if (roomCode) {
+        const { db, ref, update } = window._FB;
+        update(ref(db, `rooms/${roomCode}`), {
+          mapLayerState: nextLayerState,
+          'bgm/mapLayerState': nextLayerState,
+        }).catch(e => console.warn('layer order sync failed', e));
+      }
+    }
+    renderMapLayerList();
+  }
+
+  // ctx 메뉴 외부 클릭 시 닫기 (1회 바인딩)
+  if (!window._layerItemCtxOutsideBound) {
+    window._layerItemCtxOutsideBound = true;
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('#layer-item-ctx')) hideLayerItemCtx();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') hideLayerItemCtx();
     });
   }
 

@@ -1147,6 +1147,14 @@ window._FB = {
   </div>
 </div>
 
+<!-- 레이어 박스 컨텍스트 메뉴 -->
+<div class="tok-ctx" id="layer-item-ctx">
+  <div class="tok-ctx-item" id="layer-ctx-forward" onclick="layerItemCtxAction('layerForward')">앞으로 보내기</div>
+  <div class="tok-ctx-item" id="layer-ctx-backward" onclick="layerItemCtxAction('layerBackward')">뒤로 보내기</div>
+  <div class="tok-ctx-item" id="layer-ctx-front" onclick="layerItemCtxAction('layerFront')">맨 앞으로 보내기</div>
+  <div class="tok-ctx-item" id="layer-ctx-back" onclick="layerItemCtxAction('layerBack')">맨 뒤로 보내기</div>
+</div>
+
 <!-- 토큰 컨텍스트 메뉴 -->
 <div class="tok-ctx" id="tok-ctx">
   <div class="tok-ctx-item" onclick="tokCtxAction('edit')">편집</div>
