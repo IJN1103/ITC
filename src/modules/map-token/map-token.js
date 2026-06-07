@@ -704,21 +704,35 @@ function hideTokenMemoBubble() {
 function positionTokenMemoBubble(tokenEl) {
   const bubble = ensureTokenMemoBubble();
   const rect = tokenEl.getBoundingClientRect();
-  const bubbleRect = bubble.getBoundingClientRect();
   const gap = 12;
+  /* bubble이 화면 밖(-9999px)에 있을 때 getBoundingClientRect로 크기를 측정하면
+     width/height가 0으로 반환될 수 있다. visibility:hidden 상태에서 측정한다. */
+  const prevLeft = bubble.style.left;
+  const prevTop  = bubble.style.top;
+  const prevVis  = bubble.style.visibility;
+  bubble.style.visibility = 'hidden';
+  bubble.style.left = '0px';
+  bubble.style.top  = '0px';
+  const bubbleRect = bubble.getBoundingClientRect();
+  bubble.style.left = prevLeft;
+  bubble.style.top  = prevTop;
+  bubble.style.visibility = prevVis;
+
   let left = rect.left + (rect.width / 2);
-  let top = rect.top - gap;
-  const minX = 16 + bubbleRect.width / 2;
-  const maxX = window.innerWidth - 16 - bubbleRect.width / 2;
+  let top  = rect.top - gap;
+  const bw = bubbleRect.width || 200;
+  const bh = bubbleRect.height || 40;
+  const minX = 16 + bw / 2;
+  const maxX = window.innerWidth - 16 - bw / 2;
   left = Math.max(minX, Math.min(maxX, left));
-  if (top - bubbleRect.height < 12) {
-    top = rect.bottom + bubbleRect.height + gap;
+  if (top - bh < 12) {
+    top = rect.bottom + bh + gap;
     bubble.style.transform = 'translate(-50%, 0)';
   } else {
     bubble.style.transform = 'translate(-50%, -100%)';
   }
   bubble.style.left = `${left}px`;
-  bubble.style.top = `${top}px`;
+  bubble.style.top  = `${top}px`;
 }
 
 
@@ -747,9 +761,15 @@ function showTokenMemoBubble(tokenEl, memo, tokenId) {
   if (!content) return;
   const bubble = ensureTokenMemoBubble();
   bubble.textContent = content;
-  positionTokenMemoBubble(tokenEl);
-  bubble.style.opacity = '1';
   _tokenMemoBubbleTokenId = tokenId || null;
+  /* 텍스트가 바뀐 직후에는 브라우저가 아직 새 크기를 계산하지 않았을 수 있으므로
+     한 프레임 뒤에 위치를 잡아 버블이 뷰포트 밖으로 잘리는 것을 방지한다. */
+  requestAnimationFrame(() => {
+    if (_tokenMemoBubbleTokenId !== tokenId) return; // 그 사이 다른 토큰으로 바뀌었으면 무시
+    if (!tokenEl.isConnected) return;
+    positionTokenMemoBubble(tokenEl);
+    bubble.style.opacity = '1';
+  });
 }
 
 function createCharacterToken(name, type, options = {}) {
@@ -1507,6 +1527,13 @@ function tokCtxAction(action) {
       }
       break;
     }
+    case 'layerForward':
+    case 'layerBackward':
+    case 'layerFront':
+    case 'layerBack': {
+      _changeTokenLayerOrder(id, action);
+      break;
+    }
     case 'toBack': {
       const el = getTokenEl(id);
       if (el) el.style.zIndex = '1';
@@ -1539,7 +1566,7 @@ function tokCtxAction(action) {
     case 'copy':
       navigator.clipboard?.writeText(JSON.stringify(t, null, 2)).then(() => showToast('토큰 데이터가 클립보드에 복사됐어요.')).catch(() => showToast('복사 실패'));
       break;
-    case 'delete':
+    case 'delete': {
       if (!confirm(`'${t.name}' 토큰을 삭제할까요?`)) return;
       const delEl = getTokenEl(id);
       if (delEl) delEl.remove();
@@ -1551,6 +1578,7 @@ function tokCtxAction(action) {
         remove(ref(db, `rooms/${St.roomCode}/tokens/${id}`));
       }
       break;
+    }
     case 'copyId':
       navigator.clipboard?.writeText(id).then(() => showToast('토큰 ID 복사됨: ' + id)).catch(() => showToast('복사 실패'));
       break;
@@ -2149,3 +2177,99 @@ function setTool(t) {
 
 
 window.addEventListener('scroll', () => hideTokenMemoBubble(), true);
+
+/* ── 토큰 레이어 순서 변경 ──
+   mapLayerState.order 배열 + panelPriority를 함께 업데이트하여
+   맵세팅 레이어 매니저와 동일한 z-order를 유지한다. */
+function _changeTokenLayerOrder(tokenId, direction) {
+  const root = (typeof window !== 'undefined' ? window : globalThis);
+  const stateRoot = root.St || {};
+  const layerState = stateRoot.mapLayerState;
+  const token = stateRoot.tokens?.[tokenId];
+  if (!token) return;
+
+  const isPanelTok = isPanelToken(token);
+
+  // ── 맵세팅 레이어(importedMapObject) 토큰: layerState.order 조작 ──
+  if (token.importedMapObject === true && layerState?.order) {
+    const order = layerState.order.slice();
+    const layerId = String(token.mapLayerId || '').trim();
+    const idx = layerId ? order.indexOf(layerId) : -1;
+    if (idx < 0) { showToast('레이어 순서를 찾을 수 없어요.'); return; }
+
+    let nextOrder;
+    if (direction === 'layerFront') {
+      nextOrder = [...order.filter(id => id !== layerId), layerId];
+    } else if (direction === 'layerBack') {
+      nextOrder = [layerId, ...order.filter(id => id !== layerId)];
+    } else if (direction === 'layerForward') {
+      if (idx === order.length - 1) { showToast('이미 맨 앞입니다.'); return; }
+      nextOrder = order.slice();
+      [nextOrder[idx], nextOrder[idx + 1]] = [nextOrder[idx + 1], nextOrder[idx]];
+    } else { // layerBackward
+      if (idx === 0) { showToast('이미 맨 뒤입니다.'); return; }
+      nextOrder = order.slice();
+      [nextOrder[idx - 1], nextOrder[idx]] = [nextOrder[idx], nextOrder[idx - 1]];
+    }
+
+    const nextLayerState = { ...layerState, order: nextOrder };
+    if (typeof window.applyMapLayerState === 'function') {
+      stateRoot.mapLayerState = nextLayerState;
+      window.applyMapLayerState();
+    }
+    if (typeof window.requestActiveMapSceneSave === 'function') window.requestActiveMapSceneSave('layer-order', 260);
+    if (window._FB?.CONFIGURED && stateRoot.roomCode) {
+      const { db, ref, update } = window._FB;
+      update(ref(db, `rooms/${stateRoot.roomCode}`), {
+        mapLayerState: nextLayerState,
+        'bgm/mapLayerState': nextLayerState,
+      }).catch(e => console.warn('layerState order sync failed', e));
+    }
+    if (typeof window.refreshMapLayerManager === 'function') window.refreshMapLayerManager();
+    return;
+  }
+
+  // ── 일반 패널/캐릭터 토큰: panelPriority + DOM z-index 조작 ──
+  // 같은 타입 토큰들의 현재 priority를 수집해 상대적 순서를 계산
+  const allTokens = Object.values(stateRoot.tokens || {});
+  // 패널 토큰끼리, 캐릭터 토큰끼리 별도 정렬
+  const peers = allTokens
+    .filter(t => t && t.id && isPanelToken(t) === isPanelTok && !t.importedMapObject)
+    .sort((a, b) => Number(a.panelPriority || 1) - Number(b.panelPriority || 1));
+
+  const myIdx = peers.findIndex(t => t.id === tokenId);
+  if (myIdx < 0) return;
+
+  // 이동 후 새 peers 배열 생성
+  const nextPeers = peers.slice();
+  if (direction === 'layerFront') {
+    nextPeers.splice(myIdx, 1);
+    nextPeers.push(peers[myIdx]);
+  } else if (direction === 'layerBack') {
+    nextPeers.splice(myIdx, 1);
+    nextPeers.unshift(peers[myIdx]);
+  } else if (direction === 'layerForward') {
+    if (myIdx === nextPeers.length - 1) { showToast('이미 맨 앞입니다.'); return; }
+    [nextPeers[myIdx], nextPeers[myIdx + 1]] = [nextPeers[myIdx + 1], nextPeers[myIdx]];
+  } else { // layerBackward
+    if (myIdx === 0) { showToast('이미 맨 뒤입니다.'); return; }
+    [nextPeers[myIdx - 1], nextPeers[myIdx]] = [nextPeers[myIdx], nextPeers[myIdx - 1]];
+  }
+
+  // priority 재할당 (1-based 연속값)
+  const fbPayload = {};
+  nextPeers.forEach((t, i) => {
+    const newPriority = i + 1;
+    t.panelPriority = newPriority;
+    const el = getTokenEl(t.id);
+    if (el) el.style.zIndex = String(newPriority);
+    fbPayload[`${t.id}/panelPriority`] = newPriority;
+  });
+
+  if (window._FB?.CONFIGURED && stateRoot.roomCode) {
+    const { db, ref, update } = window._FB;
+    update(ref(db, `rooms/${stateRoot.roomCode}/tokens`), fbPayload)
+      .catch(e => console.warn('panelPriority order sync failed', e));
+  }
+  if (typeof window.refreshMapLayerManager === 'function') window.refreshMapLayerManager();
+}

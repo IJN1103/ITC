@@ -600,7 +600,7 @@
       item.classList.add('map-layer-item--dblclick');
       item.addEventListener('dblclick', (e) => {
         e.preventDefault(); e.stopPropagation();
-        if (typeof openTokenEdit === 'function') openTokenEdit(entry.panelTokenId);
+        _openTokenEditAboveLayerModal(entry.panelTokenId);
       });
     }
     // 드래그 (맵세팅 레이어만)
@@ -709,9 +709,7 @@
     // 더블클릭: 설정창 열기
     item.addEventListener('dblclick', (e) => {
       e.preventDefault(); e.stopPropagation();
-      const t = getStateRoot().tokens?.[entry.tokenId];
-      if (!t) return;
-      if (typeof openTokenEdit === 'function') openTokenEdit(entry.tokenId);
+      _openTokenEditAboveLayerModal(entry.tokenId);
     });
     return item;
   }
@@ -815,6 +813,35 @@
   function refreshMapLayerManager() {
     applyMapLayerState();
     renderMapLayerList();
+  }
+
+  /* 레이어 모달(z-index:200) 위에 토큰 편집창이 뜨도록 te-overlay z-index를 일시 상향 */
+  function _openTokenEditAboveLayerModal(tokenId) {
+    if (typeof openTokenEdit !== 'function') return;
+    openTokenEdit(tokenId);
+    // te-overlay가 열린 뒤 z-index 적용
+    requestAnimationFrame(() => {
+      const teOverlay = document.getElementById('te-overlay');
+      if (teOverlay) {
+        teOverlay.style.zIndex = '210';
+        // 창이 닫힐 때 원래 값으로 복원
+        const restore = () => {
+          teOverlay.style.zIndex = '';
+          teOverlay.removeEventListener('click', onOverlayClick);
+        };
+        // te-overlay 배경 클릭(닫기) 또는 닫기 버튼 클릭 감지
+        const onOverlayClick = (ev) => {
+          if (ev.target === teOverlay) restore();
+        };
+        teOverlay.addEventListener('click', onOverlayClick);
+        // 닫기 버튼에도 restore 연결 (1회)
+        const closeBtn = teOverlay.querySelector('.te-close, [onclick*="closeTokenEdit"]');
+        if (closeBtn && !closeBtn._layerRestoreBound) {
+          closeBtn._layerRestoreBound = true;
+          closeBtn.addEventListener('click', restore, { once: true });
+        }
+      }
+    });
   }
 
   window.openMapLayerManager = openMapLayerManager;
