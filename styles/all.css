@@ -1560,8 +1560,8 @@ body{scrollbar-color:var(--accent-green) var(--s3);}
 
 /* ── 맵 레이어 매니저 섹션 ── */
 /* ── 레이어 매니저 3컬럼 그리드 ── */
-.modal--layer-manager{width:min(900px,96vw)!important;max-width:none!important;}
-.layer-manager-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:0;border:1px solid var(--border);border-radius:var(--rl);overflow:hidden;margin-top:4px;}
+.modal--layer-manager{width:min(680px,96vw)!important;max-width:none!important;}
+.layer-manager-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:0;border:1px solid var(--border);border-radius:var(--rl);overflow:hidden;margin-top:4px;}
 .layer-col{display:flex;flex-direction:column;min-height:320px;max-height:520px;}
 .layer-col+.layer-col{border-left:1px solid var(--border);}
 .layer-col-head{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--s2);border-bottom:1px solid var(--border);flex-shrink:0;}
@@ -1578,9 +1578,11 @@ body{scrollbar-color:var(--accent-green) var(--s3);}
 .map-layer-label--notext{color:var(--muted);font-style:italic;}
 .layer-col-bulk .map-layer-bulk-actions{margin:0;}
 .layer-col-bulk .map-layer-bulk-delete{width:100%;}
-@media(max-width:700px){
+@media(max-width:540px){
   .modal--layer-manager{width:96vw!important;}
   .layer-manager-grid{grid-template-columns:1fr;max-height:none;}
   .layer-col{max-height:260px;}
   .layer-col+.layer-col{border-left:none;border-top:1px solid var(--border);}
 }
+
+.map-layer-item--dblclick{cursor:pointer;}

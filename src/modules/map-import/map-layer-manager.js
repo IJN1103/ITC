@@ -595,6 +595,14 @@
       e.stopPropagation();
       confirmDeleteLayer(entry);
     });
+    // 더블클릭: 연결된 패널 토큰 설정창 열기 (맵세팅 레이어)
+    if (!entry.isTokenEntry && entry.panelTokenId) {
+      item.classList.add('map-layer-item--dblclick');
+      item.addEventListener('dblclick', (e) => {
+        e.preventDefault(); e.stopPropagation();
+        if (typeof openTokenEdit === 'function') openTokenEdit(entry.panelTokenId);
+      });
+    }
     // 드래그 (맵세팅 레이어만)
     if (!entry.isTokenEntry) {
       item.addEventListener('dragstart', (e) => {
@@ -634,9 +642,10 @@
 
 
   /* ── 토큰 섹션 아이템 (눈 토글만, 드래그/삭제 없음) ── */
-  function buildTokenLayerItemEl(entry) {
+  /* tokenLayerItemEl: isChar=true이면 삭제 버튼 포함, 더블클릭으로 설정창 열기 */
+  function buildTokenLayerItemEl(entry, isChar) {
     const item = document.createElement('div');
-    item.className = 'map-layer-item map-layer-item--token';
+    item.className = 'map-layer-item map-layer-item--token map-layer-item--dblclick';
     const previewUrl = getLayerPreviewImageUrl(entry.previewUrl);
     const previewHtml = previewUrl
       ? `<img class="map-layer-preview-img" src="${String(previewUrl).replace(/"/g,'&quot;')}" alt="" loading="lazy" decoding="async">`
@@ -650,7 +659,9 @@
         ${entry.sub ? `<span class="map-layer-sub">${entry.sub}</span>` : ''}
       </div>
       <button class="map-layer-eye ${isVisible ? '' : 'off'}" type="button">${createEyeIcon(isVisible)}</button>
+      ${isChar ? '<button class="map-layer-delete" type="button" title="토큰 삭제" aria-label="토큰 삭제">✕</button>' : ''}
     `;
+    // 눈 아이콘 토글
     const eye = item.querySelector('.map-layer-eye');
     eye?.addEventListener('click', async (e) => {
       e.preventDefault(); e.stopPropagation();
@@ -669,6 +680,38 @@
         }
       }
       renderMapLayerList();
+    });
+    // 삭제 버튼 (캐릭터 토큰만)
+    if (isChar) {
+      const del = item.querySelector('.map-layer-delete');
+      del?.addEventListener('click', (e) => {
+        e.preventDefault(); e.stopPropagation();
+        const t = getStateRoot().tokens?.[entry.tokenId];
+        if (!t) return;
+        if (!window.confirm(`'${t.name || entry.sub || '이 토큰'}' 토큰을 삭제할까요?`)) return;
+        if (typeof removeToken === 'function') {
+          removeToken(entry.tokenId);
+        } else {
+          delete getStateRoot().tokens[entry.tokenId];
+          document.getElementById(`tok-${entry.tokenId}`)?.remove();
+          if (window._FB?.CONFIGURED) {
+            const roomCode = getLiveRoomCode();
+            if (roomCode) {
+              const { db, ref, remove } = window._FB;
+              remove(ref(db, `rooms/${roomCode}/tokens/${entry.tokenId}`))
+                .catch((e) => console.warn('token delete failed', e));
+            }
+          }
+        }
+        renderMapLayerList();
+      });
+    }
+    // 더블클릭: 설정창 열기
+    item.addEventListener('dblclick', (e) => {
+      e.preventDefault(); e.stopPropagation();
+      const t = getStateRoot().tokens?.[entry.tokenId];
+      if (!t) return;
+      if (typeof openTokenEdit === 'function') openTokenEdit(entry.tokenId);
     });
     return item;
   }
@@ -724,25 +767,15 @@
       if (mapCount) mapCount.textContent = String(entries.length);
     }
 
-    // ── 컬럼 2·3: 패널 토큰 / 캐릭터 토큰 ──
-    const { panel: panelEntries, character: charEntries } = getTokenSectionEntries();
-
-    const panelList  = document.getElementById('panel-layer-list');
-    const panelEmpty = document.getElementById('panel-layer-empty');
-    const panelCount = document.getElementById('layer-count-panel');
-    if (panelList) {
-      panelList.innerHTML = '';
-      panelEntries.forEach((entry) => panelList.appendChild(buildTokenLayerItemEl(entry)));
-      if (panelEmpty) panelEmpty.style.display = panelEntries.length ? 'none' : '';
-      if (panelCount) panelCount.textContent = String(panelEntries.length);
-    }
+    // ── 컬럼 2: 캐릭터 토큰 (패널 토큰 섹션 제거 - 맵세팅 레이어와 동일 항목) ──
+    const { character: charEntries } = getTokenSectionEntries();
 
     const charList  = document.getElementById('char-layer-list');
     const charEmpty = document.getElementById('char-layer-empty');
     const charCount = document.getElementById('layer-count-char');
     if (charList) {
       charList.innerHTML = '';
-      charEntries.forEach((entry) => charList.appendChild(buildTokenLayerItemEl(entry)));
+      charEntries.forEach((entry) => charList.appendChild(buildTokenLayerItemEl(entry, true)));
       if (charEmpty) charEmpty.style.display = charEntries.length ? 'none' : '';
       if (charCount) charCount.textContent = String(charEntries.length);
     }
