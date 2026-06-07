@@ -172,19 +172,23 @@
         const bgVisible = isMapLayerVisible('background');
         setLazyMapLayerBackground(bgLayer, background.url, 2048, bgVisible);
         bgLayer.style.backgroundSize = fit === 'fill' ? '100% 100%' : (fit === 'cover' ? 'cover' : 'contain');
-        // 블러 배경: cover로 항상 흰 영역을 채움 (fit이 cover/fill이면 블러 불필요)
+        // 블러 배경: map-area 전체를 cover로 채워 줌아웃 시 흰 배경 노출 방지
+        // fit에 관계없이 항상 표시 (블러 레이어는 map-inner 밖, map-area 직속이므로
+        // 줌/팬으로 map-inner가 축소돼도 항상 화면 전체를 덮음)
         if (blurLayer) {
-          if (fit === 'cover' || fit === 'fill') {
-            blurLayer.style.display = 'none';
-          } else {
-            // bgLayer와 동일한 이미지를 사용하되, lazy load와 무관하게 직접 URL 설정
-            const blurSrc = buildCssBackgroundImage(getMapDisplayImageUrl(background.url, 2048));
-            blurLayer.style.backgroundImage = blurSrc;
-            blurLayer.style.display = bgVisible ? '' : 'none';
-          }
+          const blurSrc = buildCssBackgroundImage(getMapDisplayImageUrl(background.url, 2048));
+          blurLayer.style.backgroundImage = blurSrc;
+          blurLayer.style.display = bgVisible ? '' : 'none';
+          blurLayer.classList.toggle('map-layer-runtime-hidden', !bgVisible);
         }
       }
-      applyMapLayerElementVisibility(bgLayer, !!background?.url && isMapLayerVisible('background'));
+      const bgFinalVisible = !!background?.url && isMapLayerVisible('background');
+      applyMapLayerElementVisibility(bgLayer, bgFinalVisible);
+      // 블러 레이어도 배경 가시성에 연동
+      if (blurLayer) {
+        blurLayer.style.display = bgFinalVisible ? '' : 'none';
+        blurLayer.classList.toggle('map-layer-runtime-hidden', !bgFinalVisible);
+      }
     }
     if (fgLayer) {
       if (!foreground?.url) {
