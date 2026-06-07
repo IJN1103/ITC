@@ -138,10 +138,10 @@ to{opacity:1;transform:translateY(0);}
 .campaign-card .cc-code{font-family:var(--font-mono);font-size:11px;color:var(--dim);letter-spacing:.12em;}
 .campaign-card .cc-enter{margin-top:4px;background:var(--accent);color:#ffffff;border:none;border-radius:var(--r);padding:8px;font:inherit;font-size:12px;font-weight:500;cursor:pointer;transition:var(--t);width:100%;}
 .campaign-card .cc-enter:hover{opacity:.88;}
-.campaign-card .cc-del{position:absolute;top:8px;right:8px;background:rgba(230,228,220,.92);border:1px solid var(--border2);color:var(--text);cursor:pointer;font-size:13px;padding:4px 7px;border-radius:4px;transition:var(--t);line-height:1;z-index:20;backdrop-filter:blur(4px);}
+.campaign-card .cc-del{position:absolute;top:8px;right:8px;background:var(--s2);border:1px solid var(--border2);color:var(--dim);cursor:pointer;font-size:13px;padding:4px 7px;border-radius:4px;transition:var(--t);line-height:1;z-index:20;backdrop-filter:blur(4px);}
 .campaign-card .cc-del:hover{color:var(--red);border-color:rgba(200,92,92,.4);background:rgba(200,92,92,.15);}
-.campaign-card .cc-edit{position:absolute;top:8px;right:40px;background:rgba(230,228,220,.92);border:1px solid var(--border2);color:var(--text);cursor:pointer;font-size:13px;padding:4px 7px;border-radius:4px;transition:var(--t);line-height:1;z-index:20;backdrop-filter:blur(4px);}
-.campaign-card .cc-edit:hover{color:var(--accent);border-color:var(--accent);background:rgba(37,99,235,.2);}
+.campaign-card .cc-edit{position:absolute;top:8px;right:40px;background:var(--s2);border:1px solid var(--border2);color:var(--dim);cursor:pointer;font-size:13px;padding:4px 7px;border-radius:4px;transition:var(--t);line-height:1;z-index:20;backdrop-filter:blur(4px);}
+.campaign-card .cc-edit:hover{color:var(--accent);border-color:var(--accent);background:var(--a-dim);}
 .campaign-empty{font-size:13px;color:var(--muted);padding:24px 0;text-align:center;}
 #screen-game{height:100vh;display:none;flex-direction:column;}
 .topbar{height:46px;background:var(--s1);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 14px;gap:10px;flex-shrink:0;}
@@ -1525,3 +1525,10 @@ body.chat-input-is-resizing,body.chat-input-is-resizing *{cursor:ns-resize!impor
 .theme-toggle-moon{left:4px;opacity:0;}
 [data-theme="dark"] .theme-toggle-sun{opacity:0;}
 [data-theme="dark"] .theme-toggle-moon{opacity:1;}
+/* 토큰 메모 버블 - 라이트모드 가독성 */
+#token-memo-bubble{background:var(--s4)!important;color:var(--text)!important;border-color:var(--border2)!important;}
+/* 다크모드 수정/삭제 버튼 아이콘 가독성 */
+[data-theme="dark"] .campaign-card .cc-del,
+[data-theme="dark"] .campaign-card .cc-edit{background:var(--s3);border-color:var(--border2);color:var(--dim);}
+[data-theme="dark"] .campaign-card .cc-del:hover{color:#f08080;border-color:rgba(224,96,96,.5);background:rgba(224,96,96,.18);}
+[data-theme="dark"] .campaign-card .cc-edit:hover{color:var(--accent-text);border-color:var(--accent);background:var(--a-dim);}
