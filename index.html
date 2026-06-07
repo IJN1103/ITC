@@ -1119,8 +1119,8 @@ window._FB = {
       <div class="modal-title">레이어 관리</div>
       <button class="modal-close" onclick="closeModal('modal-map-layers')">✕</button>
     </div>
-    <div class="layer-manager-grid">
-      <!-- 맵세팅 레이어 컬럼 -->
+    <div class="layer-manager-grid layer-manager-grid--single">
+      <!-- 통합 레이어 컬럼: 맵세팅 + 캐릭터 토큰 실제 z-order 순서로 인터리브 -->
       <div class="layer-col" id="layer-col-map">
         <div class="layer-col-head">
           <span class="layer-col-title">맵세팅 레이어</span>
@@ -1128,20 +1128,19 @@ window._FB = {
         </div>
         <div class="layer-col-body">
           <div id="map-layer-bulk-actions-col" class="layer-col-bulk"></div>
+          <div class="layer-legend">
+            <span class="layer-legend-item layer-legend-panel">스크린 패널</span>
+            <span class="layer-legend-item layer-legend-char">캐릭터 토큰</span>
+          </div>
           <div class="map-layer-list" id="map-layer-list"></div>
           <div id="map-layer-empty" class="layer-col-empty" style="display:none">레이어 없음</div>
         </div>
       </div>
-      <!-- 캐릭터 토큰 컬럼 -->
-      <div class="layer-col" id="layer-col-char">
-        <div class="layer-col-head">
-          <span class="layer-col-title">캐릭터 토큰</span>
-          <span class="layer-col-count" id="layer-count-char">0</span>
-        </div>
-        <div class="layer-col-body">
-          <div class="map-layer-list" id="char-layer-list"></div>
-          <div id="char-layer-empty" class="layer-col-empty" style="display:none">토큰 없음</div>
-        </div>
+      <!-- 숨김: 캐릭터 토큰 단독 렌더용 (통합 렌더로 대체됨, ID만 유지) -->
+      <div style="display:none">
+        <div id="char-layer-list"></div>
+        <div id="char-layer-empty"></div>
+        <span id="layer-count-char"></span>
       </div>
     </div>
   </div>

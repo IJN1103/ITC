@@ -1560,8 +1560,20 @@ body{scrollbar-color:var(--accent-green) var(--s3);}
 
 /* ── 맵 레이어 매니저 섹션 ── */
 /* ── 레이어 매니저 3컬럼 그리드 ── */
-.modal--layer-manager{width:min(680px,96vw)!important;max-width:none!important;}
-.layer-manager-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:0;border:1px solid var(--border);border-radius:var(--rl);overflow:hidden;margin-top:4px;}
+.modal--layer-manager{width:min(480px,96vw)!important;max-width:none!important;}
+.layer-manager-grid{display:grid;grid-template-columns:1fr;gap:0;border:1px solid var(--border);border-radius:var(--rl);overflow:hidden;margin-top:4px;}
+.layer-manager-grid--single .layer-col{max-height:560px;}
+/* 레전드 */
+.layer-legend{display:flex;gap:10px;padding:4px 2px 8px;flex-shrink:0;}
+.layer-legend-item{display:flex;align-items:center;gap:5px;font-size:10px;color:var(--muted);}
+.layer-legend-item::before{content:'';display:inline-block;width:10px;height:10px;border-radius:3px;flex-shrink:0;}
+.layer-legend-panel::before{background:var(--s2);border:1px solid var(--border2);}
+.layer-legend-char::before{background:rgba(132,212,0,.18);border:1px solid rgba(132,212,0,.45);}
+/* 캐릭터 토큰 박스 - 연한 형광 초록 */
+.map-layer-item--char{background:rgba(132,212,0,.10);border-color:rgba(132,212,0,.38);}
+.map-layer-item--char:hover{background:rgba(132,212,0,.17);border-color:rgba(132,212,0,.55);}
+[data-theme="dark"] .map-layer-item--char{background:rgba(170,238,0,.09);border-color:rgba(170,238,0,.32);}
+[data-theme="dark"] .map-layer-item--char:hover{background:rgba(170,238,0,.16);border-color:rgba(170,238,0,.48);}
 .layer-col{display:flex;flex-direction:column;min-height:320px;max-height:520px;}
 .layer-col+.layer-col{border-left:1px solid var(--border);}
 .layer-col-head{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--s2);border-bottom:1px solid var(--border);flex-shrink:0;}
@@ -1580,9 +1592,7 @@ body{scrollbar-color:var(--accent-green) var(--s3);}
 .layer-col-bulk .map-layer-bulk-delete{width:100%;}
 @media(max-width:540px){
   .modal--layer-manager{width:96vw!important;}
-  .layer-manager-grid{grid-template-columns:1fr;max-height:none;}
-  .layer-col{max-height:260px;}
-  .layer-col+.layer-col{border-left:none;border-top:1px solid var(--border);}
+  .layer-manager-grid--single .layer-col{max-height:400px;}
 }
 
 .map-layer-item--dblclick{cursor:pointer;}

@@ -722,68 +722,117 @@
     return item;
   }
 
-  /* ── 메인 렌더: 3개 컬럼을 각자 독립적으로 렌더 ── */
+  /* ── 메인 렌더: 통합 단일 리스트 (스크린 패널 + 캐릭터 토큰 인터리브) ──
+     _changeLayerOrderUnified와 완전히 동일한 순서 로직으로 구성하여
+     UI에 표시된 순서 = 실제 z-order가 보장된다.
+     통합 순서: [맵세팅 order 순서..., 캐릭터 panelPriority 오름차순...]
+     단, 캐릭터 panelPriority < 1000이면 맵세팅 레이어 사이에 끼워서 표시 */
   function renderMapLayerList() {
     const stateRoot = getStateRoot();
+    const tokens = stateRoot.tokens || {};
     const normalized = normalizeLayerState(stateRoot.mapLayerState || null);
     stateRoot.mapLayerState = normalized;
 
-    // ── 컬럼 1: 맵세팅 레이어 ──
     const mapList  = document.getElementById('map-layer-list');
     const mapEmpty = document.getElementById('map-layer-empty');
     const mapCount = document.getElementById('layer-count-map');
-    const entries  = getLayerEntries();
-    if (mapList) {
-      mapList.innerHTML = '';
-      // bulk-actions (전체 삭제 버튼)을 컬럼 전용 컨테이너로
-      const bulkCol = document.getElementById('map-layer-bulk-actions-col');
-      if (bulkCol) ensureMapLayerBulkActionsInto(bulkCol, entries);
-      if (entries.length) {
-        const entryMap = new Map(entries.map((e) => [e.id, e]));
-        normalized.order.forEach((id) => {
-          const entry = entryMap.get(id);
-          if (!entry) return;
-          mapList.appendChild(buildLayerItemEl(entry, normalized));
-        });
-        // list 배경 드롭 영역 바인딩 (1회)
-        if (!mapList.dataset.dragBound) {
-          mapList.dataset.dragBound = '1';
-          mapList.addEventListener('dragover', (e) => {
-            if (!_dragLayerId) return;
-            if (e.target.closest('.map-layer-item')) return;
-            e.preventDefault();
-            try { e.dataTransfer.dropEffect = 'move'; } catch (_) {}
-          });
-          mapList.addEventListener('drop', async (e) => {
-            if (!_dragLayerId) return;
-            if (e.target.closest('.map-layer-item')) return;
-            e.preventDefault();
-            const next = normalizeLayerState(getStateRoot().mapLayerState || null);
-            const fromIndex = next.order.indexOf(_dragLayerId);
-            if (fromIndex >= 0 && fromIndex !== next.order.length - 1) {
-              const moved = next.order.splice(fromIndex, 1)[0];
-              next.order.push(moved);
-              await saveMapLayerState(next);
-              renderMapLayerList();
-            }
-          });
-        }
+    if (!mapList) return;
+
+    // ── 맵세팅 레이어 엔트리 ──
+    const mapEntries = getLayerEntries();
+    const entryMap   = new Map(mapEntries.map(e => [e.id, e]));
+
+    // ── 캐릭터 토큰 엔트리 ──
+    const { character: charEntriesRaw } = getTokenSectionEntries();
+    // panelPriority 오름차순 정렬
+    const charEntries = charEntriesRaw
+      .map(e => {
+        const t = tokens[e.tokenId];
+        return { ...e, _z: Number(t?.panelPriority || 1000) };
+      })
+      .sort((a, b) => a._z - b._z);
+
+    // ── 통합 순서 배열 구성 (_changeLayerOrderUnified와 동일 로직) ──
+    // panelPriority < 1000인 캐릭터 토큰은 맵세팅 레이어 사이에 끼워 넣는다.
+    // panelPriority >= 1000인 캐릭터 토큰은 맵세팅 레이어 전부 뒤(UI 상 위)에 배치.
+    const mapLayerCount = normalized.order.length;
+
+    // 통합 배열: map items + char items (맵이 먼저, 캐릭이 뒤 - 뒤 = z 낮음 = UI 아래)
+    // UI에서는 배열의 앞(index 0) = 가장 뒤(z 낮음), 뒤(last) = 가장 앞(z 높음)
+    // → 배열을 reverse해서 렌더 (맨 앞 = 리스트 최상단)
+    const mapItems  = normalized.order.map(id => ({ kind: 'map', id }));
+    const charBelowMap = charEntries.filter(e => e._z < 1000);
+    const charAboveMap = charEntries.filter(e => e._z >= 1000);
+
+    // z < 1000인 캐릭터: 맵세팅 레이어 사이 인터리브
+    // z >= 1000인 캐릭터: 맵 전체보다 위 (unified 배열 뒤쪽)
+    // 통합 배열 (z 오름차순 = 뒤 → 앞 순서)
+    let unified = [];
+    // charBelowMap를 z 위치에 맞춰 맵 사이에 삽입
+    let charBelowIdx = 0;
+    for (let i = 0; i < mapItems.length; i++) {
+      // 이 맵 레이어의 z = i
+      // z가 i 미만인 캐릭터를 먼저 삽입
+      while (charBelowIdx < charBelowMap.length && charBelowMap[charBelowIdx]._z <= i) {
+        unified.push({ kind: 'char', entry: charBelowMap[charBelowIdx] });
+        charBelowIdx++;
       }
-      if (mapEmpty) mapEmpty.style.display = entries.length ? 'none' : '';
-      if (mapCount) mapCount.textContent = String(entries.length);
+      unified.push({ kind: 'map', id: mapItems[i].id });
     }
+    // 남은 charBelow
+    while (charBelowIdx < charBelowMap.length) {
+      unified.push({ kind: 'char', entry: charBelowMap[charBelowIdx] });
+      charBelowIdx++;
+    }
+    // charAboveMap (z >= 1000, 맵 전체보다 위)
+    charAboveMap.forEach(e => unified.push({ kind: 'char', entry: e }));
 
-    // ── 컬럼 2: 캐릭터 토큰 (패널 토큰 섹션 제거 - 맵세팅 레이어와 동일 항목) ──
-    const { character: charEntries } = getTokenSectionEntries();
+    // UI는 z 높음 = 위 = 리스트 상단이므로 reverse
+    const displayOrder = unified.slice().reverse();
 
-    const charList  = document.getElementById('char-layer-list');
-    const charEmpty = document.getElementById('char-layer-empty');
-    const charCount = document.getElementById('layer-count-char');
-    if (charList) {
-      charList.innerHTML = '';
-      charEntries.forEach((entry) => charList.appendChild(buildTokenLayerItemEl(entry, true)));
-      if (charEmpty) charEmpty.style.display = charEntries.length ? 'none' : '';
-      if (charCount) charCount.textContent = String(charEntries.length);
+    // ── 렌더 ──
+    mapList.innerHTML = '';
+    const bulkCol = document.getElementById('map-layer-bulk-actions-col');
+    if (bulkCol) ensureMapLayerBulkActionsInto(bulkCol, mapEntries);
+
+    const totalCount = mapEntries.length + charEntries.length;
+    if (mapEmpty) mapEmpty.style.display = totalCount ? 'none' : '';
+    if (mapCount) mapCount.textContent = String(totalCount);
+
+    displayOrder.forEach(item => {
+      if (item.kind === 'map') {
+        const entry = entryMap.get(item.id);
+        if (!entry) return;
+        mapList.appendChild(buildLayerItemEl(entry, normalized));
+      } else {
+        const el = buildTokenLayerItemEl(item.entry, true);
+        el.classList.add('map-layer-item--char');
+        mapList.appendChild(el);
+      }
+    });
+
+    // 드래그 드롭 (맵세팅 레이어 항목만 - 1회 바인딩)
+    if (!mapList.dataset.dragBound) {
+      mapList.dataset.dragBound = '1';
+      mapList.addEventListener('dragover', (e) => {
+        if (!_dragLayerId) return;
+        if (e.target.closest('.map-layer-item')) return;
+        e.preventDefault();
+        try { e.dataTransfer.dropEffect = 'move'; } catch (_) {}
+      });
+      mapList.addEventListener('drop', async (e) => {
+        if (!_dragLayerId) return;
+        if (e.target.closest('.map-layer-item')) return;
+        e.preventDefault();
+        const next = normalizeLayerState(getStateRoot().mapLayerState || null);
+        const fromIndex = next.order.indexOf(_dragLayerId);
+        if (fromIndex >= 0 && fromIndex !== next.order.length - 1) {
+          const moved = next.order.splice(fromIndex, 1)[0];
+          next.order.push(moved);
+          await saveMapLayerState(next);
+          renderMapLayerList();
+        }
+      });
     }
   }
 
