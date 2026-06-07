@@ -38,6 +38,7 @@
   const FADE_SETTLE_MS = 40;
   const FADE_IN_MS = 320;
   let _sceneFadeActive = false;
+  let _sceneFadePendingCallback = null; // 페이드 진행 중 추가 요청을 큐잉
 
   function runSceneFadeTransition(applyCallback){
     const area = document.getElementById('map-area');
@@ -46,10 +47,17 @@
       return;
     }
     if (_sceneFadeActive) {
-      try { applyCallback(); } catch (e) { console.warn('scene apply failed', e); }
+      // 페이드 진행 중: 즉시 실행하면 sceneApplySeq 체크가 우회될 수 있다.
+      // 마지막 요청만 유지하고, 현재 페이드가 끝난 뒤 실행한다.
+      _sceneFadePendingCallback = applyCallback;
       return;
     }
+    _runFadeOnce(applyCallback, area);
+  }
+
+  function _runFadeOnce(applyCallback, area){
     _sceneFadeActive = true;
+    _sceneFadePendingCallback = null;
     area.querySelectorAll(':scope > .map-scene-fade').forEach(function(n){
       try { n.remove(); } catch (_) {}
     });
@@ -66,6 +74,14 @@
         window.setTimeout(function(){
           try { if (overlay.isConnected) overlay.remove(); } catch (_) {}
           _sceneFadeActive = false;
+          // 페이드 중 대기 중인 요청이 있으면 이어서 실행
+          if (_sceneFadePendingCallback) {
+            const pending = _sceneFadePendingCallback;
+            _sceneFadePendingCallback = null;
+            const liveArea = document.getElementById('map-area');
+            if (liveArea) _runFadeOnce(pending, liveArea);
+            else { try { pending(); } catch (e) { console.warn('scene apply failed', e); } }
+          }
         }, FADE_IN_MS + 40);
       }, FADE_SETTLE_MS);
     }, FADE_OUT_MS);
@@ -729,13 +745,23 @@
   /* ── 활성 씬 자동 저장 watcher ──
      GM 클라이언트에서만 동작. 맵/토큰 변경을 감지해 현재 활성 씬 레코드를 갱신한다.
      기존 토큰/맵 모듈을 수정하지 않기 위해 polling + 시그니처 비교 방식을 사용. */
-  const AUTO_SAVE_POLL_MS = 600;
-  const AUTO_SAVE_DEBOUNCE_MS = 900;
+  const AUTO_SAVE_POLL_MS = 900;      // 600→900: 토큰 수 증가 시 JSON 직렬화 비용 절감
+  const AUTO_SAVE_DEBOUNCE_MS = 1200; // 900→1200: 연속 편집 시 불필요한 Firebase write 감소
   let _autoSaveTimer = null;
   let _autoSavePendingTimer = null;
   let _autoSavePendingSceneId = '';
   let _autoSaveLastSig = '';
   let _externalSceneSaveTimer = null;
+
+  /* 경량 사전 필터: 매 폴링마다 전체 JSON 직렬화를 수행하기 전에
+     토큰 수 + 맵 배경 URL만 확인해 변경이 명백히 없으면 직렬화를 건너뛴다.
+     토큰 편집이 잦은 TRPG 특성상 토큰 수 변화가 가장 빈번하므로 1차 필터로 적합하다. */
+  let _autoSaveQuickState = null;
+  function getQuickChangeState(){
+    const ms = ROOT.St?.mapState || {};
+    const tokens = ROOT.St?.tokens || {};
+    return String(Object.keys(tokens).length) + '|' + String(ms.background?.url || '') + '|' + String(ms.background?.fit || '');
+  }
 
   function stopActiveSceneAutoSave(){
     if (_autoSaveTimer) { clearInterval(_autoSaveTimer); _autoSaveTimer = null; }
@@ -743,6 +769,7 @@
     if (_externalSceneSaveTimer) { clearTimeout(_externalSceneSaveTimer); _externalSceneSaveTimer = null; }
     _autoSavePendingSceneId = '';
     _autoSaveLastSig = '';
+    _autoSaveQuickState = null;
   }
 
   function startActiveSceneAutoSave(roomCode){
@@ -754,6 +781,9 @@
   }
 
   function currentRuntimeSignature(){
+    /* 토큰이 매우 많을 때 매 폴링마다 전체를 직렬화하면 부담이 크다.
+       씬 적용 중이거나 suppression 구간에는 직렬화 자체를 건너뛴다. */
+    if (state.isApplyingScene || Date.now() < state.suppressAutoSaveUntil) return _autoSaveLastSig || '';
     return stableStringify(getCurrentRuntimeSnapshot());
   }
 
@@ -787,8 +817,14 @@
     if (Date.now() < _autoSaveWarmupUntil) {
       // 웜업 중엔 시그니처만 최신으로 갱신 (변경 감지 트리거 X)
       _autoSaveLastSig = currentRuntimeSignature();
+      _autoSaveQuickState = getQuickChangeState();
       return;
     }
+
+    // ── 경량 1차 필터: 토큰 수·배경 URL이 같으면 전체 직렬화를 건너뜀 ──
+    const quickNow = getQuickChangeState();
+    if (_autoSaveQuickState !== null && quickNow === _autoSaveQuickState && _autoSaveLastSig) return;
+    _autoSaveQuickState = quickNow;
 
     const sig = currentRuntimeSignature();
     if (!_autoSaveLastSig) { _autoSaveLastSig = sig; return; }
