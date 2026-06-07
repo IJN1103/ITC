@@ -1,5 +1,5 @@
-:root{--bgm-expanded-height:286px;--bg:#f2f4f7;--s1:#ffffff;--s2:#f7f8fa;--s3:#dbe1e8;--s4:#c8d0da;--border:#dbe1e8;--border2:#c8d0da;--text:#131415;--muted:#767a8c;--dim:#485666;--accent:#2563eb;--accent-text:#1a4fd6;--accent-green:#65c000;--a-dim:rgba(37,99,235,.1);--a-glow:rgba(37,99,235,.28);--ag-dim:rgba(101,192,0,.12);--ag-glow:rgba(101,192,0,.3);--red:#d94f4f;--green:#4a9e6a;--blue:#2563eb;--r:6px;--rl:12px;--t:.18s ease;--font-head:'DM Sans',sans-serif;--font-body:'DM Sans',sans-serif;--font-mono:'DM Mono',monospace;--chat-font-size:14.5px;}
-[data-theme="dark"]{--bg:#141920;--s1:#1c2330;--s2:#222b3a;--s3:#2a3547;--s4:#344058;--border:#2e3d54;--border2:#3a4d68;--text:#e4e9f0;--muted:#6b7a94;--dim:#8a9ab8;--accent:#4a7ff5;--accent-text:#7aa3ff;--accent-green:#8ce600;--a-dim:rgba(74,127,245,.12);--a-glow:rgba(74,127,245,.3);--ag-dim:rgba(140,230,0,.1);--ag-glow:rgba(140,230,0,.28);--red:#e06060;--green:#5aaa78;--blue:#4a7ff5;}
+:root{--bgm-expanded-height:286px;--bg:#f2f4f7;--s1:#ffffff;--s2:#f7f8fa;--s3:#dbe1e8;--s4:#c8d0da;--border:#dbe1e8;--border2:#c8d0da;--text:#131415;--muted:#767a8c;--dim:#485666;--accent:#2563eb;--accent-text:#1a4fd6;--accent-green:#84d400;--a-dim:rgba(37,99,235,.1);--a-glow:rgba(37,99,235,.28);--ag-dim:rgba(132,212,0,.14);--ag-glow:rgba(132,212,0,.36);--red:#d94f4f;--green:#4a9e6a;--blue:#2563eb;--r:6px;--rl:12px;--t:.18s ease;--font-head:'DM Sans',sans-serif;--font-body:'DM Sans',sans-serif;--font-mono:'DM Mono',monospace;--chat-font-size:14.5px;}
+[data-theme="dark"]{--bg:#141920;--s1:#1c2330;--s2:#222b3a;--s3:#2a3547;--s4:#344058;--border:#2e3d54;--border2:#3a4d68;--text:#e4e9f0;--muted:#6b7a94;--dim:#c2cee0;--accent:#4a7ff5;--accent-text:#7aa3ff;--accent-green:#aaee00;--a-dim:rgba(74,127,245,.12);--a-glow:rgba(74,127,245,.3);--ag-dim:rgba(170,238,0,.11);--ag-glow:rgba(170,238,0,.32);--red:#e06060;--green:#5aaa78;--blue:#4a7ff5;}
 *{box-sizing:border-box;margin:0;padding:0;}
 html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--font-body);font-size:14px;line-height:1.6;-webkit-font-smoothing:antialiased;}
 *{scrollbar-width:thin;scrollbar-color:var(--s4) transparent;}::-webkit-scrollbar{width:4px;}::-webkit-scrollbar-thumb{background:var(--s4);border-radius:2px;}
@@ -1538,8 +1538,8 @@ body.chat-input-is-resizing,body.chat-input-is-resizing *{cursor:ns-resize!impor
 .ptab.on{border-bottom-color:var(--accent-green)!important;}
 .rtab.on{border-bottom-color:var(--accent-green)!important;}
 /* 온라인 플레이어 점 + 닉네임 */
-.p-chip.online .p-dot{background:var(--accent-green)!important;box-shadow:0 0 5px var(--ag-glow)!important;}
-.p-chip.online span{color:var(--accent-green)!important;}
+.p-chip.online .p-dot{background:var(--blue)!important;box-shadow:0 0 5px var(--a-glow)!important;}
+.p-chip.online span{color:var(--blue)!important;}
 /* 맵 토큰 호버 글로우 */
 .map-token:hover{box-shadow:0 0 0 4px var(--ag-glow)!important;}
 /* 포커스 링 (입력창) */
@@ -1556,3 +1556,4 @@ input[type=checkbox]:checked,input[type=radio]:checked{accent-color:var(--accent
 /* 스크롤바 thumb */
 ::-webkit-scrollbar-thumb{background:var(--accent-green)!important;}
 body{scrollbar-color:var(--accent-green) var(--s3);}
+[data-theme="dark"] .msg-text{color:#d0d8e8;}
