@@ -26,20 +26,61 @@
       entries.push({ id: 'background', name: '배경 이미지', sub: 'backgroundUrl', target: 'map-bg-layer', previewUrl: state.background.url });
     }
     const objects = Array.isArray(state.objects) ? state.objects : [];
+    const tokens = getStateRoot().tokens || {};
     objects.forEach((item, index) => {
       const layerId = String(item?.layerId || `object:${item?.id || index + 1}`);
-      const label = String(item?.name || '').trim() || String(item?.imageName || '').trim() || `오브젝트 ${index + 1}`;
       const panelTokenId = String(item?.panelTokenId || '').trim();
+      // 레이어 이름: 연결된 토큰 메모 우선, 없으면 NO TEXT
+      let label = 'NO TEXT';
+      if (panelTokenId && tokens[panelTokenId]) {
+        const memo = String(tokens[panelTokenId]?.memo || '').trim();
+        label = memo || 'NO TEXT';
+      } else {
+        const memo = String(item?.memo || '').trim();
+        label = memo || 'NO TEXT';
+      }
       entries.push({
         id: layerId,
         name: label,
-        sub: `object ${index + 1}`,
+        sub: `오브젝트 ${index + 1}`,
         target: panelTokenId ? `tok-${panelTokenId}` : `[data-map-layer-id="${layerId.replace(/"/g, '\"')}"]`,
         previewUrl: String(item?.previewUrl || item?.url || '').trim(),
         panelTokenId,
       });
     });
     return entries;
+  }
+
+  /* 패널 토큰 / 캐릭터 토큰 섹션용 엔트리
+     - 맵세팅 레이어와 연결된 importedMapObject 토큰은 이미 위 섹션에 포함되므로 제외 */
+  function getTokenSectionEntries() {
+    const stateRoot = getStateRoot();
+    const tokens = stateRoot.tokens || {};
+    const panel = [];
+    const character = [];
+    const importedLayerEntries = getLayerEntries();
+    const importedPanelTokenIds = new Set(
+      importedLayerEntries.map((e) => String(e.panelTokenId || '')).filter(Boolean)
+    );
+    Object.values(tokens).forEach((token) => {
+      if (!token?.id) return;
+      if (importedPanelTokenIds.has(String(token.id))) return;
+      const memo = String(token.memo || '').trim();
+      const name = memo || 'NO TEXT';
+      const type = String(token.type || '').trim();
+      const isPanel = type === 'panel' || !!token.panelToken || !!token.panelImage;
+      const entry = {
+        id: `token:${token.id}`,
+        tokenId: String(token.id),
+        name,
+        sub: token.name || '',
+        previewUrl: token.tokenImg || token.panelImage || '',
+        isTokenEntry: true,
+      };
+      if (isPanel) panel.push(entry);
+      else character.push(entry);
+    });
+    return { panel, character };
   }
 
   function getAvailableLayerIds() {
@@ -453,61 +494,72 @@
       : '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 3 18 18"/><path d="M10.58 10.58a2 2 0 1 0 2.83 2.83"/><path d="M9.88 4.24A10.94 10.94 0 0 1 12 4c4.29 0 7.92 2.5 9.54 6.11a1 1 0 0 1 0 .78 10.96 10.96 0 0 1-4.17 4.84"/><path d="M6.61 6.61A10.95 10.95 0 0 0 2.46 11.1a1 1 0 0 0 0 .8C4.08 15.5 7.71 18 12 18c1.5 0 2.93-.3 4.24-.85"/></svg>';
   }
 
-  function renderMapLayerList() {
-    const list = document.getElementById('map-layer-list');
-    const empty = document.getElementById('map-layer-empty');
-    if (!list || !empty) return;
-    const entries = getLayerEntries();
-    const stateRoot = getStateRoot();
-    const normalized = normalizeLayerState(stateRoot.mapLayerState || null);
-    stateRoot.mapLayerState = normalized;
-    list.innerHTML = '';
-    empty.style.display = entries.length ? 'none' : '';
-    ensureMapLayerBulkActions(list, entries);
-    if (!entries.length) return;
-
-    const entryMap = new Map(entries.map((entry) => [entry.id, entry]));
-    normalized.order.forEach((id) => {
-      const entry = entryMap.get(id);
-      if (!entry) return;
-      const item = document.createElement('div');
-      item.className = 'map-layer-item';
-      item.draggable = true;
-      item.dataset.layerId = id;
-      const previewUrl = getLayerPreviewImageUrl(entry.previewUrl);
-      const previewHtml = previewUrl
-        ? `<img class="map-layer-preview-img" src="${String(previewUrl).replace(/"/g, '&quot;')}" alt="" loading="lazy" decoding="async">`
-        : '';
-      const canDelete = canDeleteLayer(entry);
-      item.innerHTML = `
-        <div class="map-layer-handle">☰</div>
-        <div class="map-layer-preview ${entry.previewUrl ? 'has-image' : ''}" aria-hidden="true">${previewHtml}</div>
-        <div class="map-layer-name"><span class="map-layer-label">${entry.name}</span><span class="map-layer-sub">${entry.sub}</span></div>
-        <button class="map-layer-eye ${normalized.visible[id] === false ? 'off' : ''}" type="button">${createEyeIcon(normalized.visible[id] !== false)}</button>
-        ${canDelete ? '<button class="map-layer-delete" type="button" title="레이어 삭제" aria-label="레이어 삭제">✕</button>' : ''}
-      `;
-      const eye = item.querySelector('.map-layer-eye');
-      eye?.addEventListener('click', async (e) => {
-        e.preventDefault();
-        e.stopPropagation();
+  function buildLayerItemEl(entry, normalized, opts) {
+    opts = opts || {};
+    const id = entry.id;
+    const item = document.createElement('div');
+    item.className = 'map-layer-item' + (opts.noMemo ? ' map-layer-item--token' : '');
+    item.draggable = !entry.isTokenEntry;
+    item.dataset.layerId = id;
+    const previewUrl = getLayerPreviewImageUrl(entry.previewUrl);
+    const previewHtml = previewUrl
+      ? `<img class="map-layer-preview-img" src="${String(previewUrl).replace(/"/g, '&quot;')}" alt="" loading="lazy" decoding="async">`
+      : '';
+    const isVisible = entry.isTokenEntry
+      ? !(getStateRoot().tokens?.[entry.tokenId]?.importedMapObjectHidden)
+      : normalized.visible[id] !== false;
+    const canDelete = !entry.isTokenEntry && canDeleteLayer(entry);
+    item.innerHTML = `
+      ${!entry.isTokenEntry ? '<div class="map-layer-handle">☰</div>' : '<div class="map-layer-handle map-layer-handle--spacer"></div>'}
+      <div class="map-layer-preview ${entry.previewUrl ? 'has-image' : ''}" aria-hidden="true">${previewHtml}</div>
+      <div class="map-layer-name">
+        <span class="map-layer-label ${entry.name === 'NO TEXT' ? 'map-layer-label--notext' : ''}">${entry.name}</span>
+        ${entry.sub ? `<span class="map-layer-sub">${entry.sub}</span>` : ''}
+      </div>
+      <button class="map-layer-eye ${isVisible ? '' : 'off'}" type="button">${createEyeIcon(isVisible)}</button>
+      ${canDelete ? '<button class="map-layer-delete" type="button" title="레이어 삭제" aria-label="레이어 삭제">✕</button>' : ''}
+    `;
+    // 가시성 토글
+    const eye = item.querySelector('.map-layer-eye');
+    eye?.addEventListener('click', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (entry.isTokenEntry) {
+        // 토큰 섹션: 토큰 자체의 importedMapObjectHidden 토글
+        const token = getStateRoot().tokens?.[entry.tokenId];
+        if (!token) return;
+        const nextHidden = !token.importedMapObjectHidden;
+        token.importedMapObjectHidden = nextHidden;
+        const el = document.getElementById(`tok-${entry.tokenId}`);
+        if (el) setLayerElementVisibility(el, !nextHidden);
+        if (window._FB?.CONFIGURED) {
+          const roomCode = getLiveRoomCode();
+          if (roomCode) {
+            const { db, ref, update } = window._FB;
+            update(ref(db, `rooms/${roomCode}/tokens/${entry.tokenId}`), { importedMapObjectHidden: nextHidden }).catch((e) => console.warn('token visibility sync failed', e));
+          }
+        }
+        renderMapLayerList();
+      } else {
         const next = normalizeLayerState(getStateRoot().mapLayerState || null);
         next.visible[id] = !(next.visible[id] !== false);
         await saveMapLayerState(next);
         renderMapLayerList();
-      });
-      const del = item.querySelector('.map-layer-delete');
-      del?.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        confirmDeleteLayer(entry);
-      });
+      }
+    });
+    // 삭제 버튼 (맵세팅 레이어만)
+    const del = item.querySelector('.map-layer-delete');
+    del?.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      confirmDeleteLayer(entry);
+    });
+    // 드래그 (맵세팅 레이어만)
+    if (!entry.isTokenEntry) {
       item.addEventListener('dragstart', (e) => {
         _dragLayerId = id;
         item.classList.add('dragging');
-        if (e.dataTransfer) {
-          e.dataTransfer.effectAllowed = 'move';
-          e.dataTransfer.setData('text/plain', id);
-        }
+        if (e.dataTransfer) { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', id); }
       });
       item.addEventListener('dragend', () => {
         _dragLayerId = null;
@@ -517,12 +569,9 @@
       item.addEventListener('dragover', (e) => {
         e.preventDefault();
         const rect = item.getBoundingClientRect();
-        const offsetY = e.clientY - rect.top;
-        item.dataset.dropPosition = offsetY >= rect.height / 2 ? 'after' : 'before';
+        item.dataset.dropPosition = (e.clientY - rect.top) >= rect.height / 2 ? 'after' : 'before';
       });
-      item.addEventListener('dragleave', () => {
-        delete item.dataset.dropPosition;
-      });
+      item.addEventListener('dragleave', () => { delete item.dataset.dropPosition; });
       item.addEventListener('drop', async (e) => {
         e.preventDefault();
         const targetId = item.dataset.layerId;
@@ -530,7 +579,7 @@
         delete item.dataset.dropPosition;
         if (!_dragLayerId || !targetId || _dragLayerId === targetId) return;
         const next = normalizeLayerState(getStateRoot().mapLayerState || null);
-        const order = next.order.filter((layerId) => layerId !== _dragLayerId);
+        const order = next.order.filter((lid) => lid !== _dragLayerId);
         const insertIndex = getDropInsertIndex(order, targetId, dropPosition);
         order.splice(insertIndex, 0, _dragLayerId);
         if (order.join('|') === next.order.join('|')) return;
@@ -538,10 +587,82 @@
         await saveMapLayerState(next);
         renderMapLayerList();
       });
-      list.appendChild(item);
-    });
+    }
+    return item;
   }
 
+  function renderSectionHeader(labelText, count) {
+    const header = document.createElement('div');
+    header.className = 'map-layer-section-header';
+    header.innerHTML = `<span class="map-layer-section-title">${labelText}</span><span class="map-layer-section-count">${count}</span>`;
+    return header;
+  }
+
+  function renderMapLayerList() {
+    const list = document.getElementById('map-layer-list');
+    const empty = document.getElementById('map-layer-empty');
+    if (!list || !empty) return;
+    const entries = getLayerEntries();
+    const { panel: panelEntries, character: charEntries } = getTokenSectionEntries();
+    const stateRoot = getStateRoot();
+    const normalized = normalizeLayerState(stateRoot.mapLayerState || null);
+    stateRoot.mapLayerState = normalized;
+    list.innerHTML = '';
+    const totalCount = entries.length + panelEntries.length + charEntries.length;
+    empty.style.display = totalCount ? 'none' : '';
+    ensureMapLayerBulkActions(list, entries);
+    if (!totalCount) return;
+
+    // ── 섹션 1: 맵세팅 레이어 ──
+    if (entries.length) {
+      list.appendChild(renderSectionHeader('맵세팅 레이어', entries.length));
+      const entryMap = new Map(entries.map((e) => [e.id, e]));
+      normalized.order.forEach((id) => {
+        const entry = entryMap.get(id);
+        if (!entry) return;
+        list.appendChild(buildLayerItemEl(entry, normalized));
+      });
+      // 드래그 drop 리스너 (list 배경 영역 - 맵세팅 섹션에만 해당)
+      if (!list.dataset.dragBound) {
+        list.dataset.dragBound = '1';
+        list.addEventListener('dragover', (e) => {
+          if (!_dragLayerId) return;
+          if (e.target.closest('.map-layer-item')) return;
+          e.preventDefault();
+          try { e.dataTransfer.dropEffect = 'move'; } catch (_) {}
+        });
+        list.addEventListener('drop', async (e) => {
+          if (!_dragLayerId) return;
+          if (e.target.closest('.map-layer-item')) return;
+          e.preventDefault();
+          const next = normalizeLayerState(getStateRoot().mapLayerState || null);
+          const fromIndex = next.order.indexOf(_dragLayerId);
+          if (fromIndex >= 0 && fromIndex !== next.order.length - 1) {
+            const moved = next.order.splice(fromIndex, 1)[0];
+            next.order.push(moved);
+            await saveMapLayerState(next);
+            renderMapLayerList();
+          }
+        });
+      }
+    }
+
+    // ── 섹션 2: 패널 토큰 ──
+    if (panelEntries.length) {
+      list.appendChild(renderSectionHeader('패널 토큰', panelEntries.length));
+      panelEntries.forEach((entry) => {
+        list.appendChild(buildLayerItemEl(entry, normalized));
+      });
+    }
+
+    // ── 섹션 3: 캐릭터 토큰 ──
+    if (charEntries.length) {
+      list.appendChild(renderSectionHeader('캐릭터 토큰', charEntries.length));
+      charEntries.forEach((entry) => {
+        list.appendChild(buildLayerItemEl(entry, normalized));
+      });
+    }
+  }
   function canManageMapLayers() {
     if (typeof hasPerm === 'function') return !!hasPerm('manageMap');
     return !!getStateRoot().isGM;

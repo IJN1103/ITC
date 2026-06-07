@@ -1557,3 +1557,13 @@ input[type=checkbox]:checked,input[type=radio]:checked{accent-color:var(--accent
 ::-webkit-scrollbar-thumb{background:var(--accent-green)!important;}
 body{scrollbar-color:var(--accent-green) var(--s3);}
 [data-theme="dark"] .msg-text{color:#d0d8e8;}
+
+/* ── 맵 레이어 매니저 섹션 ── */
+.map-layer-section-header{display:flex;align-items:center;justify-content:space-between;padding:6px 4px 4px;margin-top:10px;border-bottom:1px solid var(--border);}
+.map-layer-section-header:first-child{margin-top:0;}
+.map-layer-section-title{font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);}
+.map-layer-section-count{font-size:10px;color:var(--dim);background:var(--s3);border-radius:999px;padding:1px 7px;font-weight:600;}
+.map-layer-handle--spacer{pointer-events:none;opacity:0;}
+.map-layer-item--token{cursor:default;}
+.map-layer-item--token .map-layer-handle{visibility:hidden;}
+.map-layer-label--notext{color:var(--muted);font-style:italic;}
