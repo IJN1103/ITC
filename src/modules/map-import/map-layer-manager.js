@@ -106,10 +106,22 @@
   }
 
   function getDefaultLayerState() {
-    const ids = getAvailableLayerIds();
+    const entries = getLayerEntries();
+    const tokens = getStateRoot().tokens || {};
+    // 코코폴리아 active:false 오브젝트는 importedMapObjectHidden:true로 임포트되므로
+    // 기본 visible 값도 토큰의 실제 hidden 상태를 반영한다.
+    const visible = {};
+    entries.forEach((entry) => {
+      const panelTokenId = String(entry.panelTokenId || '').trim();
+      if (panelTokenId && tokens[panelTokenId]) {
+        visible[entry.id] = !tokens[panelTokenId].importedMapObjectHidden;
+      } else {
+        visible[entry.id] = true;
+      }
+    });
     return {
-      order: ids.slice(),
-      visible: Object.fromEntries(ids.map((id) => [id, true])),
+      order: entries.map((e) => e.id),
+      visible,
     };
   }
 
@@ -472,11 +484,22 @@
     const entries = getLayerEntries();
     const entryMap = new Map(entries.map((entry) => [entry.id, entry]));
     const stateRoot = getStateRoot();
+    const tokens = stateRoot.tokens || {};
     const normalized = normalizeLayerState(stateRoot.mapLayerState || null);
     stateRoot.mapLayerState = normalized;
     normalized.order.forEach((id, index) => {
       const entry = entryMap.get(id);
-      const visible = normalized.visible[id] !== false;
+      // panelToken의 importedMapObjectHidden이 명시적으로 설정된 경우 이를 우선한다.
+      // layerState.visible은 사용자가 눈 아이콘으로 명시적으로 바꾼 경우에만 우선 적용.
+      const panelTokenId = String(entry?.panelTokenId || '').trim();
+      let visible;
+      if (typeof normalized.visible[id] === 'boolean') {
+        visible = normalized.visible[id];
+      } else if (panelTokenId && tokens[panelTokenId]) {
+        visible = !tokens[panelTokenId].importedMapObjectHidden;
+      } else {
+        visible = true;
+      }
       const zIndex = getLayerZIndex(id, index);
       syncImportedPanelTokenLocalState(entry, visible, zIndex);
       const el = resolveLayerElement(entry);

@@ -461,6 +461,8 @@
       panelActionText: importedClickAction.panelActionText,
       mapLayerId: String(blueprint?.layerId || `object:${blueprint?.id || index + 1}`),
       importedMapObject: true,
+      // 코코폴리아 active:false = 비활성(숨김) 상태로 임포트. visible:true여도 active가 false면 처음에 숨긴다.
+      importedMapObjectHidden: seed?.sourceMeta?.active === false,
       importedMapObjectMeta: {
         sourceItemId: String(seed.sourceItemId || blueprint?.id || ''),
         sourceLayerId: String(seed.sourceLayerId || blueprint?.layerId || ''),
