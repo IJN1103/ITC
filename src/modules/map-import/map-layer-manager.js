@@ -51,24 +51,41 @@
     return entries;
   }
 
+  /* map-token.js의 isPanelToken과 완전히 동일한 판별 로직 */
+  function _isLayerManagerPanelToken(token) {
+    if (!token) return false;
+    const type = String(token.type || '').trim();
+    const category = String(token.tokenCategory || '').trim();
+    if (type === 'panel' || category === 'panel' || token.panelToken === true) return true;
+    if (token.importedMapObject === true) return true;
+    if (token.panelImage || token.panelBackImage || token.panelWidth || token.panelHeight || token.panelFace) return true;
+    return false;
+  }
+
   /* 패널 토큰 / 캐릭터 토큰 섹션용 엔트리
-     - 맵세팅 레이어와 연결된 importedMapObject 토큰은 이미 위 섹션에 포함되므로 제외 */
+     - mapState.objects와 연결된 panelTokenId 토큰은 맵세팅 레이어 섹션에서 처리하므로 제외
+     - importedMapObject === true 토큰도 맵세팅 레이어가 관리하므로 제외 */
   function getTokenSectionEntries() {
     const stateRoot = getStateRoot();
     const tokens = stateRoot.tokens || {};
     const panel = [];
     const character = [];
-    const importedLayerEntries = getLayerEntries();
+
+    // 맵세팅 레이어와 연결된 panelTokenId 수집
+    const state = stateRoot.mapState || {};
+    const objects = Array.isArray(state.objects) ? state.objects : [];
     const importedPanelTokenIds = new Set(
-      importedLayerEntries.map((e) => String(e.panelTokenId || '')).filter(Boolean)
+      objects.map((item) => String(item?.panelTokenId || '').trim()).filter(Boolean)
     );
+
     Object.values(tokens).forEach((token) => {
       if (!token?.id) return;
+      // 맵세팅 레이어가 이미 관리하는 토큰은 제외
       if (importedPanelTokenIds.has(String(token.id))) return;
+      if (token.importedMapObject === true) return;
+
       const memo = String(token.memo || '').trim();
       const name = memo || 'NO TEXT';
-      const type = String(token.type || '').trim();
-      const isPanel = type === 'panel' || !!token.panelToken || !!token.panelImage;
       const entry = {
         id: `token:${token.id}`,
         tokenId: String(token.id),
@@ -77,11 +94,12 @@
         previewUrl: token.tokenImg || token.panelImage || '',
         isTokenEntry: true,
       };
-      if (isPanel) panel.push(entry);
+      if (_isLayerManagerPanelToken(token)) panel.push(entry);
       else character.push(entry);
     });
     return { panel, character };
   }
+
 
   function getAvailableLayerIds() {
     return getLayerEntries().map((entry) => entry.id);
@@ -591,78 +609,139 @@
     return item;
   }
 
-  function renderSectionHeader(labelText, count) {
-    const header = document.createElement('div');
-    header.className = 'map-layer-section-header';
-    header.innerHTML = `<span class="map-layer-section-title">${labelText}</span><span class="map-layer-section-count">${count}</span>`;
-    return header;
+
+  /* ── 토큰 섹션 아이템 (눈 토글만, 드래그/삭제 없음) ── */
+  function buildTokenLayerItemEl(entry) {
+    const item = document.createElement('div');
+    item.className = 'map-layer-item map-layer-item--token';
+    const previewUrl = getLayerPreviewImageUrl(entry.previewUrl);
+    const previewHtml = previewUrl
+      ? `<img class="map-layer-preview-img" src="${String(previewUrl).replace(/"/g,'&quot;')}" alt="" loading="lazy" decoding="async">`
+      : '';
+    const token = getStateRoot().tokens?.[entry.tokenId];
+    const isVisible = !token?.importedMapObjectHidden;
+    item.innerHTML = `
+      <div class="map-layer-preview ${entry.previewUrl ? 'has-image' : ''}" aria-hidden="true">${previewHtml}</div>
+      <div class="map-layer-name">
+        <span class="map-layer-label ${entry.name === 'NO TEXT' ? 'map-layer-label--notext' : ''}">${entry.name}</span>
+        ${entry.sub ? `<span class="map-layer-sub">${entry.sub}</span>` : ''}
+      </div>
+      <button class="map-layer-eye ${isVisible ? '' : 'off'}" type="button">${createEyeIcon(isVisible)}</button>
+    `;
+    const eye = item.querySelector('.map-layer-eye');
+    eye?.addEventListener('click', async (e) => {
+      e.preventDefault(); e.stopPropagation();
+      const t = getStateRoot().tokens?.[entry.tokenId];
+      if (!t) return;
+      const nextHidden = !t.importedMapObjectHidden;
+      t.importedMapObjectHidden = nextHidden;
+      const el = document.getElementById(`tok-${entry.tokenId}`);
+      if (el) setLayerElementVisibility(el, !nextHidden);
+      if (window._FB?.CONFIGURED) {
+        const roomCode = getLiveRoomCode();
+        if (roomCode) {
+          const { db, ref, update } = window._FB;
+          update(ref(db, `rooms/${roomCode}/tokens/${entry.tokenId}`), { importedMapObjectHidden: nextHidden })
+            .catch((e) => console.warn('token visibility sync failed', e));
+        }
+      }
+      renderMapLayerList();
+    });
+    return item;
   }
 
+  /* ── 메인 렌더: 3개 컬럼을 각자 독립적으로 렌더 ── */
   function renderMapLayerList() {
-    const list = document.getElementById('map-layer-list');
-    const empty = document.getElementById('map-layer-empty');
-    if (!list || !empty) return;
-    const entries = getLayerEntries();
-    const { panel: panelEntries, character: charEntries } = getTokenSectionEntries();
     const stateRoot = getStateRoot();
     const normalized = normalizeLayerState(stateRoot.mapLayerState || null);
     stateRoot.mapLayerState = normalized;
-    list.innerHTML = '';
-    const totalCount = entries.length + panelEntries.length + charEntries.length;
-    empty.style.display = totalCount ? 'none' : '';
-    ensureMapLayerBulkActions(list, entries);
-    if (!totalCount) return;
 
-    // ── 섹션 1: 맵세팅 레이어 ──
-    if (entries.length) {
-      list.appendChild(renderSectionHeader('맵세팅 레이어', entries.length));
-      const entryMap = new Map(entries.map((e) => [e.id, e]));
-      normalized.order.forEach((id) => {
-        const entry = entryMap.get(id);
-        if (!entry) return;
-        list.appendChild(buildLayerItemEl(entry, normalized));
-      });
-      // 드래그 drop 리스너 (list 배경 영역 - 맵세팅 섹션에만 해당)
-      if (!list.dataset.dragBound) {
-        list.dataset.dragBound = '1';
-        list.addEventListener('dragover', (e) => {
-          if (!_dragLayerId) return;
-          if (e.target.closest('.map-layer-item')) return;
-          e.preventDefault();
-          try { e.dataTransfer.dropEffect = 'move'; } catch (_) {}
+    // ── 컬럼 1: 맵세팅 레이어 ──
+    const mapList  = document.getElementById('map-layer-list');
+    const mapEmpty = document.getElementById('map-layer-empty');
+    const mapCount = document.getElementById('layer-count-map');
+    const entries  = getLayerEntries();
+    if (mapList) {
+      mapList.innerHTML = '';
+      // bulk-actions (전체 삭제 버튼)을 컬럼 전용 컨테이너로
+      const bulkCol = document.getElementById('map-layer-bulk-actions-col');
+      if (bulkCol) ensureMapLayerBulkActionsInto(bulkCol, entries);
+      if (entries.length) {
+        const entryMap = new Map(entries.map((e) => [e.id, e]));
+        normalized.order.forEach((id) => {
+          const entry = entryMap.get(id);
+          if (!entry) return;
+          mapList.appendChild(buildLayerItemEl(entry, normalized));
         });
-        list.addEventListener('drop', async (e) => {
-          if (!_dragLayerId) return;
-          if (e.target.closest('.map-layer-item')) return;
-          e.preventDefault();
-          const next = normalizeLayerState(getStateRoot().mapLayerState || null);
-          const fromIndex = next.order.indexOf(_dragLayerId);
-          if (fromIndex >= 0 && fromIndex !== next.order.length - 1) {
-            const moved = next.order.splice(fromIndex, 1)[0];
-            next.order.push(moved);
-            await saveMapLayerState(next);
-            renderMapLayerList();
-          }
-        });
+        // list 배경 드롭 영역 바인딩 (1회)
+        if (!mapList.dataset.dragBound) {
+          mapList.dataset.dragBound = '1';
+          mapList.addEventListener('dragover', (e) => {
+            if (!_dragLayerId) return;
+            if (e.target.closest('.map-layer-item')) return;
+            e.preventDefault();
+            try { e.dataTransfer.dropEffect = 'move'; } catch (_) {}
+          });
+          mapList.addEventListener('drop', async (e) => {
+            if (!_dragLayerId) return;
+            if (e.target.closest('.map-layer-item')) return;
+            e.preventDefault();
+            const next = normalizeLayerState(getStateRoot().mapLayerState || null);
+            const fromIndex = next.order.indexOf(_dragLayerId);
+            if (fromIndex >= 0 && fromIndex !== next.order.length - 1) {
+              const moved = next.order.splice(fromIndex, 1)[0];
+              next.order.push(moved);
+              await saveMapLayerState(next);
+              renderMapLayerList();
+            }
+          });
+        }
       }
+      if (mapEmpty) mapEmpty.style.display = entries.length ? 'none' : '';
+      if (mapCount) mapCount.textContent = String(entries.length);
     }
 
-    // ── 섹션 2: 패널 토큰 ──
-    if (panelEntries.length) {
-      list.appendChild(renderSectionHeader('패널 토큰', panelEntries.length));
-      panelEntries.forEach((entry) => {
-        list.appendChild(buildLayerItemEl(entry, normalized));
-      });
+    // ── 컬럼 2·3: 패널 토큰 / 캐릭터 토큰 ──
+    const { panel: panelEntries, character: charEntries } = getTokenSectionEntries();
+
+    const panelList  = document.getElementById('panel-layer-list');
+    const panelEmpty = document.getElementById('panel-layer-empty');
+    const panelCount = document.getElementById('layer-count-panel');
+    if (panelList) {
+      panelList.innerHTML = '';
+      panelEntries.forEach((entry) => panelList.appendChild(buildTokenLayerItemEl(entry)));
+      if (panelEmpty) panelEmpty.style.display = panelEntries.length ? 'none' : '';
+      if (panelCount) panelCount.textContent = String(panelEntries.length);
     }
 
-    // ── 섹션 3: 캐릭터 토큰 ──
-    if (charEntries.length) {
-      list.appendChild(renderSectionHeader('캐릭터 토큰', charEntries.length));
-      charEntries.forEach((entry) => {
-        list.appendChild(buildLayerItemEl(entry, normalized));
-      });
+    const charList  = document.getElementById('char-layer-list');
+    const charEmpty = document.getElementById('char-layer-empty');
+    const charCount = document.getElementById('layer-count-char');
+    if (charList) {
+      charList.innerHTML = '';
+      charEntries.forEach((entry) => charList.appendChild(buildTokenLayerItemEl(entry)));
+      if (charEmpty) charEmpty.style.display = charEntries.length ? 'none' : '';
+      if (charCount) charCount.textContent = String(charEntries.length);
     }
   }
+
+  /* bulk-actions를 지정 컨테이너에 렌더 (기존 ensureMapLayerBulkActions는 list.parentNode 의존) */
+  function ensureMapLayerBulkActionsInto(container, entries) {
+    if (!container) return;
+    const safeEntries = Array.isArray(entries) ? entries : [];
+    const objectCount = safeEntries.filter((e) => canDeleteLayer(e)).length;
+    const hasBackground = safeEntries.some((e) => String(e?.id || '') === 'background');
+    container.innerHTML = (objectCount > 0 || hasBackground)
+      ? '<button type="button" id="map-layer-delete-all" class="map-layer-bulk-delete">전체 삭제</button>'
+      : '';
+    const btn = document.getElementById('map-layer-delete-all');
+    btn?.addEventListener('click', (e) => {
+      e.preventDefault(); e.stopPropagation();
+      confirmDeleteAllObjectLayers();
+    });
+  }
+
+
   function canManageMapLayers() {
     if (typeof hasPerm === 'function') return !!hasPerm('manageMap');
     return !!getStateRoot().isGM;

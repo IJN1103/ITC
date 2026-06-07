@@ -1114,16 +1114,47 @@ window._FB = {
 </div>
 
 <div class="overlay" id="modal-map-layers">
-  <div class="modal" style="width:min(420px,94vw)">
+  <div class="modal modal--layer-manager">
     <div class="modal-row">
-      <div class="modal-title">맵세팅 레이어</div>
+      <div class="modal-title">레이어 관리</div>
       <button class="modal-close" onclick="closeModal('modal-map-layers')">✕</button>
     </div>
-    <div class="modal-info" style="line-height:1.8">
-      ZIP에서 반영된 맵 레이어를 포토샵처럼 확인하고, 보이기/숨기기와 순서 변경을 할 수 있습니다.
+    <div class="layer-manager-grid">
+      <!-- 맵세팅 레이어 컬럼 -->
+      <div class="layer-col" id="layer-col-map">
+        <div class="layer-col-head">
+          <span class="layer-col-title">맵세팅 레이어</span>
+          <span class="layer-col-count" id="layer-count-map">0</span>
+        </div>
+        <div class="layer-col-body">
+          <div id="map-layer-bulk-actions-col" class="layer-col-bulk"></div>
+          <div class="map-layer-list" id="map-layer-list"></div>
+          <div id="map-layer-empty" class="layer-col-empty" style="display:none">레이어 없음</div>
+        </div>
+      </div>
+      <!-- 패널 토큰 컬럼 -->
+      <div class="layer-col" id="layer-col-panel">
+        <div class="layer-col-head">
+          <span class="layer-col-title">스크린 패널</span>
+          <span class="layer-col-count" id="layer-count-panel">0</span>
+        </div>
+        <div class="layer-col-body">
+          <div class="map-layer-list" id="panel-layer-list"></div>
+          <div id="panel-layer-empty" class="layer-col-empty" style="display:none">패널 없음</div>
+        </div>
+      </div>
+      <!-- 캐릭터 토큰 컬럼 -->
+      <div class="layer-col" id="layer-col-char">
+        <div class="layer-col-head">
+          <span class="layer-col-title">캐릭터 토큰</span>
+          <span class="layer-col-count" id="layer-count-char">0</span>
+        </div>
+        <div class="layer-col-body">
+          <div class="map-layer-list" id="char-layer-list"></div>
+          <div id="char-layer-empty" class="layer-col-empty" style="display:none">토큰 없음</div>
+        </div>
+      </div>
     </div>
-    <div id="map-layer-empty" style="display:none;margin:12px 0;padding:12px;border:1px solid var(--border);border-radius:var(--r);background:var(--s2);font-size:12px;color:var(--muted)">아직 반영된 맵 레이어가 없습니다.</div>
-    <div class="map-layer-list" id="map-layer-list"></div>
   </div>
 </div>
 
