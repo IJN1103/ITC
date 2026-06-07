@@ -620,37 +620,7 @@
         item.classList.remove('dragging');
         delete item.dataset.dropPosition;
       });
-      item.addEventListener('dragover', (e) => {
-        if (!_dragLayerId && !_dragCharTokenId) return;
-        e.preventDefault();
-        const rect = item.getBoundingClientRect();
-        item.dataset.dropPosition = (e.clientY - rect.top) >= rect.height / 2 ? 'after' : 'before';
-        try { e.dataTransfer.dropEffect = 'move'; } catch (_) {}
-      });
-      item.addEventListener('dragleave', () => { delete item.dataset.dropPosition; });
-      item.addEventListener('drop', async (e) => {
-        e.preventDefault();
-        const dropPosition = item.dataset.dropPosition === 'after' ? 'after' : 'before';
-        delete item.dataset.dropPosition;
-        // 캐릭터 토큰을 맵세팅 레이어 위에 드롭
-        if (_dragCharTokenId) {
-          const charId = _dragCharTokenId;
-          _dragCharTokenId = null;
-          _dropCharTokenOntoMapLayer(charId, item.dataset.layerId, dropPosition);
-          return;
-        }
-        // 맵세팅 레이어끼리 드래그
-        const targetId = item.dataset.layerId;
-        if (!_dragLayerId || !targetId || _dragLayerId === targetId) return;
-        const next = normalizeLayerState(getStateRoot().mapLayerState || null);
-        const order = next.order.filter((lid) => lid !== _dragLayerId);
-        const insertIndex = getDropInsertIndex(order, targetId, dropPosition);
-        order.splice(insertIndex, 0, _dragLayerId);
-        if (order.join('|') === next.order.join('|')) return;
-        next.order = order;
-        await saveMapLayerState(next);
-        renderMapLayerList();
-      });
+      // dragover/drop: 리스트 레벨 이벤트 위임으로 통합 처리
     }
     return item;
   }
@@ -747,27 +717,7 @@
       item.classList.remove('dragging');
       delete item.dataset.dropPosition;
     });
-    item.addEventListener('dragover', (e) => {
-      if (!_dragCharTokenId && !_dragLayerId) return;
-      e.preventDefault();
-      const rect = item.getBoundingClientRect();
-      item.dataset.dropPosition = (e.clientY - rect.top) >= rect.height / 2 ? 'after' : 'before';
-      try { e.dataTransfer.dropEffect = 'move'; } catch (_) {}
-    });
-    item.addEventListener('dragleave', () => { delete item.dataset.dropPosition; });
-    item.addEventListener('drop', (e) => {
-      e.preventDefault();
-      const dropPos = item.dataset.dropPosition === 'after' ? 'after' : 'before';
-      delete item.dataset.dropPosition;
-      if (_dragCharTokenId && _dragCharTokenId !== entry.tokenId) {
-        // 캐릭터 → 캐릭터 or 캐릭터 → 캐릭터(다른 것)
-        _dropCharTokenOnto(_dragCharTokenId, entry, dropPos);
-        _dragCharTokenId = null;
-      } else if (_dragLayerId && !entry.isCharTokenEntry) {
-        // 맵레이어 → 캐릭터 위: 무시(맵레이어끼리만 드래그)
-        _dragLayerId = null;
-      }
-    });
+    // dragover/drop: 리스트 레벨 이벤트 위임으로 통합 처리
     return item;
   }
 
@@ -860,29 +810,97 @@
       }
     });
 
-    // 드래그 드롭 (맵세팅 레이어 항목만 - 1회 바인딩)
-    if (!mapList.dataset.dragBound) {
-      mapList.dataset.dragBound = '1';
-      mapList.addEventListener('dragover', (e) => {
-        if (!_dragLayerId) return;
-        if (e.target.closest('.map-layer-item')) return;
-        e.preventDefault();
-        try { e.dataTransfer.dropEffect = 'move'; } catch (_) {}
-      });
-      mapList.addEventListener('drop', async (e) => {
-        if (!_dragLayerId) return;
-        if (e.target.closest('.map-layer-item')) return;
-        e.preventDefault();
-        const next = normalizeLayerState(getStateRoot().mapLayerState || null);
-        const fromIndex = next.order.indexOf(_dragLayerId);
-        if (fromIndex >= 0 && fromIndex !== next.order.length - 1) {
-          const moved = next.order.splice(fromIndex, 1)[0];
-          next.order.push(moved);
-          await saveMapLayerState(next);
-          renderMapLayerList();
-        }
-      });
+    // ── 리스트 레벨 이벤트 위임: 드래그/드롭 통합 처리 ──
+    // renderMapLayerList 호출마다 아이템이 재생성되므로,
+    // dragBound 플래그를 매번 초기화해 리스너를 재등록한다.
+    // (리스너 중복을 막기 위해 cloneNode 대신 removeEventListener 패턴 사용)
+    if (mapList._listDragHandler) {
+      mapList.removeEventListener('dragover',  mapList._listDragHandler.over);
+      mapList.removeEventListener('dragleave', mapList._listDragHandler.leave);
+      mapList.removeEventListener('drop',      mapList._listDragHandler.drop);
     }
+
+    // 드래그 중 커서가 자식 요소를 지나도 dropPosition이 안정적으로 유지되도록
+    // 아이템 엘리먼트를 직접 찾아 CSS data attribute로 표시
+    let _currentDropTarget = null;
+
+    const onOver = (e) => {
+      if (!_dragLayerId && !_dragCharTokenId) return;
+      e.preventDefault();
+      try { e.dataTransfer.dropEffect = 'move'; } catch (_) {}
+      const targetItem = e.target.closest('.map-layer-item');
+      if (!targetItem || !mapList.contains(targetItem)) return;
+      if (targetItem !== _currentDropTarget) {
+        if (_currentDropTarget) delete _currentDropTarget.dataset.dropPosition;
+        _currentDropTarget = targetItem;
+      }
+      const rect = targetItem.getBoundingClientRect();
+      targetItem.dataset.dropPosition = (e.clientY - rect.top) >= rect.height / 2 ? 'after' : 'before';
+    };
+
+    const onLeave = (e) => {
+      // mapList 자체를 벗어날 때만 초기화 (자식 → 자식 이동은 무시)
+      if (!mapList.contains(e.relatedTarget)) {
+        if (_currentDropTarget) { delete _currentDropTarget.dataset.dropPosition; _currentDropTarget = null; }
+      }
+    };
+
+    const onDrop = async (e) => {
+      e.preventDefault();
+      const targetItem = _currentDropTarget || e.target.closest('.map-layer-item');
+      const dropPos = targetItem?.dataset.dropPosition === 'after' ? 'after' : 'before';
+      if (_currentDropTarget) { delete _currentDropTarget.dataset.dropPosition; _currentDropTarget = null; }
+
+      // ── 캐릭터 토큰 드래그 처리 ──
+      if (_dragCharTokenId) {
+        const charId = _dragCharTokenId;
+        _dragCharTokenId = null;
+        if (!targetItem) return;
+        const targetLayerId  = targetItem.dataset.layerId;
+        const targetCharId   = targetItem.dataset.charTokenId;
+        if (targetCharId && targetCharId !== charId) {
+          // 캐릭터 → 캐릭터
+          _dropCharTokenOnto(charId, { tokenId: targetCharId }, dropPos);
+        } else if (targetLayerId) {
+          // 캐릭터 → 맵세팅 레이어
+          _dropCharTokenOntoMapLayer(charId, targetLayerId, dropPos);
+        }
+        return;
+      }
+
+      // ── 맵세팅 레이어 드래그 처리 ──
+      if (_dragLayerId) {
+        const sourceId = _dragLayerId;
+        _dragLayerId = null;
+        const targetId = targetItem?.dataset.layerId;
+        if (!targetId) {
+          // 빈 영역에 드롭: 맨 끝으로
+          const next = normalizeLayerState(getStateRoot().mapLayerState || null);
+          const fromIndex = next.order.indexOf(sourceId);
+          if (fromIndex >= 0 && fromIndex !== next.order.length - 1) {
+            const moved = next.order.splice(fromIndex, 1)[0];
+            next.order.push(moved);
+            await saveMapLayerState(next);
+            renderMapLayerList();
+          }
+          return;
+        }
+        if (sourceId === targetId) return;
+        const next = normalizeLayerState(getStateRoot().mapLayerState || null);
+        const order = next.order.filter(id => id !== sourceId);
+        const insertIndex = getDropInsertIndex(order, targetId, dropPos);
+        order.splice(insertIndex, 0, sourceId);
+        if (order.join('|') === next.order.join('|')) return;
+        next.order = order;
+        await saveMapLayerState(next);
+        renderMapLayerList();
+      }
+    };
+
+    mapList._listDragHandler = { over: onOver, leave: onLeave, drop: onDrop };
+    mapList.addEventListener('dragover',  onOver);
+    mapList.addEventListener('dragleave', onLeave);
+    mapList.addEventListener('drop',      onDrop);
   }
 
   /* bulk-actions를 지정 컨테이너에 렌더 (기존 ensureMapLayerBulkActions는 list.parentNode 의존) */
