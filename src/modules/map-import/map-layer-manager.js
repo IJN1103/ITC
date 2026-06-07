@@ -934,35 +934,42 @@
     const layerState = stateRoot.mapLayerState || {};
     const order = Array.isArray(layerState.order) ? layerState.order.slice() : [];
 
-    // 맵세팅 레이어 토큰들 (importedMapObject, z = orderIndex)
-    const mapLayerItems = order.map((layerId, idx) => {
-      const panelTokenId = Object.values(tokens).find(
+    // ── 통합 순서 배열 구성 ──
+    // 맵세팅 레이어: layerState.order 순서 그대로
+    // 캐릭터 토큰: panelPriority 오름차순
+    // 두 그룹을 순서대로 이어 붙여 하나의 선형 배열로 만든다.
+    // (UI 레이어 매니저에서 보이는 순서와 동일)
+
+    const mapItems = order.map((layerId) => {
+      const linked = Object.values(tokens).find(
         t => t && String(t.mapLayerId || '') === layerId && t.importedMapObject === true
-      )?.id || null;
-      return { layerId, panelTokenId, z: idx, isChar: false };
+      );
+      return { kind: 'map', layerId, panelTokenId: linked?.id || null };
     });
 
-    // 캐릭터 토큰들 (importedMapObject 아님, z = panelPriority or 1000)
     const charItems = Object.values(tokens)
       .filter(t => t && t.id && !_isLayerManagerPanelToken(t) && !t.importedMapObject)
-      .map(t => ({ tokenId: t.id, z: Number(t.panelPriority || 1000), isChar: true }))
-      .sort((a, b) => a.z - b.z);
+      .sort((a, b) => Number(a.panelPriority || 1000) - Number(b.panelPriority || 1000))
+      .map(t => ({ kind: 'char', tokenId: t.id }));
 
-    // 전체 통합 목록 (z 순 정렬)
-    const allItems = [
-      ...mapLayerItems.map(it => ({ ...it, sortZ: it.z })),
-      ...charItems.map(it => ({ ...it, sortZ: it.z })),
-    ].sort((a, b) => a.sortZ - b.sortZ);
+    // 현재 캐릭터 토큰의 panelPriority 기반 위치를 맵 레이어 사이에 삽입
+    // panelPriority < 1000 이면 맵세팅 레이어 사이에 끼어있는 것
+    // panelPriority >= 1000 이면 맵세팅 레이어 전체 뒤(앞)에 있는 것
+    // → 통합 배열은 [맵세팅..., 캐릭터...] 순서로 단순히 이어붙인다.
+    //   사용자가 앞뒤 이동할 때 이 배열 안에서 위치가 바뀐다.
+    const unified = [...mapItems, ...charItems];
 
-    const myIdx = allItems.findIndex(it => it.isChar && it.tokenId === tokenId);
+    const myIdx = unified.findIndex(it => it.kind === 'char' && it.tokenId === tokenId);
     if (myIdx < 0) return;
 
-    // 이동
-    const next = allItems.slice();
+    // ── 이동 ──
+    const next = unified.slice();
     if (direction === 'layerFront') {
+      if (myIdx === next.length - 1) { if (typeof showToast === 'function') showToast('이미 맨 앞입니다.'); return; }
       const [item] = next.splice(myIdx, 1);
       next.push(item);
     } else if (direction === 'layerBack') {
+      if (myIdx === 0) { if (typeof showToast === 'function') showToast('이미 맨 뒤입니다.'); return; }
       const [item] = next.splice(myIdx, 1);
       next.unshift(item);
     } else if (direction === 'layerForward') {
@@ -973,33 +980,34 @@
       [next[myIdx - 1], next[myIdx]] = [next[myIdx], next[myIdx - 1]];
     }
 
-    // 결과를 각 그룹에 역산
-    // 맵세팅 레이어: 상대 순서 변경이 없으면 order 배열 유지
-    // 캐릭터 토큰: 새 위치 인덱스 기반으로 z 재할당
-    //   - 맵세팅 레이어 항목보다 낮은 위치에 있으면 그 인덱스 그대로(맵세팅 대역)
-    //   - 맵세팅 레이어 항목보다 높은 위치이면 1000+ 대역
-    const mapLayerCount = mapLayerItems.length;
-    const fbPayload = {};
+    // ── 결과를 각 그룹에 역산 ──
+    // 새 배열에서 map 항목의 순서 → nextMapOrder
+    // 새 배열에서 char 항목의 위치(globalIdx) → z값 결정
+    //   globalIdx < (맵 항목 수): 맵세팅 레이어 사이에 끼어든 것 → z = globalIdx (맵과 같은 대역)
+    //   globalIdx >= (맵 항목 수): 맵세팅 레이어 전부보다 앞 → z = 1000 + (globalIdx - mapCount)
+    const mapCount = next.filter(it => it.kind === 'map').length;
+    const nextMapOrder = next.filter(it => it.kind === 'map').map(it => it.layerId);
+    const fbTokenPayload = {};
 
-    // 캐릭터 토큰 z 재할당
     next.forEach((item, globalIdx) => {
-      if (!item.isChar) return;
+      if (item.kind !== 'char') return;
       const t = tokens[item.tokenId];
       if (!t) return;
-      // globalIdx가 mapLayerCount보다 크면 캐릭터 대역(1000+), 아니면 맵세팅 사이에 끼어든 것
-      const newZ = globalIdx >= mapLayerCount
-        ? 1000 + (globalIdx - mapLayerCount)
+      const newZ = globalIdx >= mapCount
+        ? 1000 + (globalIdx - mapCount)
         : Math.max(1, globalIdx);
       t.panelPriority = newZ;
       const el = document.getElementById(`tok-${item.tokenId}`);
       if (el) el.style.zIndex = String(newZ);
-      fbPayload[`${item.tokenId}/panelPriority`] = newZ;
+      fbTokenPayload[`${item.tokenId}/panelPriority`] = newZ;
     });
 
-    // 맵세팅 레이어 순서 변경 감지 → layerState.order 갱신
-    const nextMapOrder = next.filter(it => !it.isChar).map(it => it.layerId);
-    const orderChanged = nextMapOrder.some((id, i) => id !== order[i]);
-    if (orderChanged) {
+    const mapOrderChanged = nextMapOrder.some((id, i) => id !== order[i]);
+    const charChanged = Object.keys(fbTokenPayload).length > 0;
+
+    if (!mapOrderChanged && !charChanged) return;
+
+    if (mapOrderChanged) {
       const nextLayerState = { ...layerState, order: nextMapOrder };
       stateRoot.mapLayerState = nextLayerState;
       if (typeof applyMapLayerState === 'function') applyMapLayerState();
@@ -1008,19 +1016,21 @@
         const roomCode = getLiveRoomCode();
         if (roomCode) {
           const { db, ref, update } = window._FB;
-          update(ref(db, `rooms/${roomCode}`), {
+          const payload = {
             mapLayerState: nextLayerState,
             'bgm/mapLayerState': nextLayerState,
-            ...Object.fromEntries(Object.entries(fbPayload).map(([k, v]) => [`tokens/${k}`, v])),
-          }).catch(e => console.warn('unified layer order sync failed', e));
+          };
+          Object.entries(fbTokenPayload).forEach(([k, v]) => { payload[`tokens/${k}`] = v; });
+          update(ref(db, `rooms/${roomCode}`), payload)
+            .catch(e => console.warn('unified layer order sync failed', e));
         }
       }
-    } else if (Object.keys(fbPayload).length) {
+    } else if (charChanged) {
       if (window._FB?.CONFIGURED) {
         const roomCode = getLiveRoomCode();
         if (roomCode) {
           const { db, ref, update } = window._FB;
-          update(ref(db, `rooms/${roomCode}/tokens`), fbPayload)
+          update(ref(db, `rooms/${roomCode}/tokens`), fbTokenPayload)
             .catch(e => console.warn('char layer order sync failed', e));
         }
       }
@@ -1029,7 +1039,6 @@
     if (typeof refreshMapLayerManager === 'function') refreshMapLayerManager();
   }
 
-  /* layerState.order만 있고 panelTokenId가 없는 항목(배경 이미지 등) 전용 */
   function _shiftMapLayerOrder(layerId, direction) {
     const stateRoot = getStateRoot();
     const layerState = stateRoot.mapLayerState;
@@ -1079,6 +1088,8 @@
     });
   }
 
+  // 맵 우클릭 컨텍스트 메뉴에서도 통합 순서 함수를 쓸 수 있도록 전역 노출
+  window._changeLayerOrderUnifiedGlobal = _changeLayerOrderUnified;
   window.openMapLayerManager = openMapLayerManager;
   window.openMapLayerManagerModal = openMapLayerManager;
   window.refreshMapLayerManager = refreshMapLayerManager;

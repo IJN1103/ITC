@@ -1540,7 +1540,14 @@ function tokCtxAction(action) {
     case 'layerBackward':
     case 'layerFront':
     case 'layerBack': {
-      _changeTokenLayerOrder(id, action);
+      // 캐릭터 토큰은 레이어 매니저의 통합 순서 함수로 위임 (스크린 패널과 상호 작용)
+      // 패널/임포트 토큰은 기존 함수 유지
+      const isCharToken = !isPanelToken(t);
+      if (isCharToken && typeof window._changeLayerOrderUnifiedGlobal === 'function') {
+        window._changeLayerOrderUnifiedGlobal(id, action);
+      } else {
+        _changeTokenLayerOrder(id, action);
+      }
       break;
     }
     case 'toBack': {
