@@ -540,7 +540,8 @@
     opts = opts || {};
     const id = entry.id;
     const item = document.createElement('div');
-    item.className = 'map-layer-item' + (opts.noMemo ? ' map-layer-item--token' : '');
+    const isBgEntry = String(entry?.id || '') === 'background';
+    item.className = 'map-layer-item' + (opts.noMemo ? ' map-layer-item--token' : '') + (isBgEntry ? ' map-layer-item--background' : '');
     item.draggable = !entry.isTokenEntry;
     item.dataset.layerId = id;
     const previewUrl = getLayerPreviewImageUrl(entry.previewUrl);

@@ -156,6 +156,7 @@
 
   function applyImportedMapState(mapState) {
     const bgLayer = getMapBackgroundLayer();
+    const blurLayer = document.getElementById('map-bg-blur-layer');
     const fgLayer = getMapForegroundLayer();
     const mapInner = getMapInner();
     const background = mapState?.background || null;
@@ -165,11 +166,23 @@
       if (!background?.url) {
         setLazyMapLayerBackground(bgLayer, '');
         bgLayer.style.backgroundSize = 'contain';
+        if (blurLayer) { blurLayer.style.backgroundImage = ''; blurLayer.style.display = 'none'; }
       } else {
         const fit = String(background.fit || 'contain').trim() || 'contain';
         const bgVisible = isMapLayerVisible('background');
         setLazyMapLayerBackground(bgLayer, background.url, 2048, bgVisible);
         bgLayer.style.backgroundSize = fit === 'fill' ? '100% 100%' : (fit === 'cover' ? 'cover' : 'contain');
+        // 블러 배경: cover로 항상 흰 영역을 채움 (fit이 cover/fill이면 블러 불필요)
+        if (blurLayer) {
+          if (fit === 'cover' || fit === 'fill') {
+            blurLayer.style.display = 'none';
+          } else {
+            // bgLayer와 동일한 이미지를 사용하되, lazy load와 무관하게 직접 URL 설정
+            const blurSrc = buildCssBackgroundImage(getMapDisplayImageUrl(background.url, 2048));
+            blurLayer.style.backgroundImage = blurSrc;
+            blurLayer.style.display = bgVisible ? '' : 'none';
+          }
+        }
       }
       applyMapLayerElementVisibility(bgLayer, !!background?.url && isMapLayerVisible('background'));
     }

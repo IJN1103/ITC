@@ -210,7 +210,8 @@ to{opacity:1;transform:translateY(0);}
 .map-area{flex:1;position:relative;overflow:hidden;background:var(--s1);cursor:grab;}
 .map-area.panning{cursor:grabbing;}
 .map-inner{position:absolute;width:100%;height:100%;background-image:linear-gradient(rgba(180,178,172,.45) 1px,transparent 1px),linear-gradient(90deg,rgba(180,178,172,.45) 1px,transparent 1px);background-size:44px 44px;transform-origin:0 0;}
-.map-bg-layer{position:absolute;inset:0;z-index:0;pointer-events:none;background-repeat:no-repeat;background-position:center center;background-size:contain;opacity:1;}
+.map-bg-blur-layer{position:absolute;inset:-40px;z-index:0;pointer-events:none;background-repeat:no-repeat;background-position:center center;background-size:cover;opacity:1;filter:blur(28px) brightness(.72) saturate(.9);transform:scale(1.06);transform-origin:center;}
+.map-bg-layer{position:absolute;inset:0;z-index:1;pointer-events:none;background-repeat:no-repeat;background-position:center center;background-size:contain;opacity:1;}
 .map-fg-layer{position:absolute;inset:0;z-index:1;pointer-events:none;background-repeat:no-repeat;background-position:center center;background-size:contain;opacity:1;}
 .map-layer-runtime-hidden{display:none!important;visibility:hidden!important;opacity:0!important;}
 
@@ -1596,3 +1597,8 @@ body{scrollbar-color:var(--accent-green) var(--s3);}
 }
 
 .map-layer-item--dblclick{cursor:pointer;}
+
+/* 레이어 매니저 - 배경 이미지 박스 옅은 파랑 */
+.map-layer-item--background{background:rgba(37,99,235,.08);border-color:rgba(37,99,235,.35);}
+.map-layer-item--background:hover{background:rgba(37,99,235,.14);border-color:rgba(37,99,235,.55);}
+[data-theme="dark"] .map-layer-item--background{background:rgba(74,127,245,.1);border-color:rgba(74,127,245,.4);}
