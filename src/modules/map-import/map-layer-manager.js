@@ -906,21 +906,128 @@
     hideLayerItemCtx();
     if (!entry) return;
 
-    const tokenId = entry.isTokenEntry
-      ? String(entry.tokenId || '')
-      : String(entry.panelTokenId || '');
-
-    // _changeTokenLayerOrder는 map-token.js에 정의됨
-    // mapLayerId가 있는 맵세팅 레이어는 importedMapObject 토큰을 통해 처리
-    if (tokenId && typeof _changeTokenLayerOrder === 'function') {
-      _changeTokenLayerOrder(tokenId, action);
+    // ── 캐릭터 토큰: 전체 통합 z-order 기준으로 재배치 ──
+    // 레이어 매니저에서의 순서 조정은 스크린 패널과 캐릭터 토큰 전체를 하나의
+    // 순서로 보고 처리한다. 캐릭터 토큰의 z 대역(1000+)은 유지하되,
+    // 모든 가시 토큰을 통합 정렬 후 재배치한다.
+    if (entry.isTokenEntry) {
+      _changeLayerOrderUnified(entry.tokenId, action);
       return;
     }
-    // 맵세팅 레이어 자체(layerState.order 직접 조작)
-    if (!entry.isTokenEntry) {
-      _shiftMapLayerOrder(entry.id, action);
+
+    // ── 맵세팅 레이어: panelTokenId → importedMapObject 토큰, 또는 배경 직접 조작 ──
+    const panelTokenId = String(entry.panelTokenId || '');
+    if (panelTokenId && typeof _changeTokenLayerOrder === 'function') {
+      _changeTokenLayerOrder(panelTokenId, action);
+      return;
     }
+    _shiftMapLayerOrder(entry.id, action);
   };
+
+  /* 레이어 매니저 전용: 캐릭터 토큰을 스크린 패널 포함 전체 통합 순서로 이동
+     - 스크린 패널(importedMapObject): layerState.order 인덱스 기반 z(1~N)
+     - 캐릭터 토큰: panelPriority 기반 z(1000+)
+     - 두 그룹을 현재 z-index 기준으로 정렬 후 타깃을 이동, 결과를 각 그룹에 역산 */
+  function _changeLayerOrderUnified(tokenId, direction) {
+    const stateRoot = getStateRoot();
+    const tokens = stateRoot.tokens || {};
+    const layerState = stateRoot.mapLayerState || {};
+    const order = Array.isArray(layerState.order) ? layerState.order.slice() : [];
+
+    // 맵세팅 레이어 토큰들 (importedMapObject, z = orderIndex)
+    const mapLayerItems = order.map((layerId, idx) => {
+      const panelTokenId = Object.values(tokens).find(
+        t => t && String(t.mapLayerId || '') === layerId && t.importedMapObject === true
+      )?.id || null;
+      return { layerId, panelTokenId, z: idx, isChar: false };
+    });
+
+    // 캐릭터 토큰들 (importedMapObject 아님, z = panelPriority or 1000)
+    const charItems = Object.values(tokens)
+      .filter(t => t && t.id && !_isLayerManagerPanelToken(t) && !t.importedMapObject)
+      .map(t => ({ tokenId: t.id, z: Number(t.panelPriority || 1000), isChar: true }))
+      .sort((a, b) => a.z - b.z);
+
+    // 전체 통합 목록 (z 순 정렬)
+    const allItems = [
+      ...mapLayerItems.map(it => ({ ...it, sortZ: it.z })),
+      ...charItems.map(it => ({ ...it, sortZ: it.z })),
+    ].sort((a, b) => a.sortZ - b.sortZ);
+
+    const myIdx = allItems.findIndex(it => it.isChar && it.tokenId === tokenId);
+    if (myIdx < 0) return;
+
+    // 이동
+    const next = allItems.slice();
+    if (direction === 'layerFront') {
+      const [item] = next.splice(myIdx, 1);
+      next.push(item);
+    } else if (direction === 'layerBack') {
+      const [item] = next.splice(myIdx, 1);
+      next.unshift(item);
+    } else if (direction === 'layerForward') {
+      if (myIdx === next.length - 1) { if (typeof showToast === 'function') showToast('이미 맨 앞입니다.'); return; }
+      [next[myIdx], next[myIdx + 1]] = [next[myIdx + 1], next[myIdx]];
+    } else { // layerBackward
+      if (myIdx === 0) { if (typeof showToast === 'function') showToast('이미 맨 뒤입니다.'); return; }
+      [next[myIdx - 1], next[myIdx]] = [next[myIdx], next[myIdx - 1]];
+    }
+
+    // 결과를 각 그룹에 역산
+    // 맵세팅 레이어: 상대 순서 변경이 없으면 order 배열 유지
+    // 캐릭터 토큰: 새 위치 인덱스 기반으로 z 재할당
+    //   - 맵세팅 레이어 항목보다 낮은 위치에 있으면 그 인덱스 그대로(맵세팅 대역)
+    //   - 맵세팅 레이어 항목보다 높은 위치이면 1000+ 대역
+    const mapLayerCount = mapLayerItems.length;
+    const fbPayload = {};
+
+    // 캐릭터 토큰 z 재할당
+    next.forEach((item, globalIdx) => {
+      if (!item.isChar) return;
+      const t = tokens[item.tokenId];
+      if (!t) return;
+      // globalIdx가 mapLayerCount보다 크면 캐릭터 대역(1000+), 아니면 맵세팅 사이에 끼어든 것
+      const newZ = globalIdx >= mapLayerCount
+        ? 1000 + (globalIdx - mapLayerCount)
+        : Math.max(1, globalIdx);
+      t.panelPriority = newZ;
+      const el = document.getElementById(`tok-${item.tokenId}`);
+      if (el) el.style.zIndex = String(newZ);
+      fbPayload[`${item.tokenId}/panelPriority`] = newZ;
+    });
+
+    // 맵세팅 레이어 순서 변경 감지 → layerState.order 갱신
+    const nextMapOrder = next.filter(it => !it.isChar).map(it => it.layerId);
+    const orderChanged = nextMapOrder.some((id, i) => id !== order[i]);
+    if (orderChanged) {
+      const nextLayerState = { ...layerState, order: nextMapOrder };
+      stateRoot.mapLayerState = nextLayerState;
+      if (typeof applyMapLayerState === 'function') applyMapLayerState();
+      if (typeof window.requestActiveMapSceneSave === 'function') window.requestActiveMapSceneSave('layer-order', 260);
+      if (window._FB?.CONFIGURED) {
+        const roomCode = getLiveRoomCode();
+        if (roomCode) {
+          const { db, ref, update } = window._FB;
+          update(ref(db, `rooms/${roomCode}`), {
+            mapLayerState: nextLayerState,
+            'bgm/mapLayerState': nextLayerState,
+            ...Object.fromEntries(Object.entries(fbPayload).map(([k, v]) => [`tokens/${k}`, v])),
+          }).catch(e => console.warn('unified layer order sync failed', e));
+        }
+      }
+    } else if (Object.keys(fbPayload).length) {
+      if (window._FB?.CONFIGURED) {
+        const roomCode = getLiveRoomCode();
+        if (roomCode) {
+          const { db, ref, update } = window._FB;
+          update(ref(db, `rooms/${roomCode}/tokens`), fbPayload)
+            .catch(e => console.warn('char layer order sync failed', e));
+        }
+      }
+    }
+
+    if (typeof refreshMapLayerManager === 'function') refreshMapLayerManager();
+  }
 
   /* layerState.order만 있고 panelTokenId가 없는 항목(배경 이미지 등) 전용 */
   function _shiftMapLayerOrder(layerId, direction) {
