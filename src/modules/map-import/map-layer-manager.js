@@ -1,5 +1,6 @@
 (function () {
   let _dragLayerId = null;
+  let _dragCharTokenId = null; // 캐릭터 토큰 드래그용
 
   function getStateRoot() {
     const root = (typeof window !== 'undefined' ? window : globalThis);
@@ -620,16 +621,26 @@
         delete item.dataset.dropPosition;
       });
       item.addEventListener('dragover', (e) => {
+        if (!_dragLayerId && !_dragCharTokenId) return;
         e.preventDefault();
         const rect = item.getBoundingClientRect();
         item.dataset.dropPosition = (e.clientY - rect.top) >= rect.height / 2 ? 'after' : 'before';
+        try { e.dataTransfer.dropEffect = 'move'; } catch (_) {}
       });
       item.addEventListener('dragleave', () => { delete item.dataset.dropPosition; });
       item.addEventListener('drop', async (e) => {
         e.preventDefault();
-        const targetId = item.dataset.layerId;
         const dropPosition = item.dataset.dropPosition === 'after' ? 'after' : 'before';
         delete item.dataset.dropPosition;
+        // 캐릭터 토큰을 맵세팅 레이어 위에 드롭
+        if (_dragCharTokenId) {
+          const charId = _dragCharTokenId;
+          _dragCharTokenId = null;
+          _dropCharTokenOntoMapLayer(charId, item.dataset.layerId, dropPosition);
+          return;
+        }
+        // 맵세팅 레이어끼리 드래그
+        const targetId = item.dataset.layerId;
         if (!_dragLayerId || !targetId || _dragLayerId === targetId) return;
         const next = normalizeLayerState(getStateRoot().mapLayerState || null);
         const order = next.order.filter((lid) => lid !== _dragLayerId);
@@ -645,11 +656,12 @@
   }
 
 
-  /* ── 토큰 섹션 아이템 (눈 토글만, 드래그/삭제 없음) ── */
-  /* tokenLayerItemEl: isChar=true이면 삭제 버튼 포함, 더블클릭으로 설정창 열기 */
+  /* ── 캐릭터 토큰 레이어 아이템 (드래그 핸들 + 눈 토글 + 삭제) ── */
   function buildTokenLayerItemEl(entry, isChar) {
     const item = document.createElement('div');
     item.className = 'map-layer-item map-layer-item--token map-layer-item--dblclick';
+    item.draggable = true;
+    item.dataset.charTokenId = entry.tokenId;
     const previewUrl = getLayerPreviewImageUrl(entry.previewUrl);
     const previewHtml = previewUrl
       ? `<img class="map-layer-preview-img" src="${String(previewUrl).replace(/"/g,'&quot;')}" alt="" loading="lazy" decoding="async">`
@@ -657,6 +669,7 @@
     const token = getStateRoot().tokens?.[entry.tokenId];
     const isVisible = !token?.importedMapObjectHidden;
     item.innerHTML = `
+      <div class="map-layer-handle" title="드래그하여 순서 변경">☰</div>
       <div class="map-layer-preview ${entry.previewUrl ? 'has-image' : ''}" aria-hidden="true">${previewHtml}</div>
       <div class="map-layer-name">
         <span class="map-layer-label ${entry.name === 'NO TEXT' ? 'map-layer-label--notext' : ''}">${entry.name}</span>
@@ -718,6 +731,42 @@
     // 우클릭 컨텍스트 메뉴
     item.addEventListener('contextmenu', (e) => {
       showLayerItemCtx(e, entry);
+    });
+    // ── 드래그: 캐릭터 토큰 순서 변경 ──
+    item.addEventListener('dragstart', (e) => {
+      _dragCharTokenId = entry.tokenId;
+      _dragLayerId = null; // 맵레이어 드래그와 충돌 방지
+      item.classList.add('dragging');
+      if (e.dataTransfer) {
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', 'char:' + entry.tokenId);
+      }
+    });
+    item.addEventListener('dragend', () => {
+      _dragCharTokenId = null;
+      item.classList.remove('dragging');
+      delete item.dataset.dropPosition;
+    });
+    item.addEventListener('dragover', (e) => {
+      if (!_dragCharTokenId && !_dragLayerId) return;
+      e.preventDefault();
+      const rect = item.getBoundingClientRect();
+      item.dataset.dropPosition = (e.clientY - rect.top) >= rect.height / 2 ? 'after' : 'before';
+      try { e.dataTransfer.dropEffect = 'move'; } catch (_) {}
+    });
+    item.addEventListener('dragleave', () => { delete item.dataset.dropPosition; });
+    item.addEventListener('drop', (e) => {
+      e.preventDefault();
+      const dropPos = item.dataset.dropPosition === 'after' ? 'after' : 'before';
+      delete item.dataset.dropPosition;
+      if (_dragCharTokenId && _dragCharTokenId !== entry.tokenId) {
+        // 캐릭터 → 캐릭터 or 캐릭터 → 캐릭터(다른 것)
+        _dropCharTokenOnto(_dragCharTokenId, entry, dropPos);
+        _dragCharTokenId = null;
+      } else if (_dragLayerId && !entry.isCharTokenEntry) {
+        // 맵레이어 → 캐릭터 위: 무시(맵레이어끼리만 드래그)
+        _dragLayerId = null;
+      }
     });
     return item;
   }
@@ -977,7 +1026,102 @@
      - 스크린 패널(importedMapObject): layerState.order 인덱스 기반 z(1~N)
      - 캐릭터 토큰: panelPriority 기반 z(1000+)
      - 두 그룹을 현재 z-index 기준으로 정렬 후 타깃을 이동, 결과를 각 그룹에 역산 */
-  function _changeLayerOrderUnified(tokenId, direction) {
+  /* 캐릭터 토큰 드래그 드롭: 다른 캐릭터 토큰 위에 드롭 */
+  function _dropCharTokenOnto(dragTokenId, targetEntry, dropPos) {
+    // 통합 배열에서 drag 위치를 before/after target으로 이동 후 z 재계산
+    _applyCharTokenDrop(dragTokenId, { kind: 'char', tokenId: targetEntry.tokenId }, dropPos);
+  }
+
+  /* 캐릭터 토큰 드래그 드롭: 맵세팅 레이어 위에 드롭 */
+  function _dropCharTokenOntoMapLayer(dragTokenId, targetLayerId, dropPos) {
+    _applyCharTokenDrop(dragTokenId, { kind: 'map', layerId: targetLayerId }, dropPos);
+  }
+
+  /* 공통 드롭 처리: 통합 배열에서 drag 항목을 target 전/후로 이동 */
+  function _applyCharTokenDrop(dragTokenId, target, dropPos) {
+    const stateRoot = getStateRoot();
+    const tokens = stateRoot.tokens || {};
+    const layerState = stateRoot.mapLayerState || {};
+    const order = Array.isArray(layerState.order) ? layerState.order.slice() : [];
+
+    // 통합 배열 구성 (_changeLayerOrderUnified와 동일)
+    const mapItems = order.map(layerId => ({ kind: 'map', layerId }));
+    const charItems = Object.values(tokens)
+      .filter(t => t && t.id && !_isLayerManagerPanelToken(t) && !t.importedMapObject)
+      .sort((a, b) => Number(a.panelPriority || 1000) - Number(b.panelPriority || 1000))
+      .map(t => ({ kind: 'char', tokenId: t.id }));
+
+    const unified = [...mapItems, ...charItems];
+
+    const fromIdx = unified.findIndex(it => it.kind === 'char' && it.tokenId === dragTokenId);
+    let toIdx = target.kind === 'char'
+      ? unified.findIndex(it => it.kind === 'char' && it.tokenId === target.tokenId)
+      : unified.findIndex(it => it.kind === 'map' && it.layerId === target.layerId);
+
+    if (fromIdx < 0 || toIdx < 0 || fromIdx === toIdx) return;
+
+    // 배열에서 drag 항목 제거 후 target 위치 기준으로 삽입
+    const next = unified.slice();
+    const [moved] = next.splice(fromIdx, 1);
+    // splice 후 toIdx 보정
+    let insertIdx = unified.findIndex((it, i) => {
+      if (target.kind === 'char') return it.kind === 'char' && it.tokenId === target.tokenId;
+      return it.kind === 'map' && it.layerId === target.layerId;
+    });
+    // fromIdx가 insertIdx보다 앞이면 splice 후 한 칸 당겨짐
+    if (fromIdx < insertIdx) insertIdx--;
+    insertIdx = dropPos === 'after' ? insertIdx + 1 : insertIdx;
+    insertIdx = Math.max(0, Math.min(next.length, insertIdx));
+    next.splice(insertIdx, 0, moved);
+
+    // 결과 역산: 맵레이어 순서 + 캐릭터 z
+    const mapCount = next.filter(it => it.kind === 'map').length;
+    const nextMapOrder = next.filter(it => it.kind === 'map').map(it => it.layerId);
+    const fbTokenPayload = {};
+
+    next.forEach((item, globalIdx) => {
+      if (item.kind !== 'char') return;
+      const t = tokens[item.tokenId];
+      if (!t) return;
+      const newZ = globalIdx >= mapCount ? 1000 + (globalIdx - mapCount) : Math.max(1, globalIdx);
+      t.panelPriority = newZ;
+      const el = document.getElementById(`tok-${item.tokenId}`);
+      if (el) el.style.zIndex = String(newZ);
+      fbTokenPayload[`${item.tokenId}/panelPriority`] = newZ;
+    });
+
+    const mapOrderChanged = nextMapOrder.some((id, i) => id !== order[i]);
+    const charChanged = Object.keys(fbTokenPayload).length > 0;
+    if (!mapOrderChanged && !charChanged) return;
+
+    if (mapOrderChanged) {
+      const nextLayerState = { ...layerState, order: nextMapOrder };
+      stateRoot.mapLayerState = nextLayerState;
+      if (typeof applyMapLayerState === 'function') applyMapLayerState();
+      if (typeof window.requestActiveMapSceneSave === 'function') window.requestActiveMapSceneSave('layer-drag', 260);
+      if (window._FB?.CONFIGURED) {
+        const roomCode = getLiveRoomCode();
+        if (roomCode) {
+          const { db, ref, update } = window._FB;
+          const payload = { mapLayerState: nextLayerState, 'bgm/mapLayerState': nextLayerState };
+          Object.entries(fbTokenPayload).forEach(([k, v]) => { payload[`tokens/${k}`] = v; });
+          update(ref(db, `rooms/${roomCode}`), payload).catch(e => console.warn('drag drop sync failed', e));
+        }
+      }
+    } else if (charChanged) {
+      if (window._FB?.CONFIGURED) {
+        const roomCode = getLiveRoomCode();
+        if (roomCode) {
+          const { db, ref, update } = window._FB;
+          update(ref(db, `rooms/${roomCode}/tokens`), fbTokenPayload)
+            .catch(e => console.warn('char drag drop sync failed', e));
+        }
+      }
+    }
+    renderMapLayerList();
+  }
+
+    function _changeLayerOrderUnified(tokenId, direction) {
     const stateRoot = getStateRoot();
     const tokens = stateRoot.tokens || {};
     const layerState = stateRoot.mapLayerState || {};
