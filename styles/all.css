@@ -1,5 +1,5 @@
-:root{--bgm-expanded-height:286px;--bg:#f2f4f7;--s1:#ffffff;--s2:#f7f8fa;--s3:#dbe1e8;--s4:#c8d0da;--border:#dbe1e8;--border2:#c8d0da;--text:#131415;--muted:#767a8c;--dim:#485666;--accent:#2563eb;--accent-text:#1a4fd6;--a-dim:rgba(37,99,235,.1);--a-glow:rgba(37,99,235,.28);--red:#d94f4f;--green:#4a9e6a;--blue:#2563eb;--r:6px;--rl:12px;--t:.18s ease;--font-head:'DM Sans',sans-serif;--font-body:'DM Sans',sans-serif;--font-mono:'DM Mono',monospace;--chat-font-size:14.5px;}
-[data-theme="dark"]{--bg:#141920;--s1:#1c2330;--s2:#222b3a;--s3:#2a3547;--s4:#344058;--border:#2e3d54;--border2:#3a4d68;--text:#e4e9f0;--muted:#6b7a94;--dim:#8a9ab8;--accent:#4a7ff5;--accent-text:#7aa3ff;--a-dim:rgba(74,127,245,.12);--a-glow:rgba(74,127,245,.3);--red:#e06060;--green:#5aaa78;--blue:#4a7ff5;}
+:root{--bgm-expanded-height:286px;--bg:#f2f4f7;--s1:#ffffff;--s2:#f7f8fa;--s3:#dbe1e8;--s4:#c8d0da;--border:#dbe1e8;--border2:#c8d0da;--text:#131415;--muted:#767a8c;--dim:#485666;--accent:#2563eb;--accent-text:#1a4fd6;--accent-green:#65c000;--a-dim:rgba(37,99,235,.1);--a-glow:rgba(37,99,235,.28);--ag-dim:rgba(101,192,0,.12);--ag-glow:rgba(101,192,0,.3);--red:#d94f4f;--green:#4a9e6a;--blue:#2563eb;--r:6px;--rl:12px;--t:.18s ease;--font-head:'DM Sans',sans-serif;--font-body:'DM Sans',sans-serif;--font-mono:'DM Mono',monospace;--chat-font-size:14.5px;}
+[data-theme="dark"]{--bg:#141920;--s1:#1c2330;--s2:#222b3a;--s3:#2a3547;--s4:#344058;--border:#2e3d54;--border2:#3a4d68;--text:#e4e9f0;--muted:#6b7a94;--dim:#8a9ab8;--accent:#4a7ff5;--accent-text:#7aa3ff;--accent-green:#8ce600;--a-dim:rgba(74,127,245,.12);--a-glow:rgba(74,127,245,.3);--ag-dim:rgba(140,230,0,.1);--ag-glow:rgba(140,230,0,.28);--red:#e06060;--green:#5aaa78;--blue:#4a7ff5;}
 *{box-sizing:border-box;margin:0;padding:0;}
 html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--font-body);font-size:14px;line-height:1.6;-webkit-font-smoothing:antialiased;}
 *{scrollbar-width:thin;scrollbar-color:var(--s4) transparent;}::-webkit-scrollbar{width:4px;}::-webkit-scrollbar-thumb{background:var(--s4);border-radius:2px;}
@@ -1532,3 +1532,27 @@ body.chat-input-is-resizing,body.chat-input-is-resizing *{cursor:ns-resize!impor
 [data-theme="dark"] .campaign-card .cc-edit{background:var(--s3);border-color:var(--border2);color:var(--dim);}
 [data-theme="dark"] .campaign-card .cc-del:hover{color:#f08080;border-color:rgba(224,96,96,.5);background:rgba(224,96,96,.18);}
 [data-theme="dark"] .campaign-card .cc-edit:hover{color:var(--accent-text);border-color:var(--accent);background:var(--a-dim);}
+
+/* ── 형광 초록 포인트 오버라이드 ── */
+/* 탭 활성 언더라인 */
+.ptab.on{border-bottom-color:var(--accent-green)!important;}
+.rtab.on{border-bottom-color:var(--accent-green)!important;}
+/* 온라인 플레이어 점 + 닉네임 */
+.p-chip.online .p-dot{background:var(--accent-green)!important;box-shadow:0 0 5px var(--ag-glow)!important;}
+.p-chip.online span{color:var(--accent-green)!important;}
+/* 맵 토큰 호버 글로우 */
+.map-token:hover{box-shadow:0 0 0 4px var(--ag-glow)!important;}
+/* 포커스 링 (입력창) */
+input:focus,textarea:focus,select:focus{outline-color:var(--accent-green)!important;border-color:var(--accent-green)!important;}
+/* 체크박스/라디오 활성 */
+input[type=checkbox]:checked,input[type=radio]:checked{accent-color:var(--accent-green);}
+/* 이니셔티브 배지 */
+.map-status-initiative-badge{background:linear-gradient(180deg,var(--accent-green),#4a9600)!important;border-color:rgba(101,192,0,.4)!important;color:#fff!important;}
+[data-theme="dark"] .map-status-initiative-badge{background:linear-gradient(180deg,var(--accent-green),#5cb800)!important;}
+/* 태그 활성 */
+.tag.selected{background:var(--accent-green)!important;border-color:var(--accent-green)!important;color:#fff!important;}
+/* 다크모드 테마 토글 트랙 */
+[data-theme="dark"] .theme-toggle-track{background:var(--accent-green)!important;}
+/* 스크롤바 thumb */
+::-webkit-scrollbar-thumb{background:var(--accent-green)!important;}
+body{scrollbar-color:var(--accent-green) var(--s3);}
