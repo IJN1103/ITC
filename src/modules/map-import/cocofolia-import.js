@@ -373,7 +373,7 @@
       `버전: ${escapeHtml(version)}`,
       `배경 이미지: ${room.backgroundUrl ? '있음' : '없음'} / 포그라운드: ${room.foregroundUrl ? '있음' : '없음'}`,
       `렌더 방식: ${room.fieldObjectFit || 'contain'} / 그리드 정렬: ${room.alignWithGrid ? '켜짐' : '꺼짐'}`,
-      `오브젝트: ${Object.keys(entities?.items || {}).length}개 / 마커 패널: ${Object.keys(room?.markers || {}).length}개`,
+      `오브젝트: ${Object.keys(items || {}).length}개 / 마커 패널: ${Object.keys(room?.markers || {}).length}개`,
       `item 수: ${itemCount}개`,
       `리소스 수: ${resourceCount}개`,
       `그리드: ${gridLabel} / 크기 ${Number(room.gridSize || 0) || 0}`,
