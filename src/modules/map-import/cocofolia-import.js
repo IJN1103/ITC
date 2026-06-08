@@ -371,7 +371,8 @@
       `<b>검사 완료</b>`,
       `파일명: ${escapeHtml(file.name)}`,
       `버전: ${escapeHtml(version)}`,
-      `맵 이미지: ${(room.backgroundUrl || room.foregroundUrl) ? '있음' : '없음'}`,
+      `배경 이미지: ${room.backgroundUrl ? '있음' : '없음'} / 포그라운드: ${room.foregroundUrl ? '있음' : '없음'}`,
+      `렌더 방식: ${room.fieldObjectFit || 'contain'} / 그리드 정렬: ${room.alignWithGrid ? '켜짐' : '꺼짐'}`,
       `item 수: ${itemCount}개`,
       `리소스 수: ${resourceCount}개`,
       `그리드: ${gridLabel} / 크기 ${Number(room.gridSize || 0) || 0}`,
@@ -686,7 +687,9 @@
       return;
     }
     const room = validated.parsed?.entities?.room || {};
-    const mapImageName = String(room.backgroundUrl || room.foregroundUrl || '').trim();
+    const bgImageName = String(room.backgroundUrl || '').trim();
+    const fgImageName = String(room.foregroundUrl || '').trim();
+    const mapImageName = bgImageName || fgImageName;
     if (!mapImageName) {
       setError('이 맵세팅에는 맵 이미지가 없습니다.');
       return;
@@ -696,6 +699,8 @@
       setHint('세션 상태를 확인한 뒤 맵 이미지를 업로드하는 중이에요…');
       const { roomCode } = await ensureLiveRoomContext();
       const zip = await window.JSZip.loadAsync(pendingFile);
+
+      // ── 배경 이미지 업로드 ──
       const backgroundEntry = zip.file(mapImageName);
       if (!backgroundEntry) throw new Error('ZIP 안에서 맵 이미지 파일을 찾지 못했어요.');
       const blob = await backgroundEntry.async('blob');
@@ -704,10 +709,25 @@
       const uploadedUrl = await uploadMapLayerBlob(blob, roomCode, `map-bg-${Date.now()}.${ext}`);
       if (!uploadedUrl) throw new Error('맵 이미지 업로드에 실패했어요.');
 
+      // ── 포그라운드 이미지 업로드 (별도로 있을 경우) ──
+      let uploadedFgUrl = null;
+      if (fgImageName && fgImageName !== mapImageName) {
+        setHint('포그라운드 이미지를 업로드하는 중이에요…');
+        const fgEntry = zip.file(fgImageName);
+        if (fgEntry) {
+          const fgBlob = await fgEntry.async('blob');
+          const fgExt = fgImageName.split('.').pop() || 'png';
+          uploadedFgUrl = await uploadMapLayerBlob(fgBlob, roomCode, `map-fg-${Date.now()}.${fgExt}`) || null;
+        }
+      }
+
       const dominantSize = backgroundSize || null;
       const sceneAspect = dominantSize?.width && dominantSize?.height
         ? (dominantSize.width / dominantSize.height)
         : 1;
+
+      // ── 오브젝트 업로드 (SVG 포함) ──
+      setHint('맵세팅 오브젝트를 업로드하는 중이에요…');
       const objectBlueprints = buildImportedMapObjects(validated.parsed?.entities?.items || {}, room, sceneAspect);
       const importedObjects = [];
       const importedPanelTokens = [];
@@ -716,8 +736,12 @@
         const entry = zip.file(blueprint.imageName);
         if (!entry) continue;
         const objectBlob = await entry.async('blob');
-        const objExt = blueprint.imageName.split('.').pop() || 'png';
-        const objectUrl = await uploadMapLayerBlob(objectBlob, roomCode, `map-obj-${i + 1}-${Date.now()}.${objExt}`);
+        const rawExt = String(blueprint.imageName.split('.').pop() || 'png').toLowerCase();
+        // SVG는 그대로 업로드, 나머지는 png 기본
+        const objExt = rawExt === 'svg' ? 'svg' : (rawExt || 'png');
+        const mimeType = objExt === 'svg' ? 'image/svg+xml' : undefined;
+        const uploadBlob = mimeType ? new Blob([objectBlob], { type: mimeType }) : objectBlob;
+        const objectUrl = await uploadMapLayerBlob(uploadBlob, roomCode, `map-obj-${i + 1}-${Date.now()}.${objExt}`);
         if (!objectUrl) continue;
         let coverUrl = '';
         if (blueprint.coverImageName) {
@@ -742,14 +766,20 @@
       await clearPreviousImportedPanelTokens(roomCode, window.St?.mapState?.objects || []);
       await saveImportedPanelTokens(roomCode, importedPanelTokens);
 
+      const fit = String(room.fieldObjectFit || 'contain').trim() || 'contain';
       const nextMapState = {
         background: {
           url: uploadedUrl,
           sourceName: mapImageName,
-          fit: String(room.fieldObjectFit || 'contain').trim() || 'contain',
+          fit,
           importedAt: Date.now(),
         },
-        foreground: null,
+        foreground: uploadedFgUrl ? {
+          url: uploadedFgUrl,
+          sourceName: fgImageName,
+          fit,
+          importedAt: Date.now(),
+        } : null,
         objects: importedObjects,
       };
       const nextLayerState = buildDefaultImportedMapLayerState(nextMapState);
@@ -761,10 +791,10 @@
         'bgm/mapBackgroundFit': nextMapState.background.fit,
         'bgm/mapBackgroundSourceName': nextMapState.background.sourceName || '',
         'bgm/mapBackgroundImportedAt': nextMapState.background.importedAt || Date.now(),
-        'bgm/mapForeground': '',
-        'bgm/mapForegroundFit': '',
-        'bgm/mapForegroundSourceName': '',
-        'bgm/mapForegroundImportedAt': 0,
+        'bgm/mapForeground': nextMapState.foreground?.url || '',
+        'bgm/mapForegroundFit': nextMapState.foreground?.fit || '',
+        'bgm/mapForegroundSourceName': nextMapState.foreground?.sourceName || '',
+        'bgm/mapForegroundImportedAt': nextMapState.foreground?.importedAt || 0,
         'bgm/mapObjects': nextMapState.objects || [],
         'bgm/mapLayerState': nextLayerState,
       });

@@ -90,6 +90,8 @@ function _itcCloudinaryUrlAlreadyTransformed(pathAfterUpload) {
 function _itcGetCloudinaryImageVariant(src, opts = {}) {
   const raw = String(src || '').trim();
   if (!raw || !_itcIsCloudinaryUploadUrl(raw)) return raw;
+  // SVG는 Cloudinary 변환(리사이즈/포맷 변환) 없이 원본 그대로 서빙
+  if (/\.svg(\?|$)/i.test(raw) || raw.includes('/image/upload/') && raw.split('?')[0].endsWith('.svg')) return raw;
 
   const cacheKey = JSON.stringify([raw, opts]);
   _itcGetCloudinaryImageVariant._cache = _itcGetCloudinaryImageVariant._cache || new Map();
