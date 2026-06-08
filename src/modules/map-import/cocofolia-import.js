@@ -169,11 +169,10 @@
         if (blurLayer) { blurLayer.style.backgroundImage = ''; blurLayer.style.display = 'none'; }
       } else {
         const fit = String(background.fit || 'contain').trim() || 'contain';
-        const bgAlignGrid = !!background.alignWithGrid;
         const bgVisible = isMapLayerVisible('background');
         setLazyMapLayerBackground(bgLayer, background.url, 2048, bgVisible);
         bgLayer.style.backgroundSize = fit === 'fill' ? '100% 100%' : (fit === 'cover' ? 'cover' : 'contain');
-        bgLayer.style.backgroundPosition = bgAlignGrid ? '0% 0%' : 'center center';
+        bgLayer.style.backgroundPosition = 'center center';
         // 블러 배경: map-area 전체를 cover로 채워 줌아웃 시 흰 배경 노출 방지
         // fit에 관계없이 항상 표시 (블러 레이어는 map-inner 밖, map-area 직속이므로
         // 줌/팬으로 map-inner가 축소돼도 항상 화면 전체를 덮음)
@@ -198,10 +197,9 @@
         fgLayer.style.backgroundSize = 'contain';
       } else {
         const fit = String(foreground.fit || 'contain').trim() || 'contain';
-        const fgAlignGrid = !!foreground.alignWithGrid;
         setLazyMapLayerBackground(fgLayer, foreground.url, 2048);
         fgLayer.style.backgroundSize = fit === 'fill' ? '100% 100%' : (fit === 'cover' ? 'cover' : 'contain');
-        fgLayer.style.backgroundPosition = fgAlignGrid ? '0% 0%' : 'center center';
+        fgLayer.style.backgroundPosition = 'center center';
         ensureLazyMapLayerElementImage(fgLayer);
       }
     }
