@@ -198,10 +198,15 @@
         fgLayer.style.backgroundPosition = 'center center';
       } else {
         const fit = String(foreground.fit || 'contain').trim() || 'contain';
-        setLazyMapLayerBackground(fgLayer, foreground.url, 2048);
+        // FG는 Cloudinary 리사이즈 변환 없이 원본 URL 직접 사용
+        // (c_limit 등 크기 변환이 적용되면 cover 정렬이 어긋남)
+        const fgUrl = foreground.url;
+        if (fgLayer.dataset.itcMapLazyBgSrc !== fgUrl || !fgLayer.style.backgroundImage) {
+          fgLayer.dataset.itcMapLazyBgSrc = fgUrl;
+          fgLayer.style.backgroundImage = buildCssBackgroundImage(fgUrl);
+        }
         fgLayer.style.backgroundSize = fit === 'fill' ? '100% 100%' : (fit === 'cover' ? 'cover' : 'contain');
         fgLayer.style.backgroundPosition = 'center center';
-        ensureLazyMapLayerElementImage(fgLayer);
       }
     }
     clearImportedMapObjects();
@@ -761,10 +766,12 @@
         if (!entry) continue;
         const objectBlob = await entry.async('blob');
         const rawExt = String(blueprint.imageName.split('.').pop() || 'png').toLowerCase();
-        // SVG는 그대로 업로드, 나머지는 png 기본
-        const objExt = rawExt === 'svg' ? 'svg' : (rawExt || 'png');
-        const mimeType = objExt === 'svg' ? 'image/svg+xml' : undefined;
-        const uploadBlob = mimeType ? new Blob([objectBlob], { type: mimeType }) : objectBlob;
+        // 확장자에 따라 MIME 타입 명시 (Cloudinary가 올바른 포맷으로 저장하도록)
+        const objExt = rawExt === 'svg' ? 'svg' : rawExt === 'jpeg' || rawExt === 'jpg' ? 'jpg' : 'png';
+        const mimeMap = { svg: 'image/svg+xml', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png' };
+        const mimeType = mimeMap[rawExt] || 'image/png';
+        // MIME 타입을 명시해야 Cloudinary가 팔레트 PNG(mode=P) 투명도를 보존함
+        const uploadBlob = new Blob([objectBlob], { type: mimeType });
         const objectUrl = await uploadMapLayerBlob(uploadBlob, roomCode, `map-obj-${i + 1}-${Date.now()}.${objExt}`);
         if (!objectUrl) continue;
         let coverUrl = '';

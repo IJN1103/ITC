@@ -109,7 +109,10 @@ function _itcGetCloudinaryImageVariant(src, opts = {}) {
     if (!after || _itcCloudinaryUrlAlreadyTransformed(after)) return raw;
 
     const parts = [];
-    const format = opts.format === false ? '' : String(opts.format || 'auto').trim();
+    // PNG URL은 f_auto 대신 f_png 강제 → 팔레트 PNG(mode=P)의 투명도 보존
+    const isPngUrl = /\.png([?#]|$)/i.test(raw) || (typeof opts._forcePng === 'boolean' && opts._forcePng);
+    const defaultFormat = isPngUrl ? 'png' : 'auto';
+    const format = opts.format === false ? '' : String(opts.format || defaultFormat).trim();
     const quality = opts.quality === false ? '' : String(opts.quality || 'auto').trim();
     const width = Math.max(1, parseInt(opts.width, 10) || 0);
     const height = Math.max(1, parseInt(opts.height, 10) || 0);
