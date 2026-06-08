@@ -373,6 +373,7 @@
       `버전: ${escapeHtml(version)}`,
       `배경 이미지: ${room.backgroundUrl ? '있음' : '없음'} / 포그라운드: ${room.foregroundUrl ? '있음' : '없음'}`,
       `렌더 방식: ${room.fieldObjectFit || 'contain'} / 그리드 정렬: ${room.alignWithGrid ? '켜짐' : '꺼짐'}`,
+      `오브젝트: ${Object.keys(entities?.items || {}).length}개 / 마커 패널: ${Object.keys(room?.markers || {}).length}개`,
       `item 수: ${itemCount}개`,
       `리소스 수: ${resourceCount}개`,
       `그리드: ${gridLabel} / 크기 ${Number(room.gridSize || 0) || 0}`,
@@ -530,13 +531,28 @@
   }
 
   function buildImportedMapObjects(itemsMap = {}, roomMeta = {}, sceneAspect = 1) {
+    // ── items: type=object인 일반 맵 레이어 오브젝트 ──
     const rawItems = Object.entries(itemsMap)
-      .map(([id, item]) => ({ id, ...(item || {}) }))
+      .map(([id, item]) => ({ id, ...(item || {}), _markerPanel: false }))
       .filter((item) => item.type === 'object' && item.visible !== false && String(item.imageUrl || '').trim());
 
-    if (!rawItems.length) return [];
+    // ── markers: 코코폴리아 '마커 패널' → 이미지가 있으면 스크린 패널로 변환 ──
+    // markers는 items와 별도 키(room.markers)에 저장되며 type 필드가 없음
+    const markerItems = Object.entries(roomMeta?.markers || {})
+      .map(([id, marker]) => ({
+        id: `marker_${id}`,
+        ...(marker || {}),
+        type: 'object',         // items와 동일하게 취급
+        _markerPanel: true,     // 마커 출처 표시
+        _markerText: String(marker?.text || ''),
+        _clickAction: marker?.clickAction || null,
+      }))
+      .filter((item) => String(item.imageUrl || '').trim());
 
-    const bounds = rawItems.reduce((acc, item) => {
+    const allRawItems = [...rawItems, ...markerItems];
+    if (!allRawItems.length) return [];
+
+    const bounds = allRawItems.reduce((acc, item) => {
       const x = Number(item.x || 0);
       const y = Number(item.y || 0);
       const w = Math.max(1, Number(item.width || 1));
@@ -562,7 +578,7 @@
     const baseLeft = centerX - spanW / 2;
     const baseTop = centerY - spanH / 2;
 
-    return rawItems
+    return allRawItems
       .sort((a, b) => {
         const zDiff = Number(a.z || 0) - Number(b.z || 0);
         if (zDiff !== 0) return zDiff;
@@ -607,13 +623,16 @@
           hPct,
           xCenterPct: xPct + (wPct / 2),
           yCenterPct: yPct + (hPct / 2),
+          isMarkerPanel: item._markerPanel === true,
+          markerText: item._markerText || '',
+          markerClickAction: item._clickAction || null,
           panelTokenSeed: {
             sourceItemId: objectId,
             sourceLayerId: `object:${objectId}`,
             sourceImageName: imageName,
             sourceCoverImageName: coverImageName,
             name: displayName,
-            memo,
+            memo: item._markerPanel ? (item._markerText || memo) : memo,
             panelWidth: w,
             panelHeight: h,
             panelLockPosition: item.locked === true,
