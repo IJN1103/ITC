@@ -1396,7 +1396,7 @@ function normalizeRuntimeMapState(value = {}) {
   const foreground = source.foreground && typeof source.foreground === 'object' && source.foreground.url
     ? {
       url: source.foreground.url,
-      fit: source.foreground.fit || 'contain',
+      fit: source.foreground.fit || 'cover',  // FG는 BG와 동일하게 cover 기본값
       sourceName: source.foreground.sourceName || '',
       importedAt: source.foreground.importedAt || 0,
     }
@@ -1420,7 +1420,7 @@ function buildLegacyRoomMapStateFromBgm(bgm = {}) {
       } : null,
       foreground: source.mapForeground ? {
         url: source.mapForeground,
-        fit: source.mapForegroundFit || 'contain',
+        fit: source.mapForegroundFit || 'cover',  // FG는 BG와 동일하게 cover 기본값
         sourceName: source.mapForegroundSourceName || '',
         importedAt: source.mapForegroundImportedAt || 0,
       } : null,

@@ -195,6 +195,7 @@
       if (!foreground?.url) {
         setLazyMapLayerBackground(fgLayer, '');
         fgLayer.style.backgroundSize = 'contain';
+        fgLayer.style.backgroundPosition = 'center center';
       } else {
         const fit = String(foreground.fit || 'contain').trim() || 'contain';
         setLazyMapLayerBackground(fgLayer, foreground.url, 2048);
