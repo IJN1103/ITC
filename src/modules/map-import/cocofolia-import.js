@@ -497,6 +497,8 @@
           height: Number(seed.heightPct ?? seed.hPct ?? blueprint?.hPct ?? 0),
           xCenter: Number(seed.xCenterPct ?? blueprint?.xCenterPct ?? 0),
           yCenter: Number(seed.yCenterPct ?? blueprint?.yCenterPct ?? 0),
+          sourceWidth: Number(seed.panelWidth ?? blueprint?.sourceWidth ?? 0),
+          sourceHeight: Number(seed.panelHeight ?? blueprint?.sourceHeight ?? 0),
         },
       },
       ownerId: String(window.St?.myId || ''),

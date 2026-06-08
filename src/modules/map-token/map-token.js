@@ -1277,8 +1277,21 @@ function applyPanelTokenSize(el, token) {
   const widthPct = Number(layout?.width);
   const heightPct = Number(layout?.height);
   if (Number.isFinite(widthPct) && widthPct > 0 && Number.isFinite(heightPct) && heightPct > 0) {
+    // widthPct는 map-inner 가로 기준 %, heightPct는 세로 기준 %
+    // map-inner의 가로세로 비율이 fieldWidth:fieldHeight와 다를 수 있으므로
+    // 원본 소스 이미지 종횡비를 aspect-ratio로 보존하고 width만 지정한다.
+    // → height는 aspect-ratio에 의해 자동 결정되어 비율 왜곡이 없어짐.
+    const srcW = Number(token?.importedMapObjectMeta?.sourceWidth || layout?.sourceWidth || 0);
+    const srcH = Number(token?.importedMapObjectMeta?.sourceHeight || layout?.sourceHeight || 0);
     el.style.width = widthPct + '%';
-    el.style.height = heightPct + '%';
+    if (srcW > 0 && srcH > 0) {
+      el.style.aspectRatio = `${srcW} / ${srcH}`;
+      el.style.height = 'auto';
+    } else {
+      // 소스 크기 정보 없음: 이미지 로드 후 자연 크기로 비율 자동 보정
+      el.style.aspectRatio = '';
+      el.style.height = heightPct + '%';
+    }
     el.style.minWidth = '0';
     el.style.minHeight = '0';
     return;

@@ -1147,6 +1147,88 @@ window._FB = {
   </div>
 </div>
 
+<!-- 맵 배경/전경 우클릭 메뉴 -->
+<div class="tok-ctx" id="map-bg-ctx" style="display:none">
+  <div class="tok-ctx-item" onclick="openMapBgFgModal()">전경·배경 변경</div>
+</div>
+
+<!-- 전경·배경 변경 모달 -->
+<div class="overlay" id="modal-map-bg-fg">
+  <div class="modal" style="width:min(480px,94vw)">
+    <div class="modal-row">
+      <div class="modal-title">전경 · 배경 설정</div>
+      <button class="modal-close" onclick="closeModal('modal-map-bg-fg')">✕</button>
+    </div>
+    <div class="modal-info" style="line-height:1.7;font-size:12px">
+      <b>배경(Background)</b>: 맵 전체 뒤에 깔리는 이미지입니다.<br>
+      <b>전경(Foreground)</b>: 맵 위에 오버레이되는 이미지로, 캐릭터·오브젝트보다 앞에 렌더됩니다.<br>
+      각 항목에 이미지 URL을 입력하거나 파일을 업로드하세요.
+    </div>
+
+    <!-- 배경 섹션 -->
+    <div class="map-bgfg-section">
+      <div class="map-bgfg-label">
+        <span>배경 이미지</span>
+        <span class="map-bgfg-badge map-bgfg-badge--bg">BG</span>
+      </div>
+      <div class="map-bgfg-preview-row">
+        <div class="map-bgfg-preview" id="bgfg-bg-preview"></div>
+        <div class="map-bgfg-controls">
+          <input type="text" id="bgfg-bg-url" class="input" placeholder="이미지 URL 입력" style="font-size:12px">
+          <div class="map-bgfg-file-row">
+            <label class="btn btn-sm" style="cursor:pointer">
+              파일 선택
+              <input type="file" id="bgfg-bg-file" accept="image/*" style="display:none" onchange="onMapBgFgFileChange('bg',this)">
+            </label>
+            <select id="bgfg-bg-fit" class="input" style="width:auto;font-size:12px">
+              <option value="contain">contain</option>
+              <option value="cover">cover</option>
+              <option value="fill">fill</option>
+            </select>
+          </div>
+          <div class="map-bgfg-action-row">
+            <button class="btn btn-sm" onclick="applyMapBgFgSingle('bg')">배경 적용</button>
+            <button class="btn btn-sm btn-danger-sm" onclick="clearMapBgFgSingle('bg')">배경 제거</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 전경 섹션 -->
+    <div class="map-bgfg-section">
+      <div class="map-bgfg-label">
+        <span>전경 이미지</span>
+        <span class="map-bgfg-badge map-bgfg-badge--fg">FG</span>
+      </div>
+      <div class="map-bgfg-preview-row">
+        <div class="map-bgfg-preview" id="bgfg-fg-preview"></div>
+        <div class="map-bgfg-controls">
+          <input type="text" id="bgfg-fg-url" class="input" placeholder="이미지 URL 입력" style="font-size:12px">
+          <div class="map-bgfg-file-row">
+            <label class="btn btn-sm" style="cursor:pointer">
+              파일 선택
+              <input type="file" id="bgfg-fg-file" accept="image/*" style="display:none" onchange="onMapBgFgFileChange('fg',this)">
+            </label>
+            <select id="bgfg-fg-fit" class="input" style="width:auto;font-size:12px">
+              <option value="contain">contain</option>
+              <option value="cover">cover</option>
+              <option value="fill">fill</option>
+            </select>
+          </div>
+          <div class="map-bgfg-action-row">
+            <button class="btn btn-sm" onclick="applyMapBgFgSingle('fg')">전경 적용</button>
+            <button class="btn btn-sm btn-danger-sm" onclick="clearMapBgFgSingle('fg')">전경 제거</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
+      <button class="btn btn-sm" onclick="closeModal('modal-map-bg-fg')">닫기</button>
+    </div>
+  </div>
+</div>
+
 <!-- 레이어 박스 컨텍스트 메뉴 -->
 <div class="tok-ctx" id="layer-item-ctx">
   <div class="tok-ctx-item" id="layer-ctx-forward" onclick="layerItemCtxAction('layerForward')">앞으로 보내기</div>
@@ -1488,6 +1570,136 @@ window._FB = {
 <script src="src/modules/journal-v1/journal.js"></script>
 <script src="src/modules/speak-as/speak-as.js"></script>
 <script src="src/v1-core.js"></script>
+<script>
+/* ── 전경·배경 설정 기능 ── */
+(function(){
+
+  // 맵 영역(배경/전경) 우클릭 → 컨텍스트 메뉴
+  document.addEventListener('contextmenu', (e) => {
+    const ctx = document.getElementById('map-bg-ctx');
+    if (!ctx) return;
+    const mapArea = e.target.closest('#map-area');
+    if (!mapArea || e.target.closest('.map-token') || e.target.closest('#map-inner .map-import-object')) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const x = Math.min(e.clientX, window.innerWidth - 180);
+    const y = Math.min(e.clientY, window.innerHeight - 60);
+    ctx.style.left = x + 'px';
+    ctx.style.top  = y + 'px';
+    ctx.style.display = 'block';
+  });
+  document.addEventListener('click', () => {
+    const ctx = document.getElementById('map-bg-ctx');
+    if (ctx) ctx.style.display = 'none';
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      const ctx = document.getElementById('map-bg-ctx');
+      if (ctx) ctx.style.display = 'none';
+    }
+  });
+
+  window.openMapBgFgModal = function() {
+    // 현재 상태 반영
+    const mapState = window.St?.mapState || {};
+    const bg = mapState.background || {};
+    const fg = mapState.foreground || {};
+
+    const bgUrl  = document.getElementById('bgfg-bg-url');
+    const fgUrl  = document.getElementById('bgfg-fg-url');
+    const bgFit  = document.getElementById('bgfg-bg-fit');
+    const fgFit  = document.getElementById('bgfg-fg-fit');
+    const bgPrev = document.getElementById('bgfg-bg-preview');
+    const fgPrev = document.getElementById('bgfg-fg-preview');
+
+    if (bgUrl) bgUrl.value = bg.url || '';
+    if (fgUrl) fgUrl.value = fg.url || '';
+    if (bgFit) bgFit.value = bg.fit || 'contain';
+    if (fgFit) fgFit.value = fg.fit || 'contain';
+    if (bgPrev) bgPrev.style.backgroundImage = bg.url ? `url("${bg.url}")` : '';
+    if (fgPrev) fgPrev.style.backgroundImage = fg.url ? `url("${fg.url}")` : '';
+
+    openModal('modal-map-bg-fg');
+  };
+
+  window.onMapBgFgFileChange = async function(type, input) {
+    const file = input?.files?.[0];
+    if (!file) return;
+    const urlEl = document.getElementById(`bgfg-${type}-url`);
+    const prevEl = document.getElementById(`bgfg-${type}-preview`);
+    // 로컬 미리보기
+    const localUrl = URL.createObjectURL(file);
+    if (prevEl) prevEl.style.backgroundImage = `url("${localUrl}")`;
+
+    // Cloudinary 업로드
+    try {
+      if (typeof uploadMapLayerBlob === 'function' && window.St?.roomCode) {
+        const ext = file.name.split('.').pop() || 'png';
+        const uploaded = await uploadMapLayerBlob(file, window.St.roomCode, `map-${type}-manual-${Date.now()}.${ext}`);
+        if (uploaded && urlEl) urlEl.value = uploaded;
+      } else {
+        if (urlEl) urlEl.value = localUrl;
+      }
+    } catch (e) {
+      console.warn('bg/fg upload failed', e);
+      if (urlEl) urlEl.value = localUrl;
+    }
+    input.value = '';
+  };
+
+  window.applyMapBgFgSingle = async function(type) {
+    const urlEl = document.getElementById(`bgfg-${type}-url`);
+    const fitEl = document.getElementById(`bgfg-${type}-fit`);
+    const url = urlEl?.value?.trim() || '';
+    const fit = fitEl?.value || 'contain';
+    if (!url) { if (typeof showToast === 'function') showToast('URL을 입력하거나 파일을 선택해주세요.'); return; }
+
+    const mapState = window.St?.mapState || {};
+    const nextMapState = {
+      ...mapState,
+      [type === 'bg' ? 'background' : 'foreground']: { url, fit, importedAt: Date.now() },
+    };
+    await _saveAndApplyMapState(nextMapState);
+    if (typeof showToast === 'function') showToast(`${type === 'bg' ? '배경' : '전경'} 이미지가 적용됐어요.`);
+  };
+
+  window.clearMapBgFgSingle = async function(type) {
+    const mapState = window.St?.mapState || {};
+    const nextMapState = { ...mapState, [type === 'bg' ? 'background' : 'foreground']: null };
+    await _saveAndApplyMapState(nextMapState);
+    const urlEl = document.getElementById(`bgfg-${type}-url`);
+    const prevEl = document.getElementById(`bgfg-${type}-preview`);
+    if (urlEl) urlEl.value = '';
+    if (prevEl) prevEl.style.backgroundImage = '';
+    if (typeof showToast === 'function') showToast(`${type === 'bg' ? '배경' : '전경'}이 제거됐어요.`);
+  };
+
+  async function _saveAndApplyMapState(nextMapState) {
+    if (window.St) window.St.mapState = nextMapState;
+    if (typeof applyImportedMapState === 'function') applyImportedMapState(nextMapState);
+    if (!window._FB?.CONFIGURED || !window.St?.roomCode) return;
+    const { db, ref, update } = window._FB;
+    const bg = nextMapState.background || {};
+    const fg = nextMapState.foreground || {};
+    await update(ref(db, `rooms/${window.St.roomCode}`), {
+      mapState: nextMapState,
+      'bgm/mapBackground': bg.url || '',
+      'bgm/mapBackgroundFit': bg.fit || '',
+      'bgm/mapBackgroundSourceName': bg.sourceName || '',
+      'bgm/mapBackgroundImportedAt': bg.importedAt || 0,
+      'bgm/mapForeground': fg.url || '',
+      'bgm/mapForegroundFit': fg.fit || '',
+      'bgm/mapForegroundSourceName': fg.sourceName || '',
+      'bgm/mapForegroundImportedAt': fg.importedAt || 0,
+    }).catch(e => console.warn('bg/fg save failed', e));
+    if (typeof window._itcApplyRoomMapStateLocal === 'function') {
+      try { window._itcApplyRoomMapStateLocal(nextMapState, undefined, 'bg-fg-manual'); } catch(e) {}
+    }
+  }
+
+})();
+</script>
+
 <script>
 (function() {
   const STORAGE_KEY = 'itc_theme';

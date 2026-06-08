@@ -1602,3 +1602,19 @@ body{scrollbar-color:var(--accent-green) var(--s3);}
 .map-layer-item--background{background:rgba(37,99,235,.08);border-color:rgba(37,99,235,.35);}
 .map-layer-item--background:hover{background:rgba(37,99,235,.14);border-color:rgba(37,99,235,.55);}
 [data-theme="dark"] .map-layer-item--background{background:rgba(74,127,245,.1);border-color:rgba(74,127,245,.4);}
+/* ── 전경·배경 설정 모달 ── */
+.map-bgfg-section{padding:12px 0;border-bottom:1px solid var(--border);}
+.map-bgfg-section:last-of-type{border-bottom:none;}
+.map-bgfg-label{display:flex;align-items:center;gap:8px;margin-bottom:10px;font-weight:600;font-size:13px;}
+.map-bgfg-badge{font-size:9px;font-weight:800;padding:2px 6px;border-radius:4px;letter-spacing:.08em;}
+.map-bgfg-badge--bg{background:rgba(37,99,235,.12);color:var(--accent-text);border:1px solid rgba(37,99,235,.3);}
+.map-bgfg-badge--fg{background:rgba(132,212,0,.12);color:var(--accent-green);border:1px solid rgba(132,212,0,.35);}
+.map-bgfg-preview-row{display:flex;gap:12px;align-items:flex-start;}
+.map-bgfg-preview{width:100px;height:60px;flex-shrink:0;border-radius:6px;border:1px solid var(--border2);background:var(--s3) center/cover no-repeat;overflow:hidden;}
+.map-bgfg-controls{flex:1;display:flex;flex-direction:column;gap:7px;}
+.map-bgfg-file-row{display:flex;gap:8px;align-items:center;}
+.map-bgfg-action-row{display:flex;gap:8px;}
+.btn-danger-sm{color:var(--red);border-color:rgba(217,79,79,.35);background:rgba(217,79,79,.07);}
+.btn-danger-sm:hover{background:rgba(217,79,79,.16);border-color:rgba(217,79,79,.6);}
+.btn-sm{font:inherit;font-size:12px;padding:5px 12px;border-radius:6px;cursor:pointer;border:1px solid var(--border2);background:var(--s2);color:var(--text);transition:var(--t);}
+.btn-sm:hover{background:var(--s3);}
