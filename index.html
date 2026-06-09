@@ -1256,40 +1256,76 @@ window._FB = {
   </div>
 </div>
 
-<!-- 컷인 관리 모달 -->
+<!-- 컷인 목록 모달 -->
 <div class="overlay" id="modal-cutin">
-  <div class="modal" style="width:min(480px,94vw)">
+  <div class="modal cutin-list-modal">
     <div class="modal-row">
-      <div class="modal-title">컷인 관리</div>
-      <button class="modal-close" onclick="closeModal('modal-cutin')">✕</button>
+      <div class="modal-title">컷인 목록</div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <button class="cutin-add-btn" onclick="openCutinEdit(null)" title="새 컷인 추가">+</button>
+        <button class="modal-close" onclick="closeModal('modal-cutin')">✕</button>
+      </div>
     </div>
-    <div class="modal-info" style="font-size:12px;line-height:1.7">
-      채팅 메시지의 <b>마지막 단어</b>가 트리거와 일치하면 컷인 이미지가 맵 중앙에 3초간 표시됩니다.
+    <div id="cutin-list" class="cutin-list-body"></div>
+    <div id="cutin-list-empty" class="cutin-empty" style="display:none">등록된 컷인이 없습니다.</div>
+  </div>
+</div>
+
+<!-- 컷인 편집 모달 -->
+<div class="overlay" id="modal-cutin-edit">
+  <div class="modal cutin-edit-modal">
+    <div class="modal-row">
+      <div class="modal-title" id="cutin-edit-title">컷인 편집</div>
+      <button class="modal-close" onclick="closeCutinEdit()">✕</button>
     </div>
 
-    <!-- 컷인 목록 -->
-    <div id="cutin-list" style="display:flex;flex-direction:column;gap:8px;max-height:260px;overflow-y:auto;margin-bottom:12px;padding-right:2px"></div>
+    <!-- 제목(트리거) -->
+    <div class="cutin-edit-section">
+      <label class="cutin-edit-label">제목</label>
+      <input id="cutin-edit-trigger" class="input cutin-edit-input" placeholder="> 보통 성공">
+      <div class="cutin-edit-hint">채팅 메시지의 마지막 단어가 이 제목과 일치할 때 컷인이 재생됩니다.</div>
+    </div>
 
-    <!-- 컷인 추가 폼 -->
-    <div style="border:1px solid var(--border);border-radius:var(--rl);padding:14px;background:var(--s2)">
-      <div style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:10px">새 컷인 추가</div>
-      <div style="display:flex;flex-direction:column;gap:8px">
-        <input id="cutin-new-trigger" class="input" placeholder="트리거 단어 (예: 성공)" style="font-size:13px">
-        <div style="display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center">
-          <input id="cutin-new-img-url" class="input" placeholder="이미지 URL" style="font-size:12px">
-          <label class="btn-sm" style="cursor:pointer;white-space:nowrap">
-            파일 선택
-            <input type="file" id="cutin-new-img-file" accept="image/*" style="display:none" onchange="onCutinImageFileChange(this)">
-          </label>
-        </div>
-        <div id="cutin-new-preview" style="width:100%;height:120px;background:var(--s3);border-radius:8px;border:1px solid var(--border);background-size:contain;background-repeat:no-repeat;background-position:center;display:none"></div>
-        <input id="cutin-new-sound-url" class="input" placeholder="사운드 URL (선택사항)" style="font-size:12px">
-        <div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)">
-          <span>페이드아웃:</span>
-          <input id="cutin-new-duration" type="number" class="input" value="3" min="1" max="30" style="width:60px;font-size:12px">
-          <span>초</span>
-        </div>
-        <button class="btn-primary" onclick="addCutin()" style="font-size:13px">추가</button>
+    <!-- 이미지 -->
+    <div class="cutin-edit-img-wrap">
+      <div id="cutin-edit-img-preview" class="cutin-edit-img-preview">
+        <span class="cutin-edit-img-placeholder">이미지 없음</span>
+        <img id="cutin-edit-img-el" src="" alt="" style="display:none;width:100%;height:100%;object-fit:contain;border-radius:6px">
+      </div>
+      <div class="cutin-edit-img-btns">
+        <label class="cutin-edit-img-btn">
+          이미지 업로드
+          <input type="file" id="cutin-edit-img-file" accept="image/*" style="display:none" onchange="onCutinEditImageFile(this)">
+        </label>
+        <input id="cutin-edit-img-url" class="input" placeholder="또는 이미지 URL 입력" style="font-size:12px;margin-top:6px">
+      </div>
+    </div>
+
+    <!-- 음원 -->
+    <div class="cutin-edit-section">
+      <label class="cutin-edit-label">음원</label>
+      <div class="cutin-edit-sound-row">
+        <label class="cutin-edit-sound-btn">
+          음원 파일 선택 <span style="font-size:10px;color:var(--muted)">(10초 이하)</span>
+          <input type="file" id="cutin-edit-sound-file" accept="audio/*" style="display:none" onchange="onCutinEditSoundFile(this)">
+        </label>
+      </div>
+      <input id="cutin-edit-sound-url" class="input" placeholder="또는 YouTube URL / 음원 URL 입력" style="font-size:12px;margin-top:6px">
+      <div id="cutin-edit-sound-name" class="cutin-edit-sound-name" style="display:none"></div>
+      <!-- 볼륨 슬라이더 -->
+      <div class="cutin-edit-vol-row">
+        <span class="cutin-edit-vol-label">볼륨</span>
+        <input type="range" id="cutin-edit-volume" min="0" max="1" step="0.05" value="0.8" class="cutin-vol-slider">
+        <span id="cutin-edit-vol-val" class="cutin-edit-vol-val">0.8</span>
+      </div>
+    </div>
+
+    <!-- 하단 버튼 -->
+    <div class="cutin-edit-footer">
+      <button class="cutin-edit-del-btn" id="cutin-edit-del-btn" onclick="deleteCutinEdit()" style="display:none">삭제</button>
+      <div style="display:flex;gap:8px;margin-left:auto">
+        <button class="cutin-edit-play-btn" onclick="previewCutinEdit()">재생</button>
+        <button class="btn-primary cutin-edit-save-btn" onclick="saveCutinEdit()">저장</button>
       </div>
     </div>
   </div>
@@ -1822,145 +1858,251 @@ window._FB = {
 <script>
 /* ── 컷인(Cutin) 기능 ── */
 (function(){
-  // ── 내부 상태 ──
-  let _cutins = {};           // { id: { trigger, imageUrl, soundUrl, duration } }
+  let _cutins = {};
   let _cutinFbUnsub = null;
   let _cutinOverlayTimer = null;
-  let _lastCutinKey = null;
+  let _editingId = null;   // null = 신규, string = 수정 중
+  let _editSoundBlob = null;
+  let _editSoundObjectUrl = null;
 
-  // ── Firebase 경로 ──
+  // ── Firebase ──
   function _cutinRef() {
-    const roomCode = window.St?.roomCode;
-    if (!roomCode || !window._FB?.CONFIGURED) return null;
+    const rc = window.St?.roomCode;
+    if (!rc || !window._FB?.CONFIGURED) return null;
     const { db, ref } = window._FB;
-    return ref(db, `rooms/${roomCode}/cutins`);
+    return ref(db, `rooms/${rc}/cutins`);
   }
 
-  // ── 컷인 목록 Firebase 구독 ──
   function _subscribeCutins(roomCode) {
     if (_cutinFbUnsub) { try { _cutinFbUnsub(); } catch(e){} }
     if (!roomCode || !window._FB?.CONFIGURED) return;
     const { db, ref, onValue } = window._FB;
-    const r = ref(db, `rooms/${roomCode}/cutins`);
-    _cutinFbUnsub = onValue(r, snap => {
+    _cutinFbUnsub = onValue(ref(db, `rooms/${roomCode}/cutins`), snap => {
       _cutins = snap.val() || {};
       _renderCutinList();
     });
   }
 
-  // ── 컷인 모달 열기 ──
+  // ── 목록 모달 ──
   window.openCutinModal = function() {
     _renderCutinList();
     openModal('modal-cutin');
   };
 
-  // ── 목록 렌더 ──
   function _renderCutinList() {
-    const list = document.getElementById('cutin-list');
+    const list  = document.getElementById('cutin-list');
+    const empty = document.getElementById('cutin-list-empty');
     if (!list) return;
     const entries = Object.entries(_cutins);
-    if (!entries.length) {
-      list.innerHTML = '<div style="text-align:center;padding:20px;color:var(--muted);font-size:12px">등록된 컷인이 없습니다.</div>';
-      return;
-    }
-    list.innerHTML = entries.map(([id, ct]) => `
-      <div class="cutin-item">
-        <img class="cutin-item-thumb" src="${ct.imageUrl || ''}" alt="" onerror="this.style.display='none'">
+    empty && (empty.style.display = entries.length ? 'none' : '');
+    list.innerHTML = entries.map(([id, ct]) => {
+      const thumb = ct.imageUrl ? `<img class="cutin-item-thumb" src="${ct.imageUrl}" alt="" onerror="this.src=''">` : '<div class="cutin-item-thumb"></div>';
+      const sound = ct.soundUrl ? '🔊' : '';
+      return `<div class="cutin-item" onclick="openCutinEdit('${id}')">
+        ${thumb}
         <div class="cutin-item-info">
-          <div class="cutin-item-trigger">"${_esc(ct.trigger)}"</div>
-          <div class="cutin-item-sub">${ct.duration || 3}초 · ${ct.soundUrl ? '🔊 사운드 있음' : '소리 없음'}</div>
+          <div class="cutin-item-trigger">${_esc(ct.trigger || '')}</div>
+          <div class="cutin-item-sub">${ct.duration || 3}초 ${sound}</div>
         </div>
-        <div class="cutin-item-actions">
-          <button class="cutin-item-play" onclick="triggerCutinById('${id}')">▶ 재생</button>
-          <button class="cutin-item-del" onclick="deleteCutin('${id}')">✕</button>
-        </div>
-      </div>`).join('');
+        <button class="cutin-item-play-btn" onclick="event.stopPropagation();triggerCutinById('${id}')" title="재생">▶</button>
+      </div>`;
+    }).join('');
   }
 
+  // ── 편집 모달 열기 ──
+  window.openCutinEdit = function(id) {
+    _editingId = id;
+    _editSoundBlob = null;
+    if (_editSoundObjectUrl) { URL.revokeObjectURL(_editSoundObjectUrl); _editSoundObjectUrl = null; }
+
+    const ct = id ? (_cutins[id] || {}) : {};
+    const isNew = !id;
+
+    // 제목
+    const titleEl = document.getElementById('cutin-edit-title');
+    if (titleEl) titleEl.textContent = isNew ? '새 컷인' : '컷인 편집';
+
+    // 트리거
+    const trigEl = document.getElementById('cutin-edit-trigger');
+    if (trigEl) trigEl.value = ct.trigger || '';
+
+    // 이미지
+    const imgEl   = document.getElementById('cutin-edit-img-el');
+    const imgPrev = document.getElementById('cutin-edit-img-preview');
+    const imgUrl  = document.getElementById('cutin-edit-img-url');
+    if (imgUrl) imgUrl.value = ct.imageUrl || '';
+    if (imgEl && ct.imageUrl) {
+      imgEl.src = ct.imageUrl; imgEl.style.display = '';
+      const ph = imgPrev?.querySelector('.cutin-edit-img-placeholder');
+      if (ph) ph.style.display = 'none';
+    } else if (imgEl) {
+      imgEl.src = ''; imgEl.style.display = 'none';
+      const ph = imgPrev?.querySelector('.cutin-edit-img-placeholder');
+      if (ph) ph.style.display = '';
+    }
+
+    // 음원
+    const soundUrl  = document.getElementById('cutin-edit-sound-url');
+    const soundName = document.getElementById('cutin-edit-sound-name');
+    if (soundUrl) soundUrl.value = ct.soundUrl || '';
+    if (soundName) { soundName.style.display = ct.soundUrl ? '' : 'none'; soundName.textContent = ct.soundUrl ? '음원 설정됨' : ''; }
+
+    // 볼륨
+    const volSlider = document.getElementById('cutin-edit-volume');
+    const volVal    = document.getElementById('cutin-edit-vol-val');
+    const vol = ct.volume != null ? ct.volume : 0.8;
+    if (volSlider) { volSlider.value = vol; volSlider.oninput = () => { if (volVal) volVal.textContent = parseFloat(volSlider.value).toFixed(1); }; }
+    if (volVal) volVal.textContent = parseFloat(vol).toFixed(1);
+
+    // 삭제 버튼 표시
+    const delBtn = document.getElementById('cutin-edit-del-btn');
+    if (delBtn) delBtn.style.display = isNew ? 'none' : '';
+
+    // img-url 변경 감지
+    if (imgUrl) {
+      imgUrl.oninput = () => {
+        const url = imgUrl.value.trim();
+        if (imgEl) { imgEl.src = url; imgEl.style.display = url ? '' : 'none'; }
+        const ph = imgPrev?.querySelector('.cutin-edit-img-placeholder');
+        if (ph) ph.style.display = url ? 'none' : '';
+      };
+    }
+
+    openModal('modal-cutin-edit');
+  };
+
+  window.closeCutinEdit = function() {
+    closeModal('modal-cutin-edit');
+    _editingId = null;
+  };
+
   // ── 이미지 파일 선택 ──
-  window.onCutinImageFileChange = async function(input) {
-    const file = input?.files?.[0];
-    if (!file) return;
-    const urlEl = document.getElementById('cutin-new-img-url');
-    const prev  = document.getElementById('cutin-new-preview');
+  window.onCutinEditImageFile = async function(input) {
+    const file = input?.files?.[0]; if (!file) return;
+    input.value = '';
     const local = URL.createObjectURL(file);
-    if (prev) { prev.style.backgroundImage = `url("${local}")`; prev.style.display = ''; }
+    const imgEl   = document.getElementById('cutin-edit-img-el');
+    const imgPrev = document.getElementById('cutin-edit-img-preview');
+    const urlEl   = document.getElementById('cutin-edit-img-url');
+    if (imgEl) { imgEl.src = local; imgEl.style.display = ''; }
+    const ph = imgPrev?.querySelector('.cutin-edit-img-placeholder');
+    if (ph) ph.style.display = 'none';
+    // Cloudinary 업로드
     try {
       if (typeof uploadMapLayerBlob === 'function' && window.St?.roomCode) {
         const ext = file.name.split('.').pop() || 'png';
-        const url = await uploadMapLayerBlob(file, window.St.roomCode, `cutin-${Date.now()}.${ext}`);
-        if (url && urlEl) urlEl.value = url;
+        const url = await uploadMapLayerBlob(file, window.St.roomCode, `cutin-img-${Date.now()}.${ext}`);
+        if (url) { if (urlEl) urlEl.value = url; if (imgEl) imgEl.src = url; }
       } else if (urlEl) { urlEl.value = local; }
     } catch(e) { if (urlEl) urlEl.value = local; }
+  };
+
+  // ── 음원 파일 선택 (10초 이하 제한) ──
+  window.onCutinEditSoundFile = async function(input) {
+    const file = input?.files?.[0]; if (!file) return;
     input.value = '';
-  };
-
-  // ── 컷인 추가 ──
-  window.addCutin = async function() {
-    const trigger  = document.getElementById('cutin-new-trigger')?.value?.trim();
-    const imageUrl = document.getElementById('cutin-new-img-url')?.value?.trim();
-    const soundUrl = document.getElementById('cutin-new-sound-url')?.value?.trim() || '';
-    const duration = Math.max(1, parseInt(document.getElementById('cutin-new-duration')?.value || '3') || 3);
-    if (!trigger) { showToast('트리거 단어를 입력해주세요.'); return; }
-    if (!imageUrl) { showToast('이미지를 선택하거나 URL을 입력해주세요.'); return; }
-    const r = _cutinRef();
-    if (!r) { showToast('방에 접속된 상태에서만 추가할 수 있어요.'); return; }
-    const { push, set } = window._FB;
-    const newRef = push(r);
-    await set(newRef, { trigger, imageUrl, soundUrl, duration, createdAt: Date.now() });
-    // 입력 초기화
-    ['cutin-new-trigger','cutin-new-img-url','cutin-new-sound-url'].forEach(id => {
-      const el = document.getElementById(id); if (el) el.value = '';
+    // 재생 길이 확인
+    const checkDur = () => new Promise(resolve => {
+      const a = new Audio(); a.src = URL.createObjectURL(file);
+      a.onloadedmetadata = () => resolve(a.duration);
+      a.onerror = () => resolve(0);
     });
-    const prev = document.getElementById('cutin-new-preview');
-    if (prev) { prev.style.backgroundImage = ''; prev.style.display = 'none'; }
-    const dur = document.getElementById('cutin-new-duration');
-    if (dur) dur.value = '3';
-    showToast('컷인이 추가됐어요.');
+    const dur = await checkDur();
+    if (dur > 10) { if (typeof showToast === 'function') showToast('10초 이하 음원만 업로드할 수 있어요.'); return; }
+    _editSoundBlob = file;
+    if (_editSoundObjectUrl) URL.revokeObjectURL(_editSoundObjectUrl);
+    _editSoundObjectUrl = URL.createObjectURL(file);
+    const soundName = document.getElementById('cutin-edit-sound-name');
+    const soundUrl  = document.getElementById('cutin-edit-sound-url');
+    if (soundName) { soundName.textContent = file.name; soundName.style.display = ''; }
+    if (soundUrl)  { soundUrl.value = ''; }
   };
 
-  // ── 컷인 삭제 ──
-  window.deleteCutin = async function(id) {
+  // ── 편집 저장 ──
+  window.saveCutinEdit = async function() {
+    const trigger = document.getElementById('cutin-edit-trigger')?.value?.trim();
+    if (!trigger) { if (typeof showToast === 'function') showToast('트리거 단어를 입력해주세요.'); return; }
+    let imageUrl = document.getElementById('cutin-edit-img-url')?.value?.trim() || '';
+    if (!imageUrl) { if (typeof showToast === 'function') showToast('이미지를 선택해주세요.'); return; }
     const r = _cutinRef();
-    if (!r) return;
-    const { child, remove } = window._FB;
-    await remove(child(r, id));
+    if (!r) { if (typeof showToast === 'function') showToast('방에 접속된 상태에서만 저장할 수 있어요.'); return; }
+
+    // 음원 처리: 파일이 있으면 업로드, 없으면 URL 필드 사용
+    let soundUrl = '';
+    if (_editSoundBlob) {
+      try {
+        const ext = _editSoundBlob.name.split('.').pop() || 'mp3';
+        if (typeof uploadMapLayerBlob === 'function' && window.St?.roomCode) {
+          soundUrl = await uploadMapLayerBlob(_editSoundBlob, window.St.roomCode, `cutin-snd-${Date.now()}.${ext}`) || '';
+        } else { soundUrl = _editSoundObjectUrl || ''; }
+      } catch(e) {}
+    } else {
+      soundUrl = document.getElementById('cutin-edit-sound-url')?.value?.trim() || '';
+    }
+
+    const volume   = parseFloat(document.getElementById('cutin-edit-volume')?.value || '0.8');
+    const duration = 3; // 기본 3초 고정
+    const data = { trigger, imageUrl, soundUrl, volume, duration, updatedAt: Date.now() };
+
+    const { set, push, child, update } = window._FB;
+    if (_editingId) {
+      await update(child(r, _editingId), data);
+    } else {
+      const newRef = push(r);
+      await set(newRef, { ...data, createdAt: Date.now() });
+    }
+    if (typeof showToast === 'function') showToast('저장됐어요.');
+    closeCutinEdit();
   };
 
-  // ── 컷인 직접 재생 ──
+  // ── 편집 창에서 삭제 ──
+  window.deleteCutinEdit = async function() {
+    if (!_editingId) return;
+    const r = _cutinRef(); if (!r) return;
+    const { child, remove } = window._FB;
+    await remove(child(r, _editingId));
+    closeCutinEdit();
+  };
+
+  // ── 목록에서 삭제 (하위 호환) ──
+  window.deleteCutin = window.deleteCutinEdit;
+
+  // ── 편집 창 미리보기 ──
+  window.previewCutinEdit = function() {
+    const imageUrl  = document.getElementById('cutin-edit-img-url')?.value?.trim() || '';
+    const soundUrl  = _editSoundObjectUrl || document.getElementById('cutin-edit-sound-url')?.value?.trim() || '';
+    const volume    = parseFloat(document.getElementById('cutin-edit-volume')?.value || '0.8');
+    if (!imageUrl) { if (typeof showToast === 'function') showToast('이미지를 먼저 설정해주세요.'); return; }
+    _playCutin({ imageUrl, soundUrl, volume, duration: 3 });
+  };
+
+  // ── 목록에서 재생 ──
   window.triggerCutinById = function(id) {
-    const ct = _cutins[id];
-    if (!ct) return;
+    const ct = _cutins[id]; if (!ct) return;
     _playCutin(ct);
   };
 
-  // ── 컷인 재생 ──
+  // ── 재생 ──
   function _playCutin(ct) {
     const overlay = document.getElementById('cutin-overlay');
     const img     = document.getElementById('cutin-img');
     const display = document.getElementById('cutin-display');
     if (!overlay || !img) return;
-
-    // 이전 타이머 취소
     if (_cutinOverlayTimer) { clearTimeout(_cutinOverlayTimer); _cutinOverlayTimer = null; }
-
     img.src = ct.imageUrl || '';
     display.style.opacity = '1';
     overlay.classList.add('active');
-
-    // 사운드 재생
     if (ct.soundUrl) {
       try {
         const audio = new Audio(ct.soundUrl);
-        audio.volume = 0.8;
+        audio.volume = ct.volume != null ? Math.min(1, Math.max(0, ct.volume)) : 0.8;
         audio.play().catch(() => {});
       } catch(e) {}
     }
-
     const ms = Math.max(1, (ct.duration || 3)) * 1000;
     _cutinOverlayTimer = setTimeout(() => {
       display.style.opacity = '0';
-      setTimeout(() => { overlay.classList.remove('active'); }, 650);
+      setTimeout(() => overlay.classList.remove('active'), 650);
       _cutinOverlayTimer = null;
     }, ms);
   }
@@ -1976,8 +2118,7 @@ window._FB = {
     }
   });
 
-  // ── 채팅 메시지 트리거 감지 ──
-  // appendChatMsg를 wrap하여 마지막 단어 체크
+  // ── 채팅 트리거 ──
   document.addEventListener('DOMContentLoaded', () => {
     if (typeof appendChatMsg !== 'undefined') {
       const _orig = appendChatMsg;
@@ -1991,30 +2132,19 @@ window._FB = {
   function _checkCutinTrigger(msg) {
     const text = String(msg?.text || '').trim();
     if (!text) return;
-    // 마지막 단어 추출 (공백/개행으로 분리)
-    const words = text.split(/\s+/);
-    const lastWord = words[words.length - 1]?.toLowerCase() || '';
+    const lastWord = text.split(/\s+/).pop()?.toLowerCase() || '';
     if (!lastWord) return;
-    const entries = Object.entries(_cutins);
-    for (const [id, ct] of entries) {
+    for (const [, ct] of Object.entries(_cutins)) {
       const trigger = String(ct.trigger || '').trim().toLowerCase();
-      if (trigger && lastWord === trigger) {
-        _playCutin(ct);
-        break;
-      }
+      if (trigger && lastWord === trigger) { _playCutin(ct); break; }
     }
   }
 
-  // ── 방 입장 시 구독 시작 ──
-  document.addEventListener('itc-room-joined', e => {
-    _subscribeCutins(e.detail?.roomCode || window.St?.roomCode);
-  });
-  // 이미 방 안에 있을 때 대비
+  // ── 구독 ──
+  document.addEventListener('itc-room-joined', e => _subscribeCutins(e.detail?.roomCode || window.St?.roomCode));
   if (window.St?.roomCode) _subscribeCutins(window.St.roomCode);
 
   function _esc(s) { return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-
-  // 전역 노출
   window._subscribeCutins = _subscribeCutins;
 })();
 </script>

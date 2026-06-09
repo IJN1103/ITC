@@ -1627,13 +1627,53 @@ body{scrollbar-color:var(--accent-green) var(--s3);}
 #map-cutin-trigger{top:232px!important;right:12px;}
 #cutin-overlay{display:none;}
 #cutin-overlay.active{display:flex;}
-.cutin-item{display:grid;grid-template-columns:48px 1fr auto;gap:10px;align-items:center;padding:9px 10px;background:var(--s1);border:1px solid var(--border);border-radius:10px;}
-.cutin-item-thumb{width:48px;height:36px;object-fit:contain;border-radius:5px;background:var(--s3);}
+
+/* 목록 모달 */
+.cutin-list-modal{width:min(360px,94vw)!important;max-width:none!important;}
+.cutin-list-body{display:flex;flex-direction:column;gap:6px;max-height:360px;overflow-y:auto;padding-right:2px;margin-top:4px;}
+.cutin-empty{text-align:center;padding:28px 0;color:var(--muted);font-size:12px;}
+.cutin-add-btn{width:30px;height:30px;background:var(--a-dim);border:1px solid rgba(37,99,235,.25);color:var(--accent-text);border-radius:8px;font-size:20px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:var(--t);}
+.cutin-add-btn:hover{background:rgba(37,99,235,.18);}
+
+/* 목록 아이템 */
+.cutin-item{display:grid;grid-template-columns:52px 1fr auto;gap:10px;align-items:center;padding:10px 10px;background:var(--s2);border:1px solid var(--border);border-radius:10px;cursor:pointer;transition:var(--t);}
+.cutin-item:hover{border-color:var(--border2);background:var(--s3);}
+.cutin-item-thumb{width:52px;height:40px;object-fit:cover;border-radius:6px;background:var(--s3);}
 .cutin-item-info{min-width:0;}
-.cutin-item-trigger{font-size:13px;font-weight:600;color:var(--text);}
-.cutin-item-sub{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.cutin-item-actions{display:flex;gap:6px;}
-.cutin-item-play{background:var(--a-dim);border:1px solid rgba(37,99,235,.25);color:var(--accent-text);border-radius:7px;padding:5px 10px;font-size:11px;cursor:pointer;transition:var(--t);}
-.cutin-item-play:hover{background:rgba(37,99,235,.2);}
-.cutin-item-del{background:rgba(217,79,79,.08);border:1px solid rgba(217,79,79,.25);color:var(--red);border-radius:7px;padding:5px 8px;font-size:11px;cursor:pointer;transition:var(--t);}
-.cutin-item-del:hover{background:rgba(217,79,79,.18);}
+.cutin-item-trigger{font-size:13px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.cutin-item-sub{font-size:11px;color:var(--muted);margin-top:2px;}
+.cutin-item-play-btn{width:30px;height:30px;background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;border-radius:6px;transition:var(--t);flex-shrink:0;}
+.cutin-item-play-btn:hover{background:var(--a-dim);color:var(--accent-text);}
+
+/* 편집 모달 */
+.cutin-edit-modal{width:min(360px,94vw)!important;max-width:none!important;}
+.cutin-edit-section{margin-bottom:14px;}
+.cutin-edit-label{display:block;font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:6px;}
+.cutin-edit-input{font-size:14px!important;font-weight:600;}
+.cutin-edit-hint{font-size:11px;color:var(--muted);line-height:1.5;margin-top:6px;}
+
+/* 이미지 영역 */
+.cutin-edit-img-wrap{margin-bottom:14px;}
+.cutin-edit-img-preview{width:100%;height:180px;background:var(--s3);border:1px solid var(--border);border-radius:10px;display:flex;align-items:center;justify-content:center;overflow:hidden;margin-bottom:8px;position:relative;}
+.cutin-edit-img-placeholder{font-size:12px;color:var(--muted);}
+.cutin-edit-img-btns{display:flex;flex-direction:column;gap:0;}
+.cutin-edit-img-btn{display:inline-flex;align-items:center;justify-content:center;padding:7px 14px;background:var(--s2);border:1px solid var(--border2);border-radius:8px;font-size:12px;color:var(--text);cursor:pointer;transition:var(--t);font-family:inherit;}
+.cutin-edit-img-btn:hover{background:var(--s3);}
+
+/* 음원 */
+.cutin-edit-sound-row{display:flex;gap:8px;}
+.cutin-edit-sound-btn{display:inline-flex;align-items:center;gap:6px;padding:7px 14px;background:var(--s2);border:1px solid var(--border2);border-radius:8px;font-size:12px;color:var(--text);cursor:pointer;transition:var(--t);font-family:inherit;}
+.cutin-edit-sound-btn:hover{background:var(--s3);}
+.cutin-edit-sound-name{font-size:11px;color:var(--accent-text);background:var(--a-dim);border-radius:6px;padding:5px 9px;margin-top:4px;}
+.cutin-edit-vol-row{display:flex;align-items:center;gap:8px;margin-top:10px;}
+.cutin-edit-vol-label{font-size:11px;color:var(--muted);white-space:nowrap;}
+.cutin-vol-slider{flex:1;height:4px;cursor:pointer;accent-color:var(--accent);}
+.cutin-edit-vol-val{font-size:11px;color:var(--muted);width:28px;text-align:right;}
+
+/* 하단 버튼 */
+.cutin-edit-footer{display:flex;align-items:center;margin-top:18px;padding-top:14px;border-top:1px solid var(--border);}
+.cutin-edit-del-btn{background:none;border:none;color:var(--red);font-size:13px;cursor:pointer;padding:6px 4px;font-family:inherit;transition:var(--t);}
+.cutin-edit-del-btn:hover{text-decoration:underline;}
+.cutin-edit-play-btn{background:var(--s2);border:1px solid var(--border2);color:var(--text);border-radius:8px;padding:7px 16px;font-size:13px;cursor:pointer;font-family:inherit;transition:var(--t);}
+.cutin-edit-play-btn:hover{background:var(--s3);}
+.cutin-edit-save-btn{padding:7px 20px!important;font-size:13px!important;}
