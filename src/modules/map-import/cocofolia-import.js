@@ -750,11 +750,9 @@
         setHint('이미지를 업로드하는 중이에요…');
         const { roomCode } = await ensureLiveRoomContext();
         const ext = validated.parsed._imageExt || 'png';
-        const mimeType = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : 'image/png';
-        const uploadBlob = new Blob([pendingFile], { type: mimeType });
-        const uploadedUrl = await uploadMapLayerBlob(uploadBlob, roomCode, `map-bg-${Date.now()}.${ext}`);
+        // File은 Blob의 서브클래스 — 이중 래핑하지 않고 그대로 전달
+        const uploadedUrl = await uploadMapLayerBlob(pendingFile, roomCode, `map-bg-${Date.now()}.${ext}`);
         if (!uploadedUrl) throw new Error('이미지 업로드에 실패했어요.');
-        const imgSize = await getImageSizeFromBlob(pendingFile);
         const nextMapState = {
           background: { url: uploadedUrl, sourceName: pendingFile.name, fit: 'fill', importedAt: Date.now() },
           foreground: null,
@@ -762,21 +760,23 @@
         };
         await clearPreviousImportedPanelTokens(roomCode, window.St?.mapState?.objects || []);
         const nextLayerState = buildDefaultImportedMapLayerState(nextMapState);
-        const { db, ref, update } = window._FB;
-        await update(ref(db, `rooms/${roomCode}`), {
-          mapState: nextMapState,
-          mapLayerState: nextLayerState,
-          'bgm/mapBackground': uploadedUrl,
-          'bgm/mapBackgroundFit': 'fill',
-          'bgm/mapBackgroundSourceName': pendingFile.name,
-          'bgm/mapBackgroundImportedAt': Date.now(),
-          'bgm/mapForeground': '',
-          'bgm/mapForegroundFit': '',
-          'bgm/mapForegroundSourceName': '',
-          'bgm/mapForegroundImportedAt': 0,
-          'bgm/mapObjects': [],
-          'bgm/mapLayerState': nextLayerState,
-        });
+        if (window._FB?.CONFIGURED) {
+          const { db, ref, update } = window._FB;
+          await update(ref(db, `rooms/${roomCode}`), {
+            mapState: nextMapState,
+            mapLayerState: nextLayerState,
+            'bgm/mapBackground': uploadedUrl,
+            'bgm/mapBackgroundFit': 'fill',
+            'bgm/mapBackgroundSourceName': pendingFile.name,
+            'bgm/mapBackgroundImportedAt': Date.now(),
+            'bgm/mapForeground': '',
+            'bgm/mapForegroundFit': '',
+            'bgm/mapForegroundSourceName': '',
+            'bgm/mapForegroundImportedAt': 0,
+            'bgm/mapObjects': [],
+            'bgm/mapLayerState': nextLayerState,
+          });
+        }
         if (window.St) { window.St.mapState = nextMapState; window.St.mapLayerState = nextLayerState; }
         if (typeof window._itcApplyRoomMapStateLocal === 'function') {
           window._itcApplyRoomMapStateLocal(nextMapState, nextLayerState, 'map-import-single-image');
