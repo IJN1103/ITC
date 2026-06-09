@@ -1268,6 +1268,9 @@ window._FB = {
     </div>
     <div id="cutin-list" class="cutin-list-body"></div>
     <div id="cutin-list-empty" class="cutin-empty" style="display:none">등록된 컷인이 없습니다.</div>
+    <div id="cutin-list-footer" class="cutin-list-footer" style="display:none">
+      <button class="cutin-delete-all-btn" onclick="deleteAllCutins()">전체 삭제</button>
+    </div>
   </div>
 </div>
 
@@ -1890,11 +1893,13 @@ window._FB = {
   };
 
   function _renderCutinList() {
-    const list  = document.getElementById('cutin-list');
-    const empty = document.getElementById('cutin-list-empty');
+    const list   = document.getElementById('cutin-list');
+    const empty  = document.getElementById('cutin-list-empty');
+    const footer = document.getElementById('cutin-list-footer');
     if (!list) return;
     const entries = Object.entries(_cutins);
-    empty && (empty.style.display = entries.length ? 'none' : '');
+    empty  && (empty.style.display  = entries.length ? 'none' : '');
+    footer && (footer.style.display = entries.length ? ''     : 'none');
     list.innerHTML = entries.map(([id, ct]) => {
       const thumb = ct.imageUrl ? `<img class="cutin-item-thumb" src="${ct.imageUrl}" alt="" onerror="this.src=''">` : '<div class="cutin-item-thumb"></div>';
       const sound = ct.soundUrl ? '🔊' : '';
@@ -1904,7 +1909,10 @@ window._FB = {
           <div class="cutin-item-trigger">${_esc(ct.name || ct.trigger || '')}</div>
           <div class="cutin-item-sub">${ct.duration || 3}초 ${sound}</div>
         </div>
-        <button class="cutin-item-play-btn" onclick="event.stopPropagation();triggerCutinById('${id}')" title="재생">▶</button>
+        <div style="display:flex;gap:4px;flex-shrink:0">
+          <button class="cutin-item-play-btn" onclick="event.stopPropagation();triggerCutinById('${id}')" title="재생">▶</button>
+          <button class="cutin-item-del-btn"  onclick="event.stopPropagation();deleteCutinById('${id}')" title="삭제">✕</button>
+        </div>
       </div>`;
     }).join('');
   }
@@ -2066,6 +2074,28 @@ window._FB = {
 
   // ── 목록에서 삭제 (하위 호환) ──
   window.deleteCutin = window.deleteCutinEdit;
+
+  // ── 개별 삭제 (목록에서 직접) ──
+  window.deleteCutinById = async function(id) {
+    const r = _cutinRef(); if (!r) return;
+    const { db, ref: fbRef, update: fbUpdate } = window._FB;
+    const updatePayload = {};
+    updatePayload[`rooms/${window.St.roomCode}/cutins/${id}`] = null;
+    await fbUpdate(fbRef(db), updatePayload).catch(e => console.warn('[cutin] 삭제 실패', e));
+  };
+
+  // ── 전체 삭제 ──
+  window.deleteAllCutins = async function() {
+    if (!Object.keys(_cutins).length) return;
+    if (!confirm('컷인을 모두 삭제할까요?')) return;
+    const r = _cutinRef(); if (!r) return;
+    const { db, ref: fbRef, update: fbUpdate } = window._FB;
+    const updatePayload = {};
+    Object.keys(_cutins).forEach(id => {
+      updatePayload[`rooms/${window.St.roomCode}/cutins/${id}`] = null;
+    });
+    await fbUpdate(fbRef(db), updatePayload).catch(e => console.warn('[cutin] 전체 삭제 실패', e));
+  };
 
   // ── 편집 창 미리보기 ──
   window.previewCutinEdit = function() {

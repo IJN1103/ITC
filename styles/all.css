@@ -1677,3 +1677,9 @@ body{scrollbar-color:var(--accent-green) var(--s3);}
 .cutin-edit-play-btn{background:var(--s2);border:1px solid var(--border2);color:var(--text);border-radius:8px;padding:7px 16px;font-size:13px;cursor:pointer;font-family:inherit;transition:var(--t);}
 .cutin-edit-play-btn:hover{background:var(--s3);}
 .cutin-edit-save-btn{padding:7px 20px!important;font-size:13px!important;}
+
+.cutin-item-del-btn{width:28px;height:28px;background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center;border-radius:6px;transition:var(--t);flex-shrink:0;}
+.cutin-item-del-btn:hover{background:rgba(217,79,79,.12);color:var(--red);}
+.cutin-list-footer{padding-top:10px;border-top:1px solid var(--border);margin-top:6px;display:flex;justify-content:flex-end;}
+.cutin-delete-all-btn{background:none;border:none;color:var(--red);font-size:12px;cursor:pointer;padding:5px 8px;border-radius:7px;font-family:inherit;transition:var(--t);opacity:.75;}
+.cutin-delete-all-btn:hover{background:rgba(217,79,79,.1);opacity:1;}
