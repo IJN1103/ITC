@@ -1189,10 +1189,14 @@ window._FB = {
               <input type="file" id="bgfg-bg-file" accept="image/*" style="display:none" onchange="onMapBgFgFileChange('bg',this)">
             </label>
             <select id="bgfg-bg-fit" class="input" style="width:auto;font-size:12px">
-              <option value="contain">contain</option>
-              <option value="cover">cover</option>
-              <option value="fill">fill</option>
+              <option value="contain">비율 유지 (여백)</option>
+              <option value="cover">비율 유지 (꽉 채움)</option>
+              <option value="fill">비율 무시 (꽉 채움)</option>
             </select>
+          </div>
+          <div class="map-bgfg-blur-row" style="display:flex;align-items:center;gap:7px;font-size:12px;color:var(--text)">
+            <input type="checkbox" id="bgfg-bg-blur" style="width:14px;height:14px;cursor:pointer;accent-color:var(--accent)" onchange="onMapBgBlurToggle(this.checked)">
+            <label for="bgfg-bg-blur" style="cursor:pointer;user-select:none">블러 배경 표시</label>
           </div>
           <div class="map-bgfg-action-row">
             <button class="btn btn-sm" onclick="applyMapBgFgSingle('bg')">배경 적용</button>
@@ -1218,9 +1222,9 @@ window._FB = {
               <input type="file" id="bgfg-fg-file" accept="image/*" style="display:none" onchange="onMapBgFgFileChange('fg',this)">
             </label>
             <select id="bgfg-fg-fit" class="input" style="width:auto;font-size:12px">
-              <option value="contain">contain</option>
-              <option value="cover">cover</option>
-              <option value="fill">fill</option>
+              <option value="contain">비율 유지 (여백)</option>
+              <option value="cover">비율 유지 (꽉 채움)</option>
+              <option value="fill">비율 무시 (꽉 채움)</option>
             </select>
           </div>
           <div class="map-bgfg-action-row">
@@ -1608,24 +1612,34 @@ window._FB = {
   });
 
   window.openMapBgFgModal = function() {
-    // 현재 상태 반영
-    const mapState = window.St?.mapState || {};
+    // buildEffectiveRoomMapState로 최신 상태 읽기 (bgm 경로 포함)
+    let mapState = window.St?.mapState || {};
+    // foreground가 mapState에 없으면 bgm 경로에서 보완
+    if (!mapState.foreground?.url && window._latestLegacyRoomMapState?.hasValue) {
+      const legacy = window._latestLegacyRoomMapState;
+      if (legacy?.mapState?.foreground?.url && !mapState.foreground?.url) {
+        mapState = { ...mapState, foreground: legacy.mapState.foreground };
+      }
+    }
     const bg = mapState.background || {};
     const fg = mapState.foreground || {};
 
-    const bgUrl  = document.getElementById('bgfg-bg-url');
-    const fgUrl  = document.getElementById('bgfg-fg-url');
-    const bgFit  = document.getElementById('bgfg-bg-fit');
-    const fgFit  = document.getElementById('bgfg-fg-fit');
-    const bgPrev = document.getElementById('bgfg-bg-preview');
-    const fgPrev = document.getElementById('bgfg-fg-preview');
+    const bgUrl   = document.getElementById('bgfg-bg-url');
+    const fgUrl   = document.getElementById('bgfg-fg-url');
+    const bgFit   = document.getElementById('bgfg-bg-fit');
+    const fgFit   = document.getElementById('bgfg-fg-fit');
+    const bgPrev  = document.getElementById('bgfg-bg-preview');
+    const fgPrev  = document.getElementById('bgfg-fg-preview');
+    const blurChk = document.getElementById('bgfg-bg-blur');
 
-    if (bgUrl) bgUrl.value = bg.url || '';
-    if (fgUrl) fgUrl.value = fg.url || '';
-    if (bgFit) bgFit.value = bg.fit || 'contain';
-    if (fgFit) fgFit.value = fg.fit || 'contain';
+    if (bgUrl)  bgUrl.value  = bg.url  || '';
+    if (fgUrl)  fgUrl.value  = fg.url  || '';
+    if (bgFit)  bgFit.value  = bg.fit  || 'contain';
+    if (fgFit)  fgFit.value  = fg.fit  || 'contain';
     if (bgPrev) bgPrev.style.backgroundImage = bg.url ? `url("${bg.url}")` : '';
     if (fgPrev) fgPrev.style.backgroundImage = fg.url ? `url("${fg.url}")` : '';
+    // 블러 체크박스: mapState.background.blur !== false를 기본 ON으로
+    if (blurChk) blurChk.checked = (bg.blur !== false);
 
     openModal('modal-map-bg-fg');
   };
@@ -1656,19 +1670,35 @@ window._FB = {
   };
 
   window.applyMapBgFgSingle = async function(type) {
-    const urlEl = document.getElementById(`bgfg-${type}-url`);
-    const fitEl = document.getElementById(`bgfg-${type}-fit`);
+    const urlEl   = document.getElementById(`bgfg-${type}-url`);
+    const fitEl   = document.getElementById(`bgfg-${type}-fit`);
+    const blurChk = document.getElementById('bgfg-bg-blur');
     const url = urlEl?.value?.trim() || '';
     const fit = fitEl?.value || 'contain';
     if (!url) { if (typeof showToast === 'function') showToast('URL을 입력하거나 파일을 선택해주세요.'); return; }
 
     const mapState = window.St?.mapState || {};
+    const fieldData = { url, fit, importedAt: Date.now() };
+    // 배경일 때만 blur 옵션 포함
+    if (type === 'bg') fieldData.blur = blurChk ? blurChk.checked : true;
     const nextMapState = {
       ...mapState,
-      [type === 'bg' ? 'background' : 'foreground']: { url, fit, importedAt: Date.now() },
+      [type === 'bg' ? 'background' : 'foreground']: fieldData,
     };
     await _saveAndApplyMapState(nextMapState);
     if (typeof showToast === 'function') showToast(`${type === 'bg' ? '배경' : '전경'} 이미지가 적용됐어요.`);
+  };
+
+  window.onMapBgBlurToggle = function(checked) {
+    // 즉시 블러 레이어 표시/숨김 반영
+    const blurLayer = document.getElementById('map-bg-blur-layer');
+    if (!blurLayer) return;
+    const mapState = window.St?.mapState || {};
+    const bgUrl = mapState.background?.url;
+    if (!bgUrl) return;
+    blurLayer.style.display = checked ? '' : 'none';
+    // mapState에도 반영 (저장은 적용 버튼 클릭 시)
+    if (window.St?.mapState?.background) window.St.mapState.background.blur = checked;
   };
 
   window.clearMapBgFgSingle = async function(type) {

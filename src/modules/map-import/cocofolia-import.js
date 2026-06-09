@@ -177,10 +177,12 @@
         // fit에 관계없이 항상 표시 (블러 레이어는 map-inner 밖, map-area 직속이므로
         // 줌/팬으로 map-inner가 축소돼도 항상 화면 전체를 덮음)
         if (blurLayer) {
+          // background.blur === false이면 블러 레이어 끄기
+          const blurEnabled = background.blur !== false;
           const blurSrc = buildCssBackgroundImage(getMapDisplayImageUrl(background.url, 2048));
           blurLayer.style.backgroundImage = blurSrc;
-          blurLayer.style.display = bgVisible ? '' : 'none';
-          blurLayer.classList.toggle('map-layer-runtime-hidden', !bgVisible);
+          blurLayer.style.display = (bgVisible && blurEnabled) ? '' : 'none';
+          blurLayer.classList.toggle('map-layer-runtime-hidden', !(bgVisible && blurEnabled));
         }
       }
       const bgFinalVisible = !!background?.url && isMapLayerVisible('background');
