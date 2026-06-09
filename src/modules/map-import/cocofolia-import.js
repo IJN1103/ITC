@@ -696,21 +696,28 @@
         // 이미지 크기 확인
         const imgSize = await getImageSizeFromBlob(file);
         const ext = file.name.split('.').pop()?.toLowerCase() || 'png';
-        const fit = 'fill';
+        const imgW = imgSize?.width || 1920;
+        const imgH = imgSize?.height || 1080;
+        // 비율에 따라 fit 자동 결정: 가로세로 비율 1.6 이상(가로가 긴 이미지)은 fill,
+        // 정사각형이나 세로가 긴 이미지는 contain으로 원본 비율 보존
+        const imgRatio = imgW / imgH;
+        const fit = imgRatio >= 1.6 ? 'fill' : 'contain';
+        const fitLabel = fit === 'fill' ? 'fill (화면 채움)' : 'contain (비율 유지)';
         // 단일 이미지용 minimal parsed 구조 생성
         const pseudoParsed = {
           _isSingleImage: true,
           _imageFile: file,
           _imageExt: ext,
+          _imageFit: fit,
           entities: {
-            room: { backgroundUrl: '__single_image__', foregroundUrl: null, fieldObjectFit: fit, fieldWidth: imgSize?.width || 1920, fieldHeight: imgSize?.height || 1080, alignWithGrid: false, markers: {} },
+            room: { backgroundUrl: '__single_image__', foregroundUrl: null, fieldObjectFit: fit, fieldWidth: imgW, fieldHeight: imgH, alignWithGrid: false, markers: {} },
             items: {},
           },
         };
         IMPORT_STATE.lastValidated = { fileName: file.name, parsed: pseudoParsed };
         IMPORT_STATE.pendingFile = file;
-        const fitStr = `${imgSize?.width || '?'}×${imgSize?.height || '?'} px`;
-        setSummary(`<b>단일 이미지 업로드</b><br>파일: ${file.name}<br>크기: ${fitStr}<br>렌더 방식: fill (화면 채움)` + buildApplyActions());
+        const fitStr = `${imgW}×${imgH} px`;
+        setSummary(`<b>단일 이미지 업로드</b><br>파일: ${file.name}<br>크기: ${fitStr}<br>렌더 방식: ${fitLabel}` + buildApplyActions());
         if (typeof showToast === 'function') showToast('이미지 파일 확인 완료');
       } else if (/\.zip$/i.test(file.name)) {
         if (hint) { hint.style.display = ''; hint.textContent = '맵세팅 ZIP을 검사하는 중이에요…'; }
@@ -750,11 +757,12 @@
         setHint('이미지를 업로드하는 중이에요…');
         const { roomCode } = await ensureLiveRoomContext();
         const ext = validated.parsed._imageExt || 'png';
+        const fit = validated.parsed._imageFit || 'contain';
         // File은 Blob의 서브클래스 — 이중 래핑하지 않고 그대로 전달
         const uploadedUrl = await uploadMapLayerBlob(pendingFile, roomCode, `map-bg-${Date.now()}.${ext}`);
         if (!uploadedUrl) throw new Error('이미지 업로드에 실패했어요.');
         const nextMapState = {
-          background: { url: uploadedUrl, sourceName: pendingFile.name, fit: 'fill', importedAt: Date.now() },
+          background: { url: uploadedUrl, sourceName: pendingFile.name, fit, importedAt: Date.now() },
           foreground: null,
           objects: [],
         };
@@ -766,7 +774,7 @@
             mapState: nextMapState,
             mapLayerState: nextLayerState,
             'bgm/mapBackground': uploadedUrl,
-            'bgm/mapBackgroundFit': 'fill',
+            'bgm/mapBackgroundFit': fit,
             'bgm/mapBackgroundSourceName': pendingFile.name,
             'bgm/mapBackgroundImportedAt': Date.now(),
             'bgm/mapForeground': '',
