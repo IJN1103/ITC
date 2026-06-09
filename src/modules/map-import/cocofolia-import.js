@@ -942,19 +942,26 @@
           }
         }
 
-        // Firebase cutins에 저장 (기존 항목은 덮어쓰지 않고, importedFrom=cocofolia인 것만 교체)
+        // Firebase cutins에 저장
+        // update로 각 항목을 경로별로 저장 (기존 수동 컷인 유지, cocofolia 것만 교체)
         if (Object.keys(importedCutins).length > 0 && window._FB?.CONFIGURED) {
-          const { db, ref: fbRef, get, set: fbSet } = window._FB;
-          const cutinsRef = fbRef(db, `rooms/${roomCode}/cutins`);
+          const { db, ref: fbRef, update: fbUpdate, get: fbGet } = window._FB;
           try {
-            // 기존 컷인 중 importedFrom=cocofolia인 것만 제거하고 새 것으로 교체
-            const snap = await get(cutinsRef);
+            // 기존 컷인 읽기 → importedFrom=cocofolia인 것 삭제 후 새 것 추가
+            const cutinsRef = fbRef(db, `rooms/${roomCode}/cutins`);
+            const snap = await fbGet(cutinsRef);
             const existingCutins = snap.val() || {};
-            const keptCutins = Object.fromEntries(
-              Object.entries(existingCutins).filter(([, v]) => v?.importedFrom !== 'cocofolia')
-            );
-            await fbSet(cutinsRef, { ...keptCutins, ...importedCutins });
-            if (window._subscribeCutins) window._subscribeCutins(roomCode);
+            // update payload: 기존 cocofolia 항목은 null(삭제), 새 항목은 값 설정
+            const updatePayload = {};
+            Object.entries(existingCutins).forEach(([k, v]) => {
+              if (v?.importedFrom === 'cocofolia') updatePayload[`rooms/${roomCode}/cutins/${k}`] = null;
+            });
+            Object.entries(importedCutins).forEach(([k, v]) => {
+              updatePayload[`rooms/${roomCode}/cutins/${k}`] = v;
+            });
+            const { ref: rootRef } = window._FB;
+            await fbUpdate(rootRef(db), updatePayload);
+            if (typeof window._subscribeCutins === 'function') window._subscribeCutins(roomCode);
           } catch(e) {
             console.warn('[cutin] Firebase 저장 실패', e);
           }
