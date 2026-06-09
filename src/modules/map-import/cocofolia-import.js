@@ -710,7 +710,7 @@
         IMPORT_STATE.lastValidated = { fileName: file.name, parsed: pseudoParsed };
         IMPORT_STATE.pendingFile = file;
         const fitStr = `${imgSize?.width || '?'}×${imgSize?.height || '?'} px`;
-        setSummary(`<b>단일 이미지 업로드</b><br>파일: ${file.name}<br>크기: ${fitStr}<br>렌더 방식: fill (화면 채움)`);
+        setSummary(`<b>단일 이미지 업로드</b><br>파일: ${file.name}<br>크기: ${fitStr}<br>렌더 방식: fill (화면 채움)` + buildApplyActions());
         if (typeof showToast === 'function') showToast('이미지 파일 확인 완료');
       } else if (/\.zip$/i.test(file.name)) {
         if (hint) { hint.style.display = ''; hint.textContent = '맵세팅 ZIP을 검사하는 중이에요…'; }
