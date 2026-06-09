@@ -765,7 +765,7 @@ body.chat-input-is-resizing,body.chat-input-is-resizing *{cursor:ns-resize!impor
 .chat-msg.msg-dsec .msg-avatar{display:none;}
 .chat-msg.msg-dsec .msg-body{display:block;text-align:center;}
 .chat-msg.msg-dsec .msg-meta{display:none;}
-.msg-dsec .msg-text{font-size:15px;font-weight:600;color:var(--text);line-height:1.9;letter-spacing:.02em;display:block;text-align:center;padding:4px 12px;}
+.msg-dsec .msg-text{font-size:15px;font-weight:600;color:var(--dim);line-height:1.9;letter-spacing:.02em;display:block;text-align:center;padding:4px 12px;border-radius:8px;background:rgba(0,0,0,.04);}
 .chat-attach-btn{width:34px;height:34px;flex-shrink:0;background:none;border:1px solid var(--border);border-radius:var(--r);color:var(--muted);cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center;transition:var(--t);}
 .chat-attach-btn:hover{border-color:var(--accent);color:var(--accent-text);background:var(--a-dim);}
 .chat-composer-stack{flex:1;min-width:0;display:flex;flex-direction:column;gap:8px;}
@@ -1626,7 +1626,6 @@ body{scrollbar-color:var(--accent-green) var(--s3);}
 /* ── 컷인 ── */
 #map-cutin-trigger{top:232px!important;right:12px;}
 #cutin-overlay{display:none;}
-#cutin-overlay.active{display:flex;}
 
 /* 목록 모달 */
 .cutin-list-modal{width:min(360px,94vw)!important;max-width:none!important;}
@@ -1683,3 +1682,4 @@ body{scrollbar-color:var(--accent-green) var(--s3);}
 .cutin-list-footer{padding-top:10px;border-top:1px solid var(--border);margin-top:6px;display:flex;justify-content:flex-end;}
 .cutin-delete-all-btn{background:none;border:none;color:var(--red);font-size:12px;cursor:pointer;padding:5px 8px;border-radius:7px;font-family:inherit;transition:var(--t);opacity:.75;}
 .cutin-delete-all-btn:hover{background:rgba(217,79,79,.1);opacity:1;}
+.dsec-text{color:var(--dim)!important;background:rgba(0,0,0,.04);border-radius:8px;}

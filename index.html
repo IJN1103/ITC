@@ -365,6 +365,13 @@ window._FB = {
       <div class="map-area" id="map-area">
         <div class="map-bg-blur-layer" id="map-bg-blur-layer" aria-hidden="true"></div>
         <div class="map-inner" id="map-inner"><div class="map-bg-layer" id="map-bg-layer" aria-hidden="true"></div><div class="map-obj-layer" id="map-obj-layer" aria-hidden="true"></div><div class="map-fg-layer" id="map-fg-layer" aria-hidden="true"></div></div>
+        <!-- 컷인 딤 + 오버레이 (map-area 기준 중앙) -->
+        <div id="cutin-dim" style="position:absolute;inset:0;z-index:790;background:rgba(0,0,0,0);pointer-events:none;transition:background .35s ease"></div>
+        <div id="cutin-overlay" style="position:absolute;inset:0;z-index:800;pointer-events:none;display:none;align-items:center;justify-content:center">
+          <div id="cutin-display" style="pointer-events:auto;max-width:min(640px,80vw);max-height:min(480px,80vh);display:flex;flex-direction:column;align-items:center;opacity:1;transition:opacity .6s ease">
+            <img id="cutin-img" src="" alt="" style="max-width:100%;max-height:100%;object-fit:contain;display:block">
+          </div>
+        </div>
         <div class="map-status-panel" id="map-status-panel" style="display:none"></div>
         <button type="button" class="map-add-token map-control-btn gm-only" id="map-add-token" onclick="addBlankCharacterToken()" style="display:none" aria-label="캐릭터 토큰">
           <img class="map-control-icon" src="assets/map-controls/icon-character-token.png" alt="" aria-hidden="true">
@@ -1250,11 +1257,7 @@ window._FB = {
 </div>
 
 <!-- 컷인 오버레이 -->
-<div id="cutin-overlay" style="position:fixed;inset:0;z-index:800;pointer-events:none;align-items:center;justify-content:center">
-  <div id="cutin-display" style="pointer-events:auto;max-width:min(640px,80vw);max-height:min(480px,60vh);display:flex;flex-direction:column;align-items:center;gap:0;opacity:1;transition:opacity .6s ease">
-    <img id="cutin-img" src="" alt="" style="max-width:100%;max-height:100%;object-fit:contain;display:block">
-  </div>
-</div>
+
 
 <!-- 컷인 목록 모달 -->
 <div class="overlay" id="modal-cutin">
@@ -2115,13 +2118,22 @@ window._FB = {
   // ── 재생 ──
   function _playCutin(ct) {
     const overlay = document.getElementById('cutin-overlay');
+    const dim     = document.getElementById('cutin-dim');
     const img     = document.getElementById('cutin-img');
     const display = document.getElementById('cutin-display');
     if (!overlay || !img) return;
     if (_cutinOverlayTimer) { clearTimeout(_cutinOverlayTimer); _cutinOverlayTimer = null; }
+
     img.src = ct.imageUrl || '';
     display.style.opacity = '1';
-    overlay.classList.add('active');
+    overlay.style.display = 'flex';  // flex로 표시 (active 클래스 대신 inline style)
+
+    // 딤 레이어 페이드인
+    if (dim) {
+      dim.style.transition = 'background .35s ease';
+      requestAnimationFrame(() => { dim.style.background = 'rgba(0,0,0,0.55)'; });
+    }
+
     if (ct.soundUrl) {
       try {
         const audio = new Audio(ct.soundUrl);
@@ -2131,8 +2143,13 @@ window._FB = {
     }
     const ms = Math.max(1, (ct.duration || 3)) * 1000;
     _cutinOverlayTimer = setTimeout(() => {
+      // 컷인 + 딤 동시 페이드아웃
       display.style.opacity = '0';
-      setTimeout(() => overlay.classList.remove('active'), 650);
+      if (dim) dim.style.background = 'rgba(0,0,0,0)';
+      setTimeout(() => {
+        overlay.style.display = 'none';
+        display.style.opacity = '1';  // 다음 재생을 위해 리셋
+      }, 650);
       _cutinOverlayTimer = null;
     }, ms);
   }
@@ -2140,11 +2157,13 @@ window._FB = {
   // ── 클릭으로 닫기 ──
   document.addEventListener('click', e => {
     const overlay = document.getElementById('cutin-overlay');
-    if (overlay?.classList.contains('active') && e.target === overlay) {
+    if (overlay?.style.display === 'flex' && e.target === overlay) {
       if (_cutinOverlayTimer) { clearTimeout(_cutinOverlayTimer); _cutinOverlayTimer = null; }
       const display = document.getElementById('cutin-display');
+      const dim     = document.getElementById('cutin-dim');
       if (display) display.style.opacity = '0';
-      setTimeout(() => overlay.classList.remove('active'), 650);
+      if (dim) dim.style.background = 'rgba(0,0,0,0)';
+      setTimeout(() => { overlay.style.display = 'none'; if (display) display.style.opacity = '1'; }, 650);
     }
   });
 
