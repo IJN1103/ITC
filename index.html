@@ -2102,11 +2102,12 @@ window._FB = {
     const durationMode = durMode; // 저장해서 편집창 재진입 시 복원
     const data = { trigger, imageUrl, soundUrl, volume, duration, durationMode, apngDuration, updatedAt: Date.now() };
 
-    const { set, push, child, update } = window._FB;
+    const { db, ref: fbRef, set, push, update } = window._FB;
+    const roomCode = window.St?.roomCode;
     if (_editingId) {
-      await update(child(r, _editingId), data);
+      await update(fbRef(db, `rooms/${roomCode}/cutins/${_editingId}`), data);
     } else {
-      const newRef = push(r);
+      const newRef = push(fbRef(db, `rooms/${roomCode}/cutins`));
       await set(newRef, { ...data, createdAt: Date.now() });
     }
     if (typeof showToast === 'function') showToast('저장됐어요.');
@@ -2116,9 +2117,10 @@ window._FB = {
   // ── 편집 창에서 삭제 ──
   window.deleteCutinEdit = async function() {
     if (!_editingId) return;
-    const r = _cutinRef(); if (!r) return;
-    const { child, remove } = window._FB;
-    await remove(child(r, _editingId));
+    const roomCode = window.St?.roomCode;
+    if (!roomCode || !window._FB?.CONFIGURED) return;
+    const { db, ref: fbRef, remove } = window._FB;
+    await remove(fbRef(db, `rooms/${roomCode}/cutins/${_editingId}`));
     closeCutinEdit();
   };
 
@@ -2167,23 +2169,15 @@ window._FB = {
   };
 
   // ── 재생 ──
-  function _playCutin(ct) {
+  function _startCutinDisplay(ct, durationSec) {
     const overlay = document.getElementById('cutin-overlay');
     const dim     = document.getElementById('cutin-dim');
-    const img     = document.getElementById('cutin-img');
     const display = document.getElementById('cutin-display');
-    if (!overlay || !img) return;
+    if (!overlay) return;
     if (_cutinOverlayTimer) { clearTimeout(_cutinOverlayTimer); _cutinOverlayTimer = null; }
-
-    img.src = ct.imageUrl || '';
     display.style.opacity = '1';
-    overlay.style.display = 'flex';  // flex로 표시 (active 클래스 대신 inline style)
-
-    // 딤 레이어 페이드인
-    if (dim) {
-      requestAnimationFrame(() => { dim.style.background = 'rgba(0,0,0,0.55)'; });
-    }
-
+    overlay.style.display = 'flex';
+    if (dim) requestAnimationFrame(() => { dim.style.background = 'rgba(0,0,0,0.55)'; });
     if (ct.soundUrl) {
       try {
         const audio = new Audio(ct.soundUrl);
@@ -2191,17 +2185,34 @@ window._FB = {
         audio.play().catch(() => {});
       } catch(e) {}
     }
-    const ms = Math.max(1, (ct.duration || 3)) * 1000;
+    const ms = Math.max(500, durationSec * 1000);
     _cutinOverlayTimer = setTimeout(() => {
-      // 컷인 이미지 + 딤 레이어 동시 페이드아웃 (둘 다 .6s transition)
       display.style.opacity = '0';
       if (dim) dim.style.background = 'rgba(0,0,0,0)';
       setTimeout(() => {
         overlay.style.display = 'none';
-        display.style.opacity = '1';  // 다음 재생을 위해 리셋
+        display.style.opacity = '1';
       }, 620);
       _cutinOverlayTimer = null;
     }, ms);
+  }
+
+  async function _playCutin(ct) {
+    const img = document.getElementById('cutin-img');
+    if (!img) return;
+    img.src = ct.imageUrl || '';
+
+    // durationMode=auto 이거나 duration이 명시 안 된 경우 APNG 파싱 시도
+    const isAuto = !ct.durationMode || ct.durationMode === 'auto';
+    if (isAuto && ct.imageUrl) {
+      // 빠른 응답을 위해 먼저 표시하고 파싱 후 타이머 설정
+      const parsed = await _getApngDuration(ct.imageUrl).catch(() => null);
+      const dur = parsed || ct.duration || 3;
+      _startCutinDisplay(ct, dur);
+    } else {
+      // manual 모드: 저장된 duration 그대로 사용
+      _startCutinDisplay(ct, ct.duration || 3);
+    }
   }
 
   // ── 클릭으로 닫기 ──
@@ -2213,7 +2224,7 @@ window._FB = {
       const dim     = document.getElementById('cutin-dim');
       if (display) display.style.opacity = '0';
       if (dim) dim.style.background = 'rgba(0,0,0,0)';
-      setTimeout(() => { overlay.style.display = 'none'; if (display) display.style.opacity = '1'; }, 650);
+      setTimeout(() => { overlay.style.display = 'none'; if (display) display.style.opacity = '1'; }, 620);
     }
   });
 
