@@ -384,6 +384,8 @@
       `배경 이미지: ${room.backgroundUrl ? '있음' : '없음'} / 포그라운드: ${room.foregroundUrl ? '있음' : '없음'}`,
       `렌더 방식: ${room.fieldObjectFit || 'contain'} / 그리드 정렬: ${room.alignWithGrid ? '켜짐' : '꺼짐'}`,
       `오브젝트: ${Object.keys(items || {}).length}개 / 마커 패널: ${Object.keys(room?.markers || {}).length}개`,
+      Object.keys(parsed?.entities?.effects || {}).length > 0
+        ? `컷인: ${Object.keys(parsed?.entities?.effects || {}).length}개 (자동 임포트)` : null,
       `item 수: ${itemCount}개`,
       `리소스 수: ${resourceCount}개`,
       `그리드: ${gridLabel} / 크기 ${Number(room.gridSize || 0) || 0}`,
@@ -392,7 +394,7 @@
     if (itemCount >= 80 || resourceCount >= 120) {
       lines.push(`<span style="color:#e6c58a">주의: 오브젝트/리소스 수가 많은 ZIP입니다. 적용 직후 몇 초간 업로드와 렌더링이 무거울 수 있어요.</span>`);
     }
-    return lines.join('<br>') + buildApplyActions();
+    return lines.filter(Boolean).join('<br>') + buildApplyActions();
   }
 
   function validateParsedCocofoliaData(data) {
@@ -890,6 +892,75 @@
       await clearPreviousImportedPanelTokens(roomCode, window.St?.mapState?.objects || []);
       await saveImportedPanelTokens(roomCode, importedPanelTokens);
 
+      // ── effects(컷인) 처리 ──
+      // 코코폴리아 effects → 웹사이트 컷인 목록으로 자동 임포트
+      const rawEffects = validated.parsed?.entities?.effects || {};
+      const effectEntries = Object.entries(rawEffects)
+        .filter(([, e]) => e?.imageUrl && String(e.imageUrl).trim())
+        .sort((a, b) => (a[1].order || 0) - (b[1].order || 0));
+
+      if (effectEntries.length > 0) {
+        setHint(`컷인 이미지 ${effectEntries.length}개를 업로드하는 중이에요…`);
+        const importedCutins = {};
+
+        for (const [effId, eff] of effectEntries) {
+          try {
+            const effEntry = zip.file(eff.imageUrl);
+            if (!effEntry) continue;
+            const effBlob = await effEntry.async('blob');
+            const rawExt = String(eff.imageUrl.split('.').pop() || 'png').toLowerCase();
+            const effMime = rawExt === 'svg' ? 'image/svg+xml' : rawExt === 'jpg' || rawExt === 'jpeg' ? 'image/jpeg' : 'image/png';
+            const effUploadBlob = new Blob([effBlob], { type: effMime });
+            const effUrl = await uploadMapLayerBlob(effUploadBlob, roomCode, `cutin-${effId.slice(0, 8)}-${Date.now()}.${rawExt}`);
+            if (!effUrl) continue;
+
+            // 트리거 단어: name에서 '＞ ' 접두사 제거 후 마지막 단어
+            const rawName = String(eff.name || '').replace(/^[＞>>\s]+/, '').trim();
+            const trigger = rawName.split(/\s+/).pop() || rawName;
+
+            // 사운드: soundRef가 있으면 ZIP에서 업로드 (없으면 빈 문자열)
+            let soundUrl = '';
+            if (eff.soundRef && zip.file(eff.soundRef)) {
+              try {
+                const sndBlob = await zip.file(eff.soundRef).async('blob');
+                const sndExt = String(eff.soundRef.split('.').pop() || 'mp3').toLowerCase();
+                soundUrl = await uploadMapLayerBlob(new Blob([sndBlob], { type: 'audio/' + sndExt }), roomCode, `cutin-snd-${effId.slice(0,8)}-${Date.now()}.${sndExt}`) || '';
+              } catch(e) {}
+            }
+
+            importedCutins[effId] = {
+              trigger,
+              imageUrl: effUrl,
+              soundUrl,
+              volume: 0.8,
+              duration: 3,
+              importedFrom: 'cocofolia',
+              createdAt: Date.now(),
+            };
+          } catch(e) {
+            console.warn(`[cutin] effect ${effId} 처리 실패`, e);
+          }
+        }
+
+        // Firebase cutins에 저장 (기존 항목은 덮어쓰지 않고, importedFrom=cocofolia인 것만 교체)
+        if (Object.keys(importedCutins).length > 0 && window._FB?.CONFIGURED) {
+          const { db, ref: fbRef, get, set: fbSet } = window._FB;
+          const cutinsRef = fbRef(db, `rooms/${roomCode}/cutins`);
+          try {
+            // 기존 컷인 중 importedFrom=cocofolia인 것만 제거하고 새 것으로 교체
+            const snap = await get(cutinsRef);
+            const existingCutins = snap.val() || {};
+            const keptCutins = Object.fromEntries(
+              Object.entries(existingCutins).filter(([, v]) => v?.importedFrom !== 'cocofolia')
+            );
+            await fbSet(cutinsRef, { ...keptCutins, ...importedCutins });
+            if (window._subscribeCutins) window._subscribeCutins(roomCode);
+          } catch(e) {
+            console.warn('[cutin] Firebase 저장 실패', e);
+          }
+        }
+      }
+
       const fit = String(room.fieldObjectFit || 'contain').trim() || 'contain';
       const alignWithGrid = !!room.alignWithGrid;
       const nextMapState = {
@@ -941,8 +1012,10 @@
         applyImportedMapState(nextMapState);
         if (typeof refreshMapLayerManager === 'function') refreshMapLayerManager();
       }
-      setSummary(buildValidationSummary(pendingFile, validated.parsed) + `<br><br><b>맵 이미지 적용 완료</b><br>스크린 패널 ${importedPanelTokens.length}개 생성 / 레이어 항목 유지`);
-      if (typeof showToast === 'function') showToast('맵 이미지 + 스크린 패널 적용 완료');
+      const cutinCount = Object.keys(validated.parsed?.entities?.effects || {}).filter(k => validated.parsed?.entities?.effects[k]?.imageUrl).length;
+      const cutinNote = cutinCount > 0 ? ` / 컷인 ${cutinCount}개 임포트` : '';
+      setSummary(buildValidationSummary(pendingFile, validated.parsed) + `<br><br><b>맵 이미지 적용 완료</b><br>스크린 패널 ${importedPanelTokens.length}개 생성${cutinNote}`);
+      if (typeof showToast === 'function') showToast(`맵 이미지 + 스크린 패널${cutinNote} 적용 완료`);
     } catch (err) {
       console.error('map background apply failed', err);
       setError(err?.message || '맵 이미지 적용 중 오류가 발생했어요.');
