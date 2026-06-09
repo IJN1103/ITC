@@ -84,6 +84,12 @@ function refreshPermUI() {
   if (mapLayerTrigger) mapLayerTrigger.style.display = hasPerm('manageMap') ? '' : 'none';
   const mapSceneTrigger = document.getElementById('map-scene-trigger');
   if (mapSceneTrigger) mapSceneTrigger.style.display = St.isGM ? '' : 'none';
+  const mapCutinTrigger = document.getElementById('map-cutin-trigger');
+  if (mapCutinTrigger) mapCutinTrigger.style.display = St.isGM ? '' : 'none';
+  // 방 입장 시 컷인 Firebase 구독 (GM=관리, 플레이어=트리거 감지 목적으로 모두 구독)
+  if (St.roomCode && typeof window._subscribeCutins === 'function') {
+    window._subscribeCutins(St.roomCode);
+  }
   if (typeof syncBgmPermissionUI === 'function') syncBgmPermissionUI();
   else document.querySelectorAll('.bgm-add').forEach(el => { el.style.display = St.isGM ? '' : 'none'; });
   const descBtn = document.getElementById('desc-toggle-btn');

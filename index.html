@@ -386,6 +386,14 @@ window._FB = {
           <img class="map-control-icon" src="assets/map-controls/icon-map-scenes.png" alt="" aria-hidden="true">
           <span class="map-control-tooltip" aria-hidden="true">장면 전환</span>
         </button>
+        <!-- 컷인 버튼 -->
+        <button type="button" class="map-add-token map-control-btn gm-only" id="map-cutin-trigger" onclick="openCutinModal()" style="display:none" aria-label="컷인">
+          <svg class="map-control-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" xmlns="http://www.w3.org/2000/svg" style="width:20px;height:20px">
+            <path d="M12 2l1.8 5.4h5.7l-4.6 3.3 1.7 5.4L12 13 7.4 16.1l1.7-5.4L4.5 7.4h5.7z" stroke-linejoin="round"/>
+            <path d="M12 13v5M9 21h6" stroke-linecap="round"/>
+          </svg>
+          <span class="map-control-tooltip" aria-hidden="true">컷인</span>
+        </button>
         <!-- 그리드 토글 -->
         <button class="map-grid-toggle-btn" id="map-grid-toggle-btn" onclick="toggleMapGrid()" title="그리드 온/오프" aria-label="그리드 토글">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -1241,6 +1249,52 @@ window._FB = {
   </div>
 </div>
 
+<!-- 컷인 오버레이 -->
+<div id="cutin-overlay" style="display:none;position:fixed;inset:0;z-index:800;pointer-events:none;align-items:center;justify-content:center">
+  <div id="cutin-display" style="pointer-events:auto;max-width:min(640px,80vw);max-height:min(480px,60vh);display:flex;flex-direction:column;align-items:center;gap:0;opacity:1;transition:opacity .6s ease">
+    <img id="cutin-img" src="" alt="" style="max-width:100%;max-height:100%;object-fit:contain;border-radius:8px;box-shadow:0 8px 40px rgba(0,0,0,.6)">
+  </div>
+</div>
+
+<!-- 컷인 관리 모달 -->
+<div class="overlay" id="modal-cutin">
+  <div class="modal" style="width:min(480px,94vw)">
+    <div class="modal-row">
+      <div class="modal-title">컷인 관리</div>
+      <button class="modal-close" onclick="closeModal('modal-cutin')">✕</button>
+    </div>
+    <div class="modal-info" style="font-size:12px;line-height:1.7">
+      채팅 메시지의 <b>마지막 단어</b>가 트리거와 일치하면 컷인 이미지가 맵 중앙에 3초간 표시됩니다.
+    </div>
+
+    <!-- 컷인 목록 -->
+    <div id="cutin-list" style="display:flex;flex-direction:column;gap:8px;max-height:260px;overflow-y:auto;margin-bottom:12px;padding-right:2px"></div>
+
+    <!-- 컷인 추가 폼 -->
+    <div style="border:1px solid var(--border);border-radius:var(--rl);padding:14px;background:var(--s2)">
+      <div style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:10px">새 컷인 추가</div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <input id="cutin-new-trigger" class="input" placeholder="트리거 단어 (예: 성공)" style="font-size:13px">
+        <div style="display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center">
+          <input id="cutin-new-img-url" class="input" placeholder="이미지 URL" style="font-size:12px">
+          <label class="btn-sm" style="cursor:pointer;white-space:nowrap">
+            파일 선택
+            <input type="file" id="cutin-new-img-file" accept="image/*" style="display:none" onchange="onCutinImageFileChange(this)">
+          </label>
+        </div>
+        <div id="cutin-new-preview" style="width:100%;height:120px;background:var(--s3);border-radius:8px;border:1px solid var(--border);background-size:contain;background-repeat:no-repeat;background-position:center;display:none"></div>
+        <input id="cutin-new-sound-url" class="input" placeholder="사운드 URL (선택사항)" style="font-size:12px">
+        <div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)">
+          <span>페이드아웃:</span>
+          <input id="cutin-new-duration" type="number" class="input" value="3" min="1" max="30" style="width:60px;font-size:12px">
+          <span>초</span>
+        </div>
+        <button class="btn-primary" onclick="addCutin()" style="font-size:13px">추가</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- 레이어 박스 컨텍스트 메뉴 -->
 <div class="tok-ctx" id="layer-item-ctx">
   <div class="tok-ctx-item" id="layer-ctx-forward" onclick="layerItemCtxAction('layerForward')">앞으로 보내기</div>
@@ -1762,6 +1816,206 @@ window._FB = {
   try { saved = localStorage.getItem(GRID_KEY) ?? '1'; } catch(e) {}
   // map-inner는 DOM이 준비된 뒤 적용
   document.addEventListener('DOMContentLoaded', () => applyGrid(saved !== '0'));
+})();
+</script>
+
+<script>
+/* ── 컷인(Cutin) 기능 ── */
+(function(){
+  // ── 내부 상태 ──
+  let _cutins = {};           // { id: { trigger, imageUrl, soundUrl, duration } }
+  let _cutinFbUnsub = null;
+  let _cutinOverlayTimer = null;
+  let _lastCutinKey = null;
+
+  // ── Firebase 경로 ──
+  function _cutinRef() {
+    const roomCode = window.St?.roomCode;
+    if (!roomCode || !window._FB?.CONFIGURED) return null;
+    const { db, ref } = window._FB;
+    return ref(db, `rooms/${roomCode}/cutins`);
+  }
+
+  // ── 컷인 목록 Firebase 구독 ──
+  function _subscribeCutins(roomCode) {
+    if (_cutinFbUnsub) { try { _cutinFbUnsub(); } catch(e){} }
+    if (!roomCode || !window._FB?.CONFIGURED) return;
+    const { db, ref, onValue } = window._FB;
+    const r = ref(db, `rooms/${roomCode}/cutins`);
+    _cutinFbUnsub = onValue(r, snap => {
+      _cutins = snap.val() || {};
+      _renderCutinList();
+    });
+  }
+
+  // ── 컷인 모달 열기 ──
+  window.openCutinModal = function() {
+    _renderCutinList();
+    openModal('modal-cutin');
+  };
+
+  // ── 목록 렌더 ──
+  function _renderCutinList() {
+    const list = document.getElementById('cutin-list');
+    if (!list) return;
+    const entries = Object.entries(_cutins);
+    if (!entries.length) {
+      list.innerHTML = '<div style="text-align:center;padding:20px;color:var(--muted);font-size:12px">등록된 컷인이 없습니다.</div>';
+      return;
+    }
+    list.innerHTML = entries.map(([id, ct]) => `
+      <div class="cutin-item">
+        <img class="cutin-item-thumb" src="${ct.imageUrl || ''}" alt="" onerror="this.style.display='none'">
+        <div class="cutin-item-info">
+          <div class="cutin-item-trigger">"${_esc(ct.trigger)}"</div>
+          <div class="cutin-item-sub">${ct.duration || 3}초 · ${ct.soundUrl ? '🔊 사운드 있음' : '소리 없음'}</div>
+        </div>
+        <div class="cutin-item-actions">
+          <button class="cutin-item-play" onclick="triggerCutinById('${id}')">▶ 재생</button>
+          <button class="cutin-item-del" onclick="deleteCutin('${id}')">✕</button>
+        </div>
+      </div>`).join('');
+  }
+
+  // ── 이미지 파일 선택 ──
+  window.onCutinImageFileChange = async function(input) {
+    const file = input?.files?.[0];
+    if (!file) return;
+    const urlEl = document.getElementById('cutin-new-img-url');
+    const prev  = document.getElementById('cutin-new-preview');
+    const local = URL.createObjectURL(file);
+    if (prev) { prev.style.backgroundImage = `url("${local}")`; prev.style.display = ''; }
+    try {
+      if (typeof uploadMapLayerBlob === 'function' && window.St?.roomCode) {
+        const ext = file.name.split('.').pop() || 'png';
+        const url = await uploadMapLayerBlob(file, window.St.roomCode, `cutin-${Date.now()}.${ext}`);
+        if (url && urlEl) urlEl.value = url;
+      } else if (urlEl) { urlEl.value = local; }
+    } catch(e) { if (urlEl) urlEl.value = local; }
+    input.value = '';
+  };
+
+  // ── 컷인 추가 ──
+  window.addCutin = async function() {
+    const trigger  = document.getElementById('cutin-new-trigger')?.value?.trim();
+    const imageUrl = document.getElementById('cutin-new-img-url')?.value?.trim();
+    const soundUrl = document.getElementById('cutin-new-sound-url')?.value?.trim() || '';
+    const duration = Math.max(1, parseInt(document.getElementById('cutin-new-duration')?.value || '3') || 3);
+    if (!trigger) { showToast('트리거 단어를 입력해주세요.'); return; }
+    if (!imageUrl) { showToast('이미지를 선택하거나 URL을 입력해주세요.'); return; }
+    const r = _cutinRef();
+    if (!r) { showToast('방에 접속된 상태에서만 추가할 수 있어요.'); return; }
+    const { push, set } = window._FB;
+    const newRef = push(r);
+    await set(newRef, { trigger, imageUrl, soundUrl, duration, createdAt: Date.now() });
+    // 입력 초기화
+    ['cutin-new-trigger','cutin-new-img-url','cutin-new-sound-url'].forEach(id => {
+      const el = document.getElementById(id); if (el) el.value = '';
+    });
+    const prev = document.getElementById('cutin-new-preview');
+    if (prev) { prev.style.backgroundImage = ''; prev.style.display = 'none'; }
+    const dur = document.getElementById('cutin-new-duration');
+    if (dur) dur.value = '3';
+    showToast('컷인이 추가됐어요.');
+  };
+
+  // ── 컷인 삭제 ──
+  window.deleteCutin = async function(id) {
+    const r = _cutinRef();
+    if (!r) return;
+    const { child, remove } = window._FB;
+    await remove(child(r, id));
+  };
+
+  // ── 컷인 직접 재생 ──
+  window.triggerCutinById = function(id) {
+    const ct = _cutins[id];
+    if (!ct) return;
+    _playCutin(ct);
+  };
+
+  // ── 컷인 재생 ──
+  function _playCutin(ct) {
+    const overlay = document.getElementById('cutin-overlay');
+    const img     = document.getElementById('cutin-img');
+    const display = document.getElementById('cutin-display');
+    if (!overlay || !img) return;
+
+    // 이전 타이머 취소
+    if (_cutinOverlayTimer) { clearTimeout(_cutinOverlayTimer); _cutinOverlayTimer = null; }
+
+    img.src = ct.imageUrl || '';
+    display.style.opacity = '1';
+    overlay.classList.add('active');
+
+    // 사운드 재생
+    if (ct.soundUrl) {
+      try {
+        const audio = new Audio(ct.soundUrl);
+        audio.volume = 0.8;
+        audio.play().catch(() => {});
+      } catch(e) {}
+    }
+
+    const ms = Math.max(1, (ct.duration || 3)) * 1000;
+    _cutinOverlayTimer = setTimeout(() => {
+      display.style.opacity = '0';
+      setTimeout(() => { overlay.classList.remove('active'); }, 650);
+      _cutinOverlayTimer = null;
+    }, ms);
+  }
+
+  // ── 클릭으로 닫기 ──
+  document.addEventListener('click', e => {
+    const overlay = document.getElementById('cutin-overlay');
+    if (overlay?.classList.contains('active') && e.target === overlay) {
+      if (_cutinOverlayTimer) { clearTimeout(_cutinOverlayTimer); _cutinOverlayTimer = null; }
+      const display = document.getElementById('cutin-display');
+      if (display) display.style.opacity = '0';
+      setTimeout(() => overlay.classList.remove('active'), 650);
+    }
+  });
+
+  // ── 채팅 메시지 트리거 감지 ──
+  // appendChatMsg를 wrap하여 마지막 단어 체크
+  document.addEventListener('DOMContentLoaded', () => {
+    if (typeof appendChatMsg !== 'undefined') {
+      const _orig = appendChatMsg;
+      window.appendChatMsg = appendChatMsg = function(msg = {}) {
+        _orig(msg);
+        _checkCutinTrigger(msg);
+      };
+    }
+  });
+
+  function _checkCutinTrigger(msg) {
+    const text = String(msg?.text || '').trim();
+    if (!text) return;
+    // 마지막 단어 추출 (공백/개행으로 분리)
+    const words = text.split(/\s+/);
+    const lastWord = words[words.length - 1]?.toLowerCase() || '';
+    if (!lastWord) return;
+    const entries = Object.entries(_cutins);
+    for (const [id, ct] of entries) {
+      const trigger = String(ct.trigger || '').trim().toLowerCase();
+      if (trigger && lastWord === trigger) {
+        _playCutin(ct);
+        break;
+      }
+    }
+  }
+
+  // ── 방 입장 시 구독 시작 ──
+  document.addEventListener('itc-room-joined', e => {
+    _subscribeCutins(e.detail?.roomCode || window.St?.roomCode);
+  });
+  // 이미 방 안에 있을 때 대비
+  if (window.St?.roomCode) _subscribeCutins(window.St.roomCode);
+
+  function _esc(s) { return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+  // 전역 노출
+  window._subscribeCutins = _subscribeCutins;
 })();
 </script>
 

@@ -1622,3 +1622,18 @@ body{scrollbar-color:var(--accent-green) var(--s3);}
 .btn-danger-sm:hover{background:rgba(217,79,79,.16);border-color:rgba(217,79,79,.6);}
 .btn-sm{font:inherit;font-size:12px;padding:5px 12px;border-radius:6px;cursor:pointer;border:1px solid var(--border2);background:var(--s2);color:var(--text);transition:var(--t);}
 .btn-sm:hover{background:var(--s3);}
+
+/* ── 컷인 ── */
+#map-cutin-trigger{top:232px!important;right:12px;}
+#cutin-overlay{display:none;}
+#cutin-overlay.active{display:flex;}
+.cutin-item{display:grid;grid-template-columns:48px 1fr auto;gap:10px;align-items:center;padding:9px 10px;background:var(--s1);border:1px solid var(--border);border-radius:10px;}
+.cutin-item-thumb{width:48px;height:36px;object-fit:contain;border-radius:5px;background:var(--s3);}
+.cutin-item-info{min-width:0;}
+.cutin-item-trigger{font-size:13px;font-weight:600;color:var(--text);}
+.cutin-item-sub{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.cutin-item-actions{display:flex;gap:6px;}
+.cutin-item-play{background:var(--a-dim);border:1px solid rgba(37,99,235,.25);color:var(--accent-text);border-radius:7px;padding:5px 10px;font-size:11px;cursor:pointer;transition:var(--t);}
+.cutin-item-play:hover{background:rgba(37,99,235,.2);}
+.cutin-item-del{background:rgba(217,79,79,.08);border:1px solid rgba(217,79,79,.25);color:var(--red);border-radius:7px;padding:5px 8px;font-size:11px;cursor:pointer;transition:var(--t);}
+.cutin-item-del:hover{background:rgba(217,79,79,.18);}
