@@ -1250,7 +1250,7 @@ window._FB = {
 </div>
 
 <!-- 컷인 오버레이 -->
-<div id="cutin-overlay" style="display:none;position:fixed;inset:0;z-index:800;pointer-events:none;align-items:center;justify-content:center">
+<div id="cutin-overlay" style="position:fixed;inset:0;z-index:800;pointer-events:none;align-items:center;justify-content:center">
   <div id="cutin-display" style="pointer-events:auto;max-width:min(640px,80vw);max-height:min(480px,60vh);display:flex;flex-direction:column;align-items:center;gap:0;opacity:1;transition:opacity .6s ease">
     <img id="cutin-img" src="" alt="" style="max-width:100%;max-height:100%;object-fit:contain;border-radius:8px;box-shadow:0 8px 40px rgba(0,0,0,.6)">
   </div>
@@ -1901,7 +1901,7 @@ window._FB = {
       return `<div class="cutin-item" onclick="openCutinEdit('${id}')">
         ${thumb}
         <div class="cutin-item-info">
-          <div class="cutin-item-trigger">${_esc(ct.trigger || '')}</div>
+          <div class="cutin-item-trigger">${_esc(ct.name || ct.trigger || '')}</div>
           <div class="cutin-item-sub">${ct.duration || 3}초 ${sound}</div>
         </div>
         <button class="cutin-item-play-btn" onclick="event.stopPropagation();triggerCutinById('${id}')" title="재생">▶</button>
@@ -1924,7 +1924,7 @@ window._FB = {
 
     // 트리거
     const trigEl = document.getElementById('cutin-edit-trigger');
-    if (trigEl) trigEl.value = ct.trigger || '';
+    if (trigEl) trigEl.value = ct.trigger || ct.name || '';
 
     // 이미지
     const imgEl   = document.getElementById('cutin-edit-img-el');
@@ -2132,11 +2132,17 @@ window._FB = {
   function _checkCutinTrigger(msg) {
     const text = String(msg?.text || '').trim();
     if (!text) return;
-    const lastWord = text.split(/\s+/).pop()?.toLowerCase() || '';
-    if (!lastWord) return;
+    const textLower = text.toLowerCase();
+    // 트리거 매칭: 메시지가 트리거로 끝나는지 확인 (단어 경계 포함)
+    // 예: "cc<=50 보통 성공" → 트리거 "보통 성공" 매칭
     for (const [, ct] of Object.entries(_cutins)) {
       const trigger = String(ct.trigger || '').trim().toLowerCase();
-      if (trigger && lastWord === trigger) { _playCutin(ct); break; }
+      if (!trigger) continue;
+      // 메시지가 트리거와 정확히 같거나, 공백/단어 경계 뒤에 트리거로 끝나는 경우
+      if (textLower === trigger || textLower.endsWith(' ' + trigger) || textLower.endsWith('\n' + trigger)) {
+        _playCutin(ct);
+        break;
+      }
     }
   }
 

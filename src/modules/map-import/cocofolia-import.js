@@ -913,9 +913,10 @@
             const effUrl = await uploadMapLayerBlob(effBlob, roomCode, `cutin-${effId.slice(0, 8)}-${Date.now()}.${rawExt}`);
             if (!effUrl) continue;
 
-            // 트리거 단어: name에서 '＞ ' 접두사 제거 후 마지막 단어
-            const rawName = String(eff.name || '').replace(/^[＞>>\s]+/, '').trim();
-            const trigger = rawName.split(/\s+/).pop() || rawName;
+            // 트리거: name에서 '＞ ' 접두사 제거한 전체 문자열을 트리거로 사용
+            // (last_word만 사용하면 "보통 성공"/"어려운 성공" 등이 모두 "성공"으로 충돌)
+            const rawName = String(eff.name || '').replace(/^[\uFF1E>\s]+/, '').trim();
+            const trigger = rawName; // 전체 이름을 트리거로 사용
 
             // 사운드: soundRef가 있으면 ZIP에서 업로드 (없으면 빈 문자열)
             let soundUrl = '';
@@ -928,7 +929,8 @@
             }
 
             importedCutins[effId] = {
-              trigger,
+              name: rawName,        // 표시용 이름 (원본에서 접두사 제거)
+              trigger,              // 채팅 트리거 (rawName 전체)
               imageUrl: effUrl,
               soundUrl,
               volume: 0.8,
