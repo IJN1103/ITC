@@ -1679,7 +1679,6 @@ body{scrollbar-color:var(--accent-green) var(--s3);}
 
 .cutin-item-del-btn{width:28px;height:28px;background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center;border-radius:6px;transition:var(--t);flex-shrink:0;}
 .cutin-item-del-btn:hover{background:rgba(217,79,79,.12);color:var(--red);}
-.cutin-list-footer{padding-top:10px;border-top:1px solid var(--border);margin-top:6px;display:flex;justify-content:flex-end;}
 .cutin-delete-all-btn{background:none;border:none;color:var(--red);font-size:12px;cursor:pointer;padding:5px 8px;border-radius:7px;font-family:inherit;transition:var(--t);opacity:.75;}
 .cutin-delete-all-btn:hover{background:rgba(217,79,79,.1);opacity:1;}
 .dsec-text{color:var(--text)!important;background:rgba(0,0,0,.04);border-radius:8px;}
@@ -1689,3 +1688,12 @@ body{scrollbar-color:var(--accent-green) var(--s3);}
 .cutin-duration-opt input[type="radio"]{width:14px;height:14px;cursor:pointer;accent-color:var(--accent);}
 .cutin-dur-hint{font-size:11px;color:var(--muted);}
 .cutin-dur-input{width:64px!important;font-size:12px!important;padding:4px 8px!important;height:28px!important;display:inline-block;}
+/* ── 컷인 전체 재생시간 일괄 설정 ── */
+.cutin-list-footer{padding-top:10px;border-top:1px solid var(--border);margin-top:6px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;}
+.cutin-bulk-duration{display:flex;align-items:center;gap:7px;flex-wrap:wrap;}
+.cutin-bulk-label{font-size:11px;color:var(--muted);white-space:nowrap;}
+.cutin-bulk-opt{display:flex;align-items:center;gap:4px;font-size:12px;color:var(--text);cursor:pointer;}
+.cutin-bulk-opt input[type="radio"]{width:13px;height:13px;cursor:pointer;accent-color:var(--accent);}
+.cutin-bulk-sec-input{width:52px!important;font-size:11px!important;padding:3px 6px!important;height:24px!important;display:inline-block;}
+.cutin-bulk-apply-btn{background:var(--a-dim);border:1px solid rgba(37,99,235,.25);color:var(--accent-text);border-radius:7px;padding:4px 10px;font-size:11px;cursor:pointer;font-family:inherit;transition:var(--t);white-space:nowrap;}
+.cutin-bulk-apply-btn:hover{background:rgba(37,99,235,.18);}

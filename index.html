@@ -1272,6 +1272,21 @@ window._FB = {
     <div id="cutin-list" class="cutin-list-body"></div>
     <div id="cutin-list-empty" class="cutin-empty" style="display:none">등록된 컷인이 없습니다.</div>
     <div id="cutin-list-footer" class="cutin-list-footer" style="display:none">
+      <!-- 전체 재생시간 통일 -->
+      <div class="cutin-bulk-duration">
+        <span class="cutin-bulk-label">전체 재생</span>
+        <label class="cutin-bulk-opt">
+          <input type="radio" name="cutin-bulk-mode" value="apng" checked onchange="onBulkDurationMode()">
+          <span>APNG</span>
+        </label>
+        <label class="cutin-bulk-opt">
+          <input type="radio" name="cutin-bulk-mode" value="manual" onchange="onBulkDurationMode()">
+          <input type="number" id="cutin-bulk-sec" class="input cutin-bulk-sec-input" value="3" min="0.5" max="60" step="0.5" style="display:none" onclick="event.stopPropagation()">
+          <span id="cutin-bulk-sec-unit" style="display:none">초</span>
+          <span id="cutin-bulk-manual-label">직접 입력</span>
+        </label>
+        <button class="cutin-bulk-apply-btn" onclick="applyBulkDuration()">일괄 적용</button>
+      </div>
       <button class="cutin-delete-all-btn" onclick="deleteAllCutins()">전체 삭제</button>
     </div>
   </div>
@@ -2134,6 +2149,44 @@ window._FB = {
     const updatePayload = {};
     updatePayload[`rooms/${window.St.roomCode}/cutins/${id}`] = null;
     await fbUpdate(fbRef(db), updatePayload).catch(e => console.warn('[cutin] 삭제 실패', e));
+  };
+
+  // ── 전체 재생시간 일괄 적용 ──
+  window.onBulkDurationMode = function() {
+    const mode = document.querySelector('input[name="cutin-bulk-mode"]:checked')?.value;
+    const secInput = document.getElementById('cutin-bulk-sec');
+    const secUnit  = document.getElementById('cutin-bulk-sec-unit');
+    const manLabel = document.getElementById('cutin-bulk-manual-label');
+    const isManual = mode === 'manual';
+    if (secInput) secInput.style.display = isManual ? '' : 'none';
+    if (secUnit)  secUnit.style.display  = isManual ? '' : 'none';
+    if (manLabel) manLabel.style.display = isManual ? 'none' : '';
+  };
+
+  window.applyBulkDuration = async function() {
+    if (!Object.keys(_cutins).length) return;
+    const mode = document.querySelector('input[name="cutin-bulk-mode"]:checked')?.value || 'apng';
+    const manualSec = parseFloat(document.getElementById('cutin-bulk-sec')?.value || '3');
+    const roomCode = window.St?.roomCode;
+    if (!roomCode || !window._FB?.CONFIGURED) return;
+
+    if (!confirm(mode === 'apng'
+      ? '모든 컷인을 APNG 1회 재생으로 설정할까요?'
+      : `모든 컷인을 ${manualSec}초로 설정할까요?`)) return;
+
+    const { db, ref: fbRef, update: fbUpdate } = window._FB;
+    const updatePayload = {};
+    for (const [id, ct] of Object.entries(_cutins)) {
+      if (mode === 'apng') {
+        updatePayload[`rooms/${roomCode}/cutins/${id}/durationMode`] = 'auto';
+        updatePayload[`rooms/${roomCode}/cutins/${id}/duration`] = ct.apngDuration || 3;
+      } else {
+        updatePayload[`rooms/${roomCode}/cutins/${id}/durationMode`] = 'manual';
+        updatePayload[`rooms/${roomCode}/cutins/${id}/duration`] = manualSec;
+      }
+    }
+    await fbUpdate(fbRef(db), updatePayload).catch(e => console.warn('[cutin] 일괄 적용 실패', e));
+    if (typeof showToast === 'function') showToast('재생 시간이 일괄 적용됐어요.');
   };
 
   // ── 전체 삭제 ──
