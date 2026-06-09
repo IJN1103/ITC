@@ -467,7 +467,7 @@ to{opacity:1}
 .msg-meta{display:block;margin-bottom:3px;}
 .msg-name{font-size:13.5px;font-weight:600;color:var(--accent-text);margin-right:6px;}
 .msg-time{font-size:9px;color:var(--muted);font-family:var(--font-mono);}
-.msg-text{font-size:var(--chat-font-size,14.5px);color:var(--dim);line-height:1.65;word-break:break-word;display:block;}
+.msg-text{font-size:var(--chat-font-size,14.5px);color:var(--text);line-height:1.65;word-break:break-word;display:block;}
 .msg-dice .msg-text{display:none;}
 .msg-dice .dice-card{background:var(--a-dim);border:1px solid rgba(37,99,235,.2);border-radius:8px;padding:10px 14px;text-align:center;margin-top:4px;max-width:70%;}
 .dice-card-formula{font-size:10px;color:var(--muted);font-family:var(--font-mono);letter-spacing:.08em;text-transform:uppercase;margin-bottom:4px;}
@@ -765,7 +765,7 @@ body.chat-input-is-resizing,body.chat-input-is-resizing *{cursor:ns-resize!impor
 .chat-msg.msg-dsec .msg-avatar{display:none;}
 .chat-msg.msg-dsec .msg-body{display:block;text-align:center;}
 .chat-msg.msg-dsec .msg-meta{display:none;}
-.msg-dsec .msg-text{font-size:15px;font-weight:600;color:var(--dim);line-height:1.9;letter-spacing:.02em;display:block;text-align:center;padding:4px 12px;border-radius:8px;background:rgba(0,0,0,.04);}
+.msg-dsec .msg-text{font-size:15px;font-weight:600;color:var(--text);line-height:1.9;letter-spacing:.02em;display:block;text-align:center;padding:4px 12px;border-radius:8px;background:rgba(0,0,0,.04);}
 .chat-attach-btn{width:34px;height:34px;flex-shrink:0;background:none;border:1px solid var(--border);border-radius:var(--r);color:var(--muted);cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center;transition:var(--t);}
 .chat-attach-btn:hover{border-color:var(--accent);color:var(--accent-text);background:var(--a-dim);}
 .chat-composer-stack{flex:1;min-width:0;display:flex;flex-direction:column;gap:8px;}
@@ -1561,7 +1561,7 @@ input[type=checkbox]:checked,input[type=radio]:checked{accent-color:var(--accent
 /* 스크롤바 thumb */
 ::-webkit-scrollbar-thumb{background:var(--accent-green)!important;}
 body{scrollbar-color:var(--accent-green) var(--s3);}
-[data-theme="dark"] .msg-text{color:#d0d8e8;}
+
 
 /* ── 맵 레이어 매니저 섹션 ── */
 /* ── 레이어 매니저 3컬럼 그리드 ── */
@@ -1682,4 +1682,4 @@ body{scrollbar-color:var(--accent-green) var(--s3);}
 .cutin-list-footer{padding-top:10px;border-top:1px solid var(--border);margin-top:6px;display:flex;justify-content:flex-end;}
 .cutin-delete-all-btn{background:none;border:none;color:var(--red);font-size:12px;cursor:pointer;padding:5px 8px;border-radius:7px;font-family:inherit;transition:var(--t);opacity:.75;}
 .cutin-delete-all-btn:hover{background:rgba(217,79,79,.1);opacity:1;}
-.dsec-text{color:var(--dim)!important;background:rgba(0,0,0,.04);border-radius:8px;}
+.dsec-text{color:var(--text)!important;background:rgba(0,0,0,.04);border-radius:8px;}
