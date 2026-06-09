@@ -909,9 +909,8 @@
             if (!effEntry) continue;
             const effBlob = await effEntry.async('blob');
             const rawExt = String(eff.imageUrl.split('.').pop() || 'png').toLowerCase();
-            const effMime = rawExt === 'svg' ? 'image/svg+xml' : rawExt === 'jpg' || rawExt === 'jpeg' ? 'image/jpeg' : 'image/png';
-            const effUploadBlob = new Blob([effBlob], { type: effMime });
-            const effUrl = await uploadMapLayerBlob(effUploadBlob, roomCode, `cutin-${effId.slice(0, 8)}-${Date.now()}.${rawExt}`);
+            // Blob은 이미 Blob이므로 이중 래핑 없이 그대로 사용
+            const effUrl = await uploadMapLayerBlob(effBlob, roomCode, `cutin-${effId.slice(0, 8)}-${Date.now()}.${rawExt}`);
             if (!effUrl) continue;
 
             // 트리거 단어: name에서 '＞ ' 접두사 제거 후 마지막 단어
@@ -924,7 +923,7 @@
               try {
                 const sndBlob = await zip.file(eff.soundRef).async('blob');
                 const sndExt = String(eff.soundRef.split('.').pop() || 'mp3').toLowerCase();
-                soundUrl = await uploadMapLayerBlob(new Blob([sndBlob], { type: 'audio/' + sndExt }), roomCode, `cutin-snd-${effId.slice(0,8)}-${Date.now()}.${sndExt}`) || '';
+                soundUrl = await uploadMapLayerBlob(sndBlob, roomCode, `cutin-snd-${effId.slice(0,8)}-${Date.now()}.${sndExt}`) || '';
               } catch(e) {}
             }
 
