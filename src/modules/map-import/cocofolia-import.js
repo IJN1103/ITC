@@ -674,6 +674,11 @@
       });
   }
 
+  // 단일 이미지(PNG/JPG)인지 판별
+  function isImageFile(file) {
+    return /\.(png|jpe?g|webp|gif)$/i.test(file.name) || String(file.type).startsWith('image/');
+  }
+
   async function handleMapImportFile(input) {
     if (!requireMapImportPermission()) {
       if (input) input.value = '';
@@ -685,21 +690,43 @@
     IMPORT_STATE.isBusy = true;
     const { hint } = getModalElements();
     try {
-      if (!/\.zip$/i.test(file.name)) throw new Error('ZIP 파일만 업로드할 수 있어요.');
-      if (hint) {
-        hint.style.display = '';
-        hint.textContent = '맵세팅 ZIP을 검사하는 중이에요…';
+      if (isImageFile(file)) {
+        // 단일 이미지: 검사 없이 바로 적용 준비
+        if (hint) { hint.style.display = ''; hint.textContent = '이미지 파일을 확인하는 중이에요…'; }
+        // 이미지 크기 확인
+        const imgSize = await getImageSizeFromBlob(file);
+        const ext = file.name.split('.').pop()?.toLowerCase() || 'png';
+        const fit = 'fill';
+        // 단일 이미지용 minimal parsed 구조 생성
+        const pseudoParsed = {
+          _isSingleImage: true,
+          _imageFile: file,
+          _imageExt: ext,
+          entities: {
+            room: { backgroundUrl: '__single_image__', foregroundUrl: null, fieldObjectFit: fit, fieldWidth: imgSize?.width || 1920, fieldHeight: imgSize?.height || 1080, alignWithGrid: false, markers: {} },
+            items: {},
+          },
+        };
+        IMPORT_STATE.lastValidated = { fileName: file.name, parsed: pseudoParsed };
+        IMPORT_STATE.pendingFile = file;
+        const fitStr = `${imgSize?.width || '?'}×${imgSize?.height || '?'} px`;
+        setSummary(`<b>단일 이미지 업로드</b><br>파일: ${file.name}<br>크기: ${fitStr}<br>렌더 방식: fill (화면 채움)`);
+        if (typeof showToast === 'function') showToast('이미지 파일 확인 완료');
+      } else if (/\.zip$/i.test(file.name)) {
+        if (hint) { hint.style.display = ''; hint.textContent = '맵세팅 ZIP을 검사하는 중이에요…'; }
+        const parsed = await parseCocofoliaZip(file);
+        IMPORT_STATE.lastValidated = { fileName: file.name, parsed };
+        IMPORT_STATE.pendingFile = file;
+        setSummary(buildValidationSummary(file, parsed));
+        if (typeof showToast === 'function') showToast('맵세팅 ZIP 검사 완료');
+      } else {
+        throw new Error('ZIP 또는 이미지 파일(PNG/JPG)만 업로드할 수 있어요.');
       }
-      const parsed = await parseCocofoliaZip(file);
-      IMPORT_STATE.lastValidated = { fileName: file.name, parsed };
-      IMPORT_STATE.pendingFile = file;
-      setSummary(buildValidationSummary(file, parsed));
-      if (typeof showToast === 'function') showToast('맵세팅 ZIP 검사 완료');
     } catch (err) {
       console.error('map import validation failed', err);
       IMPORT_STATE.lastValidated = null;
       IMPORT_STATE.pendingFile = null;
-      setError(err?.message || '맵세팅 ZIP 검사 중 오류가 발생했어요.');
+      setError(err?.message || '파일 검사 중 오류가 발생했어요.');
     } finally {
       IMPORT_STATE.isBusy = false;
       if (input) input.value = '';
@@ -712,9 +739,65 @@
     const pendingFile = IMPORT_STATE.pendingFile;
     const validated = IMPORT_STATE.lastValidated;
     if (!pendingFile || !validated?.parsed) {
-      setError('먼저 검사 완료된 맵세팅 ZIP을 선택해 주세요.');
+      setError('먼저 검사 완료된 맵세팅 파일을 선택해 주세요.');
       return;
     }
+
+    // ── 단일 이미지 업로드 경로 ──
+    if (validated.parsed._isSingleImage) {
+      IMPORT_STATE.isBusy = true;
+      try {
+        setHint('이미지를 업로드하는 중이에요…');
+        const { roomCode } = await ensureLiveRoomContext();
+        const ext = validated.parsed._imageExt || 'png';
+        const mimeType = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : 'image/png';
+        const uploadBlob = new Blob([pendingFile], { type: mimeType });
+        const uploadedUrl = await uploadMapLayerBlob(uploadBlob, roomCode, `map-bg-${Date.now()}.${ext}`);
+        if (!uploadedUrl) throw new Error('이미지 업로드에 실패했어요.');
+        const imgSize = await getImageSizeFromBlob(pendingFile);
+        const nextMapState = {
+          background: { url: uploadedUrl, sourceName: pendingFile.name, fit: 'fill', importedAt: Date.now() },
+          foreground: null,
+          objects: [],
+        };
+        await clearPreviousImportedPanelTokens(roomCode, window.St?.mapState?.objects || []);
+        const nextLayerState = buildDefaultImportedMapLayerState(nextMapState);
+        const { db, ref, update } = window._FB;
+        await update(ref(db, `rooms/${roomCode}`), {
+          mapState: nextMapState,
+          mapLayerState: nextLayerState,
+          'bgm/mapBackground': uploadedUrl,
+          'bgm/mapBackgroundFit': 'fill',
+          'bgm/mapBackgroundSourceName': pendingFile.name,
+          'bgm/mapBackgroundImportedAt': Date.now(),
+          'bgm/mapForeground': '',
+          'bgm/mapForegroundFit': '',
+          'bgm/mapForegroundSourceName': '',
+          'bgm/mapForegroundImportedAt': 0,
+          'bgm/mapObjects': [],
+          'bgm/mapLayerState': nextLayerState,
+        });
+        if (window.St) { window.St.mapState = nextMapState; window.St.mapLayerState = nextLayerState; }
+        if (typeof window._itcApplyRoomMapStateLocal === 'function') {
+          window._itcApplyRoomMapStateLocal(nextMapState, nextLayerState, 'map-import-single-image');
+        } else {
+          applyImportedMapState(nextMapState);
+          if (typeof refreshMapLayerManager === 'function') refreshMapLayerManager();
+        }
+        setSummary(`<b>이미지 적용 완료</b><br>${pendingFile.name}`);
+        if (typeof showToast === 'function') showToast('맵 이미지가 적용됐어요.');
+        IMPORT_STATE.pendingFile = null;
+        IMPORT_STATE.lastValidated = null;
+      } catch (err) {
+        setError(err?.message || '이미지 업로드 중 오류가 발생했어요.');
+        console.error('single image apply failed', err);
+      } finally {
+        IMPORT_STATE.isBusy = false;
+      }
+      return;
+    }
+
+    // ── ZIP 업로드 경로 (기존) ──
     const room = validated.parsed?.entities?.room || {};
     const bgImageName = String(room.backgroundUrl || '').trim();
     const fgImageName = String(room.foregroundUrl || '').trim();
