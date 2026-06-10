@@ -940,3 +940,44 @@ if (_baseRemove) {
     return result;
   };
 }
+/* ── 라이트 모드 추가 커버 ── */
+html.light .mn .nn{color:#1a4fd6}
+html.light .mn .tm{color:#767a8c}
+html.light .dot{background:#2563eb}
+html.light .w-dot{background:#9b59b6}
+html.light .on{color:#1a4fd6;border-bottom-color:#2563eb}
+html.light .sel{color:#1a4fd6}
+html.light .active{color:#1a4fd6}
+html.light .resize-edge-hover,html.light .is-resizing{border-color:#2563eb;box-shadow:0 0 0 1px rgba(37,99,235,.18)}
+html.light .whisper-mode{border-color:#9b59b6;background:rgba(155,89,182,.04)}
+html.light .pdm-room-list-empty{color:#767a8c}
+html.light .pdm-room-list-head-note{color:#767a8c}
+html.light .pdm-room-list-meta{color:#2563eb}
+/* 캐주얼 */
+html.light .pop-casual-avatar{background:#f7f8fa;border-color:#dbe1e8;color:#1a4fd6}
+html.light .pop-casual-name{color:#131415}
+html.light .pop-casual-edit-btn{color:#767a8c}
+html.light .pop-casual-color-btn{color:#767a8c}
+html.light .pop-color-pop{background:#ffffff;border-color:#dbe1e8;box-shadow:0 8px 24px rgba(0,0,0,.1)}
+html.light .pop-color-title{color:#485666}
+html.light .pop-color-swatch{border-color:rgba(0,0,0,.12)}
+html.light .pop-name-color-btn{color:#767a8c}
+/* 문서 탭 */
+html.light .doc-pop-head{background:#f7f8fa;border-bottom-color:#dbe1e8}
+html.light .doc-pop-head-title{color:#131415}
+html.light .doc-pop-sec{background:#ffffff;border-color:#dbe1e8}
+html.light .doc-pop-item{background:#ffffff;border-color:#dbe1e8;color:#131415}
+html.light .doc-pop-item:hover{background:#f7f8fa;border-color:#c8d0da}
+html.light .doc-pop-title{color:#131415}
+html.light .doc-pop-icon{color:#485666}
+html.light .doc-pop-badge{color:#1a4fd6;border-color:rgba(37,99,235,.22);background:rgba(37,99,235,.07)}
+html.light .doc-pop-meta{color:#767a8c}
+html.light .doc-pop-preview{color:#485666}
+html.light .doc-pop-empty{color:#767a8c}
+html.light .doc-pop-avatar{background:#f7f8fa;border-color:#dbe1e8}
+html.light .doc-pop-add-btn{background:#f7f8fa;border-color:#c8d0da;color:#485666}
+html.light .doc-pop-add-btn:hover{background:#dbe1e8;color:#131415}
+/* 이미지 */
+html.light .pop-img{border-color:#dbe1e8}
+html.light .pop-img-wrap{background:transparent}
+
