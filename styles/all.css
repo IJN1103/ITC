@@ -1689,3 +1689,16 @@ body{scrollbar-color:var(--accent-green) var(--s3);}
 .cutin-bulk-sec-input{width:52px!important;font-size:11px!important;padding:3px 6px!important;height:24px!important;display:inline-block;}
 .cutin-bulk-apply-btn{background:var(--a-dim);border:1px solid rgba(37,99,235,.25);color:var(--accent-text);border-radius:7px;padding:4px 10px;font-size:11px;cursor:pointer;font-family:inherit;transition:var(--t);white-space:nowrap;}
 .cutin-bulk-apply-btn:hover{background:rgba(37,99,235,.18);}
+
+/* ── 컷인 편집 - 사운드 섹션 ── */
+.cutin-edit-label-opt{font-size:10px;font-weight:400;color:var(--muted);letter-spacing:0;text-transform:none;margin-left:4px;}
+.cutin-sound-area{display:flex;flex-direction:column;gap:6px;}
+.cutin-sound-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.cutin-sound-file-btn{white-space:nowrap;}
+.cutin-sound-name{font-size:11px;color:var(--accent-text);background:var(--a-dim);border:1px solid rgba(37,99,235,.2);border-radius:6px;padding:3px 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px;}
+.cutin-sound-clear-btn{padding:3px 8px!important;font-size:11px!important;color:var(--muted)!important;border-color:var(--border)!important;}
+.cutin-sound-clear-btn:hover{color:var(--red)!important;border-color:rgba(217,79,79,.4)!important;background:rgba(217,79,79,.07)!important;}
+.cutin-vol-row{display:flex;align-items:center;gap:8px;}
+.cutin-vol-label{font-size:11px;color:var(--muted);white-space:nowrap;min-width:24px;}
+.cutin-vol-slider{flex:1;height:3px;cursor:pointer;accent-color:var(--accent);}
+.cutin-vol-val{font-size:11px;color:var(--muted);width:26px;text-align:right;font-variant-numeric:tabular-nums;}

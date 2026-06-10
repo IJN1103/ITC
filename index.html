@@ -1322,7 +1322,29 @@ window._FB = {
       </div>
     </div>
 
-    <!-- 볼륨 (사운드 기능 미포함) -->
+    <!-- 사운드 -->
+    <div class="cutin-edit-section">
+      <label class="cutin-edit-label">사운드 <span class="cutin-edit-label-opt">선택사항</span></label>
+      <div class="cutin-sound-area">
+        <!-- 파일 업로드 행 -->
+        <div class="cutin-sound-row">
+          <label class="btn btn-sm cutin-sound-file-btn" style="cursor:pointer;font-size:12px">
+            파일 선택 <span class="cutin-edit-label-opt">(10초 이하)</span>
+            <input type="file" id="cutin-edit-sound-file" accept="audio/*" style="display:none" onchange="onCutinEditSoundFile(this)">
+          </label>
+          <div id="cutin-edit-sound-name" class="cutin-sound-name" style="display:none"></div>
+        </div>
+        <!-- URL 입력 -->
+        <input id="cutin-edit-sound-url" class="input" placeholder="또는 음원 URL 입력" style="font-size:12px;margin-top:6px">
+        <!-- 볼륨 슬라이더 -->
+        <div class="cutin-vol-row">
+          <span class="cutin-vol-label">볼륨</span>
+          <input type="range" id="cutin-edit-volume" min="0" max="1" step="0.05" value="0.8" class="cutin-vol-slider" oninput="document.getElementById('cutin-edit-vol-val').textContent=parseFloat(this.value).toFixed(1)">
+          <span id="cutin-edit-vol-val" class="cutin-vol-val">0.8</span>
+          <button class="btn btn-sm cutin-sound-clear-btn" id="cutin-sound-clear-btn" onclick="clearCutinSound()" style="display:none" title="사운드 제거">✕</button>
+        </div>
+      </div>
+    </div>
 
     <!-- 재생 시간 -->
     <div class="cutin-edit-section">
@@ -2036,6 +2058,22 @@ window._FB = {
     if (durUnit)   durUnit.style.display  = isManual ? '' : 'none';
     if (durHint)   durHint.textContent    = ct.apngDuration ? `— ${ct.apngDuration.toFixed(1)}초 (자동 감지됨)` : '— 이미지 선택 시 자동 감지';
 
+    // 사운드 복원
+    const soundUrlEl  = document.getElementById('cutin-edit-sound-url');
+    const soundNameEl = document.getElementById('cutin-edit-sound-name');
+    const soundClearEl= document.getElementById('cutin-sound-clear-btn');
+    const volSlider   = document.getElementById('cutin-edit-volume');
+    const volVal      = document.getElementById('cutin-edit-vol-val');
+    if (soundUrlEl)  soundUrlEl.value = ct.soundUrl || '';
+    if (soundNameEl) { soundNameEl.textContent = ct.soundUrl ? '음원 설정됨' : ''; soundNameEl.style.display = ct.soundUrl ? '' : 'none'; }
+    if (soundClearEl)soundClearEl.style.display = ct.soundUrl ? '' : 'none';
+    const vol = ct.volume != null ? ct.volume : 0.8;
+    if (volSlider) volSlider.value = vol;
+    if (volVal)    volVal.textContent = parseFloat(vol).toFixed(1);
+    // 편집창 클로저용 사운드 blob 상태 초기화
+    window._editSoundBlob = null;
+    window._editSoundObjUrl = null;
+
     // 삭제 버튼
     const delBtn = document.getElementById('cutin-edit-del-btn');
     if (delBtn) delBtn.style.display = isNew ? 'none' : '';
@@ -2083,7 +2121,16 @@ window._FB = {
     const manualDur = parseFloat(document.getElementById('cutin-edit-duration')?.value || '3');
     const apngDur  = _editingApngDuration;
     const duration = durMode === 'manual' ? manualDur : (apngDur || 3);
-    const data = { trigger, imageUrl, soundUrl: '', volume: 0.8, duration,
+    // 사운드: 파일 blob이 있으면 업로드, 아니면 URL 필드
+    let soundUrl = document.getElementById('cutin-edit-sound-url')?.value?.trim() || '';
+    if (window._editSoundBlob && window.St?.roomCode && typeof uploadMapLayerBlob === 'function') {
+      try {
+        const ext = window._editSoundBlob.name?.split('.').pop() || 'mp3';
+        soundUrl = await uploadMapLayerBlob(window._editSoundBlob, window.St.roomCode, `cutin-snd-${Date.now()}.${ext}`) || soundUrl;
+      } catch(e) {}
+    }
+    const volume = parseFloat(document.getElementById('cutin-edit-volume')?.value || '0.8');
+    const data = { trigger, imageUrl, soundUrl, volume, duration,
                    durationMode: durMode, apngDuration: apngDur, updatedAt: Date.now(),
                    name: trigger };
     const { db, ref: fbRef, set, push, update: fbUpdate } = window._FB;
@@ -2169,9 +2216,11 @@ window._FB = {
   window.previewCutinEdit = function() {
     const imageUrl = document.getElementById('cutin-edit-img-url')?.value?.trim();
     if (!imageUrl) { showToast?.('이미지를 먼저 설정해주세요.'); return; }
-    const manual = document.querySelector('input[name="cutin-duration-mode"]:checked')?.value === 'manual';
-    const dur    = manual ? parseFloat(document.getElementById('cutin-edit-duration')?.value || '3') : (_editingApngDuration || 3);
-    _playCutin({ imageUrl, duration: dur, durationMode: manual ? 'manual' : 'auto', apngDuration: _editingApngDuration });
+    const manual   = document.querySelector('input[name="cutin-duration-mode"]:checked')?.value === 'manual';
+    const dur      = manual ? parseFloat(document.getElementById('cutin-edit-duration')?.value || '3') : (_editingApngDuration || 3);
+    const soundUrl = window._editSoundObjUrl || document.getElementById('cutin-edit-sound-url')?.value?.trim() || '';
+    const volume   = parseFloat(document.getElementById('cutin-edit-volume')?.value || '0.8');
+    _playCutin({ imageUrl, soundUrl, volume, duration: dur, durationMode: manual ? 'manual' : 'auto', apngDuration: _editingApngDuration });
   };
 
   // ── 목록에서 재생 ──
@@ -2187,6 +2236,14 @@ window._FB = {
     display.style.opacity = '1';
     overlay.style.display = 'flex';
     if (dim) requestAnimationFrame(() => { dim.style.background = 'rgba(0,0,0,0.55)'; });
+    // 사운드 재생
+    if (ct.soundUrl) {
+      try {
+        const audio = new Audio(ct.soundUrl);
+        audio.volume = ct.volume != null ? Math.min(1, Math.max(0, ct.volume)) : 0.8;
+        audio.play().catch(() => {});
+      } catch(e) {}
+    }
     const ms = Math.max(500, durationSec * 1000);
     _cutinOverlayTimer = setTimeout(() => {
       display.style.opacity = '0';
@@ -2249,6 +2306,40 @@ window._FB = {
       }
     }
   }
+
+  // ── 사운드 파일 선택 (10초 이하 제한) ──
+  window.onCutinEditSoundFile = async function(input) {
+    const file = input?.files?.[0]; if (!file) return;
+    input.value = '';
+    // 재생 길이 확인
+    const dur = await new Promise(res => {
+      const a = new Audio(); a.src = URL.createObjectURL(file);
+      a.onloadedmetadata = () => res(a.duration);
+      a.onerror = () => res(0);
+    });
+    if (dur > 10) { showToast?.('10초 이하 음원만 업로드할 수 있어요.'); return; }
+    window._editSoundBlob = file;
+    if (window._editSoundObjUrl) URL.revokeObjectURL(window._editSoundObjUrl);
+    window._editSoundObjUrl = URL.createObjectURL(file);
+    const nameEl  = document.getElementById('cutin-edit-sound-name');
+    const clearEl = document.getElementById('cutin-sound-clear-btn');
+    const urlEl   = document.getElementById('cutin-edit-sound-url');
+    if (nameEl)  { nameEl.textContent = file.name; nameEl.style.display = ''; }
+    if (clearEl)   clearEl.style.display = '';
+    if (urlEl)     urlEl.value = '';
+  };
+
+  // ── 사운드 제거 ──
+  window.clearCutinSound = function() {
+    window._editSoundBlob = null;
+    if (window._editSoundObjUrl) { URL.revokeObjectURL(window._editSoundObjUrl); window._editSoundObjUrl = null; }
+    const nameEl  = document.getElementById('cutin-edit-sound-name');
+    const clearEl = document.getElementById('cutin-sound-clear-btn');
+    const urlEl   = document.getElementById('cutin-edit-sound-url');
+    if (nameEl)  { nameEl.textContent = ''; nameEl.style.display = 'none'; }
+    if (clearEl)   clearEl.style.display = 'none';
+    if (urlEl)     urlEl.value = '';
+  };
 
   // ── 외부 노출 (최소한으로) ──
   window._subscribeCutins = _subscribeCutins;
