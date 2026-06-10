@@ -764,7 +764,7 @@ body.chat-input-is-resizing,body.chat-input-is-resizing *{cursor:ns-resize!impor
 .chat-msg.msg-dsec .msg-avatar{display:none;}
 .chat-msg.msg-dsec .msg-body{display:block;text-align:center;}
 .chat-msg.msg-dsec .msg-meta{display:none;}
-.msg-dsec .msg-text{font-size:15px;font-weight:600;color:var(--text);line-height:1.9;letter-spacing:.02em;display:block;text-align:center;padding:4px 12px;border-radius:8px;background:rgba(0,0,0,.04);}
+.msg-dsec .msg-text{font-size:15px;font-weight:500;color:var(--dim);line-height:1.9;letter-spacing:.02em;display:block;text-align:center;padding:8px 16px;border-radius:8px;background:var(--s2);border:1px solid var(--border);}
 .chat-attach-btn{width:34px;height:34px;flex-shrink:0;background:none;border:1px solid var(--border);border-radius:var(--r);color:var(--muted);cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center;transition:var(--t);}
 .chat-attach-btn:hover{border-color:var(--accent);color:var(--accent-text);background:var(--a-dim);}
 .chat-composer-stack{flex:1;min-width:0;display:flex;flex-direction:column;gap:8px;}
@@ -1705,3 +1705,6 @@ body{scrollbar-color:var(--accent-green) var(--s3);}
 #ms-import-panel{margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--border);}
 .ms-import-summary{padding:10px 12px;border:1px solid var(--border);border-radius:var(--r);background:var(--s2);font-size:12px;line-height:1.8;color:var(--dim);}
 .ms-import-error{padding:10px 12px;border:1px solid rgba(200,92,92,.3);border-radius:var(--r);background:rgba(200,92,92,.08);font-size:12px;line-height:1.7;color:var(--red);}
+
+/* ── 팝아웃 대사창 override (popout.js 하드코딩 덮어쓰기) ── */
+.dsec-text{font-size:15px!important;font-weight:500!important;color:#c2cee0!important;background:rgba(255,255,255,.06)!important;border:1px solid rgba(255,255,255,.1)!important;border-radius:8px!important;padding:8px 16px!important;display:block!important;text-align:center!important;line-height:1.9!important;letter-spacing:.02em!important;}
