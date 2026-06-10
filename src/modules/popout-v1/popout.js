@@ -117,6 +117,57 @@ function buildPopoutHtml() {
   const isGmJson = JSON.stringify(!!St.isGM);
   
   const css = `
+html.light body{background:#f2f4f7;color:#131415}
+html.light .tabs{background:#ffffff;border-bottom-color:#dbe1e8}
+html.light .tab{color:#767a8c}
+html.light .tab.on{color:#1a4fd6;border-bottom-color:#1a4fd6}
+html.light .tab:hover:not(.on){color:#485666}
+html.light .pdm{background:#f7f8fa;border-bottom-color:#dbe1e8}
+html.light .pdm-btn{background:#ffffff;border-color:#c8d0da;color:#485666}
+html.light .pdm-btn:hover{border-color:#2563eb;color:#1a4fd6}
+html.light .pdm-btn.on{background:rgba(37,99,235,.1);border-color:rgba(37,99,235,.4);color:#1a4fd6}
+html.light .pdm-dot{background:#2563eb;box-shadow:0 0 0 2px #ffffff}
+html.light .pdm-room-list-panel{background:rgba(255,255,255,.98);border-color:#dbe1e8}
+html.light .pdm-room-list-head{border-bottom-color:#dbe1e8;color:#1a4fd6}
+html.light .pdm-room-list-item{color:#485666}
+html.light .pdm-room-list-item:hover{color:#131415}
+html.light .pdm-room-list-row.on .pdm-room-list-item{color:#1a4fd6}
+html.light .pdm-room-list-delete{background:rgba(0,0,0,.04)}
+html.light .pdm-toast{background:rgba(255,255,255,.96);color:#131415}
+html.light .msgs::-webkit-scrollbar-thumb{background:#c8d0da}
+html.light .av{background:#f7f8fa;border-color:#dbe1e8;color:#1a4fd6}
+html.light .nn{color:#1a4fd6}
+html.light .tm{color:#767a8c}
+html.light .mt{color:#485666}
+html.light .ms .mt{color:#767a8c}
+html.light .dc{background:rgba(37,99,235,.07);border-color:rgba(37,99,235,.2)}
+html.light .dc-f{color:#767a8c}
+html.light .dc-r{color:#1a4fd6}
+html.light .dc-d{color:#485666}
+html.light .j-item{border-color:#dbe1e8}
+html.light .j-item b{color:#131415}
+html.light .ptb{border-top-color:#dbe1e8}
+html.light .sa-btn{color:#767a8c}
+html.light .sa-btn:hover{color:#485666}
+html.light .sa-btn.active{color:#1a4fd6}
+html.light .sa-icon{background:#f7f8fa;border-color:#dbe1e8}
+html.light .sa-dd{background:#ffffff;border-color:#dbe1e8}
+html.light .sa-dd-item{color:#131415}
+html.light .sa-dd-item:hover{background:rgba(37,99,235,.06)}
+html.light .sa-dd-item.sel{color:#1a4fd6}
+html.light .sa-dd-av{background:#f7f8fa;border-color:#dbe1e8}
+html.light .tb-btn{background:#ffffff;border-color:#dbe1e8;color:#485666}
+html.light .tb-btn:hover,.html.light .tb-btn.active{border-color:#2563eb;color:#1a4fd6}
+html.light .desc-btn,.html.light .whisper-btn{border-color:#dbe1e8;color:#767a8c}
+html.light .desc-btn:hover{color:#485666}
+html.light .desc-btn.active{border-color:#2563eb;color:#1a4fd6}
+html.light textarea{background:#ffffff;border-color:#dbe1e8;color:#131415}
+html.light textarea:focus{border-color:#2563eb}
+html.light textarea.desc-mode{border-color:#2563eb;background:rgba(37,99,235,.04)}
+html.light .sb{background:#2563eb}
+html.light .dsec-text{color:#485666}
+html.light .pop-img{border-color:#dbe1e8}
+html.light .pop-casual-name{color:#131415}
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%;overflow:hidden}
 body{font-family:'DM Sans',sans-serif;background:#141920;color:#e4e9f0;font-size:14px;display:flex;flex-direction:column;height:100vh}
@@ -320,11 +371,13 @@ textarea.whisper-mode{border-color:#9b59b6;background:rgba(155,89,182,.05)}
   });
   const playersJson = JSON.stringify(playersObj).replace(/</g, '\\x3c');
 
-  return '<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ITC \u2014 ' + rc + '</title><link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400&display=swap" rel=stylesheet><style>' + css + '</style></head><body>' + htmlBody + S + buildPopoutScript(journalJson, playersJson, isGmJson) + SE + '</body></html>';
+  var _popTheme = (function(){ try{ return localStorage.getItem('itc_theme') || 'light'; }catch(e){ return 'light'; } })();
+  return '<!DOCTYPE html><html lang="ko" class="' + _popTheme + '"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ITC \u2014 ' + rc + '</title><link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400&display=swap" rel=stylesheet><style>' + css + '</style></head><body>' + htmlBody + S + buildPopoutScript(journalJson, playersJson, isGmJson) + SE + '</body></html>';
 }
 
 function buildPopoutScript(journalJson, playersJson, isGmJson) {
   var L = [];
+  L.push('try{var _bc=new BroadcastChannel("itc_theme_sync");_bc.onmessage=function(e){if(e.data&&e.data.theme){document.documentElement.className=e.data.theme;}}}catch(e){}');
   L.push('(function(){');
   L.push('var aTab="chat",saJId=null,descMode=false,whisperUid=null,whisperName=null,whisperJournalId=null,popDmChannelKey="global",popDmPendingTargetIds=null;');
   L.push('var journals='+journalJson+',players='+playersJson+',handouts=[],popIsGM='+isGmJson+';');

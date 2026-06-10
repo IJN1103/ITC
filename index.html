@@ -1929,6 +1929,8 @@ window._FB = {
     if (!roomCode || !window._FB?.CONFIGURED) return;
     const r = _fbRef(`rooms/${roomCode}/cutins`);
     if (!r) return;
+    // 구독 시작 시각 기록 → 이후 채팅 채널 전환 시 히스토리 메시지 트리거 방지
+    window._cutinListenStart = Date.now();
     _cutinFbUnsub = window._FB.onValue(r, snap => {
       _cutins = snap.val() || {};
       _renderCutinList();
@@ -2296,8 +2298,12 @@ window._FB = {
   function _checkCutinTrigger(msg) {
     const text = String(msg?.text || '').trim();
     if (!text) return;
+
+    // 채널 구독 시작 이전 메시지(히스토리 재로드)는 무시
+    const msgTs = msg.timestamp || msg.time || 0;
+    if (msgTs && window._cutinListenStart && msgTs < window._cutinListenStart) return;
+
     const textLower = text.toLowerCase();
-    // 다이스 판정 결과 label 추출 (형식: "... ||보통 성공)")
     const diceMatch = text.match(/\|\|([^)]+)\)/);
     const diceLabel = diceMatch ? diceMatch[1].trim().toLowerCase() : null;
     for (const ct of Object.values(_cutins)) {
@@ -2413,6 +2419,8 @@ window._FB = {
   window.toggleTheme = function(dark) {
     applyTheme(dark);
     try { localStorage.setItem(STORAGE_KEY, dark ? 'dark' : 'light'); } catch(e) {}
+    // 팝아웃창에 테마 변경 브로드캐스트
+    try { new BroadcastChannel('itc_theme_sync').postMessage({ theme: dark ? 'dark' : 'light' }); } catch(e) {}
   };
 
   // 페이지 로드 시 저장된 테마 복원
