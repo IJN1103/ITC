@@ -2792,7 +2792,7 @@ function renderQuickStandingMenu() {
         const hasIndividualCrop = hasQuickStandingIndividualThumbCrop(standing);
         const cropStyle = getQuickStandingThumbImgStyle(getQuickStandingThumbCrop(token, standing));
         return `<button type="button" class="map-quick-standing-card${active ? ' active' : ''}${canChange ? '' : ' disabled'}${hasIndividualCrop ? ' has-individual-crop' : ''}" data-standing-index="${index}" ${canChange ? '' : 'disabled'}>
-          <span class="map-quick-standing-thumb${cropStyle ? ' cropped' : ''}">${src ? `<img src="${esc(src)}" alt=""${cropStyle}>` : '<span class="map-quick-standing-fallback">?</span>'}</span>
+          <span class="map-quick-standing-thumb${cropStyle ? ' cropped' : ''}">${src ? `<img src="${esc(src)}" alt=""${cropStyle} loading="lazy" decoding="async">` : '<span class="map-quick-standing-fallback">?</span>'}</span>
           ${hasIndividualCrop ? '<span class="map-quick-standing-crop-badge">개별</span>' : ''}
           <span class="map-quick-standing-label">${esc(displayLabel)}</span>
         </button>`;
@@ -3066,7 +3066,7 @@ function renderQuickStandingCropEditor(options = {}) {
     </div>
     <div class="map-quick-standing-crop-editor">
       <div class="map-quick-standing-crop-preview" title="드래그해서 썸네일 중심을 조정">
-        <img class="map-quick-standing-crop-image" src="${esc(baseImg)}" alt="" style="${getQuickStandingCropPreviewStyle(cropState.crop)}">
+        <img class="map-quick-standing-crop-image" src="${esc(baseImg)}" alt="" loading="lazy" decoding="async" style="${getQuickStandingCropPreviewStyle(cropState.crop)}">
         <span class="map-quick-standing-crop-frame" aria-hidden="true"></span>
       </div>
       <div class="map-quick-standing-crop-meta">

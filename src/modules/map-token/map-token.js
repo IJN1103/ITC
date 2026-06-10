@@ -1337,6 +1337,7 @@ function createTokenEl(t) {
   if (tokenImgSrc) {
     el.textContent = '';
     const img = document.createElement('img');
+    img.loading = 'lazy'; img.decoding = 'async';
     if (isPanel && t.importedMapObject === true && t.importedMapObjectHidden === true) {
       img.dataset.itcMapLazySrc = tokenImgSrc;
     } else {

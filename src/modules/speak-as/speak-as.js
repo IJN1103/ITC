@@ -344,7 +344,7 @@ function showDialogueBox(journal, text) {
   renderDialoguePortrait(dialog, journal);
 
   if (standingImg) {
-    standingEl.innerHTML = `<img src="${standingImg}" alt="">`;
+    standingEl.innerHTML = `<img src="${standingImg}" alt="" loading="lazy" decoding="async">`;
     standingEl.style.display = '';
     dialog.classList.add('has-standing');
   } else {
@@ -412,7 +412,7 @@ function showDialogueBoxFromMsg(name, text, journalId, standingImg, tokenId, sta
   if (!finalStanding && standingImg) finalStanding = standingImg;
 
   if (finalStanding) {
-    standingEl.innerHTML = `<img src="${finalStanding}" alt="">`;
+    standingEl.innerHTML = `<img src="${finalStanding}" alt="" loading="lazy" decoding="async">`;
     standingEl.style.display = '';
     dialog.classList.add('has-standing');
   } else {

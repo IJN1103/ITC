@@ -3113,8 +3113,7 @@ function appendChatMsg(msg = {}) {
   const safeKey = upsertStoredMessage(actualChannel, msg.msgKey, {
     name: msg.name, text: msg.text, type: msg.type, uid: msg.uid, timestamp: msg.timestamp,
     speakAsAvatar: msg.speakAsAvatar, speakAsJournalId: msg.speakAsJournalId,
-    whisperTo: msg.whisperTo, whisperToName: msg.whisperToName, whisperToJournal: msg.whisperToJournal,
-    speakAsAvatar: msg.speakAsAvatar, speakAsJournalId: msg.speakAsJournalId, nameColor: msg.nameColor,
+    whisperTo: msg.whisperTo, whisperToName: msg.whisperToName, whisperToJournal: msg.whisperToJournal, nameColor: msg.nameColor,
     standingImg: msg.standingImg, tokenId: msg.tokenId, standingLabel: msg.standingLabel,
     dialoguePortrait: msg.dialoguePortrait, showPortraitInDialogue: msg.showPortraitInDialogue,
     imageWide: msg.imageWide, hideImageMeta: msg.hideImageMeta,

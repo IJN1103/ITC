@@ -1786,8 +1786,12 @@ window._FB = {
     if (!file) return;
     const urlEl = document.getElementById(`bgfg-${type}-url`);
     const prevEl = document.getElementById(`bgfg-${type}-preview`);
-    // 로컬 미리보기
+    // 로컬 미리보기 (이전 URL 해제)
+    const _prevUrl = document.getElementById(`bgfg-${type}-preview`)?.dataset?.localUrl;
+    if (_prevUrl) URL.revokeObjectURL(_prevUrl);
     const localUrl = URL.createObjectURL(file);
+    const _prevEl = document.getElementById(`bgfg-${type}-preview`);
+    if (_prevEl) _prevEl.dataset.localUrl = localUrl;
     if (prevEl) prevEl.style.backgroundImage = `url("${localUrl}")`;
 
     // Cloudinary 업로드
@@ -2089,6 +2093,9 @@ window._FB = {
   window.closeCutinEdit = function() {
     _editingApngDuration = null;
     _editingId = null;
+    // 이미지 프리뷰 ObjectURL 해제
+    const imgEl = document.getElementById('cutin-edit-img-el');
+    if (imgEl?.dataset?.localUrl) { URL.revokeObjectURL(imgEl.dataset.localUrl); delete imgEl.dataset.localUrl; }
     closeModal('modal-cutin-edit');
   };
 
@@ -2096,8 +2103,11 @@ window._FB = {
   window.onCutinEditImageFile = async function(input) {
     const file = input?.files?.[0]; if (!file) return;
     input.value = '';
+    const _prevImgUrl = document.getElementById('cutin-edit-img-el')?.dataset?.localUrl;
+    if (_prevImgUrl) URL.revokeObjectURL(_prevImgUrl);
     const local  = URL.createObjectURL(file);
     const imgEl  = document.getElementById('cutin-edit-img-el');
+    if (imgEl) imgEl.dataset.localUrl = local;
     const imgPrev = document.getElementById('cutin-edit-img-preview');
     const urlEl  = document.getElementById('cutin-edit-img-url');
     const ph     = imgPrev?.querySelector('.cutin-edit-img-placeholder');
