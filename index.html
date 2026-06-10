@@ -381,13 +381,9 @@ window._FB = {
           <img class="map-control-icon" src="assets/map-controls/icon-panel-token.png" alt="" aria-hidden="true">
           <span class="map-control-tooltip" aria-hidden="true">패널 토큰</span>
         </button>
-        <button type="button" class="map-add-token map-control-btn gm-only" id="map-import-trigger" onclick="openMapImportModal()" style="display:none" aria-label="맵세팅">
+        <button type="button" class="map-add-token map-control-btn gm-only" id="map-import-trigger" onclick="openMapSettingModal()" style="display:none" aria-label="맵세팅">
           <img class="map-control-icon" src="assets/map-controls/icon-map-import.png" alt="" aria-hidden="true">
           <span class="map-control-tooltip" aria-hidden="true">맵세팅</span>
-        </button>
-        <button type="button" class="map-layer-btn map-control-btn gm-only" id="map-layer-trigger" onclick="openMapLayerManagerModal()" style="display:none" aria-label="맵세팅 레이어">
-          <img class="map-control-icon" src="assets/map-controls/icon-map-layers.png" alt="" aria-hidden="true">
-          <span class="map-control-tooltip" aria-hidden="true">맵세팅 레이어</span>
         </button>
         <button type="button" class="map-add-token map-control-btn gm-only" id="map-scene-trigger" onclick="openMapSceneModal()" style="display:none" aria-label="장면 전환">
           <img class="map-control-icon" src="assets/map-controls/icon-map-scenes.png" alt="" aria-hidden="true">
@@ -1089,23 +1085,65 @@ window._FB = {
   </div>
 </div>
 
+<!-- ── 통합 맵세팅 모달 (가져오기 + 레이어) ── -->
 <div class="overlay" id="modal-map-import">
-  <div class="modal" style="width:min(460px,94vw)">
+  <div class="modal modal-map-setting">
+    <!-- 헤더 -->
     <div class="modal-row">
-      <div class="modal-title">맵세팅 가져오기</div>
+      <div class="modal-title">맵세팅</div>
       <button class="modal-close" onclick="closeModal('modal-map-import')">✕</button>
     </div>
-    <div class="modal-info" style="line-height:1.8">맵세팅용 ZIP 또는 단일 이미지(PNG/JPG)를 업로드해주세요.</div>
-    <div id="map-import-summary" style="display:none;margin:12px 0 14px;padding:12px;border:1px solid var(--border);border-radius:var(--r);background:var(--s2);font-size:12px;line-height:1.8;color:var(--dim)"></div>
-    <div id="map-import-error" style="display:none;margin:12px 0 14px;padding:12px;border:1px solid rgba(200,92,92,.3);border-radius:var(--r);background:rgba(200,92,92,.08);font-size:12px;line-height:1.7;color:var(--red)"></div>
-    <div id="map-import-hint" style="font-size:11px;color:var(--muted);margin-bottom:12px">맵세팅용 ZIP 또는 단일 이미지(PNG/JPG)를 업로드해주세요.</div>
-    <input type="file" id="map-import-file" accept=".zip,application/zip,image/png,image/jpeg,image/webp" style="display:none" onchange="handleMapImportFile(this)">
-    <div style="display:flex;gap:10px;align-items:center;margin-top:4px">
-      <button class="btn-primary" onclick="document.getElementById('map-import-file').click()" title="ZIP 파일 선택" aria-label="ZIP 파일 선택" style="flex:0 0 42px;width:42px;min-width:42px;height:42px;padding:0;display:flex;align-items:center;justify-content:center;border-radius:12px;font-size:24px;line-height:1;margin-top:0">+</button>
-      <button class="btn-primary" onclick="closeModal('modal-map-import')" style="flex:0 0 auto;width:auto;min-width:84px;height:42px;padding:0 16px;display:inline-flex;align-items:center;justify-content:center;border-radius:12px;background:var(--s2);color:var(--text);border:1px solid var(--border2);box-shadow:0 2px 8px rgba(0,0,0,.08);margin-top:0">닫기</button>
+
+    <!-- 탭 -->
+    <div class="ms-tabs">
+      <button class="ms-tab active" id="ms-tab-import" onclick="switchMapSettingTab('import')">가져오기</button>
+      <button class="ms-tab" id="ms-tab-layers" onclick="switchMapSettingTab('layers')">레이어 관리</button>
+    </div>
+
+    <!-- 탭: 가져오기 -->
+    <div id="ms-panel-import" class="ms-panel">
+      <p class="modal-info" style="margin-top:0">ZIP 파일 또는 단일 이미지(PNG/JPG)를 업로드해주세요.</p>
+      <div id="map-import-summary" style="display:none;margin:10px 0;padding:12px;border:1px solid var(--border);border-radius:var(--r);background:var(--s2);font-size:12px;line-height:1.8;color:var(--dim)"></div>
+      <div id="map-import-error" style="display:none;margin:10px 0;padding:12px;border:1px solid rgba(200,92,92,.3);border-radius:var(--r);background:rgba(200,92,92,.08);font-size:12px;line-height:1.7;color:var(--red)"></div>
+      <div id="map-import-hint" style="font-size:11px;color:var(--muted);margin-bottom:10px">ZIP 또는 이미지 파일을 선택해주세요.</div>
+      <input type="file" id="map-import-file" accept=".zip,application/zip,image/png,image/jpeg,image/webp" style="display:none" onchange="handleMapImportFile(this)">
+      <div class="ms-import-actions">
+        <label class="ms-upload-btn" onclick="document.getElementById('map-import-file').click()">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          파일 선택
+        </label>
+        <button class="btn btn-sm" onclick="closeModal('modal-map-import')">닫기</button>
+      </div>
+    </div>
+
+    <!-- 탭: 레이어 관리 -->
+    <div id="ms-panel-layers" class="ms-panel" style="display:none">
+      <div class="layer-col" id="layer-col-map">
+        <div class="layer-col-head">
+          <span class="layer-col-title">맵세팅 레이어</span>
+          <span class="layer-col-count" id="layer-count-map">0</span>
+        </div>
+        <div class="layer-col-body">
+          <div id="map-layer-bulk-actions-col" class="layer-col-bulk"></div>
+          <div class="layer-legend">
+            <span class="layer-legend-item layer-legend-panel">스크린 패널</span>
+            <span class="layer-legend-item layer-legend-char">캐릭터 토큰</span>
+          </div>
+          <div class="map-layer-list" id="map-layer-list"></div>
+          <div id="map-layer-empty" class="layer-col-empty" style="display:none">레이어 없음</div>
+        </div>
+      </div>
+      <!-- 숨김: 캐릭터 토큰 단독 렌더용 (통합 렌더로 대체됨, ID만 유지) -->
+      <div style="display:none">
+        <div id="char-layer-list"></div>
+        <div id="char-layer-empty"></div>
+        <span id="layer-count-char"></span>
+      </div>
     </div>
   </div>
 </div>
+<!-- modal-map-layers는 ID 의존성을 위해 빈 div로 유지 -->
+<div id="modal-map-layers" style="display:none"></div>
 
 
 <div class="overlay" id="modal-map-scenes">
@@ -1137,38 +1175,7 @@ window._FB = {
   <button type="button" class="map-scene-ctx-item" data-action="delete">삭제</button>
 </div>
 
-<div class="overlay" id="modal-map-layers">
-  <div class="modal modal--layer-manager">
-    <div class="modal-row">
-      <div class="modal-title">레이어 관리</div>
-      <button class="modal-close" onclick="closeModal('modal-map-layers')">✕</button>
-    </div>
-    <div class="layer-manager-grid layer-manager-grid--single">
-      <!-- 통합 레이어 컬럼: 맵세팅 + 캐릭터 토큰 실제 z-order 순서로 인터리브 -->
-      <div class="layer-col" id="layer-col-map">
-        <div class="layer-col-head">
-          <span class="layer-col-title">맵세팅 레이어</span>
-          <span class="layer-col-count" id="layer-count-map">0</span>
-        </div>
-        <div class="layer-col-body">
-          <div id="map-layer-bulk-actions-col" class="layer-col-bulk"></div>
-          <div class="layer-legend">
-            <span class="layer-legend-item layer-legend-panel">스크린 패널</span>
-            <span class="layer-legend-item layer-legend-char">캐릭터 토큰</span>
-          </div>
-          <div class="map-layer-list" id="map-layer-list"></div>
-          <div id="map-layer-empty" class="layer-col-empty" style="display:none">레이어 없음</div>
-        </div>
-      </div>
-      <!-- 숨김: 캐릭터 토큰 단독 렌더용 (통합 렌더로 대체됨, ID만 유지) -->
-      <div style="display:none">
-        <div id="char-layer-list"></div>
-        <div id="char-layer-empty"></div>
-        <span id="layer-count-char"></span>
-      </div>
-    </div>
-  </div>
-</div>
+
 
 <!-- 맵 배경/전경 우클릭 메뉴 -->
 <div class="tok-ctx" id="map-bg-ctx" style="display:none">
@@ -2351,6 +2358,50 @@ window._FB = {
   if (window.St?.roomCode) _subscribeCutins(window.St.roomCode);
 
   function _esc(s) { return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+})();
+</script>
+
+<script>
+/* ── 통합 맵세팅 모달 ── */
+(function(){
+  window.openMapSettingModal = function(tab) {
+    // 레이어 탭으로 열면 레이어 데이터 갱신
+    const t = tab || 'import';
+    switchMapSettingTab(t, true);
+    if (typeof openModal === 'function') openModal('modal-map-import');
+  };
+
+  window.switchMapSettingTab = function(tab, silent) {
+    const panels = { import: 'ms-panel-import', layers: 'ms-panel-layers' };
+    const tabs   = { import: 'ms-tab-import',   layers: 'ms-tab-layers'   };
+    Object.entries(panels).forEach(([key, id]) => {
+      const el = document.getElementById(id);
+      if (el) el.style.display = key === tab ? '' : 'none';
+    });
+    Object.entries(tabs).forEach(([key, id]) => {
+      const el = document.getElementById(id);
+      if (el) el.classList.toggle('active', key === tab);
+    });
+    // 레이어 탭 진입 시 레이어 매니저 갱신
+    if (tab === 'layers' && typeof refreshMapLayerManager === 'function') {
+      refreshMapLayerManager();
+    }
+  };
+
+  // 하위 호환: 기존 openMapLayerManagerModal 호출 → 레이어 탭으로
+  window.openMapLayerManagerModal = function() {
+    window.openMapSettingModal('layers');
+  };
+  // 기존 openMapImportModal 호출 → 가져오기 탭으로
+  const _origOpenMapImportModal = window.openMapImportModal;
+  window.openMapImportModal = function() {
+    window.openMapSettingModal('import');
+  };
+  // modal-map-layers close → 통합 모달 close
+  const _origCloseMapLayers = window.closeMapLayersModal;
+  window.closeMapLayersModal = function() {
+    if (typeof closeModal === 'function') closeModal('modal-map-import');
+  };
 })();
 </script>
 

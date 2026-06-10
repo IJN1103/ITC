@@ -80,8 +80,6 @@ function refreshPermUI() {
   if (addPanelToken) addPanelToken.style.display = hasPerm('createToken') ? '' : 'none';
   const mapImportTrigger = document.getElementById('map-import-trigger');
   if (mapImportTrigger) mapImportTrigger.style.display = hasPerm('manageMap') ? '' : 'none';
-  const mapLayerTrigger = document.getElementById('map-layer-trigger');
-  if (mapLayerTrigger) mapLayerTrigger.style.display = hasPerm('manageMap') ? '' : 'none';
   const mapSceneTrigger = document.getElementById('map-scene-trigger');
   if (mapSceneTrigger) mapSceneTrigger.style.display = St.isGM ? '' : 'none';
   const mapCutinTrigger = document.getElementById('map-cutin-trigger');

@@ -1697,3 +1697,14 @@ body{scrollbar-color:var(--accent-green) var(--s3);}
 .cutin-del-btn:hover{color:var(--red);}
 .cutin-play-btn{background:var(--s2);border:1px solid var(--border2);color:var(--text);border-radius:8px;padding:7px 14px;font-size:12px;cursor:pointer;font-family:inherit;transition:var(--t);}
 .cutin-play-btn:hover{background:var(--s3);}
+
+/* ── 통합 맵세팅 모달 ── */
+.modal-map-setting{width:min(480px,94vw)!important;max-width:none!important;}
+.ms-tabs{display:flex;gap:2px;border-bottom:1px solid var(--border);margin-bottom:16px;padding-bottom:0;}
+.ms-tab{background:none;border:none;border-bottom:2px solid transparent;color:var(--muted);font:inherit;font-size:13px;font-weight:500;padding:7px 14px;cursor:pointer;transition:var(--t);margin-bottom:-1px;border-radius:6px 6px 0 0;}
+.ms-tab:hover{color:var(--text);background:var(--s3);}
+.ms-tab.active{color:var(--accent-text);border-bottom-color:var(--accent);font-weight:600;}
+.ms-panel{min-height:80px;}
+.ms-import-actions{display:flex;align-items:center;gap:8px;margin-top:10px;}
+.ms-upload-btn{display:inline-flex;align-items:center;gap:6px;padding:9px 16px;background:var(--accent);border:none;border-radius:8px;font:inherit;font-size:13px;font-weight:600;color:#fff;cursor:pointer;transition:var(--t);}
+.ms-upload-btn:hover{filter:brightness(1.08);}
