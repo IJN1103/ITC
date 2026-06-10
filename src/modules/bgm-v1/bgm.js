@@ -1167,8 +1167,9 @@ function toggleBgmExpanded() {
   renderBgmExpandedUI();
 }
 
-// 초기 UI 안전 반영
+// 초기 UI 안전 반영 (St 등 전역 객체 초기화 완료 후 실행)
 setTimeout(() => {
+  if (typeof St === 'undefined') return; // 아직 초기화 안 된 경우 건너뜀
   applyStoredBgmVolume();
   bindBgmMobileActivationListeners();
   updatePlayBtn();
