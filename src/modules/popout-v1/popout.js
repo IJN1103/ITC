@@ -447,7 +447,7 @@ textarea.whisper-mode{border-color:#9b59b6;background:rgba(155,89,182,.05)}
   </div>
   <div class="tb-row">
     <button class="desc-btn" id="pop-desc-btn" onclick="popDesc()"><span class="dot"></span><span>desc</span></button>
-    <button class="whisper-btn" id="pop-whisper-btn" onclick="toggleWhisperDD()"><span class="dot w-dot"></span><span id="pop-w-label">\uADC7\uB9D0</span></button>
+    <button class="whisper-btn" id="pop-whisper-btn" onclick="toggleWhisperDD()"><span class="dot w-dot"></span><span id="pop-w-label">\uADD3\uB9D0</span></button>
   </div>
   <div class="sa-dd" id="sa-dd"></div>
   <div class="sa-dd" id="w-dd"></div>
@@ -593,11 +593,11 @@ L.push('window.renderDmBar=renderDmBar;');
   // whisper toggle (local state + dropdown)
   L.push('function toggleWhisperDD(){if(whisperUid){whisperUid=null;whisperName=null;whisperJournalId=null;refreshWhisperUI();return}var dd=document.getElementById("w-dd");if(dd.classList.contains("open")){dd.classList.remove("open");return}dd.innerHTML="";');
   L.push('var clear=document.createElement("div");clear.className="sa-dd-item"+(whisperUid===null?" sel":"");clear.textContent="\\uC77C\\uBC18 \\uCC44\\uD305";clear.onclick=function(){whisperUid=null;whisperName=null;whisperJournalId=null;refreshWhisperUI();dd.classList.remove("open")};dd.appendChild(clear);');
-  L.push('Object.keys(players).forEach(function(uid){var p=players[uid];if(p.isMe)return;var item=document.createElement("div");item.className="sa-dd-item"+(whisperUid===uid&&!whisperJournalId?" sel":"");item.textContent=p.name+"\\uC5D0\\uAC8C \\uADC7\\uB9D0";item.onclick=function(){whisperUid=uid;whisperName=p.name;whisperJournalId=null;refreshWhisperUI();dd.classList.remove("open")};dd.appendChild(item);if(p.currentJournalId&&p.currentJournalName){var jItem=document.createElement("div");jItem.className="sa-dd-item"+(whisperUid===uid&&whisperJournalId===p.currentJournalId?" sel":"");jItem.style.paddingLeft="24px";jItem.textContent=p.currentJournalName+"\\uC5D0\\uAC8C \\uADC7\\uB9D0 ("+p.name+")";jItem.onclick=function(){whisperUid=uid;whisperName=p.currentJournalName;whisperJournalId=p.currentJournalId;refreshWhisperUI();dd.classList.remove("open")};dd.appendChild(jItem)}});');
+  L.push('Object.keys(players).forEach(function(uid){var p=players[uid];if(p.isMe)return;var item=document.createElement("div");item.className="sa-dd-item"+(whisperUid===uid&&!whisperJournalId?" sel":"");item.textContent=p.name+"\\uC5D0\\uAC8C \\uADD3\\uB9D0";item.onclick=function(){whisperUid=uid;whisperName=p.name;whisperJournalId=null;refreshWhisperUI();dd.classList.remove("open")};dd.appendChild(item);if(p.currentJournalId&&p.currentJournalName){var jItem=document.createElement("div");jItem.className="sa-dd-item"+(whisperUid===uid&&whisperJournalId===p.currentJournalId?" sel":"");jItem.style.paddingLeft="24px";jItem.textContent=p.currentJournalName+"\\uC5D0\\uAC8C \\uADD3\\uB9D0 ("+p.name+")";jItem.onclick=function(){whisperUid=uid;whisperName=p.currentJournalName;whisperJournalId=p.currentJournalId;refreshWhisperUI();dd.classList.remove("open")};dd.appendChild(jItem)}});');
   L.push('dd.classList.add("open")}');
   L.push('window.toggleWhisperDD=toggleWhisperDD;');
 
-  L.push('function refreshWhisperUI(){var btn=document.getElementById("pop-whisper-btn");var lbl=document.getElementById("pop-w-label");var inp=document.getElementById("pi");if(whisperUid){btn.classList.add("active");lbl.textContent=whisperName+"\\uC5D0\\uAC8C";inp.placeholder=whisperName+"\\uC5D0\\uAC8C \\uADC7\\uB9D0 (Enter \\uC804\\uC1A1)";inp.classList.add("whisper-mode")}else{btn.classList.remove("active");lbl.textContent="\\uADC7\\uB9D0";if(!descMode)inp.placeholder="\\uBA54\\uC2DC\\uC9C0 \\uC785\\uB825 (Enter \\uC804\\uC1A1)";inp.classList.remove("whisper-mode")}}');
+  L.push('function refreshWhisperUI(){var btn=document.getElementById("pop-whisper-btn");var lbl=document.getElementById("pop-w-label");var inp=document.getElementById("pi");if(whisperUid){btn.classList.add("active");lbl.textContent=whisperName+"\\uC5D0\\uAC8C";inp.placeholder=whisperName+"\\uC5D0\\uAC8C \\uADD3\\uB9D0 (Enter \\uC804\\uC1A1)";inp.classList.add("whisper-mode")}else{btn.classList.remove("active");lbl.textContent="\\uADD3\\uB9D0";if(!descMode)inp.placeholder="\\uBA54\\uC2DC\\uC9C0 \\uC785\\uB825 (Enter \\uC804\\uC1A1)";inp.classList.remove("whisper-mode")}}');
 
   // send with desc/whisper awareness
   L.push('function send(){var i=document.getElementById("pi");var t=i.value.trim();if(!t)return;i.value="";if(!window.opener)return;');
