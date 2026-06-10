@@ -98,6 +98,41 @@ function cleanupPopoutMirror() {
 window.cleanupPopoutMirror = cleanupPopoutMirror;
 
 
+// ── 팝아웃 테마 색상 상수 ──
+// 색상 변경 시 이 객체만 수정하세요. CSS 전체에 반영됩니다.
+const POPOUT_THEME = Object.freeze({
+  dark: {
+    bg:         '#141920',  // 최상위 배경
+    surface:    '#1c2330',  // 카드/패널 배경
+    surface2:   '#262626',  // 입력 배경
+    border:     '#2e3d54',  // 기본 테두리
+    border2:    '#3a4d68',  // 강조 테두리
+    text:       '#e4e9f0',  // 본문 텍스트
+    dim:        '#a8b5c8',  // 보조 텍스트
+    muted:      '#6b7a94',  // 흐린 텍스트
+    accent:     '#4a7ff5',  // 주요 액센트
+    accentHov:  '#7aa3ff',  // 액센트 호버
+    blue:       '#2563eb',  // 버튼/링크 블루
+    purple:     '#9b59b6',  // 귓말 색상
+    danger:     '#f0aaaa',  // 에러/경고
+  },
+  light: {
+    bg:         '#f2f4f7',
+    surface:    '#ffffff',
+    surface2:   '#f7f8fa',
+    border:     '#dbe1e8',
+    border2:    '#c8d0da',
+    text:       '#131415',
+    dim:        '#485666',
+    muted:      '#767a8c',
+    accent:     '#1a4fd6',
+    accentHov:  '#1a4fd6',
+    blue:       '#2563eb',
+    purple:     '#9b59b6',
+    danger:     '#f0aaaa',
+  },
+});
+
 function buildPopoutHtml() {
   const S = '<' + 'script>';
   const SE = '</' + 'script>';
@@ -326,101 +361,96 @@ textarea.whisper-mode{border-color:#9b59b6;background:rgba(155,89,182,.05)}
 .doc-pop-meta span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 `;
   // ── 라이트 모드 CSS (테마 감지 후 html.light 선택자로 적용) ──
+  // lightCss: POPOUT_THEME.light 상수 참조
+  // 색상 수정 시 buildPopoutHtml() 위의 POPOUT_THEME.light 객체를 변경하세요.
+  const _L = POPOUT_THEME.light;
+  const _D = POPOUT_THEME.dark;
   const lightCss = [
-    // 기본
-    'html.light body{background:#f2f4f7;color:#131415}',
-    // 탭
-    'html.light .tabs{background:#fff;border-bottom-color:#dbe1e8}',
-    'html.light .tab{color:#767a8c}',
-    'html.light .tab.on{color:#1a4fd6;border-bottom-color:#1a4fd6}',
-    'html.light .tab:hover:not(.on){color:#485666}',
-    // PDM
-    'html.light .pdm{background:#f7f8fa;border-bottom-color:#dbe1e8}',
-    'html.light .pdm-btn{background:#fff;border-color:#c8d0da;color:#485666}',
-    'html.light .pdm-btn:hover{border-color:#2563eb;color:#1a4fd6}',
-    'html.light .pdm-btn.on{background:rgba(37,99,235,.1);border-color:rgba(37,99,235,.4);color:#1a4fd6}',
-    'html.light .pdm-dot{background:#2563eb;box-shadow:0 0 0 2px #fff}',
-    'html.light .pdm-room-list-panel{background:rgba(255,255,255,.98);border-color:#dbe1e8}',
-    'html.light .pdm-room-list-head{border-bottom-color:#dbe1e8;color:#1a4fd6}',
-    'html.light .pdm-room-list-head-note{color:#767a8c}',
-    'html.light .pdm-room-list-row:hover{border-color:rgba(37,99,235,.25);background:rgba(37,99,235,.06)}',
-    'html.light .pdm-room-list-row.on{border-color:rgba(37,99,235,.4);background:rgba(37,99,235,.1)}',
-    'html.light .pdm-room-list-item{color:#485666}',
-    'html.light .pdm-room-list-item:hover{color:#131415}',
-    'html.light .pdm-room-list-row.on .pdm-room-list-item{color:#1a4fd6}',
-    'html.light .pdm-room-list-meta{color:#2563eb;opacity:.8}',
-    'html.light .pdm-room-list-empty{color:#767a8c}',
-    'html.light .pdm-room-list-delete{background:rgba(0,0,0,.04)}',
-    'html.light .pdm-toast{background:rgba(255,255,255,.96);color:#131415}',
-    // 메시지
-    'html.light .msgs::-webkit-scrollbar-thumb{background:#c8d0da}',
-    'html.light .av{background:#f7f8fa;border-color:#dbe1e8;color:#1a4fd6}',
-    'html.light .nn{color:#1a4fd6}',
-    'html.light .tm{color:#767a8c}',
-    'html.light .mt{color:#485666}',
-    'html.light .ms .mt{color:#767a8c}',
-    'html.light .dc{background:rgba(37,99,235,.07);border-color:rgba(37,99,235,.2)}',
-    'html.light .dc-f{color:#767a8c}',
-    'html.light .dc-r{color:#1a4fd6}',
-    'html.light .dc-d{color:#485666}',
-    'html.light .dot{background:#2563eb}',
-    'html.light .w-dot{background:#9b59b6}',
-    'html.light .on{color:#1a4fd6;border-bottom-color:#2563eb}',
-    'html.light .sel{color:#1a4fd6}',
-    'html.light .active{color:#1a4fd6}',
-    // 저널
-    'html.light .j-list{background:#f7f8fa}',
-    'html.light .j-item{border-color:#dbe1e8;background:#fff}',
-    'html.light .j-item b{color:#131415}',
-    'html.light .j-item span{color:#767a8c}',
-    // 입력
-    'html.light .ptb{border-top-color:#dbe1e8;background:#fff}',
-    'html.light .sa-btn{color:#767a8c}',
-    'html.light .sa-btn:hover{color:#485666}',
-    'html.light .sa-btn.active{color:#1a4fd6}',
-    'html.light .sa-icon{background:#f7f8fa;border-color:#dbe1e8}',
-    'html.light .sa-dd{background:#fff;border-color:#dbe1e8}',
-    'html.light .sa-dd-item{color:#131415}',
-    'html.light .sa-dd-item:hover{background:rgba(37,99,235,.06)}',
-    'html.light .sa-dd-item.sel{color:#1a4fd6}',
-    'html.light .sa-dd-av{background:#f7f8fa;border-color:#dbe1e8}',
-    'html.light .tb-row .tb-btn{background:#fff;border-color:#dbe1e8;color:#485666}',
-    'html.light .tb-btn:hover,html.light .tb-btn.active{border-color:#2563eb;color:#1a4fd6}',
-    'html.light .desc-btn,html.light .whisper-btn{border-color:#dbe1e8;color:#767a8c}',
-    'html.light .desc-btn:hover{color:#485666}',
-    'html.light .desc-btn.active{border-color:#2563eb;color:#1a4fd6}',
-    'html.light textarea{background:#fff;border-color:#dbe1e8;color:#131415}',
-    'html.light textarea:focus{border-color:#2563eb}',
-    'html.light textarea.desc-mode{border-color:#2563eb;background:rgba(37,99,235,.04)}',
-    'html.light textarea.whisper-mode{border-color:#9b59b6;background:rgba(155,89,182,.04)}',
-    'html.light .sb{background:#2563eb}',
-    'html.light .dsec-text{color:#485666}',
-    // 이미지
-    'html.light .pop-img{border-color:#dbe1e8}',
-    // 캐주얼
-    'html.light .pop-casual-avatar{background:#f7f8fa;border-color:#dbe1e8;color:#1a4fd6}',
-    'html.light .pop-casual-name{color:#131415}',
-    'html.light .pop-casual-edit-btn,html.light .pop-casual-color-btn,html.light .pop-name-color-btn{color:#767a8c}',
-    'html.light .pop-color-pop{background:#fff;border-color:#dbe1e8;box-shadow:0 8px 24px rgba(0,0,0,.1)}',
-    'html.light .pop-color-title{color:#485666}',
-    'html.light .pop-color-swatch{border-color:rgba(0,0,0,.12)}',
-    // 문서 탭
-    'html.light .doc-pop-head{background:#f7f8fa;border-bottom-color:#dbe1e8}',
-    'html.light .doc-pop-head-title{color:#131415}',
-    'html.light .doc-pop-sec{background:#fff;border-color:#dbe1e8}',
-    'html.light .doc-pop-item{background:#fff;border-color:#dbe1e8}',
-    'html.light .doc-pop-item:hover{background:#f7f8fa;border-color:#c8d0da}',
-    'html.light .doc-pop-title{color:#131415}',
-    'html.light .doc-pop-icon{color:#485666}',
-    'html.light .doc-pop-badge{color:#1a4fd6;border-color:rgba(37,99,235,.22);background:rgba(37,99,235,.07)}',
-    'html.light .doc-pop-meta{color:#767a8c}',
-    'html.light .doc-pop-preview{color:#485666}',
-    'html.light .doc-pop-empty{color:#767a8c}',
-    'html.light .doc-pop-avatar{background:#f7f8fa;border-color:#dbe1e8}',
-    'html.light .doc-pop-api-btn,html.light .doc-pop-add-btn{background:#f7f8fa;border-color:#c8d0da;color:#485666}',
-    'html.light .doc-pop-api-btn:hover,html.light .doc-pop-add-btn:hover{border-color:#2563eb;color:#1a4fd6;background:rgba(37,99,235,.07)}',
-    'html.light .doc-pop-add-btn:hover{background:#dbe1e8;color:#131415}',
-  ].join('\n');
+    `html.light body{background:${_L.bg};color:${_L.text}}`,
+    `html.light .tabs{background:${_L.surface};border-bottom-color:${_L.border}}`,
+    `html.light .tab{color:${_L.muted}}`,
+    `html.light .tab.on{color:${_L.accent};border-bottom-color:${_L.accent}}`,
+    `html.light .tab:hover:not(.on){color:${_L.dim}}`,
+    `html.light .pdm{background:${_L.surface2};border-bottom-color:${_L.border}}`,
+    `html.light .pdm-btn{background:${_L.surface};border-color:${_L.border2};color:${_L.dim}}`,
+    `html.light .pdm-btn:hover{border-color:${_L.blue};color:${_L.accent}}`,
+    `html.light .pdm-btn.on{background:rgba(37,99,235,.1);border-color:rgba(37,99,235,.4);color:${_L.accent}}`,
+    `html.light .pdm-dot{background:${_L.blue};box-shadow:0 0 0 2px ${_L.surface}}`,
+    `html.light .pdm-room-list-panel{background:rgba(255,255,255,.98);border-color:${_L.border}}`,
+    `html.light .pdm-room-list-head{border-bottom-color:${_L.border};color:${_L.accent}}`,
+    `html.light .pdm-room-list-head-note{color:${_L.muted}}`,
+    `html.light .pdm-room-list-row:hover{border-color:rgba(37,99,235,.25);background:rgba(37,99,235,.06)}`,
+    `html.light .pdm-room-list-row.on{border-color:rgba(37,99,235,.4);background:rgba(37,99,235,.1)}`,
+    `html.light .pdm-room-list-item{color:${_L.dim}}`,
+    `html.light .pdm-room-list-item:hover{color:${_L.text}}`,
+    `html.light .pdm-room-list-row.on .pdm-room-list-item{color:${_L.accent}}`,
+    `html.light .pdm-room-list-meta{color:${_L.blue};opacity:.8}`,
+    `html.light .pdm-room-list-empty{color:${_L.muted}}`,
+    `html.light .pdm-room-list-delete{background:rgba(0,0,0,.04)}`,
+    `html.light .pdm-toast{background:rgba(255,255,255,.96);color:${_L.text}}`,
+    `html.light .msgs::-webkit-scrollbar-thumb{background:${_L.border2}}`,
+    `html.light .av{background:${_L.surface2};border-color:${_L.border};color:${_L.accent}}`,
+    `html.light .nn{color:${_L.accent}}`,
+    `html.light .tm{color:${_L.muted}}`,
+    `html.light .mt{color:${_L.dim}}`,
+    `html.light .ms .mt{color:${_L.muted}}`,
+    `html.light .dc{background:rgba(37,99,235,.07);border-color:rgba(37,99,235,.2)}`,
+    `html.light .dc-f{color:${_L.muted}}`,
+    `html.light .dc-r{color:${_L.accent}}`,
+    `html.light .dc-d{color:${_L.dim}}`,
+    `html.light .dot{background:${_L.blue}}`,
+    `html.light .w-dot{background:${_L.purple}}`,
+    `html.light .on{color:${_L.accent};border-bottom-color:${_L.blue}}`,
+    `html.light .sel{color:${_L.accent}}`,
+    `html.light .active{color:${_L.accent}}`,
+    `html.light .j-list{background:${_L.surface2}}`,
+    `html.light .j-item{border-color:${_L.border};background:${_L.surface}}`,
+    `html.light .j-item b{color:${_L.text}}`,
+    `html.light .j-item span{color:${_L.muted}}`,
+    `html.light .ptb{border-top-color:${_L.border};background:${_L.surface}}`,
+    `html.light .sa-btn{color:${_L.muted}}`,
+    `html.light .sa-btn:hover{color:${_L.dim}}`,
+    `html.light .sa-btn.active{color:${_L.accent}}`,
+    `html.light .sa-icon{background:${_L.surface2};border-color:${_L.border}}`,
+    `html.light .sa-dd{background:${_L.surface};border-color:${_L.border}}`,
+    `html.light .sa-dd-item{color:${_L.text}}`,
+    `html.light .sa-dd-item:hover{background:rgba(37,99,235,.06)}`,
+    `html.light .sa-dd-item.sel{color:${_L.accent}}`,
+    `html.light .sa-dd-av{background:${_L.surface2};border-color:${_L.border}}`,
+    `html.light .tb-row .tb-btn{background:${_L.surface};border-color:${_L.border};color:${_L.dim}}`,
+    `html.light .tb-btn:hover,html.light .tb-btn.active{border-color:${_L.blue};color:${_L.accent}}`,
+    `html.light .desc-btn,html.light .whisper-btn{border-color:${_L.border};color:${_L.muted}}`,
+    `html.light .desc-btn:hover{color:${_L.dim}}`,
+    `html.light .desc-btn.active{border-color:${_L.blue};color:${_L.accent}}`,
+    `html.light textarea{background:${_L.surface};border-color:${_L.border};color:${_L.text}}`,
+    `html.light textarea:focus{border-color:${_L.blue}}`,
+    `html.light textarea.desc-mode{border-color:${_L.blue};background:rgba(37,99,235,.04)}`,
+    `html.light textarea.whisper-mode{border-color:${_L.purple};background:rgba(155,89,182,.04)}`,
+    `html.light .sb{background:${_L.blue}}`,
+    `html.light .dsec-text{color:${_L.dim}}`,
+    `html.light .pop-img{border-color:${_L.border}}`,
+    `html.light .pop-casual-avatar{background:${_L.surface2};border-color:${_L.border};color:${_L.accent}}`,
+    `html.light .pop-casual-name{color:${_L.text}}`,
+    `html.light .pop-casual-edit-btn,html.light .pop-casual-color-btn,html.light .pop-name-color-btn{color:${_L.muted}}`,
+    `html.light .pop-color-pop{background:${_L.surface};border-color:${_L.border};box-shadow:0 8px 24px rgba(0,0,0,.1)}`,
+    `html.light .pop-color-title{color:${_L.dim}}`,
+    `html.light .pop-color-swatch{border-color:rgba(0,0,0,.12)}`,
+    `html.light .doc-pop-head{background:${_L.surface2};border-bottom-color:${_L.border}}`,
+    `html.light .doc-pop-head-title{color:${_L.text}}`,
+    `html.light .doc-pop-sec{background:${_L.surface};border-color:${_L.border}}`,
+    `html.light .doc-pop-item{background:${_L.surface};border-color:${_L.border}}`,
+    `html.light .doc-pop-item:hover{background:${_L.surface2};border-color:${_L.border2}}`,
+    `html.light .doc-pop-title{color:${_L.text}}`,
+    `html.light .doc-pop-icon{color:${_L.dim}}`,
+    `html.light .doc-pop-api-btn,html.light .doc-pop-add-btn{background:${_L.surface2};border-color:${_L.border2};color:${_L.dim}}`,
+    `html.light .doc-pop-api-btn:hover,html.light .doc-pop-add-btn:hover{border-color:${_L.blue};color:${_L.accent};background:rgba(37,99,235,.07)}`,
+    `html.light .doc-pop-badge{color:${_L.accent};border-color:rgba(37,99,235,.22);background:rgba(37,99,235,.07)}`,
+    `html.light .doc-pop-meta{color:${_L.muted}}`,
+    `html.light .doc-pop-preview{color:${_L.dim}}`,
+    `html.light .doc-pop-empty{color:${_L.muted}}`,
+    `html.light .doc-pop-avatar{background:${_L.surface2};border-color:${_L.border}}`,
+    `html.light .doc-pop-add-btn:hover{background:${_L.border};color:${_L.text}}`,
+  ].join('\n')
   const colorIconSrc = esc(new URL('assets/ui/icon-name-color.png', window.location.href).href);
 
   const htmlBody = `

@@ -1135,7 +1135,7 @@ function getPanelTokenDisplayImageSource(token) {
 }
 
 
-const PANEL_TOKEN_CLICK_DELAY_MS = 320;
+const PANEL_TOKEN_CLICK_DELAY_MS = (window.ITC_CONFIG?.TIMING.PANEL_TOKEN_CLICK_DELAY ?? 320);
 let _panelTokenClickTimers = new Map();
 
 function normalizePanelTokenActionType(value) {

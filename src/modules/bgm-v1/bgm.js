@@ -186,7 +186,7 @@ function attemptBgmUserActivation(reason = 'gesture') {
     return;
   }
   const now = Date.now();
-  if (now - _bgmMobileActivationLastAt < 900) return;
+  if (now - _bgmMobileActivationLastAt < (window.ITC_CONFIG?.TIMING.BGM_MOBILE_ACTIVATION ?? 900)) return;
   _bgmMobileActivationLastAt = now;
 
   const track = getCurrentBgmTrack();
@@ -508,7 +508,7 @@ function applyRemoteBgmSeek(seek) {
   const seconds = Number(seek?.seconds || 0);
   if (!updatedAt || updatedAt <= _lastAppliedBgmSeekAt) return;
   _lastAppliedBgmSeekAt = updatedAt;
-  setTimeout(() => seekBgmPlayer(seconds), 180);
+  setTimeout(() => seekBgmPlayer(seconds), (window.ITC_CONFIG?.TIMING.BGM_SEEK_DEBOUNCE ?? 180));
 }
 
 function previewBgmSeek(value) {
@@ -665,7 +665,7 @@ function ensureBgmPlaybackStarted(track, startSeconds = null, tries = 0) {
     }
   }
 
-  if (tries < 10) setTimeout(() => ensureBgmPlaybackStarted(track, startSeconds, tries + 1), 450);
+  if (tries < 10) setTimeout(() => ensureBgmPlaybackStarted(track, startSeconds, tries + 1), (window.ITC_CONFIG?.TIMING.BGM_PLAYBACK_CHECK_RETRY ?? 450));
   else scheduleBgmPlaybackStateCheck('resume-final', 600);
 }
 

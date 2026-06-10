@@ -432,7 +432,7 @@ function watchPopoutChatChannel(channelKey = 'global') {
   const { db, ref, onValue, query, limitToLast, orderByChild, equalTo } = window._FB;
   if (!db || !ref || typeof onValue !== 'function') return Promise.resolve([]);
   const chatBaseRef = ref(db, `rooms/${activeRoomCode}/chat`);
-  const listenLimit = safeKey === 'global' ? 900 : 450;
+  const listenLimit = safeKey === 'global' ? (window.ITC_CONFIG?.CHAT.GLOBAL_LISTEN_LIMIT ?? 900) : (window.ITC_CONFIG?.CHAT.DM_LISTEN_LIMIT ?? 450);
   const listenRef = (safeKey !== 'global' && query && orderByChild && equalTo && limitToLast)
     ? query(chatBaseRef, orderByChild('dmChannelKey'), equalTo(safeKey), limitToLast(listenLimit))
     : ((query && limitToLast) ? query(chatBaseRef, limitToLast(listenLimit)) : chatBaseRef);
@@ -1594,7 +1594,7 @@ function applyLocalRoomMapState(mapState, layerState, reason = 'local-room-map-s
 
 try {
   window._itcApplyRoomMapStateLocal = applyLocalRoomMapState;
-} catch (e) {}
+} catch (e) { console.warn('[ITC] applyRoomMapState 등록 실패', e); }
 
 function resetRoomScopedUiState() {
   if (window.St) {
@@ -1727,7 +1727,7 @@ function setupFirebaseListeners() {
   switchActiveChatChannel(initialChatChannelKey || 'global');
 
   const casualBaseRef = ref(db, `rooms/${code}/casual`);
-  const casualRef = (query && limitToLast) ? query(casualBaseRef, limitToLast(160)) : casualBaseRef;
+  const casualRef = (query && limitToLast) ? query(casualBaseRef, limitToLast(window.ITC_CONFIG?.CHAT.CASUAL_LISTEN_LIMIT ?? 160)) : casualBaseRef;
 
   const addCasualRecord = (key, m) => {
     if (!m || _processedCasualKeys.has(key)) return;

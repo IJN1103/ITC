@@ -188,10 +188,10 @@ function refreshProfileAvatar() {
   const initials = (user.displayName || St.myName || '?')[0].toUpperCase();
   const avatarRuntime = getProfileAvatarRuntime();
   const navSrc = saved ? avatarRuntime.getDisplayAvatarSrc(saved, 96) : '';
-  const bigSrc = saved ? avatarRuntime.getDisplayAvatarSrc(saved, 160) : '';
+  const bigSrc = saved ? avatarRuntime.getDisplayAvatarSrc(saved, window.ITC_CONFIG?.IMAGE.AVATAR_SIZE ?? 160) : '';
   if (saved) {
     avatarRuntime.preloadAvatar(saved, 96);
-    avatarRuntime.preloadAvatar(saved, 160);
+    avatarRuntime.preloadAvatar(saved, window.ITC_CONFIG?.IMAGE.AVATAR_SIZE ?? 160);
   }
 
   renderSafeNavAvatar(document.getElementById('user-avatar'), navSrc, initials);
@@ -370,7 +370,7 @@ async function syncAvatarToFirebase(avatarSrc, meta = null) {
   avatarRuntime.rememberAvatar?.(user.uid, St.myName || user.displayName || '플레이어', avatarValue);
   if (avatarValue) {
     avatarRuntime.preloadAvatar?.(avatarValue, 96);
-    avatarRuntime.preloadAvatar?.(avatarValue, 160);
+    avatarRuntime.preloadAvatar?.(avatarValue, window.ITC_CONFIG?.IMAGE.AVATAR_SIZE ?? 160);
   }
 
   document.dispatchEvent(new CustomEvent('itc:avatar-updated', {
