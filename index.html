@@ -1322,24 +1322,7 @@ window._FB = {
       </div>
     </div>
 
-    <!-- 음원 -->
-    <div class="cutin-edit-section">
-      <label class="cutin-edit-label">음원</label>
-      <div class="cutin-edit-sound-row">
-        <label class="cutin-edit-sound-btn">
-          음원 파일 선택 <span style="font-size:10px;color:var(--muted)">(10초 이하)</span>
-          <input type="file" id="cutin-edit-sound-file" accept="audio/*" style="display:none" onchange="onCutinEditSoundFile(this)">
-        </label>
-      </div>
-      <input id="cutin-edit-sound-url" class="input" placeholder="또는 YouTube URL / 음원 URL 입력" style="font-size:12px;margin-top:6px">
-      <div id="cutin-edit-sound-name" class="cutin-edit-sound-name" style="display:none"></div>
-      <!-- 볼륨 슬라이더 -->
-      <div class="cutin-edit-vol-row">
-        <span class="cutin-edit-vol-label">볼륨</span>
-        <input type="range" id="cutin-edit-volume" min="0" max="1" step="0.05" value="0.8" class="cutin-vol-slider">
-        <span id="cutin-edit-vol-val" class="cutin-edit-vol-val">0.8</span>
-      </div>
-    </div>
+    <!-- 볼륨 (사운드 기능 미포함) -->
 
     <!-- 재생 시간 -->
     <div class="cutin-edit-section">
@@ -1897,29 +1880,76 @@ window._FB = {
 <script>
 /* ── 컷인(Cutin) 기능 ── */
 (function(){
+  // ── 내부 상태 (클로저 변수 — window 오염 없음) ──
   let _cutins = {};
   let _cutinFbUnsub = null;
   let _cutinOverlayTimer = null;
-  let _editingId = null;   // null = 신규, string = 수정 중
-  let _editSoundBlob = null;
-  let _editSoundObjectUrl = null;
+  let _editingId = null;
+  let _editingApngDuration = null; // 편집 중 감지된 APNG 재생시간(초)
 
-  // ── Firebase ──
-  function _cutinRef() {
-    const rc = window.St?.roomCode;
-    if (!rc || !window._FB?.CONFIGURED) return null;
-    const { db, ref } = window._FB;
-    return ref(db, `rooms/${rc}/cutins`);
+  // ── Firebase 경로 헬퍼 ──
+  function _db()  { return window._FB?.CONFIGURED ? window._FB.db  : null; }
+  function _fbRef(path) {
+    const db = _db(); if (!db) return null;
+    return window._FB.ref(db, path);
+  }
+  function _roomPath(sub) {
+    const rc = window.St?.roomCode; if (!rc) return null;
+    return `rooms/${rc}/${sub}`;
   }
 
+  // ── Firebase 구독 ──
   function _subscribeCutins(roomCode) {
-    if (_cutinFbUnsub) { try { _cutinFbUnsub(); } catch(e){} }
+    if (_cutinFbUnsub) { try { _cutinFbUnsub(); } catch(e){} _cutinFbUnsub = null; }
     if (!roomCode || !window._FB?.CONFIGURED) return;
-    const { db, ref, onValue } = window._FB;
-    _cutinFbUnsub = onValue(ref(db, `rooms/${roomCode}/cutins`), snap => {
+    const r = _fbRef(`rooms/${roomCode}/cutins`);
+    if (!r) return;
+    _cutinFbUnsub = window._FB.onValue(r, snap => {
       _cutins = snap.val() || {};
       _renderCutinList();
     });
+  }
+
+  // ── APNG 재생시간 파싱 (fcTL 청크 합산) ──
+  async function _getApngDuration(source) {
+    try {
+      let buf;
+      if (source instanceof Blob || source instanceof File) {
+        buf = await source.arrayBuffer();
+      } else if (typeof source === 'string' && source.startsWith('http')) {
+        const res = await fetch(source, { mode: 'cors' });
+        if (!res.ok) return null;
+        buf = await res.arrayBuffer();
+      } else return null;
+
+      const u8 = new Uint8Array(buf);
+      // PNG 시그니처 확인
+      if (u8[0] !== 137 || u8[1] !== 80) return null;
+      let totalMs = 0, hasFctl = false, i = 8;
+      while (i + 12 <= u8.length) {
+        const len  = (u8[i]<<24|u8[i+1]<<16|u8[i+2]<<8|u8[i+3]) >>> 0;
+        const type = String.fromCharCode(u8[i+4],u8[i+5],u8[i+6],u8[i+7]);
+        if (type === 'fcTL' && len >= 24) {
+          hasFctl = true;
+          const num = (u8[i+24]<<8|u8[i+25]);
+          const den = (u8[i+26]<<8|u8[i+27]) || 100;
+          totalMs += (num / den) * 1000;
+        }
+        if (type === 'IEND') break;
+        i += 12 + len;
+      }
+      return (hasFctl && totalMs > 0) ? totalMs / 1000 : null;
+    } catch(e) { return null; }
+  }
+
+  // ── APNG 감지 후 힌트 업데이트 ──
+  async function _detectApng(source) {
+    const dur = await _getApngDuration(source);
+    _editingApngDuration = dur;
+    const hint = document.getElementById('cutin-dur-auto-hint');
+    if (hint) hint.textContent = dur
+      ? `— ${dur.toFixed(1)}초 (자동 감지됨)`
+      : '— APNG 아님, 기본 3초 적용';
   }
 
   // ── 목록 모달 ──
@@ -1934,16 +1964,20 @@ window._FB = {
     const footer = document.getElementById('cutin-list-footer');
     if (!list) return;
     const entries = Object.entries(_cutins);
-    empty  && (empty.style.display  = entries.length ? 'none' : '');
-    footer && (footer.style.display = entries.length ? ''     : 'none');
+    if (empty)  empty.style.display  = entries.length ? 'none' : '';
+    if (footer) footer.style.display = entries.length ? ''     : 'none';
     list.innerHTML = entries.map(([id, ct]) => {
-      const thumb = ct.imageUrl ? `<img class="cutin-item-thumb" src="${ct.imageUrl}" alt="" onerror="this.src=''">` : '<div class="cutin-item-thumb"></div>';
-      const sound = ct.soundUrl ? '🔊' : '';
+      const thumb = ct.imageUrl
+        ? `<img class="cutin-item-thumb" src="${ct.imageUrl}" alt="" loading="lazy" onerror="this.style.display='none'">`
+        : '<div class="cutin-item-thumb"></div>';
+      const durLabel = ct.durationMode === 'manual'
+        ? `${ct.duration || 3}초`
+        : (ct.apngDuration ? `APNG(${ct.apngDuration.toFixed(1)}초)` : 'APNG');
       return `<div class="cutin-item" onclick="openCutinEdit('${id}')">
         ${thumb}
         <div class="cutin-item-info">
           <div class="cutin-item-trigger">${_esc(ct.name || ct.trigger || '')}</div>
-          <div class="cutin-item-sub">${ct.duration || 3}초 ${sound}</div>
+          <div class="cutin-item-sub">${durLabel}</div>
         </div>
         <div style="display:flex;gap:4px;flex-shrink:0">
           <button class="cutin-item-play-btn" onclick="event.stopPropagation();triggerCutinById('${id}')" title="재생">▶</button>
@@ -1953,110 +1987,82 @@ window._FB = {
     }).join('');
   }
 
-  // ── 편집 모달 열기 ──
+  // ── 편집 모달 ──
   window.openCutinEdit = function(id) {
     _editingId = id;
-    _editSoundBlob = null;
-    if (_editSoundObjectUrl) { URL.revokeObjectURL(_editSoundObjectUrl); _editSoundObjectUrl = null; }
-
+    _editingApngDuration = null;
     const ct = id ? (_cutins[id] || {}) : {};
     const isNew = !id;
 
-    // 제목
-    const titleEl = document.getElementById('cutin-edit-title');
-    if (titleEl) titleEl.textContent = isNew ? '새 컷인' : '컷인 편집';
+    document.getElementById('cutin-edit-title').textContent = isNew ? '새 컷인' : '컷인 편집';
 
     // 트리거
     const trigEl = document.getElementById('cutin-edit-trigger');
-    if (trigEl) trigEl.value = ct.trigger || ct.name || '';
+    if (trigEl) trigEl.value = ct.trigger || '';
 
     // 이미지
     const imgEl   = document.getElementById('cutin-edit-img-el');
     const imgPrev = document.getElementById('cutin-edit-img-preview');
     const imgUrl  = document.getElementById('cutin-edit-img-url');
+    const ph      = imgPrev?.querySelector('.cutin-edit-img-placeholder');
     if (imgUrl) imgUrl.value = ct.imageUrl || '';
-    if (imgEl && ct.imageUrl) {
-      imgEl.src = ct.imageUrl; imgEl.style.display = '';
-      const ph = imgPrev?.querySelector('.cutin-edit-img-placeholder');
-      if (ph) ph.style.display = 'none';
-    } else if (imgEl) {
-      imgEl.src = ''; imgEl.style.display = 'none';
-      const ph = imgPrev?.querySelector('.cutin-edit-img-placeholder');
-      if (ph) ph.style.display = '';
+    if (imgEl)  { imgEl.src = ct.imageUrl || ''; imgEl.style.display = ct.imageUrl ? '' : 'none'; }
+    if (ph)     ph.style.display = ct.imageUrl ? 'none' : '';
+
+    // img-url 변경 감지 (디바운스 + APNG 감지)
+    if (imgUrl) {
+      let _t = null;
+      imgUrl.oninput = () => {
+        const url = imgUrl.value.trim();
+        if (imgEl) { imgEl.src = url; imgEl.style.display = url ? '' : 'none'; }
+        if (ph)    ph.style.display = url ? 'none' : '';
+        if (_t) clearTimeout(_t);
+        if (url) _t = setTimeout(() => _detectApng(url), 800);
+        else { _editingApngDuration = null; const h = document.getElementById('cutin-dur-auto-hint'); if (h) h.textContent = '— 이미지 선택 시 자동 감지'; }
+      };
+      if (ct.imageUrl) { _editingApngDuration = ct.apngDuration || null; setTimeout(() => _detectApng(ct.imageUrl), 100); }
     }
 
-    // 음원
-    const soundUrl  = document.getElementById('cutin-edit-sound-url');
-    const soundName = document.getElementById('cutin-edit-sound-name');
-    if (soundUrl) soundUrl.value = ct.soundUrl || '';
-    if (soundName) { soundName.style.display = ct.soundUrl ? '' : 'none'; soundName.textContent = ct.soundUrl ? '음원 설정됨' : ''; }
-
-    // 볼륨
-    const volSlider = document.getElementById('cutin-edit-volume');
-    const volVal    = document.getElementById('cutin-edit-vol-val');
-    const vol = ct.volume != null ? ct.volume : 0.8;
-    if (volSlider) { volSlider.value = vol; volSlider.oninput = () => { if (volVal) volVal.textContent = parseFloat(volSlider.value).toFixed(1); }; }
-    if (volVal) volVal.textContent = parseFloat(vol).toFixed(1);
-
     // 재생 시간 모드 복원
+    const isManual = ct.durationMode === 'manual';
     const durAuto   = document.getElementById('cutin-dur-auto');
     const durManual = document.getElementById('cutin-dur-manual');
     const durInput  = document.getElementById('cutin-edit-duration');
     const durUnit   = document.getElementById('cutin-dur-manual-unit');
     const durHint   = document.getElementById('cutin-dur-auto-hint');
-    const isManual  = ct.durationMode === 'manual';
     if (durAuto)   durAuto.checked   = !isManual;
     if (durManual) durManual.checked = isManual;
     if (durInput)  { durInput.value = ct.duration || 3; durInput.style.display = isManual ? '' : 'none'; }
-    if (durUnit)   durUnit.style.display   = isManual ? '' : 'none';
-    // APNG 자동 감지 힌트 업데이트
-    if (durHint && ct.apngDuration) durHint.textContent = `— ${ct.apngDuration.toFixed(1)}초 (자동 감지됨)`;
-    else if (durHint) durHint.textContent = '— 이미지 선택 시 자동 감지';
+    if (durUnit)   durUnit.style.display  = isManual ? '' : 'none';
+    if (durHint)   durHint.textContent    = ct.apngDuration ? `— ${ct.apngDuration.toFixed(1)}초 (자동 감지됨)` : '— 이미지 선택 시 자동 감지';
 
-    // 삭제 버튼 표시
+    // 삭제 버튼
     const delBtn = document.getElementById('cutin-edit-del-btn');
     if (delBtn) delBtn.style.display = isNew ? 'none' : '';
-
-    // img-url 변경 감지 + APNG 자동 감지
-    if (imgUrl) {
-      let _apngTimer = null;
-      imgUrl.oninput = () => {
-        const url = imgUrl.value.trim();
-        if (imgEl) { imgEl.src = url; imgEl.style.display = url ? '' : 'none'; }
-        const ph = imgPrev?.querySelector('.cutin-edit-img-placeholder');
-        if (ph) ph.style.display = url ? 'none' : '';
-        // URL 입력 후 0.8초 대기 후 APNG 감지 (디바운스)
-        if (_apngTimer) clearTimeout(_apngTimer);
-        if (url) _apngTimer = setTimeout(() => window._detectApngFromUrl(url), 800);
-        else { window._editingApngDuration = null; const h = document.getElementById('cutin-dur-auto-hint'); if(h) h.textContent = '— 이미지 선택 시 자동 감지'; }
-      };
-      // 기존 이미지가 있으면 즉시 감지
-      if (ct.imageUrl) setTimeout(() => window._detectApngFromUrl(ct.imageUrl), 100);
-    }
 
     openModal('modal-cutin-edit');
   };
 
   window.closeCutinEdit = function() {
-    closeModal('modal-cutin-edit');
+    _editingApngDuration = null;
     _editingId = null;
+    closeModal('modal-cutin-edit');
   };
 
   // ── 이미지 파일 선택 ──
   window.onCutinEditImageFile = async function(input) {
     const file = input?.files?.[0]; if (!file) return;
     input.value = '';
-    const local = URL.createObjectURL(file);
-    const imgEl   = document.getElementById('cutin-edit-img-el');
+    const local  = URL.createObjectURL(file);
+    const imgEl  = document.getElementById('cutin-edit-img-el');
     const imgPrev = document.getElementById('cutin-edit-img-preview');
-    const urlEl   = document.getElementById('cutin-edit-img-url');
+    const urlEl  = document.getElementById('cutin-edit-img-url');
+    const ph     = imgPrev?.querySelector('.cutin-edit-img-placeholder');
     if (imgEl) { imgEl.src = local; imgEl.style.display = ''; }
-    const ph = imgPrev?.querySelector('.cutin-edit-img-placeholder');
-    if (ph) ph.style.display = 'none';
+    if (ph)    ph.style.display = 'none';
+    // APNG 감지
+    await _detectApng(file);
     // Cloudinary 업로드
-    // APNG 재생 시간 자동 감지
-    try { await _detectAndSetApngDuration(file); } catch(e) {}
-
     try {
       if (typeof uploadMapLayerBlob === 'function' && window.St?.roomCode) {
         const ext = file.name.split('.').pop() || 'png';
@@ -2066,162 +2072,112 @@ window._FB = {
     } catch(e) { if (urlEl) urlEl.value = local; }
   };
 
-  // ── 음원 파일 선택 (10초 이하 제한) ──
-  window.onCutinEditSoundFile = async function(input) {
-    const file = input?.files?.[0]; if (!file) return;
-    input.value = '';
-    // 재생 길이 확인
-    const checkDur = () => new Promise(resolve => {
-      const a = new Audio(); a.src = URL.createObjectURL(file);
-      a.onloadedmetadata = () => resolve(a.duration);
-      a.onerror = () => resolve(0);
-    });
-    const dur = await checkDur();
-    if (dur > 10) { if (typeof showToast === 'function') showToast('10초 이하 음원만 업로드할 수 있어요.'); return; }
-    _editSoundBlob = file;
-    if (_editSoundObjectUrl) URL.revokeObjectURL(_editSoundObjectUrl);
-    _editSoundObjectUrl = URL.createObjectURL(file);
-    const soundName = document.getElementById('cutin-edit-sound-name');
-    const soundUrl  = document.getElementById('cutin-edit-sound-url');
-    if (soundName) { soundName.textContent = file.name; soundName.style.display = ''; }
-    if (soundUrl)  { soundUrl.value = ''; }
-  };
-
-  // ── 편집 저장 ──
+  // ── 저장 ──
   window.saveCutinEdit = async function() {
-    const trigger = document.getElementById('cutin-edit-trigger')?.value?.trim();
-    if (!trigger) { if (typeof showToast === 'function') showToast('트리거 단어를 입력해주세요.'); return; }
-    let imageUrl = document.getElementById('cutin-edit-img-url')?.value?.trim() || '';
-    if (!imageUrl) { if (typeof showToast === 'function') showToast('이미지를 선택해주세요.'); return; }
-    const r = _cutinRef();
-    if (!r) { if (typeof showToast === 'function') showToast('방에 접속된 상태에서만 저장할 수 있어요.'); return; }
-
-    // 음원 처리: 파일이 있으면 업로드, 없으면 URL 필드 사용
-    let soundUrl = '';
-    if (_editSoundBlob) {
-      try {
-        const ext = _editSoundBlob.name.split('.').pop() || 'mp3';
-        if (typeof uploadMapLayerBlob === 'function' && window.St?.roomCode) {
-          soundUrl = await uploadMapLayerBlob(_editSoundBlob, window.St.roomCode, `cutin-snd-${Date.now()}.${ext}`) || '';
-        } else { soundUrl = _editSoundObjectUrl || ''; }
-      } catch(e) {}
-    } else {
-      soundUrl = document.getElementById('cutin-edit-sound-url')?.value?.trim() || '';
-    }
-
-    const volume       = parseFloat(document.getElementById('cutin-edit-volume')?.value || '0.8');
-    const durMode      = document.querySelector('input[name="cutin-duration-mode"]:checked')?.value || 'auto';
-    const manualDur    = parseFloat(document.getElementById('cutin-edit-duration')?.value || '3');
-    const apngDuration = window._editingApngDuration || null;
-    const duration     = durMode === 'manual' ? manualDur : (apngDuration || 3);
-    const durationMode = durMode; // 저장해서 편집창 재진입 시 복원
-    const data = { trigger, imageUrl, soundUrl, volume, duration, durationMode, apngDuration, updatedAt: Date.now() };
-
-    const { db, ref: fbRef, set, push, update } = window._FB;
-    const roomCode = window.St?.roomCode;
+    const trigger  = document.getElementById('cutin-edit-trigger')?.value?.trim();
+    const imageUrl = document.getElementById('cutin-edit-img-url')?.value?.trim();
+    if (!trigger)  { showToast?.('트리거 단어를 입력해주세요.'); return; }
+    if (!imageUrl) { showToast?.('이미지를 선택해주세요.'); return; }
+    const path = _roomPath('cutins'); if (!path) { showToast?.('방에 접속된 상태에서만 저장할 수 있어요.'); return; }
+    const durMode  = document.querySelector('input[name="cutin-duration-mode"]:checked')?.value || 'auto';
+    const manualDur = parseFloat(document.getElementById('cutin-edit-duration')?.value || '3');
+    const apngDur  = _editingApngDuration;
+    const duration = durMode === 'manual' ? manualDur : (apngDur || 3);
+    const data = { trigger, imageUrl, soundUrl: '', volume: 0.8, duration,
+                   durationMode: durMode, apngDuration: apngDur, updatedAt: Date.now(),
+                   name: trigger };
+    const { db, ref: fbRef, set, push, update: fbUpdate } = window._FB;
+    const rc = window.St.roomCode;
     if (_editingId) {
-      await update(fbRef(db, `rooms/${roomCode}/cutins/${_editingId}`), data);
+      await fbUpdate(fbRef(db, `rooms/${rc}/cutins/${_editingId}`), data);
     } else {
-      const newRef = push(fbRef(db, `rooms/${roomCode}/cutins`));
-      await set(newRef, { ...data, createdAt: Date.now() });
+      await set(push(fbRef(db, `rooms/${rc}/cutins`)), { ...data, createdAt: Date.now() });
     }
-    if (typeof showToast === 'function') showToast('저장됐어요.');
+    showToast?.('저장됐어요.');
     closeCutinEdit();
   };
 
-  // ── 편집 창에서 삭제 ──
+  // ── 편집창 삭제 ──
   window.deleteCutinEdit = async function() {
     if (!_editingId) return;
-    const roomCode = window.St?.roomCode;
-    if (!roomCode || !window._FB?.CONFIGURED) return;
-    const { db, ref: fbRef, remove } = window._FB;
-    await remove(fbRef(db, `rooms/${roomCode}/cutins/${_editingId}`));
+    const rc = window.St?.roomCode; if (!rc || !_db()) return;
+    await window._FB.remove(window._FB.ref(_db(), `rooms/${rc}/cutins/${_editingId}`));
     closeCutinEdit();
   };
 
-  // ── 목록에서 삭제 (하위 호환) ──
-  window.deleteCutin = window.deleteCutinEdit;
-
-  // ── 개별 삭제 (목록에서 직접) ──
+  // ── 목록 개별 삭제 ──
   window.deleteCutinById = async function(id) {
-    const r = _cutinRef(); if (!r) return;
-    const { db, ref: fbRef, update: fbUpdate } = window._FB;
-    const updatePayload = {};
-    updatePayload[`rooms/${window.St.roomCode}/cutins/${id}`] = null;
-    await fbUpdate(fbRef(db), updatePayload).catch(e => console.warn('[cutin] 삭제 실패', e));
-  };
-
-  // ── 전체 재생시간 일괄 적용 ──
-  window.onBulkDurationMode = function() {
-    const mode = document.querySelector('input[name="cutin-bulk-mode"]:checked')?.value;
-    const secInput = document.getElementById('cutin-bulk-sec');
-    const secUnit  = document.getElementById('cutin-bulk-sec-unit');
-    const manLabel = document.getElementById('cutin-bulk-manual-label');
-    const isManual = mode === 'manual';
-    if (secInput) secInput.style.display = isManual ? '' : 'none';
-    if (secUnit)  secUnit.style.display  = isManual ? '' : 'none';
-    if (manLabel) manLabel.style.display = isManual ? 'none' : '';
-  };
-
-  window.applyBulkDuration = async function() {
-    if (!Object.keys(_cutins).length) return;
-    const mode = document.querySelector('input[name="cutin-bulk-mode"]:checked')?.value || 'apng';
-    const manualSec = parseFloat(document.getElementById('cutin-bulk-sec')?.value || '3');
-    const roomCode = window.St?.roomCode;
-    if (!roomCode || !window._FB?.CONFIGURED) return;
-
-    if (!confirm(mode === 'apng'
-      ? '모든 컷인을 APNG 1회 재생으로 설정할까요?'
-      : `모든 컷인을 ${manualSec}초로 설정할까요?`)) return;
-
-    const { db, ref: fbRef, update: fbUpdate } = window._FB;
-    const updatePayload = {};
-    for (const [id, ct] of Object.entries(_cutins)) {
-      if (mode === 'apng') {
-        updatePayload[`rooms/${roomCode}/cutins/${id}/durationMode`] = 'auto';
-        updatePayload[`rooms/${roomCode}/cutins/${id}/duration`] = ct.apngDuration || 3;
-      } else {
-        updatePayload[`rooms/${roomCode}/cutins/${id}/durationMode`] = 'manual';
-        updatePayload[`rooms/${roomCode}/cutins/${id}/duration`] = manualSec;
-      }
-    }
-    await fbUpdate(fbRef(db), updatePayload).catch(e => console.warn('[cutin] 일괄 적용 실패', e));
-    if (typeof showToast === 'function') showToast('재생 시간이 일괄 적용됐어요.');
+    const rc = window.St?.roomCode; if (!rc || !_db()) return;
+    const payload = {}; payload[`rooms/${rc}/cutins/${id}`] = null;
+    await window._FB.update(window._FB.ref(_db()), payload);
   };
 
   // ── 전체 삭제 ──
   window.deleteAllCutins = async function() {
     if (!Object.keys(_cutins).length) return;
     if (!confirm('컷인을 모두 삭제할까요?')) return;
-    const r = _cutinRef(); if (!r) return;
-    const { db, ref: fbRef, update: fbUpdate } = window._FB;
-    const updatePayload = {};
-    Object.keys(_cutins).forEach(id => {
-      updatePayload[`rooms/${window.St.roomCode}/cutins/${id}`] = null;
-    });
-    await fbUpdate(fbRef(db), updatePayload).catch(e => console.warn('[cutin] 전체 삭제 실패', e));
+    const rc = window.St?.roomCode; if (!rc || !_db()) return;
+    const payload = {};
+    Object.keys(_cutins).forEach(id => { payload[`rooms/${rc}/cutins/${id}`] = null; });
+    await window._FB.update(window._FB.ref(_db()), payload);
   };
 
-  // ── 편집 창 미리보기 ──
+  // ── 일괄 재생시간 설정 ──
+  window.onBulkDurationMode = function() {
+    const manual = document.querySelector('input[name="cutin-bulk-mode"]:checked')?.value === 'manual';
+    const secEl  = document.getElementById('cutin-bulk-sec');
+    const unitEl = document.getElementById('cutin-bulk-sec-unit');
+    const lblEl  = document.getElementById('cutin-bulk-manual-label');
+    if (secEl)  secEl.style.display  = manual ? '' : 'none';
+    if (unitEl) unitEl.style.display = manual ? '' : 'none';
+    if (lblEl)  lblEl.style.display  = manual ? 'none' : '';
+  };
+
+  window.applyBulkDuration = async function() {
+    if (!Object.keys(_cutins).length) return;
+    const mode = document.querySelector('input[name="cutin-bulk-mode"]:checked')?.value || 'apng';
+    const sec  = parseFloat(document.getElementById('cutin-bulk-sec')?.value || '3');
+    const rc   = window.St?.roomCode; if (!rc || !_db()) return;
+    const msg  = mode === 'apng' ? '모든 컷인을 APNG 1회 재생으로 설정할까요?' : `모든 컷인을 ${sec}초로 설정할까요?`;
+    if (!confirm(msg)) return;
+    const payload = {};
+    Object.entries(_cutins).forEach(([id, ct]) => {
+      const path = `rooms/${rc}/cutins/${id}`;
+      if (mode === 'apng') {
+        payload[`${path}/durationMode`] = 'auto';
+        payload[`${path}/duration`]     = ct.apngDuration || 3;
+      } else {
+        payload[`${path}/durationMode`] = 'manual';
+        payload[`${path}/duration`]     = sec;
+      }
+    });
+    await window._FB.update(window._FB.ref(_db()), payload);
+    showToast?.('재생 시간이 일괄 적용됐어요.');
+  };
+
+  // ── duration 모드 토글 ──
+  window.onCutinDurationModeChange = function() {
+    const manual  = document.querySelector('input[name="cutin-duration-mode"]:checked')?.value === 'manual';
+    const durInput = document.getElementById('cutin-edit-duration');
+    const durUnit  = document.getElementById('cutin-dur-manual-unit');
+    if (durInput) durInput.style.display = manual ? '' : 'none';
+    if (durUnit)  durUnit.style.display  = manual ? '' : 'none';
+  };
+  window.onCutinDurationInput = function(el) { if (parseFloat(el.value) < 0.5) el.value = 0.5; };
+
+  // ── 편집창 미리보기 ──
   window.previewCutinEdit = function() {
-    const imageUrl  = document.getElementById('cutin-edit-img-url')?.value?.trim() || '';
-    const soundUrl  = _editSoundObjectUrl || document.getElementById('cutin-edit-sound-url')?.value?.trim() || '';
-    const volume    = parseFloat(document.getElementById('cutin-edit-volume')?.value || '0.8');
-    if (!imageUrl) { if (typeof showToast === 'function') showToast('이미지를 먼저 설정해주세요.'); return; }
-    const _pDurMode = document.querySelector('input[name="cutin-duration-mode"]:checked')?.value || 'auto';
-    const _pDur     = _pDurMode === 'manual'
-      ? parseFloat(document.getElementById('cutin-edit-duration')?.value || '3')
-      : (window._editingApngDuration || 3);
-    _playCutin({ imageUrl, soundUrl, volume, duration: _pDur });
+    const imageUrl = document.getElementById('cutin-edit-img-url')?.value?.trim();
+    if (!imageUrl) { showToast?.('이미지를 먼저 설정해주세요.'); return; }
+    const manual = document.querySelector('input[name="cutin-duration-mode"]:checked')?.value === 'manual';
+    const dur    = manual ? parseFloat(document.getElementById('cutin-edit-duration')?.value || '3') : (_editingApngDuration || 3);
+    _playCutin({ imageUrl, duration: dur, durationMode: manual ? 'manual' : 'auto', apngDuration: _editingApngDuration });
   };
 
   // ── 목록에서 재생 ──
-  window.triggerCutinById = function(id) {
-    const ct = _cutins[id]; if (!ct) return;
-    _playCutin(ct);
-  };
+  window.triggerCutinById = function(id) { const ct = _cutins[id]; if (ct) _playCutin(ct); };
 
-  // ── 재생 ──
+  // ── 재생 핵심 ──
   function _startCutinDisplay(ct, durationSec) {
     const overlay = document.getElementById('cutin-overlay');
     const dim     = document.getElementById('cutin-dim');
@@ -2231,21 +2187,11 @@ window._FB = {
     display.style.opacity = '1';
     overlay.style.display = 'flex';
     if (dim) requestAnimationFrame(() => { dim.style.background = 'rgba(0,0,0,0.55)'; });
-    if (ct.soundUrl) {
-      try {
-        const audio = new Audio(ct.soundUrl);
-        audio.volume = ct.volume != null ? Math.min(1, Math.max(0, ct.volume)) : 0.8;
-        audio.play().catch(() => {});
-      } catch(e) {}
-    }
     const ms = Math.max(500, durationSec * 1000);
     _cutinOverlayTimer = setTimeout(() => {
       display.style.opacity = '0';
       if (dim) dim.style.background = 'rgba(0,0,0,0)';
-      setTimeout(() => {
-        overlay.style.display = 'none';
-        display.style.opacity = '1';
-      }, 620);
+      setTimeout(() => { overlay.style.display = 'none'; display.style.opacity = '1'; }, 620);
       _cutinOverlayTimer = null;
     }, ms);
   }
@@ -2254,16 +2200,11 @@ window._FB = {
     const img = document.getElementById('cutin-img');
     if (!img) return;
     img.src = ct.imageUrl || '';
-
-    // durationMode=auto 이거나 duration이 명시 안 된 경우 APNG 파싱 시도
     const isAuto = !ct.durationMode || ct.durationMode === 'auto';
     if (isAuto && ct.imageUrl) {
-      // 빠른 응답을 위해 먼저 표시하고 파싱 후 타이머 설정
       const parsed = await _getApngDuration(ct.imageUrl).catch(() => null);
-      const dur = parsed || ct.duration || 3;
-      _startCutinDisplay(ct, dur);
+      _startCutinDisplay(ct, parsed || ct.apngDuration || ct.duration || 3);
     } else {
-      // manual 모드: 저장된 duration 그대로 사용
       _startCutinDisplay(ct, ct.duration || 3);
     }
   }
@@ -2281,7 +2222,7 @@ window._FB = {
     }
   });
 
-  // ── 채팅 트리거 ──
+  // ── 채팅 트리거 감지 ──
   document.addEventListener('DOMContentLoaded', () => {
     if (typeof appendChatMsg !== 'undefined') {
       const _orig = appendChatMsg;
@@ -2295,108 +2236,29 @@ window._FB = {
   function _checkCutinTrigger(msg) {
     const text = String(msg?.text || '').trim();
     if (!text) return;
-
-    // ── 다이스 판정 결과에서 label 추출 ──
-    // 형식: "🎲 XX 판정 → 50 (목표치 70||보통 성공)"
-    // ||뒤의 값이 outcome.label (보통 성공, 어려운 성공, 극단적 성공, 크리티컬, 실패, 펌블)
+    const textLower = text.toLowerCase();
+    // 다이스 판정 결과 label 추출 (형식: "... ||보통 성공)")
     const diceMatch = text.match(/\|\|([^)]+)\)/);
     const diceLabel = diceMatch ? diceMatch[1].trim().toLowerCase() : null;
-
-    // ── 텍스트 끝 일치 (기존 채팅 트리거) ──
-    const textLower = text.toLowerCase();
-
-    for (const [, ct] of Object.entries(_cutins)) {
+    for (const ct of Object.values(_cutins)) {
       const trigger = String(ct.trigger || '').trim().toLowerCase();
       if (!trigger) continue;
-
-      // 1순위: 다이스 결과 label과 트리거 일치
-      if (diceLabel && diceLabel === trigger) {
-        _playCutin(ct); return;
-      }
-      // 2순위: 메시지 끝부분이 트리거와 일치 (채팅 직접 입력)
+      if (diceLabel && diceLabel === trigger) { _playCutin(ct); return; }
       if (textLower === trigger || textLower.endsWith(' ' + trigger) || textLower.endsWith('\n' + trigger)) {
         _playCutin(ct); return;
       }
     }
   }
 
-  // ── 구독 ──
+  // ── 외부 노출 (최소한으로) ──
+  window._subscribeCutins = _subscribeCutins;
+  window._detectApngFromUrl = (url) => _detectApng(url); // 하위 호환
+
+  // ── 방 입장 시 구독 ──
   document.addEventListener('itc-room-joined', e => _subscribeCutins(e.detail?.roomCode || window.St?.roomCode));
   if (window.St?.roomCode) _subscribeCutins(window.St.roomCode);
 
-  function _esc(s) { return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-  window._subscribeCutins = _subscribeCutins;
-
-  // ── APNG 총 재생 시간 파싱 ──
-  // fcTL 청크의 delay_num/delay_den 합산
-  async function _getApngDuration(source) {
-    try {
-      let buf;
-      if (source instanceof Blob || source instanceof File) {
-        buf = await source.arrayBuffer();
-      } else if (typeof source === 'string') {
-        const res = await fetch(source); buf = await res.arrayBuffer();
-      } else return null;
-      const u8 = new Uint8Array(buf);
-      // PNG 시그니처 확인
-      if (u8[0] !== 137 || u8[1] !== 80 || u8[2] !== 78 || u8[3] !== 71) return null;
-      let totalMs = 0; let hasFctl = false;
-      let i = 8;
-      while (i + 12 <= u8.length) {
-        const len  = (u8[i]<<24|u8[i+1]<<16|u8[i+2]<<8|u8[i+3]) >>> 0;
-        const type = String.fromCharCode(u8[i+4],u8[i+5],u8[i+6],u8[i+7]);
-        if (type === 'fcTL' && len >= 24) {
-          hasFctl = true;
-          const num = (u8[i+24]<<8|u8[i+25]);          // delay_num
-          const den = (u8[i+26]<<8|u8[i+27]) || 100;   // delay_den (0→100)
-          totalMs += (num / den) * 1000;
-        }
-        if (type === 'IEND') break;
-        i += 12 + len;
-      }
-      if (!hasFctl || totalMs <= 0) return null;
-      return totalMs / 1000; // 초 단위
-    } catch(e) { return null; }
-  }
-
-  // 이미지 선택 시 APNG 감지 후 UI 업데이트
-  async function _detectAndSetApngDuration(source) {
-    const dur = await _getApngDuration(source);
-    const hint   = document.getElementById('cutin-dur-auto-hint');
-    window._editingApngDuration = dur;
-    if (dur) {
-      if (hint) hint.textContent = `— ${dur.toFixed(1)}초 (자동 감지됨)`;
-    } else {
-      if (hint) hint.textContent = '— APNG 아님, 기본 3초';
-      window._editingApngDuration = null;
-    }
-  }
-
-  // URL 입력 시 APNG 감지 연결 (openCutinEdit에서 img-url oninput에 hookup)
-  window._detectApngFromUrl = async function(url) {
-    if (!url) { window._editingApngDuration = null; return; }
-    await _detectAndSetApngDuration(url);
-  };
-
-  // duration 모드 전환 UI
-  window.onCutinDurationModeChange = function() {
-    const mode    = document.querySelector('input[name="cutin-duration-mode"]:checked')?.value || 'auto';
-    const durInput = document.getElementById('cutin-edit-duration');
-    const durUnit  = document.getElementById('cutin-dur-manual-unit');
-    if (durInput) durInput.style.display = mode === 'manual' ? '' : 'none';
-    if (durUnit)  durUnit.style.display  = mode === 'manual' ? '' : 'none';
-  };
-  window.onCutinDurationInput = function(el) {
-    // 최솟값 보정
-    if (parseFloat(el.value) < 0.5) el.value = 0.5;
-  };
-
-  // closeCutinEdit 시 상태 초기화
-  const _origCloseCutinEdit = window.closeCutinEdit;
-  window.closeCutinEdit = function() {
-    window._editingApngDuration = null;
-    if (typeof _origCloseCutinEdit === 'function') _origCloseCutinEdit();
-  };
+  function _esc(s) { return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 })();
 </script>
 
