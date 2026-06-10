@@ -1698,11 +1698,10 @@ body{scrollbar-color:var(--accent-green) var(--s3);}
 
 /* ── 통합 맵세팅 모달 ── */
 .modal-map-setting{width:min(480px,94vw)!important;max-width:none!important;}
-.ms-tabs{display:flex;gap:2px;border-bottom:1px solid var(--border);margin-bottom:16px;padding-bottom:0;}
-.ms-tab{background:none;border:none;border-bottom:2px solid transparent;color:var(--muted);font:inherit;font-size:13px;font-weight:500;padding:7px 14px;cursor:pointer;transition:var(--t);margin-bottom:-1px;border-radius:6px 6px 0 0;}
-.ms-tab:hover{color:var(--text);background:var(--s3);}
-.ms-tab.active{color:var(--accent-text);border-bottom-color:var(--accent);font-weight:600;}
-.ms-panel{min-height:80px;}
-.ms-import-actions{display:flex;align-items:center;gap:8px;margin-top:10px;}
-.ms-upload-btn{display:inline-flex;align-items:center;gap:6px;padding:9px 16px;background:var(--accent);border:none;border-radius:8px;font:inherit;font-size:13px;font-weight:600;color:#fff;cursor:pointer;transition:var(--t);}
-.ms-upload-btn:hover{filter:brightness(1.08);}
+/* + 업로드 버튼 (헤더 우측) */
+.ms-add-btn{width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;background:var(--a-dim);border:1px solid rgba(37,99,235,.25);border-radius:7px;color:var(--accent-text);cursor:pointer;transition:var(--t);flex-shrink:0;}
+.ms-add-btn:hover{background:rgba(37,99,235,.18);}
+/* 인라인 업로드 결과 영역 */
+#ms-import-panel{margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--border);}
+.ms-import-summary{padding:10px 12px;border:1px solid var(--border);border-radius:var(--r);background:var(--s2);font-size:12px;line-height:1.8;color:var(--dim);}
+.ms-import-error{padding:10px 12px;border:1px solid rgba(200,92,92,.3);border-radius:var(--r);background:rgba(200,92,92,.08);font-size:12px;line-height:1.7;color:var(--red);}

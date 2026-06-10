@@ -333,6 +333,8 @@
   }
 
   function setError(message) {
+    const importPanel = document.getElementById('ms-import-panel');
+    if (importPanel) importPanel.style.display = '';
     const { error, hint } = getModalElements();
     if (error) {
       error.style.display = '';
@@ -342,6 +344,9 @@
   }
 
   function setSummary(html) {
+    // 인라인 패널 표시 (파일 선택 후 결과 표시 시)
+    const importPanel = document.getElementById('ms-import-panel');
+    if (importPanel) importPanel.style.display = '';
     const { summary, hint, error } = getModalElements();
     if (summary) {
       summary.style.display = '';
@@ -796,10 +801,10 @@
           applyImportedMapState(nextMapState);
           if (typeof refreshMapLayerManager === 'function') refreshMapLayerManager();
         }
-        setSummary(`<b>이미지 적용 완료</b><br>${pendingFile.name}`);
         if (typeof showToast === 'function') showToast('맵 이미지가 적용됐어요.');
         IMPORT_STATE.pendingFile = null;
         IMPORT_STATE.lastValidated = null;
+        if (typeof window.hideMapImportPanel === 'function') window.hideMapImportPanel();
       } catch (err) {
         setError(err?.message || '이미지 업로드 중 오류가 발생했어요.');
         console.error('single image apply failed', err);
@@ -1022,8 +1027,8 @@
       }
       const cutinCount = Object.keys(validated.parsed?.entities?.effects || {}).filter(k => validated.parsed?.entities?.effects[k]?.imageUrl).length;
       const cutinNote = cutinCount > 0 ? ` / 컷인 ${cutinCount}개 임포트` : '';
-      setSummary(buildValidationSummary(pendingFile, validated.parsed) + `<br><br><b>맵 이미지 적용 완료</b><br>스크린 패널 ${importedPanelTokens.length}개 생성${cutinNote}`);
       if (typeof showToast === 'function') showToast(`맵 이미지 + 스크린 패널${cutinNote} 적용 완료`);
+      if (typeof window.hideMapImportPanel === 'function') window.hideMapImportPanel();
     } catch (err) {
       console.error('map background apply failed', err);
       setError(err?.message || '맵 이미지 적용 중 오류가 발생했어요.');
