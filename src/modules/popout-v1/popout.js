@@ -325,6 +325,101 @@ textarea.whisper-mode{border-color:#9b59b6;background:rgba(155,89,182,.05)}
 .doc-pop-meta{margin-top:5px;font-size:9px;color:#6b7a94;display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0}
 .doc-pop-meta span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 `;
+  // ── 라이트 모드 CSS (테마 감지 후 html.light 선택자로 적용) ──
+  const lightCss = [
+    // 기본
+    'html.light body{background:#f2f4f7;color:#131415}',
+    // 탭
+    'html.light .tabs{background:#fff;border-bottom-color:#dbe1e8}',
+    'html.light .tab{color:#767a8c}',
+    'html.light .tab.on{color:#1a4fd6;border-bottom-color:#1a4fd6}',
+    'html.light .tab:hover:not(.on){color:#485666}',
+    // PDM
+    'html.light .pdm{background:#f7f8fa;border-bottom-color:#dbe1e8}',
+    'html.light .pdm-btn{background:#fff;border-color:#c8d0da;color:#485666}',
+    'html.light .pdm-btn:hover{border-color:#2563eb;color:#1a4fd6}',
+    'html.light .pdm-btn.on{background:rgba(37,99,235,.1);border-color:rgba(37,99,235,.4);color:#1a4fd6}',
+    'html.light .pdm-dot{background:#2563eb;box-shadow:0 0 0 2px #fff}',
+    'html.light .pdm-room-list-panel{background:rgba(255,255,255,.98);border-color:#dbe1e8}',
+    'html.light .pdm-room-list-head{border-bottom-color:#dbe1e8;color:#1a4fd6}',
+    'html.light .pdm-room-list-head-note{color:#767a8c}',
+    'html.light .pdm-room-list-row:hover{border-color:rgba(37,99,235,.25);background:rgba(37,99,235,.06)}',
+    'html.light .pdm-room-list-row.on{border-color:rgba(37,99,235,.4);background:rgba(37,99,235,.1)}',
+    'html.light .pdm-room-list-item{color:#485666}',
+    'html.light .pdm-room-list-item:hover{color:#131415}',
+    'html.light .pdm-room-list-row.on .pdm-room-list-item{color:#1a4fd6}',
+    'html.light .pdm-room-list-meta{color:#2563eb;opacity:.8}',
+    'html.light .pdm-room-list-empty{color:#767a8c}',
+    'html.light .pdm-room-list-delete{background:rgba(0,0,0,.04)}',
+    'html.light .pdm-toast{background:rgba(255,255,255,.96);color:#131415}',
+    // 메시지
+    'html.light .msgs::-webkit-scrollbar-thumb{background:#c8d0da}',
+    'html.light .av{background:#f7f8fa;border-color:#dbe1e8;color:#1a4fd6}',
+    'html.light .nn{color:#1a4fd6}',
+    'html.light .tm{color:#767a8c}',
+    'html.light .mt{color:#485666}',
+    'html.light .ms .mt{color:#767a8c}',
+    'html.light .dc{background:rgba(37,99,235,.07);border-color:rgba(37,99,235,.2)}',
+    'html.light .dc-f{color:#767a8c}',
+    'html.light .dc-r{color:#1a4fd6}',
+    'html.light .dc-d{color:#485666}',
+    'html.light .dot{background:#2563eb}',
+    'html.light .w-dot{background:#9b59b6}',
+    'html.light .on{color:#1a4fd6;border-bottom-color:#2563eb}',
+    'html.light .sel{color:#1a4fd6}',
+    'html.light .active{color:#1a4fd6}',
+    // 저널
+    'html.light .j-list{background:#f7f8fa}',
+    'html.light .j-item{border-color:#dbe1e8;background:#fff}',
+    'html.light .j-item b{color:#131415}',
+    'html.light .j-item span{color:#767a8c}',
+    // 입력
+    'html.light .ptb{border-top-color:#dbe1e8;background:#fff}',
+    'html.light .sa-btn{color:#767a8c}',
+    'html.light .sa-btn:hover{color:#485666}',
+    'html.light .sa-btn.active{color:#1a4fd6}',
+    'html.light .sa-icon{background:#f7f8fa;border-color:#dbe1e8}',
+    'html.light .sa-dd{background:#fff;border-color:#dbe1e8}',
+    'html.light .sa-dd-item{color:#131415}',
+    'html.light .sa-dd-item:hover{background:rgba(37,99,235,.06)}',
+    'html.light .sa-dd-item.sel{color:#1a4fd6}',
+    'html.light .sa-dd-av{background:#f7f8fa;border-color:#dbe1e8}',
+    'html.light .tb-row .tb-btn{background:#fff;border-color:#dbe1e8;color:#485666}',
+    'html.light .tb-btn:hover,html.light .tb-btn.active{border-color:#2563eb;color:#1a4fd6}',
+    'html.light .desc-btn,html.light .whisper-btn{border-color:#dbe1e8;color:#767a8c}',
+    'html.light .desc-btn:hover{color:#485666}',
+    'html.light .desc-btn.active{border-color:#2563eb;color:#1a4fd6}',
+    'html.light textarea{background:#fff;border-color:#dbe1e8;color:#131415}',
+    'html.light textarea:focus{border-color:#2563eb}',
+    'html.light textarea.desc-mode{border-color:#2563eb;background:rgba(37,99,235,.04)}',
+    'html.light textarea.whisper-mode{border-color:#9b59b6;background:rgba(155,89,182,.04)}',
+    'html.light .sb{background:#2563eb}',
+    'html.light .dsec-text{color:#485666}',
+    // 이미지
+    'html.light .pop-img{border-color:#dbe1e8}',
+    // 캐주얼
+    'html.light .pop-casual-avatar{background:#f7f8fa;border-color:#dbe1e8;color:#1a4fd6}',
+    'html.light .pop-casual-name{color:#131415}',
+    'html.light .pop-casual-edit-btn,html.light .pop-casual-color-btn,html.light .pop-name-color-btn{color:#767a8c}',
+    'html.light .pop-color-pop{background:#fff;border-color:#dbe1e8;box-shadow:0 8px 24px rgba(0,0,0,.1)}',
+    'html.light .pop-color-title{color:#485666}',
+    'html.light .pop-color-swatch{border-color:rgba(0,0,0,.12)}',
+    // 문서 탭
+    'html.light .doc-pop-head{background:#f7f8fa;border-bottom-color:#dbe1e8}',
+    'html.light .doc-pop-head-title{color:#131415}',
+    'html.light .doc-pop-sec{background:#fff;border-color:#dbe1e8}',
+    'html.light .doc-pop-item{background:#fff;border-color:#dbe1e8}',
+    'html.light .doc-pop-item:hover{background:#f7f8fa;border-color:#c8d0da}',
+    'html.light .doc-pop-title{color:#131415}',
+    'html.light .doc-pop-icon{color:#485666}',
+    'html.light .doc-pop-badge{color:#1a4fd6;border-color:rgba(37,99,235,.22);background:rgba(37,99,235,.07)}',
+    'html.light .doc-pop-meta{color:#767a8c}',
+    'html.light .doc-pop-preview{color:#485666}',
+    'html.light .doc-pop-empty{color:#767a8c}',
+    'html.light .doc-pop-avatar{background:#f7f8fa;border-color:#dbe1e8}',
+    'html.light .doc-pop-add-btn{background:#f7f8fa;border-color:#c8d0da;color:#485666}',
+    'html.light .doc-pop-add-btn:hover{background:#dbe1e8;color:#131415}',
+  ].join('\n');
   const colorIconSrc = esc(new URL('assets/ui/icon-name-color.png', window.location.href).href);
 
   const htmlBody = `
@@ -372,7 +467,7 @@ textarea.whisper-mode{border-color:#9b59b6;background:rgba(155,89,182,.05)}
   const playersJson = JSON.stringify(playersObj).replace(/</g, '\\x3c');
 
   var _popTheme = (function(){ try{ return localStorage.getItem('itc_theme') || 'light'; }catch(e){ return 'light'; } })();
-  return '<!DOCTYPE html><html lang="ko" class="' + _popTheme + '"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ITC \u2014 ' + rc + '</title><link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400&display=swap" rel=stylesheet><style>' + css + '</style></head><body>' + htmlBody + S + buildPopoutScript(journalJson, playersJson, isGmJson) + SE + '</body></html>';
+  var _allCss = css + lightCss; return '<!DOCTYPE html><html lang="ko" class="' + _popTheme + '"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ITC \u2014 ' + rc + '</title><link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400&display=swap" rel=stylesheet><style>' + _allCss + '</style></head><body>' + htmlBody + S + buildPopoutScript(journalJson, playersJson, isGmJson) + SE + '</body></html>';
 }
 
 function buildPopoutScript(journalJson, playersJson, isGmJson) {
@@ -940,44 +1035,3 @@ if (_baseRemove) {
     return result;
   };
 }
-/* ── 라이트 모드 추가 커버 ── */
-html.light .mn .nn{color:#1a4fd6}
-html.light .mn .tm{color:#767a8c}
-html.light .dot{background:#2563eb}
-html.light .w-dot{background:#9b59b6}
-html.light .on{color:#1a4fd6;border-bottom-color:#2563eb}
-html.light .sel{color:#1a4fd6}
-html.light .active{color:#1a4fd6}
-html.light .resize-edge-hover,html.light .is-resizing{border-color:#2563eb;box-shadow:0 0 0 1px rgba(37,99,235,.18)}
-html.light .whisper-mode{border-color:#9b59b6;background:rgba(155,89,182,.04)}
-html.light .pdm-room-list-empty{color:#767a8c}
-html.light .pdm-room-list-head-note{color:#767a8c}
-html.light .pdm-room-list-meta{color:#2563eb}
-/* 캐주얼 */
-html.light .pop-casual-avatar{background:#f7f8fa;border-color:#dbe1e8;color:#1a4fd6}
-html.light .pop-casual-name{color:#131415}
-html.light .pop-casual-edit-btn{color:#767a8c}
-html.light .pop-casual-color-btn{color:#767a8c}
-html.light .pop-color-pop{background:#ffffff;border-color:#dbe1e8;box-shadow:0 8px 24px rgba(0,0,0,.1)}
-html.light .pop-color-title{color:#485666}
-html.light .pop-color-swatch{border-color:rgba(0,0,0,.12)}
-html.light .pop-name-color-btn{color:#767a8c}
-/* 문서 탭 */
-html.light .doc-pop-head{background:#f7f8fa;border-bottom-color:#dbe1e8}
-html.light .doc-pop-head-title{color:#131415}
-html.light .doc-pop-sec{background:#ffffff;border-color:#dbe1e8}
-html.light .doc-pop-item{background:#ffffff;border-color:#dbe1e8;color:#131415}
-html.light .doc-pop-item:hover{background:#f7f8fa;border-color:#c8d0da}
-html.light .doc-pop-title{color:#131415}
-html.light .doc-pop-icon{color:#485666}
-html.light .doc-pop-badge{color:#1a4fd6;border-color:rgba(37,99,235,.22);background:rgba(37,99,235,.07)}
-html.light .doc-pop-meta{color:#767a8c}
-html.light .doc-pop-preview{color:#485666}
-html.light .doc-pop-empty{color:#767a8c}
-html.light .doc-pop-avatar{background:#f7f8fa;border-color:#dbe1e8}
-html.light .doc-pop-add-btn{background:#f7f8fa;border-color:#c8d0da;color:#485666}
-html.light .doc-pop-add-btn:hover{background:#dbe1e8;color:#131415}
-/* 이미지 */
-html.light .pop-img{border-color:#dbe1e8}
-html.light .pop-img-wrap{background:transparent}
-
