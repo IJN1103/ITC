@@ -759,7 +759,9 @@ function renderVirtualWindow(channel = 'chat', options = {}) {
   const oldNodes = getVirtualRenderedNodes(channel);
   const anchorNode = oldNodes[0] || null;
   const anchorKey = anchorNode?.dataset?.msgKey || '';
-  const anchorOffset = anchorNode ? (prevScrollTop - anchorNode.offsetTop) : 0;
+  // offsetTop을 DOM 제거 전에 미리 캡처해야 정확한 값을 얻을 수 있음
+  const anchorTop = anchorNode ? anchorNode.offsetTop : 0;
+  const anchorOffset = anchorNode ? (prevScrollTop - anchorTop) : 0;
 
   if (!total) {
     oldNodes.forEach(node => node.remove());
@@ -1238,9 +1240,13 @@ function flushMessageRender(channel = 'chat') {
 
   if (keepBottom || state.stickyToBottom) {
     state.pendingBottomNotice = 0;
+    // 두 번 실행해서 레이아웃 안정화 후 정확한 scrollHeight 보장
     requestAnimationFrame(() => {
       scrollToBottom(el);
-      syncStickyState(channel, el);
+      requestAnimationFrame(() => {
+        scrollToBottom(el);
+        syncStickyState(channel, el);
+      });
     });
   } else {
     state.pendingBottomNotice += items.length;
@@ -3241,6 +3247,29 @@ scheduleChatInputResizeInit();
 window.initChatInputResize = initChatInputResize;
 window.broadcastTyping = broadcastTyping;
 window.queueMessageRender = queueMessageRender;
+
+// 외부(game.js 등)에서 스토어 내 메시지 존재 확인
+window.isMessageAlreadyInStore = function(channel, key) {
+  try {
+    const state = getRenderState(channel || 'chat');
+    return state.storeMap.has(makeStoredMessageKey(channel || 'chat', key));
+  } catch(e) { return false; }
+};
+
+// 채널 전환 시 모든 채널 렌더 큐 즉시 플러시
+window.flushAllRenderQueues = function() {
+  try {
+    ['chat', 'casual', 'dm'].forEach(ch => {
+      try {
+        const state = getRenderState(ch);
+        if (state && state.queue && state.queue.length > 0) {
+          if (state.raf) { cancelAnimationFrame(state.raf); state.raf = 0; }
+          state.queue.length = 0;
+        }
+      } catch(e) {}
+    });
+  } catch(e) {}
+};
 window.getRenderedNodeByKey = getRenderedNodeByKey;
 window.replaceRenderedMessage = replaceRenderedMessage;
 window.removeRenderedMessage = removeRenderedMessage;

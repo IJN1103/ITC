@@ -1248,7 +1248,14 @@ function switchActiveChatChannel(channelKey = 'global') {
       const payload = makePayload(m._key, m);
       const alreadyProcessed = processed.has(m._key);
       const isLateOlderSnapshotItem = hasSeenSnapshot && !alreadyProcessed && isChatKeyAtOrBeforeBoundary(m._key, previousNewestKey);
-      if (!alreadyProcessed && !isLateOlderSnapshotItem) {
+      // 첫 스냅샷이라도 이미 채팅창에 렌더된 메시지(storeMap)는 append 건너뜀
+      // 채널 전환 후 히스토리가 재로드될 때 튐 방지
+      const alreadyRendered = !alreadyProcessed && !hasSeenSnapshot && (
+        typeof isMessageAlreadyInStore === 'function'
+          ? isMessageAlreadyInStore('chat', m._key)
+          : false
+      );
+      if (!alreadyProcessed && !isLateOlderSnapshotItem && !alreadyRendered) {
         appendChatMsg(payload);
         debugStats.appended += 1;
       } else if (alreadyProcessed && prevSig !== nextSig) {
@@ -1317,6 +1324,10 @@ function handleDmChannelChange(ev) {
   runner.finally(() => {
     if (changeSeq !== _dmChannelChangeSeq) return;
     if (roomCodeAtRequest !== String(St.roomCode || '').trim()) return;
+    // 채널 전환 시 이전 채널 렌더 큐 초기화해서 구 채팅이 새 채널에 섞이는 현상 방지
+    try {
+      if (typeof flushAllRenderQueues === 'function') flushAllRenderQueues();
+    } catch (e) {}
     const wantedChannelKey = String((typeof getCurrentDmChannelKey === 'function' ? getCurrentDmChannelKey() : nextChannelKey) || 'global').trim() || 'global';
     const activeKey = String(window._itcActiveChatChannelKey || 'global').trim() || 'global';
     if (wantedChannelKey !== nextChannelKey && activeKey !== nextChannelKey) return;
