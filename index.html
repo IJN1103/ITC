@@ -2039,8 +2039,18 @@ window._FB = {
     const imgUrl  = document.getElementById('cutin-edit-img-url');
     const ph      = imgPrev?.querySelector('.cutin-edit-img-placeholder');
     if (imgUrl) imgUrl.value = ct.imageUrl || '';
-    if (imgEl)  { imgEl.src = ct.imageUrl || ''; imgEl.style.display = ct.imageUrl ? '' : 'none'; }
-    if (ph)     ph.style.display = ct.imageUrl ? 'none' : '';
+    if (imgEl) {
+      if (ct.imageUrl) {
+        imgEl.style.display = 'none'; // 로드 전엔 숨김
+        imgEl.onload  = () => { imgEl.style.display = ''; if (ph) ph.style.display = 'none'; };
+        imgEl.onerror = () => { imgEl.style.display = 'none'; if (ph) ph.style.display = ''; };
+        imgEl.src = ct.imageUrl;
+      } else {
+        imgEl.src = ''; imgEl.style.display = 'none';
+        imgEl.onload = null; imgEl.onerror = null;
+      }
+    }
+    if (ph) ph.style.display = ct.imageUrl ? 'none' : '';
 
     // img-url 변경 감지 (디바운스 + APNG 감지)
     if (imgUrl) {
@@ -2132,7 +2142,7 @@ window._FB = {
     const trigger  = document.getElementById('cutin-edit-trigger')?.value?.trim();
     const imageUrl = document.getElementById('cutin-edit-img-url')?.value?.trim();
     if (!trigger)  { showToast?.('트리거 단어를 입력해주세요.'); return; }
-    if (!imageUrl) { showToast?.('이미지를 선택해주세요.'); return; }
+    // 이미지는 선택사항 - 사운드만 설정하는 컷인도 허용
     const path = _roomPath('cutins'); if (!path) { showToast?.('방에 접속된 상태에서만 저장할 수 있어요.'); return; }
     const durMode  = document.querySelector('input[name="cutin-duration-mode"]:checked')?.value || 'auto';
     const manualDur = parseFloat(document.getElementById('cutin-edit-duration')?.value || '3');
@@ -2232,7 +2242,7 @@ window._FB = {
   // ── 편집창 미리보기 ──
   window.previewCutinEdit = function() {
     const imageUrl = document.getElementById('cutin-edit-img-url')?.value?.trim();
-    if (!imageUrl) { showToast?.('이미지를 먼저 설정해주세요.'); return; }
+    if (!imageUrl && !soundUrl) { showToast?.('이미지 또는 사운드를 먼저 설정해주세요.'); return; }
     const manual   = document.querySelector('input[name="cutin-duration-mode"]:checked')?.value === 'manual';
     const dur      = manual ? parseFloat(document.getElementById('cutin-edit-duration')?.value || '3') : (_editingApngDuration || 3);
     const soundUrl = window._editSoundObjUrl || document.getElementById('cutin-edit-sound-url')?.value?.trim() || '';

@@ -1468,7 +1468,10 @@ function applyEffectiveRoomMapStateIfChanged(reason = '') {
   } catch (e) {
     signature = `${Date.now()}:${Math.random()}`;
   }
-  if (signature && signature === _lastAppliedBgmMapSignature) return;
+  // 두 스냅샷(mapState + mapLayerState)이 모두 도착한 후에만 signature 캐시로 중복 방지
+  // 아직 로드 중이면 항상 apply해서 빈 맵 방지
+  const bothSnapshotsLoaded = _dedicatedRoomMapStateSnapshotLoaded && _dedicatedRoomLayerStateSnapshotLoaded;
+  if (bothSnapshotsLoaded && signature && signature === _lastAppliedBgmMapSignature) return;
   _lastAppliedBgmMapSignature = signature;
   St.mapState = effective.mapState;
   St.mapLayerState = effective.layerState;
