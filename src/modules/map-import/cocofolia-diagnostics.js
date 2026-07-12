@@ -105,6 +105,35 @@
     console.groupEnd();
   }
 
+  function buildValidationSummary(file, parsed, escapeHtml, actionHtml) {
+    const safe = typeof escapeHtml === 'function' ? escapeHtml : (value) => String(value || '');
+    const room = parsed?.entities?.room || {};
+    const items = parsed?.entities?.items || {};
+    const resources = parsed?.resources || {};
+    const version = parsed?.meta?.version || '알 수 없음';
+    const gridLabel = room.displayGrid ? '표시' : '숨김';
+    const itemCount = Object.keys(items).length;
+    const resourceCount = Object.keys(resources).length;
+    const lines = [
+      `<b>검사 완료</b>`,
+      `파일명: ${safe(file?.name || '')}`,
+      `버전: ${safe(version)}`,
+      `배경 이미지: ${room.backgroundUrl ? '있음' : '없음'} / 포그라운드: ${room.foregroundUrl ? '있음' : '없음'}`,
+      `렌더 방식: ${safe(room.fieldObjectFit || 'contain')} / 그리드 정렬: ${room.alignWithGrid ? '켜짐' : '꺼짐'}`,
+      `오브젝트: ${itemCount}개 / 마커 패널: ${Object.keys(room?.markers || {}).length}개`,
+      Object.keys(parsed?.entities?.effects || {}).length > 0
+        ? `컷인: ${Object.keys(parsed?.entities?.effects || {}).length}개 (자동 임포트)` : null,
+      `item 수: ${itemCount}개`,
+      `리소스 수: ${resourceCount}개`,
+      `그리드: ${gridLabel} / 크기 ${Number(room.gridSize || 0) || 0}`,
+      `배경 + 전경 + image item 오브젝트 일부를 실제 맵에 적용할 수 있습니다.`,
+    ];
+    if (itemCount >= 80 || resourceCount >= 120) {
+      lines.push(`<span style="color:#e6c58a">주의: 오브젝트/리소스 수가 많은 ZIP입니다. 적용 직후 몇 초간 업로드와 렌더링이 무거울 수 있어요.</span>`);
+    }
+    return lines.filter(Boolean).join('<br>') + String(actionHtml || '');
+  }
+
   function buildDiagnosticsSummary(diagnostics, escapeHtml) {
     if (!diagnostics) return '';
     const safe = typeof escapeHtml === 'function' ? escapeHtml : (value) => String(value || '');
@@ -134,6 +163,7 @@
   window.ITCCocofoliaDiagnostics = Object.freeze({
     buildCocofoliaDiagnostics,
     logCocofoliaDiagnostics,
+    buildValidationSummary,
     buildDiagnosticsSummary,
   });
 })();

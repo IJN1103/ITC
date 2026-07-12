@@ -406,6 +406,7 @@
   const parseCocofoliaZip = PARSER.parseCocofoliaZip;
   const buildCocofoliaDiagnostics = DIAGNOSTICS.buildCocofoliaDiagnostics;
   const logCocofoliaDiagnostics = DIAGNOSTICS.logCocofoliaDiagnostics;
+  const buildValidationSummary = (file, parsed) => DIAGNOSTICS.buildValidationSummary(file, parsed, escapeHtml, buildApplyActions());
   const buildDiagnosticsSummary = (diagnostics) => DIAGNOSTICS.buildDiagnosticsSummary(diagnostics, escapeHtml);
 
   const buildImportedPanelToken = TRANSFORM.buildImportedPanelToken;
