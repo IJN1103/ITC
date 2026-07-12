@@ -578,7 +578,7 @@
     // ── items: type=object인 일반 맵 레이어 오브젝트 ──
     const rawItems = Object.entries(itemsMap)
       .map(([id, item]) => ({ id, ...(item || {}), _markerPanel: false }))
-      .filter((item) => item.type === 'object' && item.visible !== false && String(item.imageUrl || '').trim());
+      .filter((item) => (item.type === 'object' || item.type === 'plane') && item.visible !== false && String(item.imageUrl || '').trim());
 
     // ── markers: 코코폴리아 '마커 패널' → 이미지가 있으면 스크린 패널로 변환 ──
     // markers는 items와 별도 키(room.markers)에 저장되며 type 필드가 없음
@@ -619,8 +619,11 @@
     const centerX = (bounds.left + bounds.right) / 2;
     const centerY = (bounds.top + bounds.bottom) / 2;
 
-    const baseLeft = centerX - spanW / 2;
-    const baseTop = centerY - spanH / 2;
+    // 코코포리아의 필드 좌표 원점은 필드 중앙이다.
+    // fieldWidth/fieldHeight가 있는 경우 오브젝트 전체 bounds를 기준으로 재중앙화하면
+    // 큰 장식 패널 하나 때문에 모든 레이어의 Y 위치가 밀리므로 필드 원점을 그대로 사용한다.
+    const baseLeft = roomFieldWidth > 0 ? -(roomFieldWidth / 2) : (centerX - spanW / 2);
+    const baseTop = roomFieldHeight > 0 ? -(roomFieldHeight / 2) : (centerY - spanH / 2);
 
     return allRawItems
       .sort((a, b) => {
@@ -1036,6 +1039,11 @@
       const fit = String(room.fieldObjectFit || 'contain').trim() || 'contain';
       const alignWithGrid = !!room.alignWithGrid;
       const nextMapState = {
+        // 코코포리아 필드는 배경 원본 비율을 논리 캔버스 비율로 사용한다.
+        // 고정 16:9 캔버스에 강제로 맞출 때 발생하던 세로 눌림을 방지한다.
+        importedCanvasAspect: Number.isFinite(sceneAspect) && sceneAspect > 0 ? sceneAspect : null,
+        importedFieldWidth: Number(room.fieldWidth || 0) || null,
+        importedFieldHeight: Number(room.fieldHeight || 0) || null,
         background: {
           url: uploadedUrl,
           sourceName: mapImageName,

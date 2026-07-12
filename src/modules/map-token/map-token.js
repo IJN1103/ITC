@@ -29,11 +29,14 @@ function refreshMapBaseSize() {
   /*
     토큰 좌표/거리 기준은 모든 플레이어에게 동일해야 하므로
     viewport 크기가 아니라 고정 논리 캔버스를 기준으로 유지한다.
-    이전처럼 각 클라이언트 map-area 크기를 기준으로 삼으면
-    화면 크기가 다른 플레이어끼리 같은 x/y 값이 서로 다른 픽셀 위치로 보일 수 있다.
+    코코포리아 ZIP에서 임포트한 맵만 원본 배경 비율을 사용해
+    16:9 강제 변형으로 이미지와 패널이 세로로 눌리는 현상을 막는다.
   */
+  const importedAspect = Number(window.St?.mapState?.importedCanvasAspect || 0);
   _mapBaseWidth = MAP_LOGICAL_WIDTH;
-  _mapBaseHeight = MAP_LOGICAL_HEIGHT;
+  _mapBaseHeight = Number.isFinite(importedAspect) && importedAspect > 0
+    ? Math.max(1, MAP_LOGICAL_WIDTH / importedAspect)
+    : MAP_LOGICAL_HEIGHT;
   return { width: _mapBaseWidth, height: _mapBaseHeight };
 }
 
