@@ -34,11 +34,12 @@ function refreshMapBaseSize() {
     코코포리아 ZIP에서 임포트한 맵만 원본 배경 비율을 사용해
     16:9 강제 변형으로 이미지와 패널이 세로로 눌리는 현상을 막는다.
   */
+  const sourceMetrics = window.ITCCocofoliaRenderer?.getWorldMetrics?.();
   const importedAspect = Number(window.St?.mapState?.importedCanvas?.aspect || window.St?.mapState?.importedCanvasAspect || 0);
-  _mapBaseWidth = MAP_LOGICAL_WIDTH;
-  _mapBaseHeight = Number.isFinite(importedAspect) && importedAspect > 0
+  _mapBaseWidth = sourceMetrics?.logicalWidth || MAP_LOGICAL_WIDTH;
+  _mapBaseHeight = sourceMetrics?.logicalHeight || (Number.isFinite(importedAspect) && importedAspect > 0
     ? Math.max(1, MAP_LOGICAL_WIDTH / importedAspect)
-    : MAP_LOGICAL_HEIGHT;
+    : MAP_LOGICAL_HEIGHT);
   return { width: _mapBaseWidth, height: _mapBaseHeight };
 }
 
@@ -78,6 +79,7 @@ function syncRenderedTokenPositions() {
     if (draggingIds && draggingIds.has(id)) return; // 드래그 중인 토큰은 건너뜀
     const el = getTokenEl(id);
     if (!el || !token) return;
+    if (window.ITCCocofoliaRenderer?.applyTokenSourceLayout?.(el, token)) return;
     if (typeof token.x === 'number') el.style.left = storedTokenPercentToDisplay(token.x, 'x') + '%';
     if (typeof token.y === 'number') el.style.top = storedTokenPercentToDisplay(token.y, 'y') + '%';
   });
@@ -216,7 +218,17 @@ function getDragTargetIds(tokenId) {
 function getTokenStartPosition(tokenId) {
   const targetEl = getTokenEl(tokenId);
   const token = St.tokens[tokenId] || {};
+  const sourceRect = window.ITCCocofoliaRenderer?.getTokenSourceRect?.(token);
+  if (sourceRect) {
+    return {
+      mode: 'cocofolia-source',
+      leftPx: parseFloat(targetEl?.style.left) || sourceRect.centerXPx,
+      topPx: parseFloat(targetEl?.style.top) || sourceRect.centerYPx,
+      sourceRect,
+    };
+  }
   return {
+    mode: 'percent',
     left: typeof token.x === 'number' ? token.x : displayTokenPercentToStored(parseFloat(targetEl?.style.left) || 0, 'x'),
     top: typeof token.y === 'number' ? token.y : displayTokenPercentToStored(parseFloat(targetEl?.style.top) || 0, 'y'),
   };
@@ -242,12 +254,19 @@ function buildTokenDragSession(tokenId, startEvent) {
 }
 
 function applyTokenDragSession(session, moveEvent) {
-  const dxPct = ((moveEvent.clientX - session.startClientX) / (session.natW * session.scale)) * 100;
-  const dyPct = ((moveEvent.clientY - session.startClientY) / (session.natH * session.scale)) * 100;
+  const dxPx = (moveEvent.clientX - session.startClientX) / session.scale;
+  const dyPx = (moveEvent.clientY - session.startClientY) / session.scale;
+  const dxPct = (dxPx / session.natW) * 100;
+  const dyPct = (dyPx / session.natH) * 100;
   session.targetIds.forEach((id) => {
     const targetEl = getTokenEl(id);
     const pos = session.startPos[id];
     if (!targetEl || !pos) return;
+    if (pos.mode === 'cocofolia-source') {
+      targetEl.style.left = `${pos.leftPx + dxPx}px`;
+      targetEl.style.top = `${pos.topPx + dyPx}px`;
+      return;
+    }
     const nextLeft = clampTokenStoredPercent(pos.left + dxPct, 'x');
     const nextTop = clampTokenStoredPercent(pos.top + dyPct, 'y');
     targetEl.style.left = storedTokenPercentToDisplay(nextLeft, 'x') + '%';
@@ -259,7 +278,21 @@ function collectDraggedTokenPositions(targetIds) {
   const patch = {};
   targetIds.forEach((id) => {
     const targetEl = getTokenEl(id);
-    if (!targetEl) return;
+    const token = St.tokens?.[id];
+    if (!targetEl || !token) return;
+    const sourcePosition = window.ITCCocofoliaRenderer?.sourcePositionFromCenterPx?.(
+      token,
+      parseFloat(targetEl.style.left) || 0,
+      parseFloat(targetEl.style.top) || 0
+    );
+    if (sourcePosition) {
+      patch[id] = {
+        x: clampTokenStoredPercent(sourcePosition.xCenterPct, 'x'),
+        y: clampTokenStoredPercent(sourcePosition.yCenterPct, 'y'),
+        sourcePosition,
+      };
+      return;
+    }
     patch[id] = {
       x: clampTokenStoredPercent(displayTokenPercentToStored(parseFloat(targetEl.style.left) || 0, 'x'), 'x'),
       y: clampTokenStoredPercent(displayTokenPercentToStored(parseFloat(targetEl.style.top) || 0, 'y'), 'y'),
@@ -271,8 +304,23 @@ function collectDraggedTokenPositions(targetIds) {
 function applyTokenPositionPatchToState(positionPatch) {
   Object.entries(positionPatch || {}).forEach(([id, pos]) => {
     if (!St.tokens[id]) St.tokens[id] = {};
-    St.tokens[id].x = pos.x;
-    St.tokens[id].y = pos.y;
+    const token = St.tokens[id];
+    token.x = pos.x;
+    token.y = pos.y;
+    if (pos.sourcePosition && token.importedMapObjectMeta) {
+      const source = token.importedMapObjectMeta.sourceSpace || {};
+      source.x = pos.sourcePosition.x;
+      source.y = pos.sourcePosition.y;
+      source.centerX = pos.sourcePosition.centerX;
+      source.centerY = pos.sourcePosition.centerY;
+      token.importedMapObjectMeta.sourceSpace = source;
+      const layout = token.importedMapObjectMeta.layoutPct || {};
+      layout.x = pos.sourcePosition.xPct;
+      layout.y = pos.sourcePosition.yPct;
+      layout.xCenter = pos.sourcePosition.xCenterPct;
+      layout.yCenter = pos.sourcePosition.yCenterPct;
+      token.importedMapObjectMeta.layoutPct = layout;
+    }
   });
 }
 
@@ -284,6 +332,16 @@ function saveTokenPositionPatch(positionPatch) {
   Object.entries(positionPatch || {}).forEach(([id, pos]) => {
     updates[`rooms/${St.roomCode}/tokens/${id}/x`] = pos.x;
     updates[`rooms/${St.roomCode}/tokens/${id}/y`] = pos.y;
+    if (pos.sourcePosition) {
+      updates[`rooms/${St.roomCode}/tokens/${id}/importedMapObjectMeta/sourceSpace/x`] = pos.sourcePosition.x;
+      updates[`rooms/${St.roomCode}/tokens/${id}/importedMapObjectMeta/sourceSpace/y`] = pos.sourcePosition.y;
+      updates[`rooms/${St.roomCode}/tokens/${id}/importedMapObjectMeta/sourceSpace/centerX`] = pos.sourcePosition.centerX;
+      updates[`rooms/${St.roomCode}/tokens/${id}/importedMapObjectMeta/sourceSpace/centerY`] = pos.sourcePosition.centerY;
+      updates[`rooms/${St.roomCode}/tokens/${id}/importedMapObjectMeta/layoutPct/x`] = pos.sourcePosition.xPct;
+      updates[`rooms/${St.roomCode}/tokens/${id}/importedMapObjectMeta/layoutPct/y`] = pos.sourcePosition.yPct;
+      updates[`rooms/${St.roomCode}/tokens/${id}/importedMapObjectMeta/layoutPct/xCenter`] = pos.sourcePosition.xCenterPct;
+      updates[`rooms/${St.roomCode}/tokens/${id}/importedMapObjectMeta/layoutPct/yCenter`] = pos.sourcePosition.yCenterPct;
+    }
   });
   if (Object.keys(updates).length > 0) {
     update(ref(db), updates);
@@ -598,6 +656,7 @@ function applyMapTransform() {
   inner.style.height = baseH + 'px';
   inner.style.transformOrigin = '0 0';
   inner.style.transform = `translate(${_mapPanX}px,${_mapPanY}px) scale(${_mapScale})`;
+  window.ITCCocofoliaRenderer?.ensureWorldContainer?.(inner);
   syncMapViewportMetrics(map);
   syncRenderedTokenPositions();
   if (_tokenMemoBubbleTokenId) {
@@ -1350,6 +1409,7 @@ function schedulePanelTokenClickAction(tokenId, event) {
 
 function applyPanelTokenSize(el, token) {
   if (!el || !token) return;
+  if (window.ITCCocofoliaRenderer?.applyTokenSourceLayout?.(el, token)) return;
   const layout = token?.importedMapObjectMeta?.layoutPct || null;
   const widthPx = Number(layout?.widthPx);
   const heightPx = Number(layout?.heightPx);
@@ -1406,7 +1466,11 @@ function createTokenEl(t) {
     }
     // 1000 미만이면 CSS z-index:1000을 그대로 사용 (el.style.zIndex 미설정)
   }
-  el.style.left = storedTokenPercentToDisplay(t.x, 'x') + '%'; el.style.top = storedTokenPercentToDisplay(t.y, 'y') + '%';
+  const sourceLayoutApplied = window.ITCCocofoliaRenderer?.applyTokenSourceLayout?.(el, t) === true;
+  if (!sourceLayoutApplied) {
+    el.style.left = storedTokenPercentToDisplay(t.x, 'x') + '%';
+    el.style.top = storedTokenPercentToDisplay(t.y, 'y') + '%';
+  }
   if (t.rotation) el.style.transform = `translate(-50%,-50%) rotate(${t.rotation}deg)`;
   const sz = (t.tokenSize || 1);
   let tokenImgSrc = '';
@@ -1497,7 +1561,8 @@ function createTokenEl(t) {
   el.addEventListener('contextmenu', e => { e.preventDefault(); e.stopPropagation(); cancelPanelTokenClickAction(t.id); hideTokenMemoBubble(); showTokenCtx(e, t.id); });
   makeDraggable(el, t.id);
   refreshTokenLiveSnapshot(el, t);
-  inner.appendChild(el);
+  const tokenParent = window.ITCCocofoliaRenderer?.getTokenParent?.(t, inner) || inner;
+  tokenParent.appendChild(el);
   requestImportedMapLayerStateApplyForToken(t);
 }
 
