@@ -156,6 +156,25 @@
     document.querySelectorAll('.map-import-object[data-map-layer-id]').forEach((el) => el.remove());
   }
 
+  function applyImportedFieldRect(el, mapState) {
+    if (!el) return;
+    const field = mapState?.importedCanvas?.field;
+    const isExpanded = mapState?.importedCanvas?.mode === 'cocofolia-expanded' && field;
+    if (isExpanded) {
+      el.style.inset = 'auto';
+      el.style.left = `${Number(field.xPct || 0)}%`;
+      el.style.top = `${Number(field.yPct || 0)}%`;
+      el.style.width = `${Number(field.widthPct || 100)}%`;
+      el.style.height = `${Number(field.heightPct || 100)}%`;
+    } else {
+      el.style.inset = '0';
+      el.style.left = '';
+      el.style.top = '';
+      el.style.width = '';
+      el.style.height = '';
+    }
+  }
+
   function applyImportedMapState(mapState) {
     const bgLayer = getMapBackgroundLayer();
     const blurLayer = document.getElementById('map-bg-blur-layer');
@@ -164,6 +183,8 @@
     const background = mapState?.background || null;
     const foreground = mapState?.foreground || null;
     const objects = Array.isArray(mapState?.objects) ? mapState.objects : [];
+    applyImportedFieldRect(bgLayer, mapState);
+    applyImportedFieldRect(fgLayer, mapState);
     if (bgLayer) {
       if (!background?.url) {
         setLazyMapLayerBackground(bgLayer, '');
@@ -434,6 +455,7 @@
     await update(ref(db, `rooms/${roomCode}/tokens`), payload);
   }
 
+  const buildImportedCanvasModel = TRANSFORM.buildImportedCanvasModel;
   const buildImportedMapObjects = TRANSFORM.buildImportedMapObjects;
 
   // 단일 이미지(PNG/JPG)인지 판별
@@ -601,7 +623,8 @@
         : 1;
 
       // ── 포그라운드 + 오브젝트 제한형 병렬 업로드 (최대 3개) ──
-      const objectBlueprints = buildImportedMapObjects(validated.parsed?.entities?.items || {}, room, sceneAspect);
+      const importedCanvas = buildImportedCanvasModel(validated.parsed?.entities?.items || {}, room);
+      const objectBlueprints = buildImportedMapObjects(validated.parsed?.entities?.items || {}, room, importedCanvas);
       const uploadTasks = [];
 
       if (fgImageName && fgImageName !== mapImageName) {
@@ -770,7 +793,8 @@
       const nextMapState = {
         // 코코포리아 필드는 배경 원본 비율을 논리 캔버스 비율로 사용한다.
         // 고정 16:9 캔버스에 강제로 맞출 때 발생하던 세로 눌림을 방지한다.
-        importedCanvasAspect: Number.isFinite(sceneAspect) && sceneAspect > 0 ? sceneAspect : null,
+        importedCanvasAspect: Number(importedCanvas?.aspect || sceneAspect || 0) || null,
+        importedCanvas: importedCanvas || null,
         importedFieldWidth: Number(room.fieldWidth || 0) || null,
         importedFieldHeight: Number(room.fieldHeight || 0) || null,
         background: {

@@ -32,7 +32,7 @@ function refreshMapBaseSize() {
     코코포리아 ZIP에서 임포트한 맵만 원본 배경 비율을 사용해
     16:9 강제 변형으로 이미지와 패널이 세로로 눌리는 현상을 막는다.
   */
-  const importedAspect = Number(window.St?.mapState?.importedCanvasAspect || 0);
+  const importedAspect = Number(window.St?.mapState?.importedCanvas?.aspect || window.St?.mapState?.importedCanvasAspect || 0);
   _mapBaseWidth = MAP_LOGICAL_WIDTH;
   _mapBaseHeight = Number.isFinite(importedAspect) && importedAspect > 0
     ? Math.max(1, MAP_LOGICAL_WIDTH / importedAspect)

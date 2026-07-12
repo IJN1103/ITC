@@ -79,7 +79,7 @@
     };
   }
 
-  function buildImportedMapObjects(itemsMap = {}, roomMeta = {}, sceneAspect = 1) {
+  function collectSupportedMapItems(itemsMap = {}, roomMeta = {}) {
     const rawItems = Object.entries(itemsMap)
       .map(([id, item]) => ({ id, ...(item || {}), _markerPanel: false }))
       .filter((item) => (item.type === 'object' || item.type === 'plane') && item.visible !== false && String(item.imageUrl || '').trim());
@@ -93,8 +93,17 @@
         _clickAction: marker?.clickAction || null,
       }))
       .filter((item) => String(item.imageUrl || '').trim());
-    const allRawItems = [...rawItems, ...markerItems];
-    if (!allRawItems.length) return [];
+    return [...rawItems, ...markerItems];
+  }
+
+  function buildImportedCanvasModel(itemsMap = {}, roomMeta = {}) {
+    const allRawItems = collectSupportedMapItems(itemsMap, roomMeta);
+    const fieldWidth = Math.max(0, Number(roomMeta?.fieldWidth || 0));
+    const fieldHeight = Math.max(0, Number(roomMeta?.fieldHeight || 0));
+    const fieldLeft = fieldWidth > 0 ? -(fieldWidth / 2) : 0;
+    const fieldTop = fieldHeight > 0 ? -(fieldHeight / 2) : 0;
+    const fieldRight = fieldLeft + fieldWidth;
+    const fieldBottom = fieldTop + fieldHeight;
 
     const bounds = allRawItems.reduce((acc, item) => {
       const x = Number(item.x || 0);
@@ -106,19 +115,60 @@
       acc.top = Math.min(acc.top, y);
       acc.bottom = Math.max(acc.bottom, y + h);
       return acc;
-    }, { left: Infinity, right: -Infinity, top: Infinity, bottom: -Infinity });
+    }, {
+      left: fieldWidth > 0 ? fieldLeft : Infinity,
+      right: fieldWidth > 0 ? fieldRight : -Infinity,
+      top: fieldHeight > 0 ? fieldTop : Infinity,
+      bottom: fieldHeight > 0 ? fieldBottom : -Infinity,
+    });
 
-    const pad = 2;
-    const roomFieldWidth = Number(roomMeta?.fieldWidth || 0);
-    const roomFieldHeight = Number(roomMeta?.fieldHeight || 0);
-    const rawSpanW = Math.max(1, (bounds.right - bounds.left) + pad * 2);
-    const rawSpanH = Math.max(1, (bounds.bottom - bounds.top) + pad * 2);
-    const spanW = roomFieldWidth > 0 ? roomFieldWidth : rawSpanW;
-    const spanH = roomFieldHeight > 0 ? roomFieldHeight : rawSpanH;
-    const centerX = (bounds.left + bounds.right) / 2;
-    const centerY = (bounds.top + bounds.bottom) / 2;
-    const baseLeft = roomFieldWidth > 0 ? -(roomFieldWidth / 2) : (centerX - spanW / 2);
-    const baseTop = roomFieldHeight > 0 ? -(roomFieldHeight / 2) : (centerY - spanH / 2);
+    if (!Number.isFinite(bounds.left) || !Number.isFinite(bounds.right) || !Number.isFinite(bounds.top) || !Number.isFinite(bounds.bottom)) {
+      bounds.left = -20;
+      bounds.right = 20;
+      bounds.top = -15;
+      bounds.bottom = 15;
+    }
+
+    const pad = Math.max(2, Math.min(8, Math.max(bounds.right - bounds.left, bounds.bottom - bounds.top) * 0.0125));
+    const left = bounds.left - pad;
+    const top = bounds.top - pad;
+    const width = Math.max(1, (bounds.right - bounds.left) + pad * 2);
+    const height = Math.max(1, (bounds.bottom - bounds.top) + pad * 2);
+    const toPctX = (value) => ((Number(value || 0) - left) / width) * 100;
+    const toPctY = (value) => ((Number(value || 0) - top) / height) * 100;
+
+    return {
+      version: 1,
+      mode: 'cocofolia-expanded',
+      left,
+      top,
+      width,
+      height,
+      aspect: width / height,
+      padding: pad,
+      field: {
+        left: fieldLeft,
+        top: fieldTop,
+        width: fieldWidth || width,
+        height: fieldHeight || height,
+        xPct: fieldWidth > 0 ? toPctX(fieldLeft) : 0,
+        yPct: fieldHeight > 0 ? toPctY(fieldTop) : 0,
+        widthPct: fieldWidth > 0 ? (fieldWidth / width) * 100 : 100,
+        heightPct: fieldHeight > 0 ? (fieldHeight / height) * 100 : 100,
+      },
+    };
+  }
+
+  function buildImportedMapObjects(itemsMap = {}, roomMeta = {}, canvasModel = null) {
+    const allRawItems = collectSupportedMapItems(itemsMap, roomMeta);
+    if (!allRawItems.length) return [];
+    const canvas = canvasModel && typeof canvasModel === 'object'
+      ? canvasModel
+      : buildImportedCanvasModel(itemsMap, roomMeta);
+    const spanW = Math.max(1, Number(canvas.width || 1));
+    const spanH = Math.max(1, Number(canvas.height || 1));
+    const baseLeft = Number(canvas.left || 0);
+    const baseTop = Number(canvas.top || 0);
 
     return allRawItems
       .sort((a, b) => {
@@ -205,6 +255,7 @@
     buildImportedPanelTokenId,
     parseImportedPanelClickAction,
     buildImportedPanelToken,
+    buildImportedCanvasModel,
     buildImportedMapObjects,
   });
 })();

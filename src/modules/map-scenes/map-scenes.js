@@ -344,6 +344,11 @@
     } : null;
     return {
       background: bg,
+      foreground: ms.foreground ? deepCopy(ms.foreground) : null,
+      importedCanvas: ms.importedCanvas ? deepCopy(ms.importedCanvas) : null,
+      importedCanvasAspect: Number(ms.importedCanvasAspect || ms.importedCanvas?.aspect || 0) || null,
+      importedFieldWidth: Number(ms.importedFieldWidth || 0) || null,
+      importedFieldHeight: Number(ms.importedFieldHeight || 0) || null,
       objects: Array.isArray(ms.objects) ? deepCopy(ms.objects) : [],
       layerState: ROOT.St?.mapLayerState ? deepCopy(ROOT.St.mapLayerState) : null,
       tokens: (ROOT.St?.tokens && typeof ROOT.St.tokens === 'object') ? deepCopy(ROOT.St.tokens) : {},
@@ -447,7 +452,11 @@
     if (!scene) return;
     const nextMapState = {
       background: scene.background ? deepCopy(scene.background) : null,
-      foreground: null,
+      foreground: scene.foreground ? deepCopy(scene.foreground) : null,
+      importedCanvas: scene.importedCanvas ? deepCopy(scene.importedCanvas) : null,
+      importedCanvasAspect: Number(scene.importedCanvasAspect || scene.importedCanvas?.aspect || 0) || null,
+      importedFieldWidth: Number(scene.importedFieldWidth || 0) || null,
+      importedFieldHeight: Number(scene.importedFieldHeight || 0) || null,
       objects: Array.isArray(scene.objects) ? deepCopy(scene.objects) : [],
     };
     const nextLayerState = scene.layerState ? deepCopy(scene.layerState) : null;
@@ -488,7 +497,11 @@
     const background = scene?.background || null;
     return {
       background: background ? deepCopy(background) : null,
-      foreground: null,
+      foreground: scene?.foreground ? deepCopy(scene.foreground) : null,
+      importedCanvas: scene?.importedCanvas ? deepCopy(scene.importedCanvas) : null,
+      importedCanvasAspect: Number(scene?.importedCanvasAspect || scene?.importedCanvas?.aspect || 0) || null,
+      importedFieldWidth: Number(scene?.importedFieldWidth || 0) || null,
+      importedFieldHeight: Number(scene?.importedFieldHeight || 0) || null,
       objects: Array.isArray(scene?.objects) ? deepCopy(scene.objects) : [],
     };
   }
@@ -851,7 +864,15 @@
     const targetId = String(sceneId || '').trim();
     if (!targetId) return null;
     const snapshot = getCurrentRuntimeSnapshot();
-    const ms = { background: snapshot.background, objects: snapshot.objects };
+    const ms = {
+      background: snapshot.background,
+      foreground: snapshot.foreground,
+      importedCanvas: snapshot.importedCanvas,
+      importedCanvasAspect: snapshot.importedCanvasAspect,
+      importedFieldWidth: snapshot.importedFieldWidth,
+      importedFieldHeight: snapshot.importedFieldHeight,
+      objects: snapshot.objects,
+    };
     const tokens = snapshot.tokens || {};
     const existing = state.remoteScenes.find(function(s){ return s.id === targetId; })
       || state.scenes.find(function(s){ return s.id === targetId; })
@@ -867,6 +888,11 @@
       updatedAt: Date.now(),
       order: getSceneOrderNumber(existing) !== null ? getSceneOrderNumber(existing) : undefined,
       background: ms.background ? { url: ms.background.url || '', fit: ms.background.fit || 'contain', sourceName: ms.background.sourceName || '', importedAt: ms.background.importedAt || 0 } : null,
+      foreground: ms.foreground ? deepCopy(ms.foreground) : null,
+      importedCanvas: ms.importedCanvas ? deepCopy(ms.importedCanvas) : null,
+      importedCanvasAspect: Number(ms.importedCanvasAspect || ms.importedCanvas?.aspect || 0) || null,
+      importedFieldWidth: Number(ms.importedFieldWidth || 0) || null,
+      importedFieldHeight: Number(ms.importedFieldHeight || 0) || null,
       objects: Array.isArray(ms.objects) ? deepCopy(ms.objects) : [],
       layerState: isStillEmpty ? null : (snapshot.layerState ? deepCopy(snapshot.layerState) : null),
       tokens: tokens,
