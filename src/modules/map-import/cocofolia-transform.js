@@ -163,6 +163,19 @@
         widthPct: fieldWidth > 0 ? (fieldWidth / width) * 100 : 100,
         heightPct: fieldHeight > 0 ? (fieldHeight / height) * 100 : 100,
       },
+      // PHASE 3-2: 월드 전체를 자동 맞춤하지 않고 코코포리아의 기본 필드를
+      // 초기 카메라 대상으로 사용한다. 필드 밖 오브젝트는 월드에 남아 있으며
+      // 맵 드래그/축소 시 확인할 수 있다.
+      camera: {
+        version: 1,
+        mode: 'field-fit',
+        fit: 'contain',
+        targetLeft: fieldWidth > 0 ? fieldLeft : left,
+        targetTop: fieldHeight > 0 ? fieldTop : top,
+        targetWidth: fieldWidth > 0 ? fieldWidth : width,
+        targetHeight: fieldHeight > 0 ? fieldHeight : height,
+        paddingRatio: 0,
+      },
     };
   }
 

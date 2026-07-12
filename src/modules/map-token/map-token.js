@@ -13,6 +13,8 @@ let _mapBaseWidth = MAP_LOGICAL_WIDTH;
 let _mapBaseHeight = MAP_LOGICAL_HEIGHT;
 let _mapViewportWidth = 0;
 let _mapViewportHeight = 0;
+let _lastImportedCameraSignature = '';
+let _pendingImportedCameraFrame = 0;
 
 function roundMapNumber(value, digits = 4) {
   const num = Number(value);
@@ -513,6 +515,78 @@ function preserveMapViewportCenterOnResize(map = document.getElementById('map-ar
   _mapPanY = roundMapNumber((next.height / 2) - (logicalCenterY * scale));
   syncMapViewportMetrics(map);
   return true;
+}
+
+function buildImportedCameraSignature(mapState) {
+  const canvas = mapState?.importedCanvas;
+  const camera = canvas?.camera;
+  if (!canvas || canvas.mode !== 'cocofolia-expanded' || !camera) return '';
+  return JSON.stringify({
+    background: String(mapState?.background?.url || mapState?.background?.sourceName || ''),
+    importedAt: Number(mapState?.background?.importedAt || 0),
+    left: Number(canvas.left || 0),
+    top: Number(canvas.top || 0),
+    width: Number(canvas.width || 0),
+    height: Number(canvas.height || 0),
+    camera,
+  });
+}
+
+function applyImportedMapInitialCamera(mapState, options = {}) {
+  const canvas = mapState?.importedCanvas;
+  const camera = canvas?.camera;
+  if (!canvas || canvas.mode !== 'cocofolia-expanded' || !camera) return false;
+
+  const map = document.getElementById('map-area');
+  if (!map) return false;
+  const viewport = syncMapViewportMetrics(map);
+  if (!(viewport.width > 0 && viewport.height > 0)) return false;
+
+  const signature = buildImportedCameraSignature(mapState);
+  if (!signature) return false;
+  if (options.force !== true && signature === _lastImportedCameraSignature) return false;
+
+  const worldWidth = Math.max(1, Number(canvas.width || 1));
+  const ppu = Math.max(0.0001, Number(canvas.pixelsPerUnit || (MAP_LOGICAL_WIDTH / worldWidth)) || (MAP_LOGICAL_WIDTH / worldWidth));
+  const worldLeft = Number(canvas.left || 0);
+  const worldTop = Number(canvas.top || 0);
+  const targetLeft = Number(camera.targetLeft ?? canvas.field?.left ?? worldLeft);
+  const targetTop = Number(camera.targetTop ?? canvas.field?.top ?? worldTop);
+  const targetWidth = Math.max(1, Number(camera.targetWidth ?? canvas.field?.width ?? canvas.width ?? 1));
+  const targetHeight = Math.max(1, Number(camera.targetHeight ?? canvas.field?.height ?? canvas.height ?? 1));
+  const paddingRatio = Math.max(0, Math.min(0.25, Number(camera.paddingRatio || 0)));
+  const usableWidth = Math.max(1, viewport.width * (1 - paddingRatio * 2));
+  const usableHeight = Math.max(1, viewport.height * (1 - paddingRatio * 2));
+  const targetWidthPx = targetWidth * ppu;
+  const targetHeightPx = targetHeight * ppu;
+  const fitMode = String(camera.fit || 'contain').toLowerCase();
+  const rawScale = fitMode === 'cover'
+    ? Math.max(usableWidth / targetWidthPx, usableHeight / targetHeightPx)
+    : Math.min(usableWidth / targetWidthPx, usableHeight / targetHeightPx);
+
+  _mapScale = roundMapNumber(Math.max(0.2, Math.min(4, rawScale)));
+  const targetCenterX = ((targetLeft - worldLeft) + targetWidth / 2) * ppu;
+  const targetCenterY = ((targetTop - worldTop) + targetHeight / 2) * ppu;
+  _mapPanX = roundMapNumber((viewport.width / 2) - (targetCenterX * _mapScale));
+  _mapPanY = roundMapNumber((viewport.height / 2) - (targetCenterY * _mapScale));
+  _lastImportedCameraSignature = signature;
+  applyMapTransform();
+  return true;
+}
+
+function scheduleImportedMapInitialCamera(mapState, options = {}) {
+  if (_pendingImportedCameraFrame) cancelAnimationFrame(_pendingImportedCameraFrame);
+  _pendingImportedCameraFrame = requestAnimationFrame(() => {
+    _pendingImportedCameraFrame = 0;
+    if (applyImportedMapInitialCamera(mapState, options)) return;
+    setTimeout(() => applyImportedMapInitialCamera(mapState, options), 40);
+  });
+}
+
+try {
+  window._itcApplyImportedMapInitialCamera = scheduleImportedMapInitialCamera;
+} catch (e) {
+  console.warn('[ITC] imported map camera registration failed', e);
 }
 
 function applyMapTransform() {

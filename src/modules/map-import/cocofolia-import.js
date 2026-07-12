@@ -254,6 +254,12 @@
       applyMapLayerElementVisibility(el, layerVisible);
       mapInner.appendChild(el);
     });
+    // PHASE 3-2: 월드 전체 자동 맞춤 대신 기본 필드 기준 카메라를 적용한다.
+    // 동일 맵의 토큰 갱신/레이어 갱신 때는 map-token.js의 signature 방어로
+    // 사용자가 조정한 줌/팬을 다시 초기화하지 않는다.
+    if (typeof window._itcApplyImportedMapInitialCamera === 'function') {
+      window._itcApplyImportedMapInitialCamera(mapState);
+    }
   }
 
   function pickLiveRoomCode() {
