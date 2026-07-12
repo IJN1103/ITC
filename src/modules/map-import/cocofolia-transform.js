@@ -60,6 +60,8 @@
         clickAction: importedClickAction.raw,
         visible: seed.visible !== false,
         sourceMeta: seed.sourceMeta || null,
+        sourceSpace: seed.sourceSpace || null,
+        layerModel: seed.layerModel || null,
         layoutPct: {
           x: Number(seed.xPct ?? blueprint?.xPct ?? 0),
           y: Number(seed.yPct ?? blueprint?.yPct ?? 0),
@@ -80,23 +82,26 @@
   }
 
   function collectSupportedMapItems(itemsMap = {}, roomMeta = {}) {
-    const rawItems = Object.entries(itemsMap)
-      .map(([id, item]) => ({ id, ...(item || {}), _markerPanel: false }))
-      .filter((item) => (item.type === 'object' || item.type === 'plane') && item.visible !== false && String(item.imageUrl || '').trim());
-    const markerItems = Object.entries(roomMeta?.markers || {})
-      .map(([id, marker]) => ({
-        id: `marker_${id}`,
-        ...(marker || {}),
-        type: 'object',
-        _markerPanel: true,
-        _markerText: String(marker?.text || ''),
-        _clickAction: marker?.clickAction || null,
-      }))
-      .filter((item) => String(item.imageUrl || '').trim());
-    return [...rawItems, ...markerItems];
+    if (window.ITCCocofoliaWorld?.collectWorldItems) {
+      return window.ITCCocofoliaWorld.collectWorldItems(itemsMap, roomMeta).map((item) => ({
+        ...item.raw,
+        id: item.id,
+        type: item.type,
+        _markerPanel: item.marker,
+        _markerText: item.markerText,
+        _clickAction: item.clickAction,
+      }));
+    }
+    return [];
   }
 
   function buildImportedCanvasModel(itemsMap = {}, roomMeta = {}) {
+    const worldModel = window.ITCCocofoliaWorld?.buildWorldModel
+      ? window.ITCCocofoliaWorld.buildWorldModel(itemsMap, roomMeta)
+      : null;
+    const layerEntries = window.ITCCocofoliaLayerModel?.buildLayerEntries
+      ? window.ITCCocofoliaLayerModel.buildLayerEntries(worldModel)
+      : [];
     const allRawItems = collectSupportedMapItems(itemsMap, roomMeta);
     const fieldWidth = Math.max(0, Number(roomMeta?.fieldWidth || 0));
     const fieldHeight = Math.max(0, Number(roomMeta?.fieldHeight || 0));
@@ -138,8 +143,11 @@
     const toPctY = (value) => ((Number(value || 0) - top) / height) * 100;
 
     return {
-      version: 2,
+      version: 3,
       mode: 'cocofolia-expanded',
+      engine: 'cocofolia-source-space',
+      sourceWorld: worldModel,
+      sourceLayers: layerEntries,
       left,
       top,
       width,
@@ -163,19 +171,6 @@
         widthPct: fieldWidth > 0 ? (fieldWidth / width) * 100 : 100,
         heightPct: fieldHeight > 0 ? (fieldHeight / height) * 100 : 100,
       },
-      // PHASE 3-2: 월드 전체를 자동 맞춤하지 않고 코코포리아의 기본 필드를
-      // 초기 카메라 대상으로 사용한다. 필드 밖 오브젝트는 월드에 남아 있으며
-      // 맵 드래그/축소 시 확인할 수 있다.
-      camera: {
-        version: 1,
-        mode: 'field-fit',
-        fit: 'contain',
-        targetLeft: fieldWidth > 0 ? fieldLeft : left,
-        targetTop: fieldHeight > 0 ? fieldTop : top,
-        targetWidth: fieldWidth > 0 ? fieldWidth : width,
-        targetHeight: fieldHeight > 0 ? fieldHeight : height,
-        paddingRatio: 0,
-      },
     };
   }
 
@@ -190,6 +185,10 @@
     const baseLeft = Number(canvas.left || 0);
     const baseTop = Number(canvas.top || 0);
     const pixelsPerUnit = Math.max(0.0001, Number(canvas.pixelsPerUnit || (1600 / spanW)) || (1600 / spanW));
+    const layerEntryMap = (canvas?.sourceLayers || []).reduce((acc, entry) => {
+      acc[String(entry?.sourceItemId || '')] = entry;
+      return acc;
+    }, {});
 
     return allRawItems
       .sort((a, b) => {
@@ -266,6 +265,13 @@
             widthPx,
             heightPx,
             pixelsPerUnit,
+            sourceSpace: {
+              units: 'cocofolia-grid',
+              x, y, width: w, height: h,
+              centerX: x + (w / 2),
+              centerY: y + (h / 2),
+            },
+            layerModel: layerEntryMap[objectId] || null,
             sourceMeta: {
               x, y, width: w, height: h, z: sourceZ, order: sourceOrder,
               locked: item.locked === true,
