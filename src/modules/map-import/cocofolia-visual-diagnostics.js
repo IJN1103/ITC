@@ -139,5 +139,237 @@
     lastSignature = '';
   }
 
+  const boundaryState = {
+    report: null,
+    candidates: [],
+    panel: null,
+  };
+
+  function cssUrl(value) {
+    const text = String(value || '').trim();
+    const match = text.match(/^url\(["']?(.*?)["']?\)$/i);
+    return match ? match[1] : text;
+  }
+
+  function elementSummary(el, label, kind, row = null) {
+    if (!el) return null;
+    const cs = getComputedStyle(el);
+    const rect = el.getBoundingClientRect();
+    const img = el.matches('img') ? el : el.querySelector('img');
+    const imgStyle = img ? getComputedStyle(img) : null;
+    return {
+      key: row?.id || el.id || `${kind}:${label}`,
+      label,
+      kind,
+      element: el,
+      tokenId: row?.id || el.dataset?.tokenId || '',
+      file: row ? fileLabel(row) : '',
+      sourceType: row?.source?.type || '',
+      sourceZ: row?.source?.z ?? '',
+      sourceSize: row?.source ? `${round(row.source.width)} × ${round(row.source.height)}` : '',
+      parent: el.parentElement?.id || el.parentElement?.className || '',
+      display: cs.display,
+      visibility: cs.visibility,
+      opacity: cs.opacity,
+      zIndex: cs.zIndex,
+      width: round(rect.width),
+      height: round(rect.height),
+      objectFit: imgStyle?.objectFit || '',
+      backgroundSize: cs.backgroundSize,
+      backgroundPosition: cs.backgroundPosition,
+      backgroundImage: cssUrl(cs.backgroundImage),
+      overflow: cs.overflow,
+      hidden: !!el.hidden,
+    };
+  }
+
+  function findTokenElement(row) {
+    const tokenId = String(row?.id || '');
+    if (!tokenId) return null;
+    try {
+      return document.querySelector(`[data-token-id="${CSS.escape(tokenId)}"]`);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function collectBoundaryCandidates(report) {
+    const candidates = [];
+    const fixed = [
+      ['기존 블러 배경', 'legacy-blur', document.getElementById('map-bg-blur-layer')],
+      ['기존 일반 배경', 'legacy-background', document.getElementById('map-bg-layer')],
+      ['코코포리아 월드 배경', 'source-background', document.getElementById('cocofolia-world-background-layer')],
+      ['코코포리아 전경', 'source-foreground', document.getElementById('cocofolia-world-foreground-layer')],
+      ['기존 일반 전경', 'legacy-foreground', document.getElementById('map-fg-layer')],
+    ];
+    fixed.forEach(([label, kind, el]) => {
+      const item = elementSummary(el, label, kind);
+      if (item) candidates.push(item);
+    });
+
+    (report?.largeBackdrop || []).forEach((row, index) => {
+      const el = findTokenElement(row);
+      const item = elementSummary(el, `대형 오브젝트 ${index + 1}`, 'large-object', row);
+      if (item) candidates.push(item);
+    });
+
+    const unique = new Map();
+    candidates.forEach((item) => {
+      if (!unique.has(item.key)) unique.set(item.key, item);
+    });
+    return Array.from(unique.values());
+  }
+
+  function candidateLogRow(item, index) {
+    return {
+      번호: index + 1,
+      후보: item.label,
+      종류: item.kind,
+      파일: item.file,
+      원본유형: item.sourceType,
+      Z: item.sourceZ,
+      원본크기: item.sourceSize,
+      화면크기: `${item.width} × ${item.height}`,
+      부모: item.parent,
+      display: item.display,
+      visibility: item.visibility,
+      opacity: item.opacity,
+      zIndex: item.zIndex,
+      objectFit: item.objectFit,
+      backgroundSize: item.backgroundSize,
+      overflow: item.overflow,
+      이미지URL: item.backgroundImage,
+    };
+  }
+
+  function restoreCandidate(item) {
+    if (!item?.element) return;
+    const el = item.element;
+    if (el.dataset.itcBoundaryPrevVisibility !== undefined) {
+      el.style.visibility = el.dataset.itcBoundaryPrevVisibility;
+      delete el.dataset.itcBoundaryPrevVisibility;
+    }
+    el.classList.remove('itc-boundary-diagnostic-hidden', 'itc-boundary-diagnostic-highlight');
+  }
+
+  function setCandidateVisible(index, visible) {
+    const item = boundaryState.candidates[index];
+    if (!item?.element) return false;
+    const el = item.element;
+    if (visible) {
+      restoreCandidate(item);
+    } else {
+      if (el.dataset.itcBoundaryPrevVisibility === undefined) {
+        el.dataset.itcBoundaryPrevVisibility = el.style.visibility || '';
+      }
+      el.style.visibility = 'hidden';
+      el.classList.add('itc-boundary-diagnostic-hidden');
+    }
+    updateBoundaryPanel();
+    return true;
+  }
+
+  function highlightCandidate(index) {
+    boundaryState.candidates.forEach((item, i) => {
+      item.element?.classList.toggle('itc-boundary-diagnostic-highlight', i === index);
+    });
+  }
+
+  function restoreAllCandidates() {
+    boundaryState.candidates.forEach(restoreCandidate);
+    updateBoundaryPanel();
+  }
+
+  function ensureBoundaryStyles() {
+    if (document.getElementById('itc-boundary-diagnostic-style')) return;
+    const style = document.createElement('style');
+    style.id = 'itc-boundary-diagnostic-style';
+    style.textContent = `
+      .itc-boundary-diagnostic-highlight{outline:4px solid #00e5ff!important;outline-offset:-4px!important;filter:drop-shadow(0 0 8px #00e5ff)!important;}
+      #itc-boundary-diagnostic-panel{position:fixed;left:12px;bottom:12px;z-index:2147483600;width:min(390px,calc(100vw - 24px));max-height:58vh;overflow:auto;background:rgba(20,22,27,.96);color:#fff;border:1px solid rgba(255,255,255,.22);border-radius:10px;padding:10px;font:12px/1.45 system-ui,sans-serif;box-shadow:0 10px 32px rgba(0,0,0,.38)}
+      #itc-boundary-diagnostic-panel .itc-bd-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;font-weight:700}
+      #itc-boundary-diagnostic-panel .itc-bd-row{display:grid;grid-template-columns:28px 1fr auto auto;align-items:center;gap:6px;padding:6px 0;border-top:1px solid rgba(255,255,255,.1)}
+      #itc-boundary-diagnostic-panel button{font:inherit;border:1px solid rgba(255,255,255,.25);border-radius:6px;background:#30343d;color:#fff;padding:3px 7px;cursor:pointer}
+      #itc-boundary-diagnostic-panel .itc-bd-sub{color:#aeb6c7;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    `;
+    document.head.appendChild(style);
+  }
+
+  function closeBoundaryPanel() {
+    restoreAllCandidates();
+    boundaryState.panel?.remove();
+    boundaryState.panel = null;
+  }
+
+  function updateBoundaryPanel() {
+    const panel = boundaryState.panel;
+    if (!panel) return;
+    const body = panel.querySelector('[data-boundary-body]');
+    if (!body) return;
+    body.textContent = '';
+    boundaryState.candidates.forEach((item, index) => {
+      const row = document.createElement('div');
+      row.className = 'itc-bd-row';
+      const visible = getComputedStyle(item.element).visibility !== 'hidden';
+      row.innerHTML = `<b>${index + 1}</b><div><div>${item.label}</div><div class="itc-bd-sub">${item.file || item.kind} · ${item.width}×${item.height}</div></div>`;
+      const highlight = document.createElement('button');
+      highlight.textContent = '표시';
+      highlight.onclick = () => highlightCandidate(index);
+      const toggle = document.createElement('button');
+      toggle.textContent = visible ? '숨김' : '복원';
+      toggle.onclick = () => setCandidateVisible(index, !visible);
+      row.append(highlight, toggle);
+      body.appendChild(row);
+    });
+  }
+
+  function openBoundaryPanel(report = boundaryState.report) {
+    if (!report) return false;
+    ensureBoundaryStyles();
+    boundaryState.report = report;
+    boundaryState.candidates = collectBoundaryCandidates(report);
+    closeBoundaryPanel();
+    boundaryState.report = report;
+    boundaryState.candidates = collectBoundaryCandidates(report);
+
+    const panel = document.createElement('div');
+    panel.id = 'itc-boundary-diagnostic-panel';
+    panel.innerHTML = `<div class="itc-bd-head"><span>사각형 경계 후보 확인</span><span><button data-restore-all>전체 복원</button> <button data-close>닫기</button></span></div><div>각 후보의 <b>숨김</b>을 눌러 경계가 사라지는 번호를 확인해 주세요.</div><div data-boundary-body></div>`;
+    panel.querySelector('[data-restore-all]').onclick = restoreAllCandidates;
+    panel.querySelector('[data-close]').onclick = closeBoundaryPanel;
+    document.body.appendChild(panel);
+    boundaryState.panel = panel;
+    updateBoundaryPanel();
+
+    console.groupCollapsed(`[ITC 큰 사각형 경계 DOM 진단] 후보 ${boundaryState.candidates.length}개`);
+    console.table(boundaryState.candidates.map(candidateLogRow));
+    console.info('화면 좌측 아래 진단 패널에서 후보를 하나씩 숨겨 경계를 만드는 요소를 확인해 주세요.');
+    console.groupEnd();
+    return true;
+  }
+
+  const originalPrint = print;
+  print = function enhancedPrint(report) {
+    originalPrint(report);
+    boundaryState.report = report;
+    setTimeout(() => openBoundaryPanel(report), 80);
+  };
+
+  function reset() {
+    clearTimeout(timer);
+    lastSignature = '';
+    closeBoundaryPanel();
+    boundaryState.report = null;
+    boundaryState.candidates = [];
+  }
+
+  window.ITCCocofoliaBoundaryDiagnostics = Object.freeze({
+    open: openBoundaryPanel,
+    close: closeBoundaryPanel,
+    restoreAll: restoreAllCandidates,
+    hide: (number) => setCandidateVisible(Math.max(0, Number(number) - 1), false),
+    show: (number) => setCandidateVisible(Math.max(0, Number(number) - 1), true),
+    highlight: (number) => highlightCandidate(Math.max(0, Number(number) - 1)),
+  });
   window.ITCCocofoliaVisualDiagnostics = Object.freeze({ consume, reset, buildReport });
 })();
