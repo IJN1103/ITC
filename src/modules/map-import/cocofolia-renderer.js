@@ -1,5 +1,6 @@
 (function () {
   const WORLD_CONTAINER_ID = 'cocofolia-world-container';
+  let _lastValidWorldMetrics = null;
 
   function toFiniteNumber(value, fallback = 0) {
     const num = Number(value);
@@ -42,6 +43,16 @@
     };
   }
 
+  function findFallbackSourceToken() {
+    const tokens = window.St?.tokens;
+    if (!tokens || typeof tokens !== 'object') return null;
+    return Object.values(tokens).find((item) => {
+      const source = item?.importedMapObjectMeta?.sourceSpace;
+      const canvas = item?.importedMapObjectMeta?.sourceCanvas;
+      return source?.units === 'cocofolia-grid' && canvas && typeof canvas === 'object';
+    }) || null;
+  }
+
   function ensureWorldContainer(mapInner = document.getElementById('map-inner'), token = null) {
     if (!mapInner) return null;
     let container = document.getElementById(WORLD_CONTAINER_ID);
@@ -51,15 +62,23 @@
       container.className = 'cocofolia-world-container';
       mapInner.appendChild(container);
     }
-    const metrics = getWorldMetrics(window.St?.mapState, token);
+
+    // mapState와 tokens는 Firebase에서 서로 다른 시점에 도착할 수 있다.
+    // applyMapTransform()이 token 없이 호출된 순간 mapState.importedCanvas가 잠시 비어 있어도
+    // 이미 정상 렌더된 코코포리아 월드 전체를 hidden 처리하지 않는다.
+    const fallbackToken = token || findFallbackSourceToken();
+    const metrics = getWorldMetrics(window.St?.mapState, fallbackToken) || _lastValidWorldMetrics;
     if (metrics) {
+      _lastValidWorldMetrics = metrics;
       container.style.width = `${metrics.logicalWidth}px`;
       container.style.height = `${metrics.logicalHeight}px`;
       container.hidden = false;
     } else {
-      container.style.width = '100%';
-      container.style.height = '100%';
-      container.hidden = true;
+      // 아직 한 번도 유효한 월드 정보를 받은 적이 없을 때만 기본 크기를 사용한다.
+      // 기존 컨테이너를 숨기면 늦게 도착한 mapState 갱신 때 자식 오브젝트가 전부 사라진다.
+      container.style.width = container.style.width || '100%';
+      container.style.height = container.style.height || '100%';
+      container.hidden = false;
     }
     return container;
   }
