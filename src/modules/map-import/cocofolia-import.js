@@ -317,6 +317,29 @@
     return result?.url || '';
   }
 
+
+  async function runWithConcurrency(items, limit, worker, onProgress) {
+    const source = Array.isArray(items) ? items : [];
+    if (source.length === 0) return [];
+    const concurrency = Math.max(1, Math.min(Number(limit) || 1, source.length));
+    const results = new Array(source.length);
+    let nextIndex = 0;
+    let completed = 0;
+
+    async function consume() {
+      while (true) {
+        const index = nextIndex++;
+        if (index >= source.length) return;
+        results[index] = await worker(source[index], index);
+        completed += 1;
+        if (typeof onProgress === 'function') onProgress(completed, source.length);
+      }
+    }
+
+    await Promise.all(Array.from({ length: concurrency }, () => consume()));
+    return results;
+  }
+
   function buildApplyActions() {
     return `<div style="display:flex;gap:8px;margin-top:10px"><button class="btn-primary" onclick="applyValidatedMapBackground()" style="flex:1">맵 이미지 적용</button></div>`;
   }
@@ -840,63 +863,94 @@
       const uploadedUrl = await uploadMapLayerBlob(blob, roomCode, `map-bg-${Date.now()}.${ext}`);
       if (!uploadedUrl) throw new Error('맵 이미지 업로드에 실패했어요.');
 
-      // ── 포그라운드 이미지 업로드 (별도로 있을 경우) ──
-      let uploadedFgUrl = null;
-      if (fgImageName && fgImageName !== mapImageName) {
-        setHint('포그라운드 이미지를 업로드하는 중이에요…');
-        const fgEntry = zip.file(fgImageName);
-        if (fgEntry) {
-          const fgBlob = await fgEntry.async('blob');
-          const fgExt = fgImageName.split('.').pop() || 'png';
-          uploadedFgUrl = await uploadMapLayerBlob(fgBlob, roomCode, `map-fg-${Date.now()}.${fgExt}`) || null;
-        }
-      }
-
       const dominantSize = backgroundSize || null;
       const sceneAspect = dominantSize?.width && dominantSize?.height
         ? (dominantSize.width / dominantSize.height)
         : 1;
 
-      // ── 오브젝트 업로드 (SVG 포함) ──
-      setHint('맵세팅 오브젝트를 업로드하는 중이에요…');
+      // ── 포그라운드 + 오브젝트 제한형 병렬 업로드 (최대 3개) ──
       const objectBlueprints = buildImportedMapObjects(validated.parsed?.entities?.items || {}, room, sceneAspect);
+      const uploadTasks = [];
+
+      if (fgImageName && fgImageName !== mapImageName) {
+        uploadTasks.push({ type: 'foreground', imageName: fgImageName });
+      }
+      objectBlueprints.forEach((blueprint, index) => {
+        uploadTasks.push({ type: 'object', blueprint, index });
+      });
+
+      const uploadResults = await runWithConcurrency(
+        uploadTasks,
+        3,
+        async (task) => {
+          if (task.type === 'foreground') {
+            const fgEntry = zip.file(task.imageName);
+            if (!fgEntry) return { type: 'foreground', url: '' };
+            const fgBlob = await fgEntry.async('blob');
+            const fgExt = task.imageName.split('.').pop() || 'png';
+            const url = await uploadMapLayerBlob(fgBlob, roomCode, `map-fg-${Date.now()}.${fgExt}`) || '';
+            return { type: 'foreground', url };
+          }
+
+          const { blueprint, index } = task;
+          const entry = zip.file(blueprint.imageName);
+          if (!entry) return { type: 'object', index, value: null };
+          const objectBlob = await entry.async('blob');
+          const rawExt = String(blueprint.imageName.split('.').pop() || 'png').toLowerCase();
+          const objExt = rawExt === 'svg' ? 'svg' : rawExt === 'jpeg' || rawExt === 'jpg' ? 'jpg' : 'png';
+          const mimeMap = { svg: 'image/svg+xml', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png' };
+          const mimeType = mimeMap[rawExt] || 'image/png';
+          const uploadBlob = new Blob([objectBlob], { type: mimeType });
+          const objectUrl = await uploadMapLayerBlob(uploadBlob, roomCode, `map-obj-${index + 1}-${Date.now()}.${objExt}`);
+          if (!objectUrl) return { type: 'object', index, value: null };
+
+          let coverUrl = '';
+          if (blueprint.coverImageName) {
+            const coverEntry = zip.file(blueprint.coverImageName);
+            if (coverEntry) {
+              const coverBlob = await coverEntry.async('blob');
+              const coverExt = blueprint.coverImageName.split('.').pop() || 'png';
+              coverUrl = await uploadMapLayerBlob(coverBlob, roomCode, `map-obj-cover-${index + 1}-${Date.now()}.${coverExt}`) || '';
+            }
+          }
+
+          const objectWithUrl = { ...blueprint, url: objectUrl, coverUrl };
+          const panelToken = buildImportedPanelToken(objectWithUrl, roomCode, index);
+          return {
+            type: 'object',
+            index,
+            value: {
+              panelToken,
+              importedObject: {
+                ...objectWithUrl,
+                panelTokenId: panelToken.id,
+                targetType: 'panel-token',
+                previewUrl: objectUrl,
+              },
+            },
+          };
+        },
+        (completed, total) => {
+          setHint(`포그라운드와 맵세팅 오브젝트를 업로드하는 중이에요… (${completed}/${total})`);
+        }
+      );
+
+      let uploadedFgUrl = null;
+      const orderedObjectResults = new Array(objectBlueprints.length);
+      uploadResults.forEach((result) => {
+        if (result?.type === 'foreground') uploadedFgUrl = result.url || null;
+        if (result?.type === 'object' && Number.isInteger(result.index)) {
+          orderedObjectResults[result.index] = result.value || null;
+        }
+      });
+
       const importedObjects = [];
       const importedPanelTokens = [];
-      for (let i = 0; i < objectBlueprints.length; i++) {
-        const blueprint = objectBlueprints[i];
-        setHint(`맵세팅 오브젝트를 업로드하는 중이에요… (${i + 1}/${objectBlueprints.length})`);
-        const entry = zip.file(blueprint.imageName);
-        if (!entry) continue;
-        const objectBlob = await entry.async('blob');
-        const rawExt = String(blueprint.imageName.split('.').pop() || 'png').toLowerCase();
-        // 확장자에 따라 MIME 타입 명시 (Cloudinary가 올바른 포맷으로 저장하도록)
-        const objExt = rawExt === 'svg' ? 'svg' : rawExt === 'jpeg' || rawExt === 'jpg' ? 'jpg' : 'png';
-        const mimeMap = { svg: 'image/svg+xml', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png' };
-        const mimeType = mimeMap[rawExt] || 'image/png';
-        // MIME 타입을 명시해야 Cloudinary가 팔레트 PNG(mode=P) 투명도를 보존함
-        const uploadBlob = new Blob([objectBlob], { type: mimeType });
-        const objectUrl = await uploadMapLayerBlob(uploadBlob, roomCode, `map-obj-${i + 1}-${Date.now()}.${objExt}`);
-        if (!objectUrl) continue;
-        let coverUrl = '';
-        if (blueprint.coverImageName) {
-          const coverEntry = zip.file(blueprint.coverImageName);
-          if (coverEntry) {
-            setHint(`맵세팅 오브젝트 뒷면을 업로드하는 중이에요… (${i + 1}/${objectBlueprints.length})`);
-            const coverBlob = await coverEntry.async('blob');
-            const coverExt = blueprint.coverImageName.split('.').pop() || 'png';
-            coverUrl = await uploadMapLayerBlob(coverBlob, roomCode, `map-obj-cover-${i + 1}-${Date.now()}.${coverExt}`) || '';
-          }
-        }
-        const objectWithUrl = { ...blueprint, url: objectUrl, coverUrl };
-        const panelToken = buildImportedPanelToken(objectWithUrl, roomCode, i);
-        importedPanelTokens.push(panelToken);
-        importedObjects.push({
-          ...objectWithUrl,
-          panelTokenId: panelToken.id,
-          targetType: 'panel-token',
-          previewUrl: objectUrl,
-        });
-      }
+      orderedObjectResults.forEach((result) => {
+        if (!result) return;
+        importedPanelTokens.push(result.panelToken);
+        importedObjects.push(result.importedObject);
+      });
 
       await clearPreviousImportedPanelTokens(roomCode, window.St?.mapState?.objects || []);
       await saveImportedPanelTokens(roomCode, importedPanelTokens);
