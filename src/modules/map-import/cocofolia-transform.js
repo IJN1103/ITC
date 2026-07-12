@@ -138,13 +138,20 @@
     const toPctY = (value) => ((Number(value || 0) - top) / height) * 100;
 
     return {
-      version: 1,
+      version: 2,
       mode: 'cocofolia-expanded',
       left,
       top,
       width,
       height,
       aspect: width / height,
+      // map-token.js의 고정 논리 폭(1600px)과 동일한 기준을 사용한다.
+      // 코코포리아 1칸을 X/Y 모두 같은 픽셀 크기로 변환해,
+      // 확장 캔버스의 가로·세로 비율이나 CSS % 계산에 의해
+      // 패널 크기가 달라지는 것을 막는다.
+      logicalWidthPx: 1600,
+      logicalHeightPx: 1600 / (width / height),
+      pixelsPerUnit: 1600 / width,
       padding: pad,
       field: {
         left: fieldLeft,
@@ -169,6 +176,7 @@
     const spanH = Math.max(1, Number(canvas.height || 1));
     const baseLeft = Number(canvas.left || 0);
     const baseTop = Number(canvas.top || 0);
+    const pixelsPerUnit = Math.max(0.0001, Number(canvas.pixelsPerUnit || (1600 / spanW)) || (1600 / spanW));
 
     return allRawItems
       .sort((a, b) => {
@@ -195,6 +203,8 @@
         const yPct = ((y - baseTop) / spanH) * 100;
         const wPct = (w / spanW) * 100;
         const hPct = (h / spanH) * 100;
+        const widthPx = w * pixelsPerUnit;
+        const heightPx = h * pixelsPerUnit;
         return {
           id: objectId,
           layerId: `object:${objectId}`,
@@ -215,6 +225,8 @@
           hPct,
           xCenterPct: xPct + (wPct / 2),
           yCenterPct: yPct + (hPct / 2),
+          widthPx,
+          heightPx,
           isMarkerPanel: item._markerPanel === true,
           markerText: item._markerText || '',
           markerClickAction: item._clickAction || null,
@@ -238,6 +250,9 @@
             heightPct: hPct,
             xCenterPct: xPct + (wPct / 2),
             yCenterPct: yPct + (hPct / 2),
+            widthPx,
+            heightPx,
+            pixelsPerUnit,
             sourceMeta: {
               x, y, width: w, height: h, z: sourceZ, order: sourceOrder,
               locked: item.locked === true,

@@ -1277,13 +1277,25 @@ function schedulePanelTokenClickAction(tokenId, event) {
 function applyPanelTokenSize(el, token) {
   if (!el || !token) return;
   const layout = token?.importedMapObjectMeta?.layoutPct || null;
+  const widthPx = Number(layout?.widthPx);
+  const heightPx = Number(layout?.heightPx);
+  if (token?.importedMapObject === true
+      && Number.isFinite(widthPx) && widthPx > 0
+      && Number.isFinite(heightPx) && heightPx > 0) {
+    // 코코포리아 패널은 원본 격자 단위를 X/Y 공통 배율의 논리 px로 변환한다.
+    // 확장 캔버스 기준 % 크기를 사용하면 부모의 실제 렌더 비율이나 반올림에 따라
+    // 원본보다 커지거나 작아질 수 있으므로, 임포트 시 계산한 절대 논리 크기를 우선한다.
+    el.style.width = widthPx + 'px';
+    el.style.height = heightPx + 'px';
+    el.style.aspectRatio = '';
+    el.style.minWidth = '0';
+    el.style.minHeight = '0';
+    return;
+  }
   const widthPct = Number(layout?.width);
   const heightPct = Number(layout?.height);
   if (Number.isFinite(widthPct) && widthPct > 0 && Number.isFinite(heightPct) && heightPct > 0) {
-    // wPct/hPct 모두 % 지정 (코코폴리아 좌표계 충실 재현)
-    // aspect-ratio는 사용하지 않음:
-    // 코코폴리아의 w/h 셀 단위가 이미 올바른 화면 비율을 표현하므로
-    // aspect-ratio를 적용하면 height가 달라져 top 위치가 틀어진다.
+    // 과거 PHASE 3 데이터와의 하위 호환용 fallback.
     el.style.width = widthPct + '%';
     el.style.height = heightPct + '%';
     el.style.aspectRatio = '';
