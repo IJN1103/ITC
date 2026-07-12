@@ -187,7 +187,7 @@
     return Math.max(1, Number(orderIndex || 0));
   }
 
-  function syncImportedPanelTokenLocalState(entry, visible, zIndex) {
+  function syncImportedPanelTokenLocalState(entry, visible, zIndex, options = {}) {
     const panelTokenId = String(entry?.panelTokenId || '').trim();
     if (!panelTokenId) return;
     const stateRoot = getStateRoot();
@@ -195,7 +195,34 @@
     const token = stateRoot.tokens[panelTokenId];
     if (!token) return;
     token.panelPriority = zIndex;
-    token.importedMapObjectHidden = !visible;
+    // 가시성은 사용자 조작을 저장할 때만 토큰에 반영한다.
+    // 실시간 mapLayerState 재수신/장면 복원 시 오래된 visible 값이
+    // 최신 토큰 가시성을 다시 덮어쓰지 못하도록 한다.
+    if (options.commitVisibility === true && typeof visible === 'boolean') {
+      token.importedMapObjectHidden = !visible;
+    }
+  }
+
+  function getCanonicalImportedPanelVisibility(entry, fallbackVisible = true) {
+    const panelTokenId = String(entry?.panelTokenId || '').trim();
+    const token = panelTokenId ? getStateRoot().tokens?.[panelTokenId] : null;
+    if (token && typeof token.importedMapObjectHidden === 'boolean') {
+      return !token.importedMapObjectHidden;
+    }
+    return fallbackVisible !== false;
+  }
+
+  function commitImportedPanelVisibilityFromLayerState(layerState) {
+    const entries = getLayerEntries();
+    const visibleMap = layerState?.visible && typeof layerState.visible === 'object'
+      ? layerState.visible
+      : {};
+    entries.forEach((entry, index) => {
+      if (!entry?.panelTokenId) return;
+      if (typeof visibleMap[entry.id] !== 'boolean') return;
+      const zIndex = getLayerZIndex(entry.id, index);
+      syncImportedPanelTokenLocalState(entry, visibleMap[entry.id], zIndex, { commitVisibility: true });
+    });
   }
 
   function resolveLayerElement(entry) {
@@ -492,15 +519,16 @@
       const entry = entryMap.get(id);
       // panelToken의 importedMapObjectHidden이 명시적으로 설정된 경우 이를 우선한다.
       // layerState.visible은 사용자가 눈 아이콘으로 명시적으로 바꾼 경우에만 우선 적용.
-      const panelTokenId = String(entry?.panelTokenId || '').trim();
-      let visible;
-      if (typeof normalized.visible[id] === 'boolean') {
-        visible = normalized.visible[id];
-      } else if (panelTokenId && tokens[panelTokenId]) {
-        visible = !tokens[panelTokenId].importedMapObjectHidden;
-      } else {
-        visible = true;
-      }
+      const fallbackVisible = typeof normalized.visible[id] === 'boolean'
+        ? normalized.visible[id]
+        : true;
+      // 임포트 패널 토큰의 importedMapObjectHidden을 단일 기준으로 사용한다.
+      // 장면/룸 상태에서 늦게 도착한 오래된 mapLayerState.visible 값은
+      // 현재 토큰 가시성을 덮어쓰지 않는다.
+      const visible = entry?.panelTokenId
+        ? getCanonicalImportedPanelVisibility(entry, fallbackVisible)
+        : fallbackVisible;
+      normalized.visible[id] = visible;
       const zIndex = getLayerZIndex(id, index);
       syncImportedPanelTokenLocalState(entry, visible, zIndex);
       const el = resolveLayerElement(entry);
@@ -511,6 +539,9 @@
   }
 
   async function saveMapLayerState(nextState) {
+    // 눈 아이콘 등 명시적 사용자 조작은 먼저 토큰 가시성에 반영한다.
+    // 이후 normalize/apply 단계에서는 이 토큰 값을 단일 기준으로 사용한다.
+    commitImportedPanelVisibilityFromLayerState(nextState);
     const normalized = normalizeLayerState(nextState);
     const stateRoot = getStateRoot();
     stateRoot.mapLayerState = normalized;
