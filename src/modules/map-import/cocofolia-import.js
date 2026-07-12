@@ -310,7 +310,9 @@
       blob,
       folder: `itc/map-backgrounds/${roomCode || 'local'}`,
       fileName: fileName || `map-background-${Date.now()}.png`,
-      timeout: 30000,
+      timeout: 90000,
+      retries: 2,
+      retryDelay: 1600,
     });
     return result?.url || '';
   }
@@ -862,6 +864,7 @@
       const importedPanelTokens = [];
       for (let i = 0; i < objectBlueprints.length; i++) {
         const blueprint = objectBlueprints[i];
+        setHint(`맵세팅 오브젝트를 업로드하는 중이에요… (${i + 1}/${objectBlueprints.length})`);
         const entry = zip.file(blueprint.imageName);
         if (!entry) continue;
         const objectBlob = await entry.async('blob');
@@ -878,6 +881,7 @@
         if (blueprint.coverImageName) {
           const coverEntry = zip.file(blueprint.coverImageName);
           if (coverEntry) {
+            setHint(`맵세팅 오브젝트 뒷면을 업로드하는 중이에요… (${i + 1}/${objectBlueprints.length})`);
             const coverBlob = await coverEntry.async('blob');
             const coverExt = blueprint.coverImageName.split('.').pop() || 'png';
             coverUrl = await uploadMapLayerBlob(coverBlob, roomCode, `map-obj-cover-${i + 1}-${Date.now()}.${coverExt}`) || '';
@@ -910,6 +914,7 @@
 
         for (const [effId, eff] of effectEntries) {
           try {
+            setHint(`컷인 이미지를 업로드하는 중이에요… (${Object.keys(importedCutins).length + 1}/${effectEntries.length})`);
             const effEntry = zip.file(eff.imageUrl);
             if (!effEntry) continue;
             const effBlob = await effEntry.async('blob');

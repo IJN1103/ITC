@@ -170,44 +170,64 @@ if (typeof window !== 'undefined') {
  *   timeout   - ms (기본 20000)
  */
 
+function _itcUploadDelay(ms = 0) {
+  return new Promise((resolve) => setTimeout(resolve, Math.max(0, Number(ms || 0))));
+}
+
+function _itcIsRetryableUploadError(err) {
+  const message = String(err?.message || err || '').toLowerCase();
+  return err?.name === 'AbortError'
+    || message.includes('timeout')
+    || message.includes('network')
+    || message.includes('failed to fetch')
+    || message.includes('load failed');
+}
+
 async function _itcUploadToCloudinary(opts = {}) {
   const cfg = _itcGetCloudinaryConfig();
   if (!cfg) throw new Error('cloudinary-config-missing');
-  const { blob, folder, fileName, publicId, timeout = 20000 } = opts;
+  const { blob, folder, fileName, publicId, timeout = 20000, retries = 0, retryDelay = 1200 } = opts;
   if (!blob) throw new Error('empty-upload-blob');
 
-  const form = new FormData();
-  form.append('file', blob, fileName || undefined);
-  form.append('upload_preset', cfg.unsignedPreset);
-  if (folder) form.append('folder', folder);
-  if (publicId) form.append('public_id', publicId);
-
   const url = `https://api.cloudinary.com/v1_1/${encodeURIComponent(cfg.cloudName)}/image/upload`;
+  const maxAttempts = Math.max(1, 1 + (parseInt(retries, 10) || 0));
+  let lastErr = null;
 
-  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-  const timer = controller ? setTimeout(() => controller.abort(), timeout) : null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const form = new FormData();
+    form.append('file', blob, fileName || undefined);
+    form.append('upload_preset', cfg.unsignedPreset);
+    if (folder) form.append('folder', folder);
+    if (publicId) form.append('public_id', publicId);
 
-  try {
-    const res = await fetch(url, {
-      method: 'POST',
-      body: form,
-      signal: controller?.signal,
-    });
-    const payload = await res.json().catch(() => ({}));
-    if (!res.ok || !payload?.secure_url) {
-      throw new Error(payload?.error?.message || 'cloudinary upload failed');
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const timer = controller ? setTimeout(() => controller.abort(), timeout) : null;
+
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        body: form,
+        signal: controller?.signal,
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok || !payload?.secure_url) {
+        throw new Error(payload?.error?.message || 'cloudinary upload failed');
+      }
+      return {
+        url: payload.secure_url,
+        publicId: payload.public_id || '',
+        contentType: blob.type || 'image/jpeg',
+      };
+    } catch (err) {
+      lastErr = err?.name === 'AbortError' ? new Error('timeout') : err;
+      if (attempt >= maxAttempts || !_itcIsRetryableUploadError(lastErr)) throw lastErr;
+      await _itcUploadDelay(Number(retryDelay || 0) * attempt);
+    } finally {
+      if (timer) clearTimeout(timer);
     }
-    return {
-      url: payload.secure_url,
-      publicId: payload.public_id || '',
-      contentType: blob.type || 'image/jpeg',
-    };
-  } catch (err) {
-    if (err?.name === 'AbortError') throw new Error('timeout');
-    throw err;
-  } finally {
-    if (timer) clearTimeout(timer);
   }
+
+  throw lastErr || new Error('cloudinary upload failed');
 }
 
 /* ── 이미지 리사이즈 → Blob ──
