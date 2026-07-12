@@ -51,6 +51,7 @@
       panelActionText: importedClickAction.panelActionText,
       mapLayerId: String(blueprint?.layerId || `object:${blueprint?.id || index + 1}`),
       importedMapObject: true,
+      importEngine: 'cocofolia-source-space',
       importedMapObjectHidden: seed?.sourceMeta?.active === false,
       importedMapObjectMeta: {
         sourceItemId: String(seed.sourceItemId || blueprint?.id || ''),
@@ -61,6 +62,7 @@
         visible: seed.visible !== false,
         sourceMeta: seed.sourceMeta || null,
         sourceSpace: seed.sourceSpace || null,
+        sourceCanvas: seed.sourceCanvas || null,
         layerModel: seed.layerModel || null,
         layoutPct: {
           x: Number(seed.xPct ?? blueprint?.xPct ?? 0),
@@ -270,6 +272,16 @@
               x, y, width: w, height: h,
               centerX: x + (w / 2),
               centerY: y + (h / 2),
+            },
+            sourceCanvas: {
+              engine: 'cocofolia-source-space',
+              left: Number(canvas.left || 0),
+              top: Number(canvas.top || 0),
+              width: Number(canvas.width || spanW),
+              height: Number(canvas.height || spanH),
+              logicalWidthPx: Number(canvas.logicalWidthPx || 1600),
+              logicalHeightPx: Number(canvas.logicalHeightPx || (Number(canvas.height || spanH) * pixelsPerUnit)),
+              pixelsPerUnit,
             },
             layerModel: layerEntryMap[objectId] || null,
             sourceMeta: {

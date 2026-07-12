@@ -6,17 +6,27 @@
     return Number.isFinite(num) ? num : fallback;
   }
 
-  function getImportedCanvas(mapState = window.St?.mapState) {
-    const canvas = mapState?.importedCanvas;
-    if (!canvas || canvas.engine !== 'cocofolia-source-space') return null;
-    return canvas;
+  function normalizeCanvas(raw) {
+    if (!raw || typeof raw !== 'object') return null;
+    const engine = String(raw.engine || '');
+    if (engine && engine !== 'cocofolia-source-space') return null;
+    const width = toFiniteNumber(raw.width, 0);
+    const height = toFiniteNumber(raw.height, 0);
+    if (!(width > 0) || !(height > 0)) return null;
+    return { ...raw, engine: 'cocofolia-source-space', width, height };
   }
 
-  function getWorldMetrics(mapState = window.St?.mapState) {
-    const canvas = getImportedCanvas(mapState);
+  function getImportedCanvas(mapState = window.St?.mapState, token = null) {
+    return normalizeCanvas(mapState?.importedCanvas)
+      || normalizeCanvas(token?.importedMapObjectMeta?.sourceCanvas)
+      || null;
+  }
+
+  function getWorldMetrics(mapState = window.St?.mapState, token = null) {
+    const canvas = getImportedCanvas(mapState, token);
     if (!canvas) return null;
-    const widthUnits = Math.max(1, toFiniteNumber(canvas.width, canvas?.sourceWorld?.contentBounds?.width || 1));
-    const heightUnits = Math.max(1, toFiniteNumber(canvas.height, canvas?.sourceWorld?.contentBounds?.height || 1));
+    const widthUnits = Math.max(1, toFiniteNumber(canvas.width, 1));
+    const heightUnits = Math.max(1, toFiniteNumber(canvas.height, 1));
     const logicalWidth = Math.max(1, toFiniteNumber(canvas.logicalWidthPx, 1600));
     const pixelsPerUnit = Math.max(0.0001, toFiniteNumber(canvas.pixelsPerUnit, logicalWidth / widthUnits));
     const logicalHeight = Math.max(1, toFiniteNumber(canvas.logicalHeightPx, heightUnits * pixelsPerUnit));
@@ -32,7 +42,7 @@
     };
   }
 
-  function ensureWorldContainer(mapInner = document.getElementById('map-inner')) {
+  function ensureWorldContainer(mapInner = document.getElementById('map-inner'), token = null) {
     if (!mapInner) return null;
     let container = document.getElementById(WORLD_CONTAINER_ID);
     if (!container || container.parentElement !== mapInner) {
@@ -41,7 +51,7 @@
       container.className = 'cocofolia-world-container';
       mapInner.appendChild(container);
     }
-    const metrics = getWorldMetrics();
+    const metrics = getWorldMetrics(window.St?.mapState, token);
     if (metrics) {
       container.style.width = `${metrics.logicalWidth}px`;
       container.style.height = `${metrics.logicalHeight}px`;
@@ -56,15 +66,21 @@
 
   function isSourceToken(token) {
     const source = token?.importedMapObjectMeta?.sourceSpace;
-    return token?.importedMapObject === true
-      && source?.units === 'cocofolia-grid'
+    const hasSourceCoordinates = source?.units === 'cocofolia-grid'
       && Number.isFinite(Number(source.x))
-      && Number.isFinite(Number(source.y));
+      && Number.isFinite(Number(source.y))
+      && Number.isFinite(Number(source.width))
+      && Number.isFinite(Number(source.height));
+    if (!hasSourceCoordinates) return false;
+    return token?.importedMapObject === true
+      || token?.importedMapObject === 'true'
+      || token?.importEngine === 'cocofolia-source-space'
+      || !!token?.importedMapObjectMeta?.sourceItemId;
   }
 
   function getTokenSourceRect(token, mapState = window.St?.mapState) {
     if (!isSourceToken(token)) return null;
-    const metrics = getWorldMetrics(mapState);
+    const metrics = getWorldMetrics(mapState, token);
     if (!metrics) return null;
     const source = token.importedMapObjectMeta.sourceSpace;
     const width = Math.max(1, toFiniteNumber(source.width, token.panelWidth || 1));
@@ -105,8 +121,8 @@
 
   function getTokenParent(token, mapInner = document.getElementById('map-inner')) {
     if (!mapInner) return null;
-    if (!isSourceToken(token) || !getImportedCanvas()) return mapInner;
-    return ensureWorldContainer(mapInner) || mapInner;
+    if (!isSourceToken(token) || !getImportedCanvas(window.St?.mapState, token)) return mapInner;
+    return ensureWorldContainer(mapInner, token) || mapInner;
   }
 
   function sourcePositionFromCenterPx(token, centerXPx, centerYPx, mapState = window.St?.mapState) {
