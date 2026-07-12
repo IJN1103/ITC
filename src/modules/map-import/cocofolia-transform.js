@@ -288,6 +288,7 @@
             },
             sourceCanvas: {
               engine: 'cocofolia-source-space',
+              mode: String(canvas.mode || ''),
               left: Number(canvas.left || 0),
               top: Number(canvas.top || 0),
               width: Number(canvas.width || spanW),
@@ -295,10 +296,19 @@
               logicalWidthPx: Number(canvas.logicalWidthPx || 1600),
               logicalHeightPx: Number(canvas.logicalHeightPx || (Number(canvas.height || spanH) * pixelsPerUnit)),
               pixelsPerUnit,
+              field: canvas?.field ? {
+                left: Number(canvas.field.left || 0),
+                top: Number(canvas.field.top || 0),
+                width: Number(canvas.field.width || 0),
+                height: Number(canvas.field.height || 0),
+              } : null,
             },
             layerModel: layerEntryMap[objectId] || null,
             sourceMeta: {
               x, y, width: w, height: h, z: sourceZ, order: sourceOrder,
+              type: String(item.type || 'object'),
+              opacity: Number.isFinite(Number(item.opacity)) ? Number(item.opacity) : null,
+              visible: item.visible !== false,
               locked: item.locked === true,
               closed: item.closed === true,
               freezed: item.freezed === true,

@@ -18,8 +18,12 @@
 
   function collect(el, token, stage, plannedRect = null) {
     if (!el || !token?.importedMapObject) return null;
-    const source = token?.importedMapObjectMeta?.sourceSpace || null;
-    const layout = token?.importedMapObjectMeta?.layoutPct || null;
+    const meta = token?.importedMapObjectMeta || {};
+    const source = meta.sourceSpace || null;
+    const layout = meta.layoutPct || null;
+    const sourceMeta = meta.sourceMeta || null;
+    const sourceCanvas = meta.sourceCanvas || null;
+    const layerModel = meta.layerModel || null;
     const computed = window.getComputedStyle ? getComputedStyle(el) : null;
     const bounds = el.getBoundingClientRect?.() || null;
     const parent = el.parentElement;
@@ -27,12 +31,33 @@
     return {
       id: tokenKey(token),
       name: String(token?.name || ''),
+      sourceItemId: String(meta.sourceItemId || ''),
+      sourceImageName: String(meta.sourceImageName || ''),
+      sourceCoverImageName: String(meta.sourceCoverImageName || ''),
       stage: String(stage || ''),
       rendererSelected: el.dataset.cocofoliaSourceToken === 'true' ? 'source' : 'legacy',
       parent: parent?.id || parent?.className || '',
       source: source ? {
         x: num(source.x), y: num(source.y), width: num(source.width), height: num(source.height),
-        units: source.units || '', z: num(source.z), order: num(source.order),
+        units: source.units || '',
+        z: num(sourceMeta?.z ?? source.z),
+        order: num(sourceMeta?.order ?? source.order),
+        type: String(sourceMeta?.type || layerModel?.group || 'object'),
+        opacity: num(sourceMeta?.opacity),
+        visible: sourceMeta?.visible !== false,
+      } : null,
+      sourceCanvas: sourceCanvas ? {
+        left: num(sourceCanvas.left), top: num(sourceCanvas.top),
+        width: num(sourceCanvas.width), height: num(sourceCanvas.height),
+        field: sourceCanvas.field ? {
+          left: num(sourceCanvas.field.left), top: num(sourceCanvas.field.top),
+          width: num(sourceCanvas.field.width), height: num(sourceCanvas.field.height),
+        } : null,
+      } : null,
+      layer: layerModel ? {
+        group: String(layerModel.group || ''),
+        sourceZ: num(layerModel.sourceZ), sourceOrder: num(layerModel.sourceOrder),
+        safeOrder: num(layerModel.safeOrder),
       } : null,
       stored: {
         x: num(token.x), y: num(token.y), panelWidth: num(token.panelWidth), panelHeight: num(token.panelHeight),
@@ -85,6 +110,7 @@
       console.info({ sourceRendererCount: sourceCount, legacyRendererCount: rows.length - sourceCount, missingSourceSpaceCount: missingSourceCount, sizeMismatchCount: overwritten.length });
       if (overwritten.length) console.warn('계산 크기와 최종 DOM 크기가 다른 오브젝트', overwritten);
       console.groupEnd();
+      window.ITCCocofoliaVisualDiagnostics?.consume?.(rows);
     }, 180);
   }
 
