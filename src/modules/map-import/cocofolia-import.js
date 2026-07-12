@@ -438,15 +438,48 @@
 
   const buildImportedPanelToken = TRANSFORM.buildImportedPanelToken;
 
+  function isImportedPanelTokenRecord(token) {
+    if (!token || typeof token !== 'object') return false;
+    if (token.importedMapObject === true || token.importedMapObject === 'true') return true;
+    if (token.importEngine === 'cocofolia-source-space') return true;
+    if (token.importedMapObjectMeta && typeof token.importedMapObjectMeta === 'object') return true;
+    return String(token.mapLayerId || '').startsWith('object:') && String(token.id || '').startsWith('mapimp_');
+  }
+
   async function clearPreviousImportedPanelTokens(roomCode, objects) {
-    const ids = Array.isArray(objects)
+    if (!window._FB?.CONFIGURED) return;
+    const { db, ref, update, get } = window._FB;
+    const ids = new Set(Array.isArray(objects)
       ? objects.map((item) => String(item?.panelTokenId || '').trim()).filter(Boolean)
-      : [];
-    if (!ids.length || !window._FB?.CONFIGURED) return;
-    const { db, ref, update } = window._FB;
+      : []);
+
+    // mapState.objects에서 연결이 끊긴 과거 임포트 토큰도 함께 정리한다.
+    // 이전 구현은 현재 mapState에 기록된 id만 삭제해 재임포트/전체삭제 이후 고아 토큰이 남을 수 있었다.
+    try {
+      const snap = await get(ref(db, `rooms/${roomCode}/tokens`));
+      const storedTokens = snap.val() || {};
+      Object.entries(storedTokens).forEach(([id, token]) => {
+        if (isImportedPanelTokenRecord({ ...token, id })) ids.add(String(id));
+      });
+    } catch (err) {
+      console.warn('previous imported token scan failed; falling back to mapState ids', err);
+    }
+
+    if (!ids.size) return;
     const payload = {};
     ids.forEach((id) => { payload[id] = null; });
     await update(ref(db, `rooms/${roomCode}/tokens`), payload);
+
+    // child_removed 수신 전에 새 임포트가 시작돼도 로컬 렌더 트리에 과거 토큰이 남지 않게 즉시 정리한다.
+    const localTokens = window.St?.tokens;
+    if (localTokens && typeof localTokens === 'object') {
+      ids.forEach((id) => {
+        delete localTokens[id];
+        if (typeof removeSingleToken === 'function') removeSingleToken(id);
+        else document.getElementById(`tok-${id}`)?.remove();
+      });
+    }
+    window.ITCCocofoliaRenderDiagnostics?.reset?.();
   }
 
   async function saveImportedPanelTokens(roomCode, tokens) {

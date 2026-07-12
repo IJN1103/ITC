@@ -1,8 +1,21 @@
 (function () {
+  function stableSourceHash(value) {
+    const text = String(value || '');
+    let hash = 2166136261;
+    for (let i = 0; i < text.length; i += 1) {
+      hash ^= text.charCodeAt(i);
+      hash = Math.imul(hash, 16777619);
+    }
+    return (hash >>> 0).toString(36);
+  }
+
   function buildImportedPanelTokenId(roomCode, sourceItemId, index) {
     const safeRoom = String(roomCode || 'room').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 16) || 'room';
-    const safeSource = String(sourceItemId || index + 1).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 24) || String(index + 1);
-    return `mapimp_${safeRoom}_${safeSource}_${Date.now()}_${index + 1}`;
+    const rawSource = String(sourceItemId || index + 1);
+    const safeSource = rawSource.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 18) || String(index + 1);
+    // 같은 코코포리아 오브젝트는 다시 임포트해도 같은 Firebase token id를 사용한다.
+    // Date.now() 기반 id는 재임포트 때 이전 토큰이 남으면 동일 레이어가 누적되는 원인이 된다.
+    return `mapimp_${safeRoom}_${safeSource}_${stableSourceHash(rawSource)}_${index + 1}`;
   }
 
   function parseImportedPanelClickAction(rawAction) {
