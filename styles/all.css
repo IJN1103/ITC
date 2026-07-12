@@ -210,7 +210,10 @@ to{opacity:1;transform:translateY(0);}
 .map-area{flex:1;position:relative;overflow:hidden;background:var(--s1);cursor:grab;}
 .map-area.panning{cursor:grabbing;}
 .map-inner{position:absolute;width:100%;height:100%;background-image:linear-gradient(rgba(180,178,172,.45) 1px,transparent 1px),linear-gradient(90deg,rgba(180,178,172,.45) 1px,transparent 1px);background-size:44px 44px;transform-origin:0 0;z-index:1;}
-.cocofolia-world-container{position:absolute;left:0;top:0;z-index:2;pointer-events:none;transform-origin:0 0;}
+.cocofolia-world-container{position:absolute;left:0;top:0;z-index:auto;pointer-events:none;transform-origin:0 0;}
+.cocofolia-world-background-layer,.cocofolia-world-foreground-layer{position:absolute;pointer-events:none;background-repeat:no-repeat;transform-origin:0 0;}
+.cocofolia-world-background-layer{z-index:0;background-position:center center;background-size:cover;}
+.cocofolia-world-foreground-layer{background-position:center center;background-size:100% 100%;}
 .cocofolia-world-container>.map-token{pointer-events:auto;}
 .map-bg-blur-layer{position:absolute;inset:0;z-index:0;pointer-events:none;background-repeat:no-repeat;background-position:center center;background-size:cover;opacity:1;filter:blur(20px) brightness(1.05) saturate(1.1);transform:scale(1.05);transform-origin:center;}
 .map-bg-layer{position:absolute;inset:0;z-index:1;pointer-events:none;background-repeat:no-repeat;background-position:center center;background-size:contain;opacity:1;}

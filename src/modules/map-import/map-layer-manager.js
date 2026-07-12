@@ -23,11 +23,14 @@
   function getLayerEntries() {
     const state = getStateRoot().mapState || {};
     const entries = [];
+    const sourceMode = state?.importedCanvas?.engine === 'cocofolia-source-space';
     if (state.background?.url) {
-      entries.push({ id: 'background', name: '배경 이미지', sub: 'backgroundUrl', target: 'map-bg-layer', previewUrl: state.background.url });
+      entries.push({ id: 'background', name: '배경 이미지', sub: 'backgroundUrl', target: sourceMode ? 'cocofolia-world-background-layer' : 'map-bg-layer', previewUrl: state.background.url });
     }
     const objects = Array.isArray(state.objects) ? state.objects : [];
     const tokens = getStateRoot().tokens || {};
+    const negativeObjects = [];
+    const nonNegativeObjects = [];
     objects.forEach((item, index) => {
       const layerId = String(item?.layerId || `object:${item?.id || index + 1}`);
       const panelTokenId = String(item?.panelTokenId || '').trim();
@@ -40,15 +43,22 @@
         const memo = String(item?.memo || '').trim();
         label = memo || 'NO TEXT';
       }
-      entries.push({
+      const entry = {
         id: layerId,
         name: label,
         sub: `오브젝트 ${index + 1}`,
         target: panelTokenId ? `tok-${panelTokenId}` : `[data-map-layer-id="${layerId.replace(/"/g, '\"')}"]`,
         previewUrl: String(item?.previewUrl || item?.url || '').trim(),
         panelTokenId,
-      });
+        sourceZ: Number(item?.sourceZ || 0),
+      };
+      (entry.sourceZ < 0 ? negativeObjects : nonNegativeObjects).push(entry);
     });
+    entries.push(...negativeObjects);
+    if (state.foreground?.url) {
+      entries.push({ id: 'foreground', name: '전경 이미지', sub: 'foregroundUrl', target: sourceMode ? 'cocofolia-world-foreground-layer' : 'map-fg-layer', previewUrl: state.foreground.url });
+    }
+    entries.push(...nonNegativeObjects);
     return entries;
   }
 
@@ -369,10 +379,13 @@
 
   async function deleteAllObjectLayers() {
     const deletable = getDeletableObjectLayers();
-    const hasBackground = !!(getStateRoot().mapState || {}).background?.url;
-    if (!deletable.length && !hasBackground) return;
+    const currentMapState = getStateRoot().mapState || {};
+    const hasBackground = !!currentMapState.background?.url;
+    const hasForeground = !!currentMapState.foreground?.url;
+    if (!deletable.length && !hasBackground && !hasForeground) return;
     const removeLayerIds = new Set(deletable.map((item) => item.layerId));
     if (hasBackground) removeLayerIds.add('background');
+    if (hasForeground) removeLayerIds.add('foreground');
     const stateRoot = getStateRoot();
     const currentState = stateRoot.mapState || {};
     const nextObjects = [];
@@ -383,7 +396,7 @@
     }
 
     removeImportedPanelTokensFromLocalState(deletable.map((item) => item?.panelTokenId));
-    stateRoot.mapState = { ...currentState, background: null, objects: nextObjects };
+    stateRoot.mapState = { ...currentState, background: null, foreground: null, objects: nextObjects };
     stateRoot.mapLayerState = nextLayerState;
     if (!pushLocalRoomMapState(stateRoot.mapState, nextLayerState, 'map-layer-delete-all-local')) {
       if (typeof applyImportedMapState === 'function') applyImportedMapState(stateRoot.mapState);
@@ -420,14 +433,17 @@
 
   function confirmDeleteAllObjectLayers() {
     const count = getDeletableObjectLayers().length;
-    const hasBackground = !!(getStateRoot().mapState || {}).background?.url;
-    if (!count && !hasBackground) {
+    const currentMapState = getStateRoot().mapState || {};
+    const hasBackground = !!currentMapState.background?.url;
+    const hasForeground = !!currentMapState.foreground?.url;
+    if (!count && !hasBackground && !hasForeground) {
       if (typeof showToast === 'function') showToast('삭제할 맵세팅 레이어가 없어요.');
       return;
     }
     const objectPart = count > 0 ? `오브젝트 레이어 ${count}개` : '';
     const bgPart = hasBackground ? '배경 이미지' : '';
-    const targetLabel = [objectPart, bgPart].filter(Boolean).join('와 ');
+    const fgPart = hasForeground ? '전경 이미지' : '';
+    const targetLabel = [objectPart, bgPart, fgPart].filter(Boolean).join('와 ');
     const panelLine = count > 0 ? '\n연결된 맵세팅 패널도 함께 삭제됩니다.' : '';
     const ok = window.confirm(`맵세팅 ${targetLabel || '레이어'}를 전체 삭제할까요?${panelLine}`);
     if (!ok) return;

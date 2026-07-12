@@ -183,9 +183,13 @@
     const background = mapState?.background || null;
     const foreground = mapState?.foreground || null;
     const objects = Array.isArray(mapState?.objects) ? mapState.objects : [];
-    applyImportedFieldRect(bgLayer, mapState);
-    applyImportedFieldRect(fgLayer, mapState);
-    if (bgLayer) {
+    const sourceFieldMode = window.ITCCocofoliaRenderer?.applySourceFieldLayers?.(mapState) === true;
+    if (!sourceFieldMode) {
+      window.ITCCocofoliaRenderer?.clearSourceFieldLayers?.();
+      applyImportedFieldRect(bgLayer, mapState);
+      applyImportedFieldRect(fgLayer, mapState);
+    }
+    if (bgLayer && !sourceFieldMode) {
       if (!background?.url) {
         setLazyMapLayerBackground(bgLayer, '');
         bgLayer.style.backgroundSize = 'contain';
@@ -216,7 +220,7 @@
         blurLayer.classList.toggle('map-layer-runtime-hidden', !bgFinalVisible);
       }
     }
-    if (fgLayer) {
+    if (fgLayer && !sourceFieldMode) {
       if (!foreground?.url) {
         setLazyMapLayerBackground(fgLayer, '');
         fgLayer.style.backgroundSize = 'contain';
@@ -377,9 +381,15 @@
     const ids = [];
     if (mapState?.background?.url) ids.push('background');
     const objects = Array.isArray(mapState?.objects) ? mapState.objects : [];
+    const negative = [];
+    const nonNegative = [];
     objects.forEach((item, index) => {
-      ids.push(String(item?.layerId || `object:${item?.id || index + 1}`));
+      const id = String(item?.layerId || `object:${item?.id || index + 1}`);
+      (Number(item?.sourceZ || 0) < 0 ? negative : nonNegative).push(id);
     });
+    ids.push(...negative);
+    if (mapState?.foreground?.url) ids.push('foreground');
+    ids.push(...nonNegative);
     return {
       order: ids,
       visible: Object.fromEntries(ids.map((id) => [id, true])),

@@ -1,5 +1,7 @@
 (function () {
   const WORLD_CONTAINER_ID = 'cocofolia-world-container';
+  const WORLD_BG_LAYER_ID = 'cocofolia-world-background-layer';
+  const WORLD_FG_LAYER_ID = 'cocofolia-world-foreground-layer';
   let _lastValidWorldMetrics = null;
 
   function toFiniteNumber(value, fallback = 0) {
@@ -81,6 +83,105 @@
       container.hidden = false;
     }
     return container;
+  }
+
+
+  function isLayerVisible(layerId) {
+    const visible = window.St?.mapLayerState?.visible;
+    if (!visible || typeof visible !== 'object') return true;
+    return visible[String(layerId || '')] !== false;
+  }
+
+  function cssBackgroundImage(url) {
+    const raw = String(url || '').trim();
+    return raw ? `url(${JSON.stringify(raw)})` : '';
+  }
+
+  function ensureSourceFieldLayer(container, id, className) {
+    if (!container) return null;
+    let layer = document.getElementById(id);
+    if (!layer || layer.parentElement !== container) {
+      layer?.remove();
+      layer = document.createElement('div');
+      layer.id = id;
+      layer.className = className;
+      container.prepend(layer);
+    }
+    return layer;
+  }
+
+  function getFieldRectPx(metrics) {
+    const field = metrics?.canvas?.field;
+    if (!field) return null;
+    const left = toFiniteNumber(field.left, 0);
+    const top = toFiniteNumber(field.top, 0);
+    const width = Math.max(1, toFiniteNumber(field.width, metrics.widthUnits));
+    const height = Math.max(1, toFiniteNumber(field.height, metrics.heightUnits));
+    return {
+      leftPx: (left - metrics.left) * metrics.pixelsPerUnit,
+      topPx: (top - metrics.top) * metrics.pixelsPerUnit,
+      widthPx: width * metrics.pixelsPerUnit,
+      heightPx: height * metrics.pixelsPerUnit,
+    };
+  }
+
+  function applySourceFieldLayers(mapState = window.St?.mapState) {
+    const canvas = getImportedCanvas(mapState);
+    if (!canvas) return false;
+    const container = ensureWorldContainer(document.getElementById('map-inner'));
+    const metrics = getWorldMetrics(mapState) || _lastValidWorldMetrics;
+    if (!container || !metrics) return false;
+
+    const background = mapState?.background || null;
+    const foreground = mapState?.foreground || null;
+    const bgLayer = ensureSourceFieldLayer(container, WORLD_BG_LAYER_ID, 'cocofolia-world-background-layer');
+    const fgLayer = ensureSourceFieldLayer(container, WORLD_FG_LAYER_ID, 'cocofolia-world-foreground-layer');
+
+    if (bgLayer) {
+      bgLayer.style.left = '0px';
+      bgLayer.style.top = '0px';
+      bgLayer.style.width = `${metrics.logicalWidth}px`;
+      bgLayer.style.height = `${metrics.logicalHeight}px`;
+      bgLayer.style.backgroundImage = cssBackgroundImage(background?.url);
+      bgLayer.style.backgroundSize = 'cover';
+      bgLayer.style.backgroundPosition = 'center center';
+      bgLayer.style.display = background?.url && isLayerVisible('background') ? '' : 'none';
+    }
+
+    if (fgLayer) {
+      const fieldRect = getFieldRectPx(metrics);
+      if (foreground?.url && fieldRect) {
+        const fit = String(foreground.fit || 'fill').trim() || 'fill';
+        fgLayer.style.left = `${fieldRect.leftPx}px`;
+        fgLayer.style.top = `${fieldRect.topPx}px`;
+        fgLayer.style.width = `${fieldRect.widthPx}px`;
+        fgLayer.style.height = `${fieldRect.heightPx}px`;
+        fgLayer.style.backgroundImage = cssBackgroundImage(foreground.url);
+        fgLayer.style.backgroundSize = fit === 'cover' ? 'cover' : (fit === 'contain' ? 'contain' : '100% 100%');
+        fgLayer.style.backgroundPosition = 'center center';
+        fgLayer.style.display = isLayerVisible('foreground') ? '' : 'none';
+      } else {
+        fgLayer.style.display = 'none';
+        fgLayer.style.backgroundImage = '';
+      }
+    }
+
+    const legacyBg = document.getElementById('map-bg-layer');
+    const legacyFg = document.getElementById('map-fg-layer');
+    const blur = document.getElementById('map-bg-blur-layer');
+    if (legacyBg) legacyBg.style.display = 'none';
+    if (legacyFg) legacyFg.style.display = 'none';
+    if (blur) blur.style.display = 'none';
+    return true;
+  }
+
+  function clearSourceFieldLayers() {
+    document.getElementById(WORLD_BG_LAYER_ID)?.remove();
+    document.getElementById(WORLD_FG_LAYER_ID)?.remove();
+    const legacyBg = document.getElementById('map-bg-layer');
+    const legacyFg = document.getElementById('map-fg-layer');
+    if (legacyBg) legacyBg.style.display = '';
+    if (legacyFg) legacyFg.style.display = '';
   }
 
   function isSourceToken(token) {
@@ -176,5 +277,7 @@
     applyTokenSourceLayout,
     getTokenParent,
     sourcePositionFromCenterPx,
+    applySourceFieldLayers,
+    clearSourceFieldLayers,
   });
 })();
