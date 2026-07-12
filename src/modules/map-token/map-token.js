@@ -1065,8 +1065,17 @@ function refreshTokenLiveSnapshot(el, token) {
 
 function syncExistingTokenPosition(el, data) {
   if (!el || !data) return;
-  el.style.left = storedTokenPercentToDisplay(data.x, 'x') + '%';
-  el.style.top = storedTokenPercentToDisplay(data.y, 'y') + '%';
+  if (window.ITCCocofoliaRenderer?.applyTokenSourceLayout?.(el, data)) {
+    window.ITCCocofoliaRenderDiagnostics?.inspect?.(
+      el,
+      data,
+      'live-position-sync',
+      window.ITCCocofoliaRenderer?.getTokenSourceRect?.(data) || null
+    );
+  } else {
+    el.style.left = storedTokenPercentToDisplay(data.x, 'x') + '%';
+    el.style.top = storedTokenPercentToDisplay(data.y, 'y') + '%';
+  }
   if (data.rotation) el.style.transform = `translate(-50%,-50%) rotate(${data.rotation}deg)`;
   else el.style.transform = '';
 }
@@ -1563,6 +1572,12 @@ function createTokenEl(t) {
   refreshTokenLiveSnapshot(el, t);
   const tokenParent = window.ITCCocofoliaRenderer?.getTokenParent?.(t, inner) || inner;
   tokenParent.appendChild(el);
+  window.ITCCocofoliaRenderDiagnostics?.inspect?.(
+    el,
+    t,
+    'token-appended',
+    window.ITCCocofoliaRenderer?.getTokenSourceRect?.(t) || null
+  );
   requestImportedMapLayerStateApplyForToken(t);
 }
 

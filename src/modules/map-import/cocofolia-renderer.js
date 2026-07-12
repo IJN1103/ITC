@@ -99,6 +99,7 @@
     el.style.minWidth = '0';
     el.style.minHeight = '0';
     el.style.aspectRatio = '';
+    window.ITCCocofoliaRenderDiagnostics?.inspect?.(el, token, 'source-layout-applied', rect);
     return true;
   }
 
