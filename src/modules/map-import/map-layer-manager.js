@@ -695,7 +695,7 @@
         ${entry.sub ? `<span class="map-layer-sub">${entry.sub}</span>` : ''}
       </div>
       <button class="map-layer-eye ${isVisible ? '' : 'off'}" type="button">${createEyeIcon(isVisible)}</button>
-      ${isChar ? '<button class="map-layer-delete" type="button" title="토큰 삭제" aria-label="토큰 삭제">✕</button>' : ''}
+      <button class="map-layer-delete" type="button" title="토큰 삭제" aria-label="토큰 삭제">✕</button>
     `;
     // 눈 아이콘 토글
     const eye = item.querySelector('.map-layer-eye');
@@ -717,31 +717,30 @@
       }
       renderMapLayerList();
     });
-    // 삭제 버튼 (캐릭터 토큰만)
-    if (isChar) {
-      const del = item.querySelector('.map-layer-delete');
-      del?.addEventListener('click', (e) => {
-        e.preventDefault(); e.stopPropagation();
-        const t = getStateRoot().tokens?.[entry.tokenId];
-        if (!t) return;
-        if (!window.confirm(`'${t.name || entry.sub || '이 토큰'}' 토큰을 삭제할까요?`)) return;
-        if (typeof removeToken === 'function') {
-          removeToken(entry.tokenId);
-        } else {
-          delete getStateRoot().tokens[entry.tokenId];
-          document.getElementById(`tok-${entry.tokenId}`)?.remove();
-          if (window._FB?.CONFIGURED) {
-            const roomCode = getLiveRoomCode();
-            if (roomCode) {
-              const { db, ref, remove } = window._FB;
-              remove(ref(db, `rooms/${roomCode}/tokens/${entry.tokenId}`))
-                .catch((e) => console.warn('token delete failed', e));
-            }
+    // 삭제 버튼 (캐릭터 토큰 및 일반 패널 토큰)
+    const del = item.querySelector('.map-layer-delete');
+    del?.addEventListener('click', (e) => {
+      e.preventDefault(); e.stopPropagation();
+      const t = getStateRoot().tokens?.[entry.tokenId];
+      if (!t) return;
+      const tokenLabel = t.name || t.memo || entry.sub || entry.name || '이 토큰';
+      if (!window.confirm(`'${tokenLabel}' 토큰을 삭제할까요?`)) return;
+      if (typeof removeToken === 'function') {
+        removeToken(entry.tokenId);
+      } else {
+        delete getStateRoot().tokens[entry.tokenId];
+        document.getElementById(`tok-${entry.tokenId}`)?.remove();
+        if (window._FB?.CONFIGURED) {
+          const roomCode = getLiveRoomCode();
+          if (roomCode) {
+            const { db, ref, remove } = window._FB;
+            remove(ref(db, `rooms/${roomCode}/tokens/${entry.tokenId}`))
+              .catch((e) => console.warn('token delete failed', e));
           }
         }
-        renderMapLayerList();
-      });
-    }
+      }
+      renderMapLayerList();
+    });
     // 더블클릭: 설정창 열기
     item.addEventListener('dblclick', (e) => {
       e.preventDefault(); e.stopPropagation();
