@@ -122,28 +122,33 @@
         updatedAt: now,
         background,
         foreground: null,
-        objects: index === 0 && Array.isArray(firstMapState.objects) ? deepCopy(firstMapState.objects) : [],
-        layerState: index === 0 ? firstLayerState : null,
-        tokens: index === 0 ? firstTokens : {},
-        tokensEmpty: index > 0,
+        objects: Array.isArray(firstMapState.objects) ? deepCopy(firstMapState.objects) : [],
+        layerState: firstLayerState ? deepCopy(firstLayerState) : null,
+        tokens: deepCopy(firstTokens),
+        tokensEmpty: Object.keys(firstTokens).length === 0,
         importedFrom: 'cocofolia',
         importSourceName: fileName,
         importKey,
         sourceSceneId: entry.id,
         sourceSceneOrder: entry.order,
         sourceSceneName: text(raw.name),
-        cocofoliaScenePolicy: index === 0 ? 'shared-objects' : 'background-only',
+        cocofoliaScenePolicy: 'shared-objects-all-scenes',
       };
 
-      if (index === 0) {
-        if (firstMapState.importedCanvas) record.importedCanvas = deepCopy(firstMapState.importedCanvas);
-        if (Number(firstMapState.importedCanvasAspect || firstMapState.importedCanvas?.aspect || 0) > 0) {
-          record.importedCanvasAspect = Number(firstMapState.importedCanvasAspect || firstMapState.importedCanvas?.aspect);
-        }
-        if (Number(firstMapState.importedFieldWidth || 0) > 0) record.importedFieldWidth = Number(firstMapState.importedFieldWidth);
-        if (Number(firstMapState.importedFieldHeight || 0) > 0) record.importedFieldHeight = Number(firstMapState.importedFieldHeight);
-        if (firstMapState.foreground) record.foreground = deepCopy(firstMapState.foreground);
-      } else {
+      // 공통 오브젝트가 모든 장면에서 동일한 월드 좌표로 보이도록
+      // 최초 임포트의 논리 캔버스 메타데이터를 모든 장면에 보존한다.
+      if (firstMapState.importedCanvas) record.importedCanvas = deepCopy(firstMapState.importedCanvas);
+      if (Number(firstMapState.importedCanvasAspect || firstMapState.importedCanvas?.aspect || 0) > 0) {
+        record.importedCanvasAspect = Number(firstMapState.importedCanvasAspect || firstMapState.importedCanvas?.aspect);
+      }
+      if (Number(firstMapState.importedFieldWidth || 0) > 0) record.importedFieldWidth = Number(firstMapState.importedFieldWidth);
+      if (Number(firstMapState.importedFieldHeight || 0) > 0) record.importedFieldHeight = Number(firstMapState.importedFieldHeight);
+
+      // 전경은 기존 동작을 바꾸지 않기 위해 첫 장면에만 유지한다.
+      if (index === 0 && firstMapState.foreground) record.foreground = deepCopy(firstMapState.foreground);
+
+      // 공통 캔버스 메타데이터가 없는 예외 상황에서만 장면 고유 배경 크기를 보조값으로 사용한다.
+      if (!record.importedCanvas) {
         const width = Number(raw.fieldWidth || imageMeta.width || 0);
         const height = Number(raw.fieldHeight || imageMeta.height || 0);
         if (width > 0) record.importedFieldWidth = width;

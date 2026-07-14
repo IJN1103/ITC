@@ -1,6 +1,6 @@
 (function () {
-  const FALLBACK_POLICY_ID = 'first-scene-objects-rest-background';
-  const FALLBACK_POLICY_LABEL = '첫 장면에 공통 오브젝트 포함 / 나머지 장면은 배경만 생성';
+  const FALLBACK_POLICY_ID = 'shared-objects-all-scenes';
+  const FALLBACK_POLICY_LABEL = '모든 장면에 공통 오브젝트 포함';
 
   function asObject(value) {
     return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
@@ -118,8 +118,8 @@
         label: FALLBACK_POLICY_LABEL,
         confirmed: true,
         appliesOnlyWhenSceneBindingsMissing: true,
-        firstSceneIncludesSharedObjects: true,
-        laterScenesBackgroundOnly: true,
+        allScenesIncludeSharedObjects: true,
+        laterScenesBackgroundOnly: false,
         sourceBindingsTakePriority: true,
       },
       plannedSceneCards: scenes.map((scene, index) => ({
@@ -127,8 +127,8 @@
         name: scene.name,
         order: scene.order,
         backgroundUrl: scene.backgroundUrl,
-        includeSharedObjects: index === 0,
-        backgroundOnly: index > 0,
+        includeSharedObjects: true,
+        backgroundOnly: false,
       })),
     };
   }
@@ -143,7 +143,7 @@
     }).join('');
     const bindingClass = diagnostics.requiresSharedObjectFallback ? 'coco-check-warning' : 'coco-check-note';
     const bindingText = diagnostics.requiresSharedObjectFallback
-      ? '이 ZIP에는 장면별 오브젝트 소속 정보가 없습니다. 확정 정책에 따라 첫 장면에만 공통 오브젝트를 포함하고, 이후 장면은 배경만 생성합니다.'
+      ? '이 ZIP에는 장면별 오브젝트 소속 정보가 없습니다. 확정 정책에 따라 모든 장면에 공통 오브젝트를 포함합니다.'
       : diagnostics.objectBindingStatus;
     const policyText = diagnostics.requiresSharedObjectFallback
       ? `확정 연결 정책: ${safe(diagnostics.fallbackPolicy?.label || FALLBACK_POLICY_LABEL)}`
