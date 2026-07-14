@@ -1,6 +1,32 @@
 (function () {
+  const STORAGE_KEY = 'itc:cocofolia-render-diagnostics';
   const seen = new Map();
   let summaryTimer = 0;
+  let enabled = readInitialEnabled();
+
+  function readInitialEnabled() {
+    try {
+      const params = new URLSearchParams(window.location.search || '');
+      if (params.get('cocofoliaDebug') === '1') return true;
+      return window.localStorage?.getItem(STORAGE_KEY) === '1';
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function isEnabled() {
+    return enabled === true;
+  }
+
+  function setEnabled(nextEnabled) {
+    enabled = nextEnabled === true;
+    try {
+      if (enabled) window.localStorage?.setItem(STORAGE_KEY, '1');
+      else window.localStorage?.removeItem(STORAGE_KEY);
+    } catch (_) {}
+    if (!enabled) reset();
+    return enabled;
+  }
 
   function num(value) {
     const n = Number(value);
@@ -86,6 +112,7 @@
   }
 
   function scheduleSummary() {
+    if (!isEnabled()) return;
     clearTimeout(summaryTimer);
     summaryTimer = setTimeout(() => {
       const rows = Array.from(seen.values()).filter(Boolean);
@@ -115,7 +142,7 @@
   }
 
   function inspect(el, token, stage = 'after-render', plannedRect = null) {
-    if (!el || !token?.importedMapObject) return;
+    if (!isEnabled() || !el || !token?.importedMapObject) return;
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         const row = collect(el, token, stage, plannedRect);
@@ -131,5 +158,12 @@
     clearTimeout(summaryTimer);
   }
 
-  window.ITCCocofoliaRenderDiagnostics = Object.freeze({ inspect, reset });
+  window.ITCCocofoliaRenderDiagnostics = Object.freeze({
+    inspect,
+    reset,
+    isEnabled,
+    setEnabled,
+    enable: () => setEnabled(true),
+    disable: () => setEnabled(false),
+  });
 })();
