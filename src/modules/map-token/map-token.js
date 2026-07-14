@@ -1455,6 +1455,19 @@ function applyPanelTokenSize(el, token) {
   el.style.minHeight = '0';
 }
 
+function ensureCharacterTokenLayer(mapInner = document.getElementById('map-inner')) {
+  if (!mapInner) return null;
+  let layer = document.getElementById('map-character-token-layer');
+  if (!layer || layer.parentElement !== mapInner) {
+    layer?.remove();
+    layer = document.createElement('div');
+    layer.id = 'map-character-token-layer';
+    layer.className = 'map-character-token-layer';
+    mapInner.appendChild(layer);
+  }
+  return layer;
+}
+
 function createTokenEl(t) {
   const inner = document.getElementById('map-inner');
   const el = document.createElement('div');
@@ -1570,7 +1583,12 @@ function createTokenEl(t) {
   el.addEventListener('contextmenu', e => { e.preventDefault(); e.stopPropagation(); cancelPanelTokenClickAction(t.id); hideTokenMemoBubble(); showTokenCtx(e, t.id); });
   makeDraggable(el, t.id);
   refreshTokenLiveSnapshot(el, t);
-  const tokenParent = window.ITCCocofoliaRenderer?.getTokenParent?.(t, inner) || inner;
+  // 캐릭터 토큰은 맵세팅 월드와 분리된 전용 상위 레이어에 둔다.
+  // 자식 토큰의 기존 z-index(캐릭터끼리의 앞뒤 순서)는 그대로 유지하면서,
+  // 맵세팅 오브젝트 전체보다 항상 위에 표시되도록 한다.
+  const tokenParent = isPanelToken(t)
+    ? (window.ITCCocofoliaRenderer?.getTokenParent?.(t, inner) || inner)
+    : (ensureCharacterTokenLayer(inner) || inner);
   tokenParent.appendChild(el);
   window.ITCCocofoliaRenderDiagnostics?.inspect?.(
     el,
