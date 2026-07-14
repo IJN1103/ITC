@@ -189,13 +189,15 @@
       ['GIF·WebP', f.animatedImages],
       ['오디오', f.audio],
     ];
-    const lines = [
-      '<hr style="border:0;border-top:1px solid rgba(255,255,255,.15);margin:10px 0">',
-      '<b>코코포리아 기능 목록 진단</b>',
-      ...rows.map(([label, data]) => `${safe(label)}: ${Number(data?.count || 0)}개 — ${safe(statusLabel(data?.status))}`),
-      '<span style="opacity:.72">이 결과는 기능을 변경하지 않고 ZIP 데이터만 분류한 것입니다.</span>',
-    ];
-    return lines.join('<br>');
+    const detected = rows.filter(([, data]) => Number(data?.count || 0) > 0);
+    const absent = rows.filter(([, data]) => Number(data?.count || 0) <= 0);
+    const detectedHtml = detected.length
+      ? detected.map(([label, data]) => `<div class="coco-feature-row"><span>${safe(label)}</span><b>${Number(data?.count || 0)}개</b><small>${safe(statusLabel(data?.status))}</small></div>`).join('')
+      : '<div class="coco-check-note">감지된 고급 기능이 없습니다.</div>';
+    const absentHtml = absent.length
+      ? `<details class="coco-feature-absent"><summary>감지되지 않은 기능 ${absent.length}개</summary><div>${absent.map(([label]) => safe(label)).join(', ')}</div></details>`
+      : '';
+    return `<details class="coco-check-details coco-feature-details"><summary>코코포리아 기능 목록 진단${detected.length ? ` (${detected.length}종)` : ''}</summary><div>${detectedHtml}${absentHtml}<div class="coco-check-note">ZIP 데이터만 분류한 결과이며 실제 기능은 변경하지 않습니다.</div></div></details>`;
   }
 
   function logFeatureInventory(inventory, fileName) {

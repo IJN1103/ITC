@@ -443,7 +443,13 @@
   const parseCocofoliaZip = PARSER.parseCocofoliaZip;
   const buildCocofoliaDiagnostics = DIAGNOSTICS.buildCocofoliaDiagnostics;
   const logCocofoliaDiagnostics = DIAGNOSTICS.logCocofoliaDiagnostics;
-  const buildValidationSummary = (file, parsed) => DIAGNOSTICS.buildValidationSummary(file, parsed, escapeHtml, buildApplyActions());
+  const buildValidationSummary = (file, parsed, diagnostics) => DIAGNOSTICS.buildValidationSummary(
+    file,
+    parsed,
+    escapeHtml,
+    buildApplyActions(),
+    DIAGNOSTICS.buildDiagnosticsStatus?.(diagnostics) || ''
+  );
   const buildDiagnosticsSummary = (diagnostics) => DIAGNOSTICS.buildDiagnosticsSummary(diagnostics, escapeHtml);
 
   const buildImportedPanelToken = TRANSFORM.buildImportedPanelToken;
@@ -561,7 +567,7 @@
         IMPORT_STATE.lastDiagnostics = diagnostics;
         IMPORT_STATE.pendingFile = file;
         logCocofoliaDiagnostics(diagnostics, file.name);
-        setSummary(buildValidationSummary(file, parsed) + buildDiagnosticsSummary(diagnostics));
+        setSummary(buildValidationSummary(file, parsed, diagnostics) + buildDiagnosticsSummary(diagnostics));
         if (typeof showToast === 'function') showToast('맵세팅 ZIP 검사 완료');
       } else {
         throw new Error('ZIP 또는 이미지 파일(PNG/JPG)만 업로드할 수 있어요.');

@@ -113,7 +113,7 @@
     featureApi()?.logFeatureInventory(diagnostics.featureInventory, fileName);
   }
 
-  function buildValidationSummary(file, parsed, escapeHtml, actionHtml) {
+  function buildValidationSummary(file, parsed, escapeHtml, actionHtml, statusHtml) {
     const safe = typeof escapeHtml === 'function' ? escapeHtml : (value) => String(value || '');
     const room = parsed?.entities?.room || {};
     const items = parsed?.entities?.items || {};
@@ -155,15 +155,22 @@
     return headline
       + warnings.join('')
       + String(actionHtml || '')
+      + String(statusHtml || '')
       + `<details class="coco-check-details"><summary>기본 맵 정보</summary><div>${details.join('<br>')}</div></details>`;
+  }
+
+  function buildDiagnosticsStatus(diagnostics) {
+    if (!diagnostics) return '';
+    const hasProblems = diagnostics.missingReferenceCount > 0 || diagnostics.unsupportedObjectCount > 0;
+    const statusText = hasProblems ? '추가 확인 필요' : '모든 기본 파일 연결 정상';
+    const statusClass = hasProblems ? 'is-warning' : 'is-ok';
+    return `<div class="coco-check-status ${statusClass}">${statusText}</div>`;
   }
 
   function buildDiagnosticsSummary(diagnostics, escapeHtml) {
     if (!diagnostics) return '';
     const safe = typeof escapeHtml === 'function' ? escapeHtml : (value) => String(value || '');
     const hasProblems = diagnostics.missingReferenceCount > 0 || diagnostics.unsupportedObjectCount > 0;
-    const statusText = hasProblems ? '추가 확인 필요' : '모든 기본 파일 연결 정상';
-    const statusClass = hasProblems ? 'is-warning' : 'is-ok';
     const problemLines = [];
     if (diagnostics.missingReferenceCount > 0) {
       const names = diagnostics.missing.slice(0, 4).map((item) => safe(item.raw)).join(', ');
@@ -182,8 +189,7 @@
       `<span class="coco-check-note">세부 개발 정보는 콘솔의 ‘ITC 맵세팅 진단’에서 확인할 수 있습니다.</span>`,
     ];
     const featureSummary = featureApi()?.buildFeatureSummary(diagnostics.featureInventory, safe) || '';
-    return `<div class="coco-check-status ${statusClass}">${statusText}</div>`
-      + `<details class="coco-check-details"${hasProblems ? ' open' : ''}><summary>상세 호환 진단</summary><div>${diagnosticDetails.join('<br>')}</div></details>`
+    return `<details class="coco-check-details"${hasProblems ? ' open' : ''}><summary>상세 호환 진단</summary><div>${diagnosticDetails.join('<br>')}</div></details>`
       + featureSummary;
   }
 
@@ -191,6 +197,7 @@
     buildCocofoliaDiagnostics,
     logCocofoliaDiagnostics,
     buildValidationSummary,
+    buildDiagnosticsStatus,
     buildDiagnosticsSummary,
   });
 })();
