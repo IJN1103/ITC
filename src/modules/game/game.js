@@ -429,21 +429,169 @@ function watchPopoutChatChannel(channelKey = 'global') {
     try { existing.unsub(); } catch (e) {}
   }
 
-  const { db, ref, onValue, query, limitToLast, orderByChild, equalTo } = window._FB;
-  if (!db || !ref || typeof onValue !== 'function') return Promise.resolve([]);
+  const {
+    db, ref, get, onValue, onChildAdded, onChildChanged, onChildRemoved,
+    query, limitToLast, orderByChild, equalTo
+  } = window._FB;
+  if (!db || !ref) return Promise.resolve([]);
+
   const chatBaseRef = ref(db, `rooms/${activeRoomCode}/chat`);
-  const listenLimit = safeKey === 'global' ? (window.ITC_CONFIG?.CHAT.GLOBAL_LISTEN_LIMIT ?? 900) : (window.ITC_CONFIG?.CHAT.DM_LISTEN_LIMIT ?? 450);
-  const listenRef = (safeKey !== 'global' && query && orderByChild && equalTo && limitToLast)
-    ? query(chatBaseRef, orderByChild('dmChannelKey'), equalTo(safeKey), limitToLast(listenLimit))
-    : ((query && limitToLast) ? query(chatBaseRef, limitToLast(listenLimit)) : chatBaseRef);
+  const listenLimit = safeKey === 'global'
+    ? (window.ITC_CONFIG?.CHAT.GLOBAL_DISPLAY_LIMIT ?? 120)
+    : (window.ITC_CONFIG?.CHAT.DM_LISTEN_LIMIT ?? 450);
 
   let resolveReady;
   const ready = new Promise((resolve) => { resolveReady = resolve; });
-  const watcher = { roomCode: activeRoomCode, unsub: null, ready, visibleKeys: new Set() };
+  const watcher = {
+    roomCode: activeRoomCode,
+    unsub: null,
+    ready,
+    visibleKeys: new Set(),
+    generation: Date.now(),
+  };
   _popoutChatChannelWatchers.set(safeKey, watcher);
 
+  const isCurrentWatcher = () => (
+    String(St.roomCode || '').trim() === activeRoomCode
+    && _popoutChatChannelWatchers.get(safeKey) === watcher
+  );
+
+  const finishReady = () => {
+    if (!resolveReady) return;
+    const done = resolveReady;
+    resolveReady = null;
+    done(window.getChatRecordsForChannel ? window.getChatRecordsForChannel(safeKey) : []);
+  };
+
+  // 일반 채팅은 OPT-1B에서 dmChannelKey가 "global"인 신형 메시지와
+  // 필드가 없는 구형 메시지를 두 개의 제한 쿼리로 수신한다.
+  // 팝아웃도 동일한 기준을 사용해야 최초 실행 시 과거 raw 스냅샷이
+  // 메인창의 최신 120개 캐시를 덮어쓰지 않는다.
+  if (
+    safeKey === 'global'
+    && typeof get === 'function'
+    && typeof query === 'function'
+    && typeof orderByChild === 'function'
+    && typeof equalTo === 'function'
+    && typeof limitToLast === 'function'
+    && typeof onChildAdded === 'function'
+    && typeof onChildChanged === 'function'
+    && typeof onChildRemoved === 'function'
+  ) {
+    const globalRefs = [
+      query(chatBaseRef, orderByChild('dmChannelKey'), equalTo('global'), limitToLast(listenLimit)),
+      query(chatBaseRef, orderByChild('dmChannelKey'), equalTo(null), limitToLast(listenLimit)),
+    ];
+    const sourceKeys = globalRefs.map(() => new Set());
+    const unsubs = [];
+
+    const normalizeSnapshotRecords = (snap) => {
+      const raw = snap?.val?.() || {};
+      return Object.entries(raw)
+        .map(([k, m]) => ({ ...(m || {}), _key: k }))
+        .filter((m) => shouldShowChatMessageForChannel('global', m));
+    };
+
+    const rebuildVisibleCache = (records = null) => {
+      if (!isCurrentWatcher()) return [];
+      let next = Array.isArray(records)
+        ? records
+        : (window.getChatRecordsForChannel ? window.getChatRecordsForChannel('global') : []);
+      next = sortChatRecordsChronologically(next)
+        .filter((record) => shouldShowChatMessageForChannel('global', record))
+        .slice(-listenLimit);
+      watcher.visibleKeys = new Set(next.map((m) => String(m?._key || '').trim()).filter(Boolean));
+      cacheChannelMessages('global', next, { merge: false, seed: false });
+      notifyPopoutChatChannelCacheChanged('global', next.length);
+      return next;
+    };
+
+    const mergeInitialSnapshots = async () => {
+      try {
+        const snapshots = await Promise.all(globalRefs.map((listenRef) => get(listenRef)));
+        if (!isCurrentWatcher()) return [];
+        const merged = new Map();
+        snapshots.forEach((snap, index) => {
+          normalizeSnapshotRecords(snap).forEach((message) => {
+            const key = String(message?._key || '').trim();
+            if (!key) return;
+            sourceKeys[index].add(key);
+            merged.set(key, message);
+          });
+        });
+        const initial = sortChatRecordsChronologically(Array.from(merged.values())).slice(-listenLimit);
+        rebuildVisibleCache(initial);
+        logItcChatDebug('popout-global-initial-ready', {
+          channelKey: 'global',
+          visibleCount: initial.length,
+          newestKey: initial[initial.length - 1]?._key || '',
+        });
+        return initial;
+      } catch (err) {
+        console.warn('[popout] global initial chat load failed', err);
+        return rebuildVisibleCache();
+      } finally {
+        finishReady();
+      }
+    };
+
+    const applyRecord = (snap, sourceIndex, mode) => {
+      if (!isCurrentWatcher()) return;
+      const key = String(snap?.key || '').trim();
+      if (!key) return;
+      const message = { ...(snap.val() || {}), _key: key };
+      if (!shouldShowChatMessageForChannel('global', message)) return;
+      sourceKeys[sourceIndex].add(key);
+      cacheChannelMessages('global', [message], { merge: true, seed: false });
+      const current = window.getChatRecordsForChannel ? window.getChatRecordsForChannel('global') : [];
+      rebuildVisibleCache(current);
+      logItcChatDebug(`popout-global-child-${mode}`, {
+        channelKey: 'global',
+        messageKey: key,
+      }, { throttleMs: 250 });
+    };
+
+    const removeRecord = (snap, sourceIndex) => {
+      if (!isCurrentWatcher()) return;
+      const key = String(snap?.key || '').trim();
+      if (!key) return;
+      sourceKeys[sourceIndex].delete(key);
+      const stillVisible = sourceKeys.some((set) => set.has(key));
+      if (!stillVisible) removeCachedChannelMessage('global', key);
+      rebuildVisibleCache();
+      logItcChatDebug('popout-global-child-removed', {
+        channelKey: 'global',
+        messageKey: key,
+        stillVisible,
+      }, { throttleMs: 250 });
+    };
+
+    globalRefs.forEach((listenRef, sourceIndex) => {
+      unsubs.push(onChildAdded(listenRef, (snap) => applyRecord(snap, sourceIndex, 'added')));
+      unsubs.push(onChildChanged(listenRef, (snap) => applyRecord(snap, sourceIndex, 'changed')));
+      unsubs.push(onChildRemoved(listenRef, (snap) => removeRecord(snap, sourceIndex)));
+    });
+
+    watcher.unsub = () => {
+      unsubs.forEach((unsub) => { try { if (typeof unsub === 'function') unsub(); } catch (e) {} });
+    };
+    mergeInitialSnapshots();
+    return ready;
+  }
+
+  // DM은 OPT-1C 전까지 기존 구독 방식을 유지한다.
+  if (typeof onValue !== 'function') {
+    finishReady();
+    return ready;
+  }
+  const listenRef = (
+    safeKey !== 'global' && query && orderByChild && equalTo && limitToLast
+  )
+    ? query(chatBaseRef, orderByChild('dmChannelKey'), equalTo(safeKey), limitToLast(listenLimit))
+    : ((query && limitToLast) ? query(chatBaseRef, limitToLast(listenLimit)) : chatBaseRef);
+
   watcher.unsub = onValue(listenRef, (snap) => {
-    if (String(St.roomCode || '').trim() !== activeRoomCode) return;
+    if (!isCurrentWatcher()) return;
     const raw = snap.val() || {};
     const filtered = Object.entries(raw)
       .map(([k, m]) => ({ ...(m || {}), _key: k }))
@@ -459,13 +607,9 @@ function watchPopoutChatChannel(channelKey = 'global') {
       if (!nextKeys.has(key)) removeCachedChannelMessage(safeKey, key);
     });
     watcher.visibleKeys = nextKeys;
-    cacheChannelMessages(safeKey, filtered, { merge: true, seed: false });
+    cacheChannelMessages(safeKey, filtered, { merge: false, seed: false });
     notifyPopoutChatChannelCacheChanged(safeKey, filtered.length);
-    if (resolveReady) {
-      const done = resolveReady;
-      resolveReady = null;
-      done(window.getChatRecordsForChannel ? window.getChatRecordsForChannel(safeKey) : []);
-    }
+    finishReady();
     logItcChatDebug('popout-channel-watch-snapshot', {
       channelKey: safeKey,
       rawCount: Object.keys(raw || {}).length,
@@ -473,11 +617,7 @@ function watchPopoutChatChannel(channelKey = 'global') {
     }, { throttleMs: 1000 });
   }, (err) => {
     console.warn('[popout] chat channel watch failed', safeKey, err);
-    if (resolveReady) {
-      const done = resolveReady;
-      resolveReady = null;
-      done(window.getChatRecordsForChannel ? window.getChatRecordsForChannel(safeKey) : []);
-    }
+    finishReady();
   });
 
   return ready;
