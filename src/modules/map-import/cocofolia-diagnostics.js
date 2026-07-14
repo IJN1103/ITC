@@ -5,6 +5,10 @@
     return api;
   }
 
+  function featureApi() {
+    return window.ITCCocofoliaFeatureDiagnostics || null;
+  }
+
   function buildCocofoliaDiagnostics(zip, parsed) {
     const { normalizeCocofoliaZipPath, collectCocofoliaReferencedImages, isLikelyImageZipEntry } = parserApi();
     const room = parsed?.entities?.room || {};
@@ -57,6 +61,8 @@
       typeCounts[type] = (typeCounts[type] || 0) + 1;
     });
 
+    const featureInventory = featureApi()?.buildFeatureInventory(zip, parsed) || null;
+
     return {
       zipFileCount: zipFiles.length,
       zipImageCount: zipFiles.filter((entry) => isLikelyImageZipEntry(entry.name)).length,
@@ -71,6 +77,7 @@
       fieldWidth,
       fieldHeight,
       typeCounts,
+      featureInventory,
       matched,
       missing,
       unsupportedItems: unsupportedItems.map((item) => ({ id: item.id, type: item.type, imageUrl: item.imageUrl || '' })),
@@ -103,6 +110,7 @@
     if (diagnostics.negativeZItems.length) console.table(diagnostics.negativeZItems);
     if (diagnostics.outOfFieldItems.length) console.table(diagnostics.outOfFieldItems);
     console.groupEnd();
+    featureApi()?.logFeatureInventory(diagnostics.featureInventory, fileName);
   }
 
   function buildValidationSummary(file, parsed, escapeHtml, actionHtml) {
@@ -157,7 +165,8 @@
       lines.push(`<span style="color:#e6c58a">현재 미지원 타입: ${safe(types)}</span>`);
     }
     lines.push(`<span style="opacity:.72">상세 내용은 개발자 콘솔의 ‘ITC 맵세팅 진단’에서 확인할 수 있습니다.</span>`);
-    return lines.join('<br>');
+    const featureSummary = featureApi()?.buildFeatureSummary(diagnostics.featureInventory, safe) || '';
+    return lines.join('<br>') + featureSummary;
   }
 
   window.ITCCocofoliaDiagnostics = Object.freeze({
