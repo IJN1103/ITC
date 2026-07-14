@@ -158,7 +158,7 @@
       + `<div class="coco-check-note">${extensionText}</div>`
       + `<div class="${bindingClass}">${safe(bindingText)}</div>`
       + `<div class="coco-check-note"><b>${policyText}</b></div>`
-      + `<div class="coco-check-note">※ 이번 단계에서는 장면 카드를 실제 생성하지 않습니다.</div>`
+      + `<div class="coco-check-note">※ 맵 이미지 적용 시 확정 정책에 따라 기존 장면 전환 설정창에 장면 카드를 생성합니다.</div>`
       + `<div class="coco-check-note">${safe(diagnostics.cutinBindingStatus)}</div>`
       + `</div></details>`;
   }

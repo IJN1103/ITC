@@ -132,6 +132,8 @@
     if (raw && Object.prototype.hasOwnProperty.call(raw, 'tokens') && raw.tokens !== undefined) {
       out.tokens = (raw.tokens && typeof raw.tokens === 'object') ? raw.tokens : {};
     }
+    // 배경은 있지만 토큰은 비어 있어야 하는 장면을 Firebase에서도 명시적으로 보존한다.
+    if (raw && raw.tokensEmpty === true) out.tokensEmpty = true;
     // isEmpty 플래그: Firebase는 빈 객체를 저장하지 않으므로 "의도된 빈 상태"를 명시적으로 기록한다.
     if (raw && raw.isEmpty === true) out.isEmpty = true;
     return out;
@@ -393,7 +395,7 @@
     if (scene.tokens !== undefined) {
       return (scene.tokens && typeof scene.tokens === 'object') ? deepCopy(scene.tokens) : {};
     }
-    if (scene.isEmpty === true) return {};
+    if (scene.tokensEmpty === true || scene.isEmpty === true) return {};
     return undefined;
   }
 
@@ -896,6 +898,7 @@
       objects: Array.isArray(ms.objects) ? deepCopy(ms.objects) : [],
       layerState: isStillEmpty ? null : (snapshot.layerState ? deepCopy(snapshot.layerState) : null),
       tokens: tokens,
+      tokensEmpty: Object.keys(tokens).length === 0,
     };
     if (isStillEmpty) rawNext.isEmpty = true;
     return normalizeScene(rawNext, targetId);

@@ -6,6 +6,8 @@
     lastDiagnostics: null,
   };
 
+  const SCENE_IMPORT = window.ITCCocofoliaSceneImport || null;
+
   function canManageMapImport() {
     if (typeof hasPerm === 'function') return !!hasPerm('manageMap');
     return !!window.St?.isGM;
@@ -672,6 +674,13 @@
       const uploadedUrl = await uploadMapLayerBlob(blob, roomCode, `map-bg-${Date.now()}.${ext}`);
       if (!uploadedUrl) throw new Error('맵 이미지 업로드에 실패했어요.');
 
+      // PHASE D-2: 장면 배경 업로드 결과를 파일명 기준으로 재사용한다.
+      // 현재 방 배경과 같은 파일은 다시 업로드하지 않는다.
+      const sceneBackgroundByName = new Map();
+      const sceneBackgroundMetaByName = new Map();
+      sceneBackgroundByName.set(mapImageName, uploadedUrl);
+      if (backgroundSize) sceneBackgroundMetaByName.set(mapImageName, backgroundSize);
+
       const dominantSize = backgroundSize || null;
       const sceneAspect = dominantSize?.width && dominantSize?.height
         ? (dominantSize.width / dominantSize.height)
@@ -761,6 +770,47 @@
         importedPanelTokens.push(result.panelToken);
         importedObjects.push(result.importedObject);
       });
+
+      // ── 코코포리아 장면 배경 업로드 ──
+      // 장면 카드는 기존 장면 시스템을 그대로 사용하며, 장면 배경만 추가 업로드한다.
+      // 장면별 오브젝트 연결 정보가 없는 ZIP은 첫 장면만 공통 오브젝트를 포함한다.
+      const rawScenes = validated.parsed?.entities?.scenes || {};
+      const sortedSourceScenes = SCENE_IMPORT?.sortSourceScenes
+        ? SCENE_IMPORT.sortSourceScenes(rawScenes)
+        : [];
+      const uniqueSceneBackgroundNames = Array.from(new Set(sortedSourceScenes
+        .map((entry) => String(entry?.raw?.backgroundUrl || '').trim())
+        .filter(Boolean)))
+        .filter((imageName) => !sceneBackgroundByName.has(imageName));
+
+      if (uniqueSceneBackgroundNames.length > 0) {
+        setHint(`장면 배경 ${uniqueSceneBackgroundNames.length}개를 업로드하는 중이에요…`);
+        const sceneBackgroundResults = await runWithConcurrency(
+          uniqueSceneBackgroundNames,
+          3,
+          async (imageName, index) => {
+            const entry = zip.file(imageName);
+            if (!entry) return { imageName, url: '', size: null };
+            const sceneBlob = await entry.async('blob');
+            const sceneSize = await getImageSizeFromBlob(sceneBlob);
+            const rawExt = String(imageName.split('.').pop() || 'png').toLowerCase();
+            const url = await uploadMapLayerBlob(
+              sceneBlob,
+              roomCode,
+              `scene-bg-${index + 1}-${Date.now()}.${rawExt}`
+            ) || '';
+            return { imageName, url, size: sceneSize };
+          },
+          (completed, total) => {
+            setHint(`장면 배경을 업로드하는 중이에요… (${completed}/${total})`);
+          }
+        );
+        sceneBackgroundResults.forEach((result) => {
+          if (!result?.imageName || !result.url) return;
+          sceneBackgroundByName.set(result.imageName, result.url);
+          if (result.size) sceneBackgroundMetaByName.set(result.imageName, result.size);
+        });
+      }
 
       await clearPreviousImportedPanelTokens(roomCode, window.St?.mapState?.objects || []);
       await saveImportedPanelTokens(roomCode, importedPanelTokens);
@@ -900,6 +950,33 @@
         applyImportedMapState(nextMapState);
         if (typeof refreshMapLayerManager === 'function') refreshMapLayerManager();
       }
+
+      // ── PHASE D-2: 코코포리아 장면을 기존 장면 카드 데이터로 저장 ──
+      // 기존 mapScenes 경로를 그대로 사용하므로 Firebase Rules 추가 작업은 필요 없다.
+      let importedSceneCount = 0;
+      if (SCENE_IMPORT?.buildSceneRecords && SCENE_IMPORT?.persistSceneRecords) {
+        const sceneBuild = SCENE_IMPORT.buildSceneRecords({
+          rawScenes: validated.parsed?.entities?.scenes || {},
+          fileName: validated.fileName || pendingFile.name || 'cocofolia.zip',
+          backgroundByName: sceneBackgroundByName,
+          backgroundMetaByName: sceneBackgroundMetaByName,
+          firstMapState: nextMapState,
+          firstLayerState: nextLayerState,
+          firstTokens: importedPanelTokens,
+          now: Date.now(),
+        });
+        if (sceneBuild.records.length > 0) {
+          setHint(`장면 카드 ${sceneBuild.records.length}개를 저장하는 중이에요…`);
+          const sceneSaveResult = await SCENE_IMPORT.persistSceneRecords({
+            roomCode,
+            importKey: sceneBuild.importKey,
+            records: sceneBuild.records,
+            firstSceneId: sceneBuild.firstSceneId,
+          });
+          importedSceneCount = Number(sceneSaveResult?.saved || 0);
+        }
+      }
+
       if (validated.diagnostics) {
         const uploadDiagnostics = {
           ...validated.diagnostics,
@@ -918,7 +995,8 @@
       }
       const cutinCount = Object.keys(validated.parsed?.entities?.effects || {}).filter(k => validated.parsed?.entities?.effects[k]?.imageUrl).length;
       const cutinNote = cutinCount > 0 ? ` / 컷인 ${cutinCount}개 임포트` : '';
-      if (typeof showToast === 'function') showToast(`맵 이미지 + 스크린 패널${cutinNote} 적용 완료`);
+      const sceneNote = importedSceneCount > 0 ? ` / 장면 ${importedSceneCount}개 생성` : '';
+      if (typeof showToast === 'function') showToast(`맵 이미지 + 스크린 패널${cutinNote}${sceneNote} 적용 완료`);
       if (typeof window.hideMapImportPanel === 'function') window.hideMapImportPanel();
     } catch (err) {
       console.error('map background apply failed', err);
