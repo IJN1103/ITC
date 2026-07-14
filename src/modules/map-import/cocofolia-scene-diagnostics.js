@@ -1,4 +1,7 @@
 (function () {
+  const FALLBACK_POLICY_ID = 'first-scene-objects-rest-background';
+  const FALLBACK_POLICY_LABEL = '첫 장면에 공통 오브젝트 포함 / 나머지 장면은 배경만 생성';
+
   function asObject(value) {
     return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
   }
@@ -110,6 +113,23 @@
       canBindPerSceneObjects: linkedItems.length > 0 || snapshots.length > 0 || savedatas.length > 0,
       canBindPerSceneCutins: linkedEffects.length > 0,
       requiresSharedObjectFallback: scenes.length > 0 && linkedItems.length === 0 && snapshots.length === 0 && savedatas.length === 0,
+      fallbackPolicy: {
+        id: FALLBACK_POLICY_ID,
+        label: FALLBACK_POLICY_LABEL,
+        confirmed: true,
+        appliesOnlyWhenSceneBindingsMissing: true,
+        firstSceneIncludesSharedObjects: true,
+        laterScenesBackgroundOnly: true,
+        sourceBindingsTakePriority: true,
+      },
+      plannedSceneCards: scenes.map((scene, index) => ({
+        sceneId: scene.id,
+        name: scene.name,
+        order: scene.order,
+        backgroundUrl: scene.backgroundUrl,
+        includeSharedObjects: index === 0,
+        backgroundOnly: index > 0,
+      })),
     };
   }
 
@@ -123,8 +143,11 @@
     }).join('');
     const bindingClass = diagnostics.requiresSharedObjectFallback ? 'coco-check-warning' : 'coco-check-note';
     const bindingText = diagnostics.requiresSharedObjectFallback
-      ? '이 ZIP에는 장면별 오브젝트 소속 정보가 없습니다. 장면 카드는 만들 수 있지만, 38개 오브젝트를 각 장면에 자동 분배할 근거는 없습니다.'
+      ? '이 ZIP에는 장면별 오브젝트 소속 정보가 없습니다. 확정 정책에 따라 첫 장면에만 공통 오브젝트를 포함하고, 이후 장면은 배경만 생성합니다.'
       : diagnostics.objectBindingStatus;
+    const policyText = diagnostics.requiresSharedObjectFallback
+      ? `확정 연결 정책: ${safe(diagnostics.fallbackPolicy?.label || FALLBACK_POLICY_LABEL)}`
+      : '원본 장면별 연결 정보가 감지되면 해당 정보를 우선 사용합니다.';
     const extensionText = diagnostics.extensionNeeds.length
       ? `추가 연결 검토: ${diagnostics.extensionNeeds.map(safe).join(', ')}`
       : '추가 연결이 필요한 장면 속성 없음';
@@ -134,6 +157,8 @@
       + `<div class="coco-check-note">기존 장면 카드에 직접 연결 가능: ${diagnostics.directMappingFields.map(safe).join(', ')}</div>`
       + `<div class="coco-check-note">${extensionText}</div>`
       + `<div class="${bindingClass}">${safe(bindingText)}</div>`
+      + `<div class="coco-check-note"><b>${policyText}</b></div>`
+      + `<div class="coco-check-note">※ 이번 단계에서는 장면 카드를 실제 생성하지 않습니다.</div>`
       + `<div class="coco-check-note">${safe(diagnostics.cutinBindingStatus)}</div>`
       + `</div></details>`;
   }
@@ -154,6 +179,7 @@
       snapshotCount: diagnostics.snapshotCount,
       savedataCount: diagnostics.savedataCount,
       requiresSharedObjectFallback: diagnostics.requiresSharedObjectFallback,
+      fallbackPolicy: diagnostics.fallbackPolicy,
     });
     console.table(diagnostics.scenes.map((scene) => ({
       id: scene.id,
@@ -175,7 +201,9 @@
     console.info('오브젝트 연결', diagnostics.objectBindingStatus);
     console.info('컷인 연결', diagnostics.cutinBindingStatus);
     if (diagnostics.requiresSharedObjectFallback) {
-      console.warn('장면별 오브젝트 소속 데이터가 없어 자동 장면 분배는 안전하게 수행할 수 없습니다.');
+      console.info('확정 fallback 정책', diagnostics.fallbackPolicy);
+      console.table(diagnostics.plannedSceneCards);
+      console.warn('장면별 소속 정보가 없으므로 첫 장면에만 공통 오브젝트를 포함하고, 이후 장면은 배경만 생성하는 정책을 사용합니다.');
     }
     console.groupEnd();
   }
