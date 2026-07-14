@@ -800,6 +800,29 @@ function popoutChat() {
       const syncChannelKey = requestPopoutChannelSync(channelKey);
       const list = getPopoutChatListForChannel(syncChannelKey);
       if (targetWin.setMessages) targetWin.setMessages('chat', list);
+
+      // 새로고침 직후 첫 팝아웃은 채널 watcher의 최초 Firebase 스냅샷보다
+      // 먼저 열릴 수 있다. 이 경우 즉시 전달한 캐시가 오래된 상태일 수 있으므로,
+      // watcher 준비 완료 뒤 같은 팝아웃/같은 채널인지 재검증하고 최신 목록을 한 번 더 전달한다.
+      try {
+        const ready = typeof window.watchPopoutChatChannel === 'function'
+          ? window.watchPopoutChatChannel(syncChannelKey)
+          : null;
+        if (ready && typeof ready.then === 'function') {
+          Promise.resolve(ready).then(() => {
+            if (!targetWin || targetWin.closed || !targetWin._popReady) return;
+            let currentKey = 'global';
+            try {
+              currentKey = typeof targetWin.getCurrentDmChannelKey === 'function'
+                ? normalizePopoutChatChannelKey(targetWin.getCurrentDmChannelKey())
+                : 'global';
+            } catch (e) {}
+            if (currentKey !== normalizePopoutChatChannelKey(syncChannelKey)) return;
+            const latestList = getPopoutChatListForChannel(syncChannelKey);
+            if (targetWin.setMessages) targetWin.setMessages('chat', latestList);
+          }).catch(() => {});
+        }
+      } catch (e) {}
     } catch (e) {}
     try {
       if (targetWin.setMessages) {
