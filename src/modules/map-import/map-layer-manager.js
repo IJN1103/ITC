@@ -791,9 +791,12 @@
     const entryMap   = new Map(mapEntries.map(e => [e.id, e]));
 
     // ── 캐릭터 토큰 엔트리 ──
-    const { character: charEntriesRaw } = getTokenSectionEntries();
-    // panelPriority 오름차순 정렬
-    const charEntries = charEntriesRaw
+    const { panel: panelEntriesRaw, character: charEntriesRaw } = getTokenSectionEntries();
+    // 새로 만든 일반 패널 토큰과 캐릭터 토큰을 하나의 통합 순서로 취급한다.
+    const charEntries = [
+      ...panelEntriesRaw.map(e => ({ ...e, _isCharacter: false })),
+      ...charEntriesRaw.map(e => ({ ...e, _isCharacter: true })),
+    ]
       .map(e => {
         const t = tokens[e.tokenId];
         return { ...e, _z: Number(t?.panelPriority || 1000) };
@@ -853,8 +856,9 @@
         if (!entry) return;
         mapList.appendChild(buildLayerItemEl(entry, normalized));
       } else {
-        const el = buildTokenLayerItemEl(item.entry, true);
-        el.classList.add('map-layer-item--char');
+        const isCharacter = item.entry._isCharacter !== false;
+        const el = buildTokenLayerItemEl(item.entry, isCharacter);
+        el.classList.add(isCharacter ? 'map-layer-item--char' : 'map-layer-item--panel');
         mapList.appendChild(el);
       }
     });
@@ -1108,7 +1112,9 @@
     const order = Array.isArray(layerState.order) ? layerState.order.slice() : [];
 
     const charItems = Object.values(tokens)
-      .filter(t => t && t.id && !_isLayerManagerPanelToken(t) && !t.importedMapObject)
+      // mapState.objects와 연결된 코코포리아 패널은 기존 맵 레이어 엔트리가 관리한다.
+      // 그 외 사용자가 만든 일반 패널/캐릭터 토큰은 모두 통합 레이어 순서에 포함한다.
+      .filter(t => t && t.id && !t.importedMapObject)
       .map(t => ({ kind: 'char', tokenId: t.id, z: Number(t.panelPriority || 1000) }))
       .sort((a, b) => a.z - b.z);
 

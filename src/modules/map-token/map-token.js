@@ -922,6 +922,9 @@ function createCharacterToken(name, type, options = {}) {
     createdBy: St.myId || '',
     createdByName: St.myName || '',
     visibility: 'public',
+    // 일반 캐릭터 토큰은 맵세팅 레이어보다 위에서 시작하되,
+    // 레이어 설정창에서 이후 순서를 자유롭게 변경할 수 있다.
+    panelPriority: 1000,
   };
   if (window._FB?.CONFIGURED) {
     const { db, ref, set } = window._FB;
@@ -969,7 +972,9 @@ function addPanelToken() {
     panelBackImage: '',
     panelWidth: 240,
     panelHeight: 135,
-    panelPriority: 1,
+    // 새 일반 패널 토큰도 맵세팅 뒤에 가려지지 않도록 상위 대역에서 시작한다.
+    // 이후 레이어 설정창의 드래그 순서가 이 값을 갱신한다.
+    panelPriority: 1000,
     panelLockPosition: false,
     panelLockSize: false,
     panelActionType: 'none',
@@ -1006,6 +1011,10 @@ function renderAllTokens(tokens) {
   applyMapTransform();
   if (Object.values(tokens || {}).some(isImportedMapSettingToken)) requestImportedMapLayerStateApply();
   if (typeof refreshQuickStandingMenuIfOpen === 'function') refreshQuickStandingMenuIfOpen();
+  const layerModal = document.getElementById('modal-map-layers');
+  if (layerModal?.classList.contains('open') && typeof window.refreshMapLayerManager === 'function') {
+    window.refreshMapLayerManager();
+  }
 }
 
 /* ── Firebase onChild* 용 개별 토큰 업데이트 ── */
@@ -1479,14 +1488,11 @@ function createTokenEl(t) {
     el.style.zIndex = String(Number.isFinite(priority) ? Math.max(1, priority) : 1);
     if (t.importedMapObjectHidden) el.style.display = 'none';
   } else {
-    // 캐릭터 토큰: 맵세팅 레이어(최대 수백)보다 항상 위에 있어야 하므로 1000 이상 보장
-    // panelPriority가 명시적으로 1000+ 대역으로 저장된 경우 그 값을 존중하고,
-    // 없거나 1000 미만(과거 저장값)이면 CSS 기본값(z-index:1000)을 사용한다.
-    const savedPriority = Number(t.panelPriority || 0);
-    if (Number.isFinite(savedPriority) && savedPriority >= 1000) {
-      el.style.zIndex = String(savedPriority);
-    }
-    // 1000 미만이면 CSS z-index:1000을 그대로 사용 (el.style.zIndex 미설정)
+    // 캐릭터 토큰도 일반 패널 토큰과 동일한 월드 스태킹 컨텍스트를 사용한다.
+    // 기본값은 1000으로 맵세팅보다 위에 표시하고, 레이어 설정창에서 낮은 순서로
+    // 옮겼다면 저장된 panelPriority를 그대로 적용한다.
+    const savedPriority = Number(t.panelPriority || 1000);
+    el.style.zIndex = String(Number.isFinite(savedPriority) ? Math.max(1, savedPriority) : 1000);
   }
   const sourceLayoutApplied = window.ITCCocofoliaRenderer?.applyTokenSourceLayout?.(el, t) === true;
   if (!sourceLayoutApplied) {
@@ -1583,12 +1589,12 @@ function createTokenEl(t) {
   el.addEventListener('contextmenu', e => { e.preventDefault(); e.stopPropagation(); cancelPanelTokenClickAction(t.id); hideTokenMemoBubble(); showTokenCtx(e, t.id); });
   makeDraggable(el, t.id);
   refreshTokenLiveSnapshot(el, t);
-  // 캐릭터 토큰은 맵세팅 월드와 분리된 전용 상위 레이어에 둔다.
-  // 자식 토큰의 기존 z-index(캐릭터끼리의 앞뒤 순서)는 그대로 유지하면서,
-  // 맵세팅 오브젝트 전체보다 항상 위에 표시되도록 한다.
-  const tokenParent = isPanelToken(t)
+  // 코코포리아에서 가져온 맵세팅 패널만 원본 월드 컨테이너를 사용한다.
+  // 사용자가 새로 만든 캐릭터/패널 토큰은 map-inner의 같은 스태킹 컨텍스트에 두어
+  // 맵세팅 레이어 설정창의 통합 순서를 실제 화면 z-index와 일치시킨다.
+  const tokenParent = (isPanelToken(t) && t.importedMapObject === true)
     ? (window.ITCCocofoliaRenderer?.getTokenParent?.(t, inner) || inner)
-    : (ensureCharacterTokenLayer(inner) || inner);
+    : inner;
   tokenParent.appendChild(el);
   window.ITCCocofoliaRenderDiagnostics?.inspect?.(
     el,
