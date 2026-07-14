@@ -89,7 +89,7 @@
         count: effects.length,
         status: effects.length > 0 ? 'existing-connection-target' : 'absent',
         withSound: effectSoundCount,
-        details: effects.map(([id, effect]) => ({ id, name: stringValue(effect?.name) || '(이름 없음)', order: Number(effect?.order || 0), imageUrl: stringValue(effect?.imageUrl), soundRef: stringValue(effect?.soundRef), active: effect?.active === true })),
+        details: effects.map(([id, effect]) => ({ id, name: stringValue(effect?.name) || '(이름 없음)', order: Number(effect?.order || 0), imageUrl: stringValue(effect?.imageUrl), soundRef: stringValue(effect?.soundRef), duration: Number(effect?.duration ?? effect?.displayDuration ?? effect?.seconds ?? effect?.time) || null, volume: Number.isFinite(Number(effect?.volume)) ? Number(effect.volume) : null, active: effect?.active === true })),
       },
       textObjects: {
         count: textItemCount + notes.length,

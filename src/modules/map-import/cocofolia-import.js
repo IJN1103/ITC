@@ -830,53 +830,122 @@
       // 코코폴리아 effects → 웹사이트 컷인 목록으로 자동 임포트
       const rawEffects = validated.parsed?.entities?.effects || {};
       const effectEntries = Object.entries(rawEffects)
-        .filter(([, e]) => e?.imageUrl && String(e.imageUrl).trim())
-        .sort((a, b) => (a[1].order || 0) - (b[1].order || 0));
+        // 현재 컷인 베이스는 이미지 전용뿐 아니라 사운드 전용 컷인도 지원한다.
+        .filter(([, e]) => String(e?.imageUrl || '').trim() || String(e?.soundRef || '').trim())
+        .sort((a, b) => (Number(a[1]?.order) || 0) - (Number(b[1]?.order) || 0));
+
+      // 코코포리아 ZIP 내부 경로는 대소문자·선행 ./·URL 인코딩 차이가 있을 수 있다.
+      // 컷인 연결부에서만 안전하게 보정해 기존 맵 임포트 경로에는 영향을 주지 않는다.
+      const normalizeCutinZipPath = (value) => {
+        try { return decodeURIComponent(String(value || '')); } catch (_) { return String(value || ''); }
+      };
+      const cutinZipEntryByName = new Map();
+      Object.keys(zip.files || {}).forEach((name) => {
+        const normalized = normalizeCutinZipPath(name).replace(/\\/g, '/').replace(/^\.\//, '').replace(/^\//, '').toLowerCase();
+        if (normalized && !cutinZipEntryByName.has(normalized)) cutinZipEntryByName.set(normalized, zip.files[name]);
+      });
+      const resolveCutinZipEntry = (reference) => {
+        const raw = String(reference || '').trim();
+        if (!raw) return null;
+        const exact = zip.file(raw);
+        if (exact) return exact;
+        const normalized = normalizeCutinZipPath(raw).replace(/\\/g, '/').replace(/^\.\//, '').replace(/^\//, '').toLowerCase();
+        return cutinZipEntryByName.get(normalized) || null;
+      };
+      const readFiniteCutinNumber = (effect, keys, fallback = null) => {
+        for (const key of keys) {
+          const value = Number(effect?.[key]);
+          if (Number.isFinite(value)) return value;
+        }
+        return fallback;
+      };
 
       if (effectEntries.length > 0) {
-        setHint(`컷인 이미지 ${effectEntries.length}개를 업로드하는 중이에요…`);
+        setHint(`컷인 리소스 ${effectEntries.length}개를 업로드하는 중이에요…`);
         const importedCutins = {};
+        const cutinImportWarnings = [];
 
         for (const [effId, eff] of effectEntries) {
           try {
-            setHint(`컷인 이미지를 업로드하는 중이에요… (${Object.keys(importedCutins).length + 1}/${effectEntries.length})`);
-            const effEntry = zip.file(eff.imageUrl);
-            if (!effEntry) continue;
-            const effBlob = await effEntry.async('blob');
-            const rawExt = String(eff.imageUrl.split('.').pop() || 'png').toLowerCase();
-            // Blob은 이미 Blob이므로 이중 래핑 없이 그대로 사용
-            const effUrl = await uploadMapLayerBlob(effBlob, roomCode, `cutin-${effId.slice(0, 8)}-${Date.now()}.${rawExt}`);
-            if (!effUrl) continue;
+            setHint(`컷인 리소스를 업로드하는 중이에요… (${Object.keys(importedCutins).length + 1}/${effectEntries.length})`);
+
+            let effUrl = '';
+            const imageRef = String(eff?.imageUrl || '').trim();
+            if (imageRef) {
+              const effEntry = resolveCutinZipEntry(imageRef);
+              if (effEntry) {
+                const effBlob = await effEntry.async('blob');
+                const rawExt = String(imageRef.split('.').pop() || 'png').toLowerCase();
+                // Blob은 이미 Blob이므로 이중 래핑 없이 그대로 사용
+                effUrl = await uploadMapLayerBlob(effBlob, roomCode, `cutin-${effId.slice(0, 8)}-${Date.now()}.${rawExt}`) || '';
+              } else {
+                cutinImportWarnings.push({ id: effId, kind: 'image-missing', reference: imageRef });
+              }
+            }
 
             // 트리거: name에서 '＞ ' 접두사 제거한 전체 문자열을 트리거로 사용
             // (last_word만 사용하면 "보통 성공"/"어려운 성공" 등이 모두 "성공"으로 충돌)
-            const rawName = String(eff.name || '').replace(/^[\uFF1E>\s]+/, '').trim();
-            const trigger = rawName; // 전체 이름을 트리거로 사용
+            const rawName = String(eff?.name || '').replace(/^[\uFF1E>\s]+/, '').trim();
+            const trigger = rawName;
 
-            // 사운드: soundRef가 있으면 ZIP에서 업로드 (없으면 빈 문자열)
+            // 사운드: soundRef가 있으면 ZIP에서 오디오 리소스로 업로드한다.
             let soundUrl = '';
-            if (eff.soundRef && zip.file(eff.soundRef)) {
-              try {
-                const sndBlob = await zip.file(eff.soundRef).async('blob');
-                const sndExt = String(eff.soundRef.split('.').pop() || 'mp3').toLowerCase();
-                soundUrl = await uploadMapLayerBlob(sndBlob, roomCode, `cutin-snd-${effId.slice(0,8)}-${Date.now()}.${sndExt}`) || '';
-              } catch(e) {}
+            const soundRef = String(eff?.soundRef || '').trim();
+            if (soundRef) {
+              const soundEntry = resolveCutinZipEntry(soundRef);
+              if (soundEntry) {
+                try {
+                  const sndBlob = await soundEntry.async('blob');
+                  const sndExt = String(soundRef.split('.').pop() || 'mp3').toLowerCase();
+                  soundUrl = await uploadMapLayerBlob(sndBlob, roomCode, `cutin-snd-${effId.slice(0,8)}-${Date.now()}.${sndExt}`) || '';
+                  if (!soundUrl) cutinImportWarnings.push({ id: effId, kind: 'sound-upload-empty', reference: soundRef });
+                } catch (e) {
+                  cutinImportWarnings.push({ id: effId, kind: 'sound-upload-failed', reference: soundRef, message: e?.message || String(e) });
+                  console.warn(`[cutin] effect ${effId} 사운드 처리 실패`, e);
+                }
+              } else {
+                cutinImportWarnings.push({ id: effId, kind: 'sound-missing', reference: soundRef });
+              }
             }
 
+            // 이미지와 사운드 어느 쪽도 실제로 연결되지 않은 항목은 빈 컷인으로 저장하지 않는다.
+            if (!effUrl && !soundUrl) {
+              cutinImportWarnings.push({ id: effId, kind: 'no-playable-resource' });
+              continue;
+            }
+
+            const sourceDuration = readFiniteCutinNumber(eff, ['duration', 'displayDuration', 'seconds', 'time'], null);
+            const duration = sourceDuration != null ? Math.min(60, Math.max(0.5, sourceDuration)) : 3;
+            const sourceVolume = readFiniteCutinNumber(eff, ['volume'], null);
+            const volume = sourceVolume != null ? Math.min(1, Math.max(0, sourceVolume)) : 0.8;
+
             importedCutins[effId] = {
-              name: rawName,        // 표시용 이름 (원본에서 접두사 제거)
-              trigger,              // 채팅 트리거 (rawName 전체)
+              name: rawName || `컷인 ${Object.keys(importedCutins).length + 1}`,
+              trigger,
               imageUrl: effUrl,
               soundUrl,
-              volume: 0.8,
-              duration: 3,
+              volume,
+              duration,
+              durationMode: sourceDuration != null ? 'manual' : 'auto',
+              order: Number(eff?.order) || 0,
               importedFrom: 'cocofolia',
+              cocofoliaEffectId: effId,
+              cocofoliaActive: eff?.active === true,
               createdAt: Date.now(),
             };
           } catch(e) {
+            cutinImportWarnings.push({ id: effId, kind: 'effect-failed', message: e?.message || String(e) });
             console.warn(`[cutin] effect ${effId} 처리 실패`, e);
           }
         }
+
+        console.info('[ITC 코코포리아 컷인 연결 결과]', {
+          sourceCount: effectEntries.length,
+          importedCount: Object.keys(importedCutins).length,
+          withImage: Object.values(importedCutins).filter((v) => !!v.imageUrl).length,
+          withSound: Object.values(importedCutins).filter((v) => !!v.soundUrl).length,
+          warnings: cutinImportWarnings,
+        });
 
         // Firebase cutins에 저장
         // update로 각 항목을 경로별로 저장 (기존 수동 컷인 유지, cocofolia 것만 교체)
@@ -1004,7 +1073,7 @@
         }
         console.groupEnd();
       }
-      const cutinCount = Object.keys(validated.parsed?.entities?.effects || {}).filter(k => validated.parsed?.entities?.effects[k]?.imageUrl).length;
+      const cutinCount = Object.values(validated.parsed?.entities?.effects || {}).filter((effect) => String(effect?.imageUrl || '').trim() || String(effect?.soundRef || '').trim()).length;
       const cutinNote = cutinCount > 0 ? ` / 컷인 ${cutinCount}개 임포트` : '';
       const sceneNote = importedSceneCount > 0 ? ` / 장면 ${importedSceneCount}개 생성` : '';
       if (typeof showToast === 'function') showToast(`맵 이미지 + 스크린 패널${cutinNote}${sceneNote} 적용 완료`);
