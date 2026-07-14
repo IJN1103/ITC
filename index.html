@@ -2163,11 +2163,27 @@ window._FB = {
     const duration = durMode === 'manual' ? manualDur : (apngDur || 3);
     // 사운드: 파일 blob이 있으면 업로드, 아니면 URL 필드
     let soundUrl = document.getElementById('cutin-edit-sound-url')?.value?.trim() || '';
-    if (window._editSoundBlob && window.St?.roomCode && typeof uploadMapLayerBlob === 'function') {
+    if (window._editSoundBlob) {
+      if (!window.St?.roomCode || typeof uploadMapLayerBlob !== 'function') {
+        showToast?.('컷인 음원 업로드 기능을 불러오지 못했어요.');
+        return;
+      }
       try {
         const ext = window._editSoundBlob.name?.split('.').pop() || 'mp3';
-        soundUrl = await uploadMapLayerBlob(window._editSoundBlob, window.St.roomCode, `cutin-snd-${Date.now()}.${ext}`) || soundUrl;
-      } catch(e) {}
+        const uploadedSoundUrl = await uploadMapLayerBlob(
+          window._editSoundBlob,
+          window.St.roomCode,
+          `cutin-snd-${Date.now()}.${ext}`
+        );
+        if (!uploadedSoundUrl) throw new Error('empty-sound-upload-url');
+        soundUrl = uploadedSoundUrl;
+        const soundUrlEl = document.getElementById('cutin-edit-sound-url');
+        if (soundUrlEl) soundUrlEl.value = soundUrl;
+      } catch(e) {
+        console.error('[cutin] 사운드 업로드 실패', e);
+        showToast?.('컷인 음원 업로드에 실패했어요. 저장되지 않았습니다.');
+        return;
+      }
     }
     const volume = parseFloat(document.getElementById('cutin-edit-volume')?.value || '0.8');
     const data = { trigger, imageUrl, soundUrl, volume, duration,
@@ -2179,6 +2195,12 @@ window._FB = {
       await fbUpdate(fbRef(db, `rooms/${rc}/cutins/${_editingId}`), data);
     } else {
       await set(push(fbRef(db, `rooms/${rc}/cutins`)), { ...data, createdAt: Date.now() });
+    }
+    // Firebase 저장이 성공한 뒤에만 임시 음원 상태를 정리한다.
+    window._editSoundBlob = null;
+    if (window._editSoundObjUrl) {
+      try { URL.revokeObjectURL(window._editSoundObjUrl); } catch(e) {}
+      window._editSoundObjUrl = null;
     }
     showToast?.('저장됐어요.');
     closeCutinEdit();

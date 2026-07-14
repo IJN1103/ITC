@@ -186,10 +186,13 @@ function _itcIsRetryableUploadError(err) {
 async function _itcUploadToCloudinary(opts = {}) {
   const cfg = _itcGetCloudinaryConfig();
   if (!cfg) throw new Error('cloudinary-config-missing');
-  const { blob, folder, fileName, publicId, timeout = 20000, retries = 0, retryDelay = 1200 } = opts;
+  const { blob, folder, fileName, publicId, resourceType = 'image', timeout = 20000, retries = 0, retryDelay = 1200 } = opts;
   if (!blob) throw new Error('empty-upload-blob');
 
-  const url = `https://api.cloudinary.com/v1_1/${encodeURIComponent(cfg.cloudName)}/image/upload`;
+  const safeResourceType = ['image', 'video', 'raw', 'auto'].includes(String(resourceType || '').toLowerCase())
+    ? String(resourceType).toLowerCase()
+    : 'image';
+  const url = `https://api.cloudinary.com/v1_1/${encodeURIComponent(cfg.cloudName)}/${safeResourceType}/upload`;
   const maxAttempts = Math.max(1, 1 + (parseInt(retries, 10) || 0));
   let lastErr = null;
 

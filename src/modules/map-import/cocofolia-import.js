@@ -340,16 +340,27 @@
   }
 
   async function uploadMapLayerBlob(blob, roomCode, fileName) {
-    if (typeof _itcUploadToCloudinary !== 'function') throw new Error('이미지 업로드 유틸을 찾지 못했어요.');
+    if (typeof _itcUploadToCloudinary !== 'function') throw new Error('업로드 유틸을 찾지 못했어요.');
+    const mime = String(blob?.type || '').toLowerCase();
+    const isAudio = mime.startsWith('audio/');
     const result = await _itcUploadToCloudinary({
       blob,
-      folder: `itc/map-backgrounds/${roomCode || 'local'}`,
-      fileName: fileName || `map-background-${Date.now()}.png`,
+      folder: isAudio
+        ? `itc/cutin-audio/${roomCode || 'local'}`
+        : `itc/map-backgrounds/${roomCode || 'local'}`,
+      fileName: fileName || (isAudio ? `cutin-sound-${Date.now()}.mp3` : `map-background-${Date.now()}.png`),
+      resourceType: isAudio ? 'video' : 'image',
       timeout: 90000,
       retries: 2,
       retryDelay: 1600,
     });
     return result?.url || '';
+  }
+
+  // 기존 수동 컷인 편집 UI에서도 동일한 업로드 경로를 사용한다.
+  // 이미 등록된 다른 구현이 없을 때만 노출해 관련 없는 기능을 덮어쓰지 않는다.
+  if (typeof window.uploadMapLayerBlob !== 'function') {
+    window.uploadMapLayerBlob = uploadMapLayerBlob;
   }
 
 
