@@ -7,6 +7,9 @@ let _processedChatKeys = new Set();
 let _processedChatKeysByChannel = new Map();
 let _chatMessageSignaturesByChannel = new Map();
 let _chatRecordsByChannel = new Map();
+// 팝아웃 전용 수신 데이터는 메인 채팅 캐시와 분리한다.
+// 팝아웃 watcher가 제한 쿼리 경계 이벤트를 받을 때 메인 화면의 메시지 순서/내용을 건드리지 않도록 한다.
+let _popoutChatRecordsByChannel = new Map();
 let _activeChatChannelKey = 'global';
 let _activeChatChannelRoomCode = '';
 let _activeChatChannelUnsubs = [];
@@ -301,6 +304,7 @@ function cleanupFirebaseListeners() {
   _processedChatKeysByChannel = new Map();
   _chatMessageSignaturesByChannel = new Map();
   _chatRecordsByChannel = new Map();
+  _popoutChatRecordsByChannel = new Map();
   _lastAppliedBgmMapSignature = '';
   _lastAppliedBgmPlaybackSignature = '';
   _latestLegacyRoomMapState = { hasValue: false, mapState: { background: null, foreground: null, objects: [] }, layerState: null };
@@ -460,7 +464,7 @@ function watchPopoutChatChannel(channelKey = 'global') {
     if (!resolveReady) return;
     const done = resolveReady;
     resolveReady = null;
-    done(window.getChatRecordsForChannel ? window.getChatRecordsForChannel(safeKey) : []);
+    done(window.getPopoutChatRecordsForChannel ? window.getPopoutChatRecordsForChannel(safeKey) : []);
   };
 
   // 일반 채팅은 OPT-1B에서 dmChannelKey가 "global"인 신형 메시지와
@@ -496,12 +500,12 @@ function watchPopoutChatChannel(channelKey = 'global') {
       if (!isCurrentWatcher()) return [];
       let next = Array.isArray(records)
         ? records
-        : (window.getChatRecordsForChannel ? window.getChatRecordsForChannel('global') : []);
+        : (window.getPopoutChatRecordsForChannel ? window.getPopoutChatRecordsForChannel('global') : []);
       next = sortChatRecordsChronologically(next)
         .filter((record) => shouldShowChatMessageForChannel('global', record))
         .slice(-listenLimit);
       watcher.visibleKeys = new Set(next.map((m) => String(m?._key || '').trim()).filter(Boolean));
-      cacheChannelMessages('global', next, { merge: false, seed: false });
+      cachePopoutChannelMessages('global', next, { merge: false });
       notifyPopoutChatChannelCacheChanged('global', next.length);
       return next;
     };
@@ -542,8 +546,8 @@ function watchPopoutChatChannel(channelKey = 'global') {
       const message = { ...(snap.val() || {}), _key: key };
       if (!shouldShowChatMessageForChannel('global', message)) return;
       sourceKeys[sourceIndex].add(key);
-      cacheChannelMessages('global', [message], { merge: true, seed: false });
-      const current = window.getChatRecordsForChannel ? window.getChatRecordsForChannel('global') : [];
+      cachePopoutChannelMessages('global', [message], { merge: true });
+      const current = window.getPopoutChatRecordsForChannel ? window.getPopoutChatRecordsForChannel('global') : [];
       rebuildVisibleCache(current);
       logItcChatDebug(`popout-global-child-${mode}`, {
         channelKey: 'global',
@@ -557,7 +561,7 @@ function watchPopoutChatChannel(channelKey = 'global') {
       if (!key) return;
       sourceKeys[sourceIndex].delete(key);
       const stillVisible = sourceKeys.some((set) => set.has(key));
-      if (!stillVisible) removeCachedChannelMessage('global', key);
+      if (!stillVisible) removePopoutCachedChannelMessage('global', key);
       rebuildVisibleCache();
       logItcChatDebug('popout-global-child-removed', {
         channelKey: 'global',
@@ -604,10 +608,10 @@ function watchPopoutChatChannel(channelKey = 'global') {
       });
     const nextKeys = new Set(filtered.map((m) => String(m?._key || '').trim()).filter(Boolean));
     watcher.visibleKeys.forEach((key) => {
-      if (!nextKeys.has(key)) removeCachedChannelMessage(safeKey, key);
+      if (!nextKeys.has(key)) removePopoutCachedChannelMessage(safeKey, key);
     });
     watcher.visibleKeys = nextKeys;
-    cacheChannelMessages(safeKey, filtered, { merge: false, seed: false });
+    cachePopoutChannelMessages(safeKey, filtered, { merge: false });
     notifyPopoutChatChannelCacheChanged(safeKey, filtered.length);
     finishReady();
     logItcChatDebug('popout-channel-watch-snapshot', {
@@ -750,6 +754,50 @@ function removeCachedChannelMessage(channelKey = 'global', messageKey = '') {
   _chatRecordsByChannel.set(safeKey, next);
   return true;
 }
+
+
+function cachePopoutChannelMessages(channelKey = 'global', records = [], options = {}) {
+  const safeKey = String(channelKey || 'global').trim() || 'global';
+  const incoming = (Array.isArray(records) ? records : []).map((record) => ({ ...record }));
+  let next = incoming;
+  if (options?.merge) {
+    const merged = new Map();
+    const previous = Array.isArray(_popoutChatRecordsByChannel.get(safeKey))
+      ? _popoutChatRecordsByChannel.get(safeKey)
+      : [];
+    previous.forEach((record) => {
+      const key = String(record?._key || '').trim();
+      if (key) merged.set(key, { ...record });
+    });
+    incoming.forEach((record) => {
+      const key = String(record?._key || '').trim();
+      if (key) merged.set(key, { ...record });
+    });
+    next = Array.from(merged.values());
+  }
+  _popoutChatRecordsByChannel.set(safeKey, sortChatRecordsChronologically(next));
+}
+
+function removePopoutCachedChannelMessage(channelKey = 'global', messageKey = '') {
+  const safeKey = String(channelKey || 'global').trim() || 'global';
+  const safeMessageKey = String(messageKey || '').trim();
+  if (!safeMessageKey) return false;
+  const records = Array.isArray(_popoutChatRecordsByChannel.get(safeKey))
+    ? _popoutChatRecordsByChannel.get(safeKey)
+    : [];
+  const next = records.filter((record) => String(record?._key || '') !== safeMessageKey);
+  if (next.length === records.length) return false;
+  _popoutChatRecordsByChannel.set(safeKey, next);
+  return true;
+}
+
+window.getPopoutChatRecordsForChannel = function(channelKey = 'global') {
+  const safeKey = String(channelKey || 'global').trim() || 'global';
+  const records = Array.isArray(_popoutChatRecordsByChannel.get(safeKey))
+    ? _popoutChatRecordsByChannel.get(safeKey)
+    : [];
+  return records.map((record) => ({ ...record }));
+};
 
 
 // PHASE 6 SECTION — Popout channel cache access
@@ -1376,12 +1424,32 @@ function switchActiveChatChannel(channelKey = 'global') {
     globalListenRefs.forEach((globalListenRef) => {
       trackActiveChatChannelListener(onChildAdded(globalListenRef, (snap) => applyGlobalRecord(snap, 'added')));
       trackActiveChatChannelListener(onChildChanged(globalListenRef, (snap) => applyGlobalRecord(snap, 'changed')));
-      trackActiveChatChannelListener(onChildRemoved(globalListenRef, (snap) => {
+      trackActiveChatChannelListener(onChildRemoved(globalListenRef, async (snap) => {
         if (!isCurrentGlobalListener()) return;
         const key = String(snap?.key || '').trim();
         if (!key) return;
         const removedMessage = { ...(snap.val() || {}), _key: key };
         if (!shouldShowChatMessage(removedMessage)) return;
+
+        // 제한 쿼리의 child_removed는 실제 삭제뿐 아니라 쿼리 범위 이탈에도 발생한다.
+        // 원본 경로를 확인해 실제로 삭제된 경우에만 메인 캐시/DOM에서 제거한다.
+        try {
+          if (typeof window._FB?.get === 'function') {
+            const verifySnap = await window._FB.get(ref(db, `rooms/${activeRoomCode}/chat/${key}`));
+            if (!isCurrentGlobalListener()) return;
+            if (verifySnap?.exists?.()) {
+              const latest = { ...(verifySnap.val() || {}), _key: key };
+              if (shouldShowChatMessage(latest)) {
+                applyGlobalRecord(verifySnap, 'verified');
+              }
+              return;
+            }
+          }
+        } catch (err) {
+          console.warn('[chat] removed message verification failed', key, err);
+          return;
+        }
+
         removeCachedChannelMessage('global', key);
         removeChatMsg(key, 'chat');
         processed.delete(key);

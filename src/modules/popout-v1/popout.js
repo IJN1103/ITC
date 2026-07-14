@@ -771,7 +771,12 @@ function popoutChat() {
     const safeKey = String(channelKey || 'global').trim() || 'global';
     let records = null;
     try {
-      if (typeof window.getChatRecordsForChannel === 'function') records = window.getChatRecordsForChannel(safeKey);
+      if (typeof window.getPopoutChatRecordsForChannel === 'function') {
+        records = window.getPopoutChatRecordsForChannel(safeKey);
+      }
+      if ((!Array.isArray(records) || records.length === 0) && typeof window.getChatRecordsForChannel === 'function') {
+        records = window.getChatRecordsForChannel(safeKey);
+      }
     } catch (e) {
       records = null;
     }
@@ -797,33 +802,36 @@ function popoutChat() {
   const syncPopoutWindow = (targetWin) => {
     if (!targetWin || targetWin.closed || !targetWin._popReady) return;
     try {
-      const channelKey = typeof targetWin.getCurrentDmChannelKey === 'function' ? targetWin.getCurrentDmChannelKey() : (typeof getCurrentDmChannelKey === 'function' ? getCurrentDmChannelKey() : 'global');
+      const channelKey = typeof targetWin.getCurrentDmChannelKey === 'function'
+        ? targetWin.getCurrentDmChannelKey()
+        : (typeof getCurrentDmChannelKey === 'function' ? getCurrentDmChannelKey() : 'global');
       const syncChannelKey = requestPopoutChannelSync(channelKey);
-      const list = getPopoutChatListForChannel(syncChannelKey);
-      if (targetWin.setMessages) targetWin.setMessages('chat', list);
+      const ready = typeof window.watchPopoutChatChannel === 'function'
+        ? window.watchPopoutChatChannel(syncChannelKey)
+        : null;
 
-      // 새로고침 직후 첫 팝아웃은 채널 watcher의 최초 Firebase 스냅샷보다
-      // 먼저 열릴 수 있다. 이 경우 즉시 전달한 캐시가 오래된 상태일 수 있으므로,
-      // watcher 준비 완료 뒤 같은 팝아웃/같은 채널인지 재검증하고 최신 목록을 한 번 더 전달한다.
-      try {
-        const ready = typeof window.watchPopoutChatChannel === 'function'
-          ? window.watchPopoutChatChannel(syncChannelKey)
-          : null;
-        if (ready && typeof ready.then === 'function') {
-          Promise.resolve(ready).then(() => {
-            if (!targetWin || targetWin.closed || !targetWin._popReady) return;
-            let currentKey = 'global';
-            try {
-              currentKey = typeof targetWin.getCurrentDmChannelKey === 'function'
-                ? normalizePopoutChatChannelKey(targetWin.getCurrentDmChannelKey())
-                : 'global';
-            } catch (e) {}
-            if (currentKey !== normalizePopoutChatChannelKey(syncChannelKey)) return;
-            const latestList = getPopoutChatListForChannel(syncChannelKey);
-            if (targetWin.setMessages) targetWin.setMessages('chat', latestList);
-          }).catch(() => {});
-        }
-      } catch (e) {}
+      const deliverCurrentChannel = () => {
+        if (!targetWin || targetWin.closed || !targetWin._popReady) return;
+        let currentKey = 'global';
+        try {
+          currentKey = typeof targetWin.getCurrentDmChannelKey === 'function'
+            ? normalizePopoutChatChannelKey(targetWin.getCurrentDmChannelKey())
+            : 'global';
+        } catch (e) {}
+        if (currentKey !== normalizePopoutChatChannelKey(syncChannelKey)) return;
+        const latestList = getPopoutChatListForChannel(syncChannelKey);
+        if (targetWin.setMessages) targetWin.setMessages('chat', latestList);
+      };
+
+      // 새 팝아웃의 첫 렌더는 전용 watcher의 최초 조회가 끝난 뒤 수행한다.
+      // 메인 캐시의 오래된 스냅샷을 먼저 그린 뒤 다시 덮어쓰는 경쟁을 제거한다.
+      if (ready && typeof ready.then === 'function') {
+        Promise.resolve(ready).then(deliverCurrentChannel).catch(() => {
+          deliverCurrentChannel();
+        });
+      } else {
+        deliverCurrentChannel();
+      }
     } catch (e) {}
     try {
       if (targetWin.setMessages) {
