@@ -531,13 +531,40 @@
     }
   }
 
+  function isCharacterTokenRecord(token){
+    if (!token || typeof token !== 'object') return false;
+    if (token.panelToken === true || token.panelToken === 'true') return false;
+    if (String(token.tokenCategory || '').toLowerCase() === 'panel') return false;
+    if (String(token.type || '').toLowerCase() === 'panel') return false;
+    if (token.importedMapObject === true || token.importedMapObject === 'true') return false;
+    if (token.importEngine === 'cocofolia-source-space') return false;
+    if (token.importedMapObjectMeta && typeof token.importedMapObjectMeta === 'object') return false;
+    return true;
+  }
+
+  function mergeRuntimeCharacterTokens(sceneTokens, currentTokens){
+    const merged = (sceneTokens && typeof sceneTokens === 'object') ? deepCopy(sceneTokens) : {};
+    const runtime = (currentTokens && typeof currentTokens === 'object') ? currentTokens : {};
+
+    // 캐릭터 토큰은 장면별 임포트 오브젝트가 아니라 방 전체에서 유지되는 데이터다.
+    // 장면 카드에 저장된 오래된/불완전한 복사본보다 현재 rooms/{room}/tokens의
+    // 완전한 런타임 레코드를 우선해 이름·이미지·스탠딩·상태·소유자 정보 손실을 막는다.
+    Object.entries(runtime).forEach(function(entry){
+      const tokenId = entry[0];
+      const token = entry[1];
+      if (!tokenId || !isCharacterTokenRecord(token)) return;
+      merged[tokenId] = deepCopy({ ...token, id: token.id || tokenId });
+    });
+    return merged;
+  }
+
   async function applySceneTokensToRuntime(scene, options){
     options = options || {};
     const effectiveTokens = getSceneEffectiveTokens(scene);
     if (effectiveTokens === undefined) return;
     try {
-      const nextTokens = (effectiveTokens && typeof effectiveTokens === 'object') ? deepCopy(effectiveTokens) : {};
       const currentTokens = (ROOT.St?.tokens && typeof ROOT.St.tokens === 'object') ? ROOT.St.tokens : {};
+      const nextTokens = mergeRuntimeCharacterTokens(effectiveTokens, currentTokens);
       ROOT.St.tokens = deepCopy(nextTokens) || {};
       if (typeof ROOT.renderAllTokens === 'function') ROOT.renderAllTokens(ROOT.St.tokens);
 
