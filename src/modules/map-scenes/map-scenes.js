@@ -542,20 +542,46 @@
     return true;
   }
 
-  function mergeRuntimeCharacterTokens(sceneTokens, currentTokens){
-    const merged = (sceneTokens && typeof sceneTokens === 'object') ? deepCopy(sceneTokens) : {};
-    const runtime = (currentTokens && typeof currentTokens === 'object') ? currentTokens : {};
-
-    // 캐릭터 토큰은 장면별 임포트 오브젝트가 아니라 방 전체에서 유지되는 데이터다.
-    // 장면 카드에 저장된 오래된/불완전한 복사본보다 현재 rooms/{room}/tokens의
-    // 완전한 런타임 레코드를 우선해 이름·이미지·스탠딩·상태·소유자 정보 손실을 막는다.
-    Object.entries(runtime).forEach(function(entry){
+  function splitSceneAndCharacterTokens(tokens){
+    const source = (tokens && typeof tokens === 'object') ? tokens : {};
+    const sceneTokens = {};
+    const characterTokens = {};
+    Object.entries(source).forEach(function(entry){
       const tokenId = entry[0];
       const token = entry[1];
-      if (!tokenId || !isCharacterTokenRecord(token)) return;
-      merged[tokenId] = deepCopy({ ...token, id: token.id || tokenId });
+      if (!tokenId || !token || typeof token !== 'object') return;
+      const normalized = deepCopy({ ...token, id: token.id || tokenId });
+      if (isCharacterTokenRecord(token)) characterTokens[tokenId] = normalized;
+      else sceneTokens[tokenId] = normalized;
     });
-    return merged;
+    return { sceneTokens, characterTokens };
+  }
+
+  function mergeRuntimeCharacterTokens(sceneTokens, currentTokens){
+    // 장면 스냅샷에 과거 캐릭터 토큰 복사본이 남아 있어도 절대 복원하지 않는다.
+    // 장면에서는 패널/맵세팅 토큰만 취하고, 캐릭터 토큰은 rooms/{room}/tokens의
+    // 현재 공통 레코드만 사용한다.
+    const sceneParts = splitSceneAndCharacterTokens(sceneTokens);
+    const runtimeParts = splitSceneAndCharacterTokens(currentTokens);
+    return {
+      ...sceneParts.sceneTokens,
+      ...runtimeParts.characterTokens,
+    };
+  }
+
+  async function readLatestRoomTokensFallback(localTokens){
+    const fallback = (localTokens && typeof localTokens === 'object') ? localTokens : {};
+    if (!ROOT._FB?.CONFIGURED || !ROOT.St?.roomCode) return fallback;
+    try {
+      const { db, ref, get } = ROOT._FB;
+      if (typeof get !== 'function') return fallback;
+      const snap = await get(ref(db, `rooms/${ROOT.St.roomCode}/tokens`));
+      const remote = snap && typeof snap.val === 'function' ? snap.val() : null;
+      return (remote && typeof remote === 'object') ? remote : fallback;
+    } catch (e) {
+      console.warn('scene common character token read failed; local state used', e);
+      return fallback;
+    }
   }
 
   async function applySceneTokensToRuntime(scene, options){
@@ -563,7 +589,11 @@
     const effectiveTokens = getSceneEffectiveTokens(scene);
     if (effectiveTokens === undefined) return;
     try {
-      const currentTokens = (ROOT.St?.tokens && typeof ROOT.St.tokens === 'object') ? ROOT.St.tokens : {};
+      const localTokens = (ROOT.St?.tokens && typeof ROOT.St.tokens === 'object') ? ROOT.St.tokens : {};
+      // 장면 전환 직전 Firebase의 최신 공통 캐릭터 토큰을 읽는다.
+      // 이렇게 해야 토큰 편집/이동 직후 리스너 반영보다 장면 전환이 먼저 시작돼도
+      // 과거 장면 스냅샷이 최신 위치와 데이터를 덮어쓰지 않는다.
+      const currentTokens = await readLatestRoomTokensFallback(localTokens);
       const nextTokens = mergeRuntimeCharacterTokens(effectiveTokens, currentTokens);
       ROOT.St.tokens = deepCopy(nextTokens) || {};
       if (typeof ROOT.renderAllTokens === 'function') ROOT.renderAllTokens(ROOT.St.tokens);
@@ -574,8 +604,13 @@
       const { db, ref, update } = ROOT._FB;
       const roomCode = ROOT.St.roomCode;
       const payload = {};
-      Object.keys(currentTokens).forEach(function(tokenId){
-        if (!Object.prototype.hasOwnProperty.call(nextTokens, tokenId)) {
+      const currentParts = splitSceneAndCharacterTokens(currentTokens);
+      const nextParts = splitSceneAndCharacterTokens(nextTokens);
+
+      // 장면 전환으로 삭제할 수 있는 것은 장면 전용 패널/맵세팅 토큰뿐이다.
+      // 캐릭터 토큰은 방 전체 공통 데이터이므로 어떤 장면에서도 삭제하지 않는다.
+      Object.keys(currentParts.sceneTokens).forEach(function(tokenId){
+        if (!Object.prototype.hasOwnProperty.call(nextParts.sceneTokens, tokenId)) {
           payload[`tokens/${tokenId}`] = null;
         }
       });
@@ -902,7 +937,10 @@
       importedFieldHeight: snapshot.importedFieldHeight,
       objects: snapshot.objects,
     };
-    const tokens = snapshot.tokens || {};
+    // 캐릭터 토큰은 방 전체 공통 데이터이며 장면 스냅샷에 저장하지 않는다.
+    // 장면에는 패널/맵세팅 토큰만 저장해, 다른 장면의 오래된 캐릭터 복사본이
+    // 최신 데이터와 위치를 되돌리는 일을 구조적으로 차단한다.
+    const tokens = splitSceneAndCharacterTokens(snapshot.tokens || {}).sceneTokens;
     const existing = state.remoteScenes.find(function(s){ return s.id === targetId; })
       || state.scenes.find(function(s){ return s.id === targetId; })
       || {};
