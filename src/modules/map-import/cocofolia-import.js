@@ -523,6 +523,44 @@
     await update(ref(db, `rooms/${roomCode}/tokens`), payload);
   }
 
+
+  async function loadSceneTokenSnapshot(roomCode, importedPanelTokens) {
+    const merged = {};
+
+    // 먼저 현재 런타임의 비-임포트 토큰을 보존한다. 맵세팅 재적용으로 삭제된
+    // 과거 임포트 패널 토큰은 장면 스냅샷에 다시 넣지 않는다.
+    const localTokens = window.St?.tokens;
+    if (localTokens && typeof localTokens === 'object') {
+      Object.entries(localTokens).forEach(([id, token]) => {
+        if (!id || !token || isImportedPanelTokenRecord({ ...token, id })) return;
+        merged[id] = { ...token, id: token.id || id };
+      });
+    }
+
+    // Firebase를 최종 기준으로 다시 읽어, 로컬 리스너가 아직 받지 못한 캐릭터 토큰도 보존한다.
+    if (window._FB?.CONFIGURED) {
+      try {
+        const { db, ref, get } = window._FB;
+        const snap = await get(ref(db, `rooms/${roomCode}/tokens`));
+        const storedTokens = snap.val() || {};
+        Object.entries(storedTokens).forEach(([id, token]) => {
+          if (!id || !token || isImportedPanelTokenRecord({ ...token, id })) return;
+          merged[id] = { ...token, id: token.id || id };
+        });
+      } catch (err) {
+        console.warn('scene token snapshot read failed; using local character tokens', err);
+      }
+    }
+
+    // 새로 임포트한 패널 토큰만 마지막에 병합한다.
+    (Array.isArray(importedPanelTokens) ? importedPanelTokens : []).forEach((token) => {
+      if (!token?.id) return;
+      merged[token.id] = token;
+    });
+
+    return Object.values(merged);
+  }
+
   const buildImportedCanvasModel = TRANSFORM.buildImportedCanvasModel;
   const buildImportedMapObjects = TRANSFORM.buildImportedMapObjects;
 
@@ -825,6 +863,7 @@
 
       await clearPreviousImportedPanelTokens(roomCode, window.St?.mapState?.objects || []);
       await saveImportedPanelTokens(roomCode, importedPanelTokens);
+      const sceneTokenSnapshot = await loadSceneTokenSnapshot(roomCode, importedPanelTokens);
 
       // ── effects(컷인) 처리 ──
       // 코코폴리아 effects → 웹사이트 컷인 목록으로 자동 임포트
@@ -1042,7 +1081,7 @@
           backgroundMetaByName: sceneBackgroundMetaByName,
           firstMapState: nextMapState,
           firstLayerState: nextLayerState,
-          firstTokens: importedPanelTokens,
+          firstTokens: sceneTokenSnapshot,
           now: Date.now(),
         });
         if (sceneBuild.records.length > 0) {
