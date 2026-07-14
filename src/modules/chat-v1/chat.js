@@ -1294,7 +1294,11 @@ function replaceRenderedMessage(channel = 'chat', key, node) {
     if (keepBottom) requestAnimationFrame(() => scrollToBottom(el));
   } else {
     const safeKey = upsertStoredMessage(channel, key, getStoredRecord(channel, key) || {});
-    queueMessageRender(channel, node, safeKey, true);
+    node.dataset.msgKey = safeKey;
+    const keepBottom = isNearBottom(el);
+    insertRenderedNodeInStoredOrder(channel, node, safeKey);
+    primeDeferredChatImages(el);
+    if (keepBottom) requestAnimationFrame(() => scrollToBottom(el));
   }
 }
 
