@@ -177,7 +177,11 @@
     if (legacyBg) legacyBg.style.display = 'none';
     if (legacyFg) legacyFg.style.display = 'none';
     if (blur) {
-      const blurVisible = !!background?.url && background?.blur !== false && isLayerVisible('background');
+      // sourceFieldMode에서는 기존 일반 배경 분기를 건너뛰므로 후경 URL을 여기서 직접 유지한다.
+      const blurVisible = !!background?.url && isLayerVisible('background');
+      blur.style.backgroundImage = blurVisible ? cssBackgroundImage(background.url) : '';
+      blur.style.backgroundSize = 'cover';
+      blur.style.backgroundPosition = 'center center';
       blur.style.display = blurVisible ? '' : 'none';
       blur.classList.toggle('map-layer-runtime-hidden', !blurVisible);
     }
@@ -199,7 +203,10 @@
       if (legacyBg) legacyBg.style.display = 'none';
       if (blur) {
         const background = window.St?.mapState?.background || null;
-        const blurVisible = !!background?.url && background?.blur !== false && isLayerVisible('background');
+        const blurVisible = !!background?.url && isLayerVisible('background');
+        blur.style.backgroundImage = blurVisible ? cssBackgroundImage(background.url) : '';
+        blur.style.backgroundSize = 'cover';
+        blur.style.backgroundPosition = 'center center';
         blur.style.display = blurVisible ? '' : 'none';
         blur.classList.toggle('map-layer-runtime-hidden', !blurVisible);
       }
