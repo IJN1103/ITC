@@ -126,11 +126,16 @@
   }
 
   function applySourceFieldLayers(mapState = window.St?.mapState) {
-    const canvas = getImportedCanvas(mapState);
+    const fallbackToken = findFallbackSourceToken();
+    const canvas = getImportedCanvas(mapState, fallbackToken);
     if (!canvas) return false;
-    const container = ensureWorldContainer(document.getElementById('map-inner'));
-    const metrics = getWorldMetrics(mapState) || _lastValidWorldMetrics;
+    const mapInner = document.getElementById('map-inner');
+    const container = ensureWorldContainer(mapInner, fallbackToken);
+    const metrics = getWorldMetrics(mapState, fallbackToken) || _lastValidWorldMetrics;
     if (!container || !metrics) return false;
+
+    mapInner?.classList.add('cocofolia-source-field-active');
+    mapInner?.parentElement?.classList.add('cocofolia-source-field-active');
 
     const background = mapState?.background || null;
     const foreground = mapState?.foreground || null;
@@ -176,12 +181,32 @@
   }
 
   function clearSourceFieldLayers() {
+    const mapInner = document.getElementById('map-inner');
+    const fallbackToken = findFallbackSourceToken();
+    const stillSourceMode = !!getImportedCanvas(window.St?.mapState, fallbackToken);
+
+    // Firebase에서 mapState와 tokens가 서로 다른 순서로 도착하는 짧은 순간에는
+    // 코코포리아 전용 배경을 제거하거나 기존 일반 배경을 되살리지 않는다.
+    if (stillSourceMode) {
+      mapInner?.classList.add('cocofolia-source-field-active');
+      mapInner?.parentElement?.classList.add('cocofolia-source-field-active');
+      const legacyBg = document.getElementById('map-bg-layer');
+      const blur = document.getElementById('map-bg-blur-layer');
+      if (legacyBg) legacyBg.style.display = 'none';
+      if (blur) blur.style.display = 'none';
+      return;
+    }
+
     document.getElementById(WORLD_BG_LAYER_ID)?.remove();
     document.getElementById(WORLD_FG_LAYER_ID)?.remove();
+    mapInner?.classList.remove('cocofolia-source-field-active');
+    mapInner?.parentElement?.classList.remove('cocofolia-source-field-active');
     const legacyBg = document.getElementById('map-bg-layer');
     const legacyFg = document.getElementById('map-fg-layer');
+    const blur = document.getElementById('map-bg-blur-layer');
     if (legacyBg) legacyBg.style.display = '';
     if (legacyFg) legacyFg.style.display = '';
+    if (blur) blur.style.display = '';
   }
 
   function isSourceToken(token) {
