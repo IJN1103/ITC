@@ -274,6 +274,46 @@ function applyTokenDragSession(session, moveEvent) {
   });
 }
 
+function shouldSnapTokenToVisibleGrid(token) {
+  if (!token || token.importedMapObject === true) return false;
+  return window.ITCMapGrid?.isEnabled?.() === true;
+}
+
+function snapStoredTokenPositionToGrid(x, y) {
+  const gridSizePx = Number(window.ITCMapGrid?.getSizePx?.() || 44);
+  const { width: mapWidth, height: mapHeight } = getMapBaseSize();
+  if (!(gridSizePx > 0) || !(mapWidth > 0) || !(mapHeight > 0)) {
+    return { x, y };
+  }
+
+  // 토큰의 left/top은 중심 좌표이므로 가장 가까운 격자 교차점에 중심을 맞춘다.
+  const xPx = (Number(x) / 100) * mapWidth;
+  const yPx = (Number(y) / 100) * mapHeight;
+  const snappedXPx = Math.round(xPx / gridSizePx) * gridSizePx;
+  const snappedYPx = Math.round(yPx / gridSizePx) * gridSizePx;
+  return {
+    x: clampTokenStoredPercent((snappedXPx / mapWidth) * 100, 'x'),
+    y: clampTokenStoredPercent((snappedYPx / mapHeight) * 100, 'y'),
+  };
+}
+
+function applyVisibleGridSnapToPatch(positionPatch) {
+  Object.entries(positionPatch || {}).forEach(([id, pos]) => {
+    const token = St.tokens?.[id];
+    if (!shouldSnapTokenToVisibleGrid(token) || pos?.sourcePosition) return;
+    const snapped = snapStoredTokenPositionToGrid(pos.x, pos.y);
+    pos.x = snapped.x;
+    pos.y = snapped.y;
+
+    const el = getTokenEl(id);
+    if (el) {
+      el.style.left = storedTokenPercentToDisplay(pos.x, 'x') + '%';
+      el.style.top = storedTokenPercentToDisplay(pos.y, 'y') + '%';
+    }
+  });
+  return positionPatch;
+}
+
 function collectDraggedTokenPositions(targetIds) {
   const patch = {};
   targetIds.forEach((id) => {
@@ -298,7 +338,7 @@ function collectDraggedTokenPositions(targetIds) {
       y: clampTokenStoredPercent(displayTokenPercentToStored(parseFloat(targetEl.style.top) || 0, 'y'), 'y'),
     };
   });
-  return patch;
+  return applyVisibleGridSnapToPatch(patch);
 }
 
 function applyTokenPositionPatchToState(positionPatch) {

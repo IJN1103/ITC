@@ -1898,12 +1898,16 @@ window._FB = {
 /* ── 맵 그리드 온/오프 ── */
 (function(){
   const GRID_KEY = 'itc_map_grid';
+  const GRID_SIZE_PX = 44;
   const GRID_CSS = 'linear-gradient(rgba(180,178,172,.45) 1px,transparent 1px),linear-gradient(90deg,rgba(180,178,172,.45) 1px,transparent 1px)';
 
   function applyGrid(on) {
     const inner = document.getElementById('map-inner');
     const btn   = document.getElementById('map-grid-toggle-btn');
-    if (inner) inner.style.backgroundImage = on ? GRID_CSS : 'none';
+    if (inner) {
+      inner.style.backgroundImage = on ? GRID_CSS : 'none';
+      inner.style.backgroundSize = `${GRID_SIZE_PX}px ${GRID_SIZE_PX}px`;
+    }
     if (btn)   btn.classList.toggle('grid-on', on);
     try { localStorage.setItem(GRID_KEY, on ? '1' : '0'); } catch(e) {}
   }
@@ -1912,6 +1916,16 @@ window._FB = {
     const btn = document.getElementById('map-grid-toggle-btn');
     applyGrid(!btn?.classList.contains('grid-on'));
   };
+
+  // 토큰 드래그 종료 시 현재 그리드 상태와 실제 간격을 안전하게 조회한다.
+  window.ITCMapGrid = Object.freeze({
+    isEnabled() {
+      return document.getElementById('map-grid-toggle-btn')?.classList.contains('grid-on') === true;
+    },
+    getSizePx() {
+      return GRID_SIZE_PX;
+    },
+  });
 
   // 초기 상태 복원 (기본 ON)
   let saved = '1';
