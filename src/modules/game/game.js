@@ -1135,7 +1135,7 @@ function switchActiveChatChannel(channelKey = 'global') {
   const activeRoomCode = String(St.roomCode || '').trim();
   if (!activeRoomCode) return;
   const safeChannelKey = String(channelKey || 'global').trim() || 'global';
-  const { db, ref, onValue, onChildRemoved, query, limitToLast, orderByChild, equalTo } = window._FB;
+  const { db, ref, onValue, onChildAdded, onChildChanged, onChildRemoved, query, limitToLast, orderByChild, equalTo } = window._FB;
   if (safeChannelKey === _activeChatChannelKey && _activeChatChannelUnsubs.length > 0 && _activeChatChannelRoomCode === activeRoomCode) {
     window._itcActiveChatChannelKey = safeChannelKey;
     logItcChatDebug('switch-active-channel-skip-same', { channelKey: safeChannelKey, roomCode: activeRoomCode }, { throttleMs: 1000 });
@@ -1188,6 +1188,75 @@ function switchActiveChatChannel(channelKey = 'global') {
     imageWide: !!m.imageWide, imageMeta: m.imageMeta,
     hideImageMeta: !!m.hideImageMeta,
   });
+
+  // OPT-1B — 공개 일반 채팅은 최근 120개만 개별 child 이벤트로 수신한다.
+  // 일반/DM 혼합 저장 경로는 유지하되 현재 'global' 값과 구버전의 누락(null) 공개 메시지를 서버 쿼리에서 선별한다.
+  if (safeChannelKey === 'global' && typeof onChildAdded === 'function' && typeof onChildChanged === 'function' && typeof onChildRemoved === 'function' && query && orderByChild && equalTo && limitToLast) {
+    const globalListenLimit = 120;
+    const globalListenRefs = [
+      query(chatBaseRef, orderByChild('dmChannelKey'), equalTo('global'), limitToLast(globalListenLimit)),
+      query(chatBaseRef, orderByChild('dmChannelKey'), equalTo(null), limitToLast(globalListenLimit)),
+    ];
+
+    const isCurrentGlobalListener = () => (
+      listenerVersion === _activeChatChannelListenerVersion
+      && String(St.roomCode || '').trim() === activeRoomCode
+      && String(window._itcActiveChatChannelKey || 'global').trim() === 'global'
+    );
+
+    const applyGlobalRecord = (snap, mode = 'added') => {
+      if (!isCurrentGlobalListener()) return;
+      const key = String(snap?.key || '').trim();
+      if (!key) return;
+      const message = { ...(snap.val() || {}), _key: key };
+      if (!shouldShowChatMessage(message)) return;
+
+      const nextSig = buildChatMessageSignature(message);
+      const prevSig = signatures.get(key);
+      const payload = makePayload(key, message);
+      const alreadyProcessed = processed.has(key);
+
+      cacheChannelMessages('global', [message], { merge: true, seed: false });
+      if (!alreadyProcessed) {
+        appendChatMsg(payload);
+        processed.add(key);
+      } else if (prevSig !== nextSig) {
+        replaceChatMsg(payload);
+      }
+      signatures.set(key, nextSig);
+      if (!newestSeenKey || key > newestSeenKey) newestSeenKey = key;
+
+      logItcChatDebug(`active-global-child-${mode}`, {
+        channelKey: 'global',
+        messageKey: key,
+        cachedCount: Array.isArray(_chatRecordsByChannel.get('global')) ? _chatRecordsByChannel.get('global').length : 0,
+      }, { throttleMs: 250 });
+    };
+
+    globalListenRefs.forEach((globalListenRef) => {
+      trackActiveChatChannelListener(onChildAdded(globalListenRef, (snap) => applyGlobalRecord(snap, 'added')));
+      trackActiveChatChannelListener(onChildChanged(globalListenRef, (snap) => applyGlobalRecord(snap, 'changed')));
+      trackActiveChatChannelListener(onChildRemoved(globalListenRef, (snap) => {
+        if (!isCurrentGlobalListener()) return;
+        const key = String(snap?.key || '').trim();
+        if (!key) return;
+        const removedMessage = { ...(snap.val() || {}), _key: key };
+        if (!shouldShowChatMessage(removedMessage)) return;
+        removeCachedChannelMessage('global', key);
+        removeChatMsg(key, 'chat');
+        processed.delete(key);
+        signatures.delete(key);
+        logItcChatDebug('active-global-child-removed', { channelKey: 'global', messageKey: key }, { throttleMs: 250 });
+      }));
+    });
+
+    logItcChatDebug('active-global-child-listeners-ready', {
+      channelKey: 'global',
+      listenLimit: globalListenLimit,
+      listenerCount: _activeChatChannelUnsubs.length,
+    });
+    return;
+  }
 
   trackActiveChatChannelListener(onValue(listenRef, snap => {
     const currentRoomCode = String(St.roomCode || '').trim();
