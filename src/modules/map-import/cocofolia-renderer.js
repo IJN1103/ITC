@@ -143,14 +143,14 @@
     const fgLayer = ensureSourceFieldLayer(container, WORLD_FG_LAYER_ID, 'cocofolia-world-foreground-layer');
 
     if (bgLayer) {
+      // 코코포리아 기본 배경은 전체 화면 블러 후경에서만 표시한다.
+      // 월드 내부에도 같은 이미지를 다시 표시하면 필드 크기의 선명한 사각형 경계가 생긴다.
       bgLayer.style.left = '0px';
       bgLayer.style.top = '0px';
       bgLayer.style.width = `${metrics.logicalWidth}px`;
       bgLayer.style.height = `${metrics.logicalHeight}px`;
-      bgLayer.style.backgroundImage = cssBackgroundImage(background?.url);
-      bgLayer.style.backgroundSize = 'cover';
-      bgLayer.style.backgroundPosition = 'center center';
-      bgLayer.style.display = background?.url && isLayerVisible('background') ? '' : 'none';
+      bgLayer.style.backgroundImage = '';
+      bgLayer.style.display = 'none';
     }
 
     if (fgLayer) {
