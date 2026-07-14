@@ -9,6 +9,10 @@
     return window.ITCCocofoliaFeatureDiagnostics || null;
   }
 
+  function sceneApi() {
+    return window.ITCCocofoliaSceneDiagnostics || null;
+  }
+
   function buildCocofoliaDiagnostics(zip, parsed) {
     const { normalizeCocofoliaZipPath, collectCocofoliaReferencedImages, isLikelyImageZipEntry } = parserApi();
     const room = parsed?.entities?.room || {};
@@ -62,6 +66,7 @@
     });
 
     const featureInventory = featureApi()?.buildFeatureInventory(zip, parsed) || null;
+    const sceneDiagnostics = sceneApi()?.buildSceneDiagnostics(parsed) || null;
 
     return {
       zipFileCount: zipFiles.length,
@@ -78,6 +83,7 @@
       fieldHeight,
       typeCounts,
       featureInventory,
+      sceneDiagnostics,
       matched,
       missing,
       unsupportedItems: unsupportedItems.map((item) => ({ id: item.id, type: item.type, imageUrl: item.imageUrl || '' })),
@@ -111,6 +117,7 @@
     if (diagnostics.outOfFieldItems.length) console.table(diagnostics.outOfFieldItems);
     console.groupEnd();
     featureApi()?.logFeatureInventory(diagnostics.featureInventory, fileName);
+    sceneApi()?.logSceneDiagnostics(diagnostics.sceneDiagnostics, fileName);
   }
 
   function buildValidationSummary(file, parsed, escapeHtml, actionHtml, statusHtml) {
@@ -189,8 +196,10 @@
       `<span class="coco-check-note">세부 개발 정보는 콘솔의 ‘ITC 맵세팅 진단’에서 확인할 수 있습니다.</span>`,
     ];
     const featureSummary = featureApi()?.buildFeatureSummary(diagnostics.featureInventory, safe) || '';
+    const sceneSummary = sceneApi()?.buildSceneSummary(diagnostics.sceneDiagnostics, safe) || '';
     return `<details class="coco-check-details"${hasProblems ? ' open' : ''}><summary>상세 호환 진단</summary><div>${diagnosticDetails.join('<br>')}</div></details>`
-      + featureSummary;
+      + featureSummary
+      + sceneSummary;
   }
 
   window.ITCCocofoliaDiagnostics = Object.freeze({
