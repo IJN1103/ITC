@@ -118,55 +118,73 @@
     const room = parsed?.entities?.room || {};
     const items = parsed?.entities?.items || {};
     const resources = parsed?.resources || {};
+    const effects = parsed?.entities?.effects || {};
+    const scenes = parsed?.entities?.scenes || {};
+    const inventory = featureApi()?.buildFeatureInventory(null, parsed) || null;
     const version = parsed?.meta?.version || '알 수 없음';
-    const gridLabel = room.displayGrid ? '표시' : '숨김';
     const itemCount = Object.keys(items).length;
     const resourceCount = Object.keys(resources).length;
-    const lines = [
+    const sceneCount = Number(inventory?.features?.scenes?.count || Object.keys(scenes).length || 0);
+    const cutinCount = Number(inventory?.features?.cutins?.count || Object.keys(effects).length || 0);
+    const animatedCount = Number(inventory?.features?.animatedImages?.count || 0);
+    const markerCount = Object.keys(room?.markers || {}).length;
+    const headline = [
+      `<div class="coco-check-head">`,
       `<b>검사 완료</b>`,
-      `파일명: ${safe(file?.name || '')}`,
-      `버전: ${safe(version)}`,
-      `배경 이미지: ${room.backgroundUrl ? '있음' : '없음'} / 포그라운드: ${room.foregroundUrl ? '있음' : '없음'}`,
-      `렌더 방식: ${safe(room.fieldObjectFit || 'contain')} / 그리드 정렬: ${room.alignWithGrid ? '켜짐' : '꺼짐'}`,
-      `오브젝트: ${itemCount}개 / 마커 패널: ${Object.keys(room?.markers || {}).length}개`,
-      Object.keys(parsed?.entities?.effects || {}).length > 0
-        ? `컷인: ${Object.keys(parsed?.entities?.effects || {}).length}개 (자동 임포트)` : null,
-      `item 수: ${itemCount}개`,
-      `리소스 수: ${resourceCount}개`,
-      `그리드: ${gridLabel} / 크기 ${Number(room.gridSize || 0) || 0}`,
-      `배경 + 전경 + image item 오브젝트 일부를 실제 맵에 적용할 수 있습니다.`,
-    ];
+      `<span class="coco-check-file">${safe(file?.name || '')}</span>`,
+      `</div>`,
+      `<div class="coco-check-metrics">`,
+      `<span>오브젝트 <b>${itemCount}</b></span>`,
+      sceneCount ? `<span>장면 <b>${sceneCount}</b></span>` : '',
+      cutinCount ? `<span>컷인 <b>${cutinCount}</b></span>` : '',
+      animatedCount ? `<span>애니메이션 <b>${animatedCount}</b></span>` : '',
+      markerCount ? `<span>마커 <b>${markerCount}</b></span>` : '',
+      `</div>`,
+    ].filter(Boolean).join('');
+    const warnings = [];
     if (itemCount >= 80 || resourceCount >= 120) {
-      lines.push(`<span style="color:#e6c58a">주의: 오브젝트/리소스 수가 많은 ZIP입니다. 적용 직후 몇 초간 업로드와 렌더링이 무거울 수 있어요.</span>`);
+      warnings.push(`<div class="coco-check-warning">오브젝트나 리소스가 많은 ZIP입니다. 적용 직후 잠시 무거울 수 있습니다.</div>`);
     }
-    return lines.filter(Boolean).join('<br>') + String(actionHtml || '');
+    const details = [
+      `버전: ${safe(version)}`,
+      `배경: ${room.backgroundUrl ? '있음' : '없음'} / 전경: ${room.foregroundUrl ? '있음' : '없음'}`,
+      `렌더 방식: ${safe(room.fieldObjectFit || 'contain')}`,
+      `그리드: ${room.displayGrid ? '표시' : '숨김'} / 정렬 ${room.alignWithGrid ? '켜짐' : '꺼짐'} / 크기 ${Number(room.gridSize || 0) || 0}`,
+      `리소스: ${resourceCount}개`,
+    ];
+    return headline
+      + warnings.join('')
+      + String(actionHtml || '')
+      + `<details class="coco-check-details"><summary>기본 맵 정보</summary><div>${details.join('<br>')}</div></details>`;
   }
 
   function buildDiagnosticsSummary(diagnostics, escapeHtml) {
     if (!diagnostics) return '';
     const safe = typeof escapeHtml === 'function' ? escapeHtml : (value) => String(value || '');
-    const status = diagnostics.missingReferenceCount > 0 || diagnostics.unsupportedObjectCount > 0
-      ? '<span style="color:#e6c58a">추가 확인 필요</span>'
-      : '<span style="color:#9fd6a3">기본 파일 연결 정상</span>';
-    const lines = [
-      `<hr style="border:0;border-top:1px solid rgba(255,255,255,.15);margin:10px 0">`,
-      `<b>호환 진단: ${status}</b>`,
+    const hasProblems = diagnostics.missingReferenceCount > 0 || diagnostics.unsupportedObjectCount > 0;
+    const statusText = hasProblems ? '추가 확인 필요' : '모든 기본 파일 연결 정상';
+    const statusClass = hasProblems ? 'is-warning' : 'is-ok';
+    const problemLines = [];
+    if (diagnostics.missingReferenceCount > 0) {
+      const names = diagnostics.missing.slice(0, 4).map((item) => safe(item.raw)).join(', ');
+      problemLines.push(`<span class="coco-check-warning">누락 파일: ${names}${diagnostics.missing.length > 4 ? ' 외' : ''}</span>`);
+    }
+    if (diagnostics.unsupportedObjectCount > 0) {
+      const types = [...new Set(diagnostics.unsupportedItems.map((item) => String(item.type || 'unknown')))].join(', ');
+      problemLines.push(`<span class="coco-check-warning">현재 미지원 타입: ${safe(types)}</span>`);
+    }
+    const diagnosticDetails = [
       `ZIP 이미지: ${diagnostics.zipImageCount}개 / 데이터 참조: ${diagnostics.referenceCount}개`,
       `파일 연결: ${diagnostics.matchedReferenceCount}개 성공 / ${diagnostics.missingReferenceCount}개 누락`,
       `지원 오브젝트: ${diagnostics.supportedObjectCount}개 / 미지원 타입: ${diagnostics.unsupportedObjectCount}개`,
       `필드 밖 배치: ${diagnostics.outOfFieldObjectCount}개 / 음수 레이어: ${diagnostics.negativeZObjectCount}개 / 비활성: ${diagnostics.inactiveObjectCount}개`,
+      ...problemLines,
+      `<span class="coco-check-note">세부 개발 정보는 콘솔의 ‘ITC 맵세팅 진단’에서 확인할 수 있습니다.</span>`,
     ];
-    if (diagnostics.missingReferenceCount > 0) {
-      const names = diagnostics.missing.slice(0, 4).map((item) => safe(item.raw)).join(', ');
-      lines.push(`<span style="color:#f0a5a5">누락 파일: ${names}${diagnostics.missing.length > 4 ? ' 외' : ''}</span>`);
-    }
-    if (diagnostics.unsupportedObjectCount > 0) {
-      const types = [...new Set(diagnostics.unsupportedItems.map((item) => String(item.type || 'unknown')))].join(', ');
-      lines.push(`<span style="color:#e6c58a">현재 미지원 타입: ${safe(types)}</span>`);
-    }
-    lines.push(`<span style="opacity:.72">상세 내용은 개발자 콘솔의 ‘ITC 맵세팅 진단’에서 확인할 수 있습니다.</span>`);
     const featureSummary = featureApi()?.buildFeatureSummary(diagnostics.featureInventory, safe) || '';
-    return lines.join('<br>') + featureSummary;
+    return `<div class="coco-check-status ${statusClass}">${statusText}</div>`
+      + `<details class="coco-check-details"${hasProblems ? ' open' : ''}><summary>상세 호환 진단</summary><div>${diagnosticDetails.join('<br>')}</div></details>`
+      + featureSummary;
   }
 
   window.ITCCocofoliaDiagnostics = Object.freeze({
