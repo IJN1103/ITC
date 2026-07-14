@@ -176,7 +176,11 @@
     const blur = document.getElementById('map-bg-blur-layer');
     if (legacyBg) legacyBg.style.display = 'none';
     if (legacyFg) legacyFg.style.display = 'none';
-    if (blur) blur.style.display = 'none';
+    if (blur) {
+      const blurVisible = !!background?.url && background?.blur !== false && isLayerVisible('background');
+      blur.style.display = blurVisible ? '' : 'none';
+      blur.classList.toggle('map-layer-runtime-hidden', !blurVisible);
+    }
     return true;
   }
 
@@ -193,7 +197,12 @@
       const legacyBg = document.getElementById('map-bg-layer');
       const blur = document.getElementById('map-bg-blur-layer');
       if (legacyBg) legacyBg.style.display = 'none';
-      if (blur) blur.style.display = 'none';
+      if (blur) {
+        const background = window.St?.mapState?.background || null;
+        const blurVisible = !!background?.url && background?.blur !== false && isLayerVisible('background');
+        blur.style.display = blurVisible ? '' : 'none';
+        blur.classList.toggle('map-layer-runtime-hidden', !blurVisible);
+      }
       return;
     }
 

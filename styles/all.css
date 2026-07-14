@@ -218,7 +218,7 @@ to{opacity:1;transform:translateY(0);}
 .map-bg-blur-layer{position:absolute;inset:0;z-index:0;pointer-events:none;background-repeat:no-repeat;background-position:center center;background-size:cover;opacity:1;filter:blur(20px) brightness(1.05) saturate(1.1);transform:scale(1.05);transform-origin:center;}
 .map-bg-layer{position:absolute;inset:0;z-index:1;pointer-events:none;background-repeat:no-repeat;background-position:center center;background-size:contain;opacity:1;}
 .map-fg-layer{position:absolute;inset:0;z-index:1;pointer-events:none;background-repeat:no-repeat;background-position:center center;background-size:contain;opacity:1;}
-.map-inner.cocofolia-source-field-active>.map-bg-layer,.map-area.cocofolia-source-field-active>.map-bg-blur-layer{display:none!important;}
+.map-inner.cocofolia-source-field-active>.map-bg-layer{display:none!important;}
 .map-layer-runtime-hidden{display:none!important;visibility:hidden!important;opacity:0!important;}
 
 .map-obj-layer{position:absolute;inset:0;z-index:1;pointer-events:none;overflow:hidden;}
