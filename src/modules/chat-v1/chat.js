@@ -2777,20 +2777,31 @@ async function deleteMsg(div) {
 
   try {
     if (window._FB?.CONFIGURED) {
-      const { db, ref, remove } = window._FB;
+      const { db, ref, get, remove } = window._FB;
       if (!db || !ref || typeof remove !== 'function') throw new Error('Firebase remove helper missing');
       if (!St.roomCode) throw new Error('roomCode missing');
-      await remove(ref(db, `rooms/${St.roomCode}/${channel}/${key}`));
+
+      const messageRef = ref(db, `rooms/${St.roomCode}/${channel}/${key}`);
+      let record = typeof getStoredRecord === 'function' ? getStoredRecord(channel, key) : null;
+      if (!record && typeof get === 'function') {
+        const snap = await get(messageRef);
+        record = snap?.exists?.() ? snap.val() : null;
+      }
+      if (!record) throw new Error('message record missing');
+
+      await remove(messageRef);
 
       if (channel === 'chat') {
-        const activeDmKey = String(window._itcActiveChatChannelKey || '').trim();
-        if (activeDmKey && activeDmKey !== 'global') {
-          try { await remove(ref(db, `rooms/${St.roomCode}/dmMessageIndex/${activeDmKey}/${key}`)); } catch (e) {}
-          try { await remove(ref(db, `rooms/${St.roomCode}/dmChats/${activeDmKey}/messages/${key}`)); } catch (e) {}
+        const dmKey = String(record.dmChannelKey || 'global').trim() || 'global';
+        if (dmKey !== 'global') {
+          try { await remove(ref(db, `rooms/${St.roomCode}/dmMessageIndex/${dmKey}/${key}`)); } catch (e) {}
+          try { await remove(ref(db, `rooms/${St.roomCode}/dmChats/${dmKey}/messages/${key}`)); } catch (e) {}
         }
       }
     }
 
+    // remove()가 완료된 시점에 현재 창을 즉시 정리한다. child_removed가 뒤이어
+    // 도착해도 키 기반 제거이므로 중복 처리되지 않는다.
     if (channel === 'casual' && typeof removeCasualMsg === 'function') removeCasualMsg(key);
     else if (typeof removeChatMsg === 'function') removeChatMsg(key, channel);
   } catch (err) {
@@ -2880,29 +2891,45 @@ window.deleteChatMessageFromPopout = async function(msgKey, channel = 'chat') {
   const safeChannel = String(channel || 'chat').trim() || 'chat';
   if (!key) return false;
 
-  const record = typeof getStoredRecord === 'function' ? getStoredRecord(safeChannel, key) : null;
-  if (!record) {
-    showToast('삭제할 메시지를 찾지 못했어요.');
-    return false;
-  }
-  const isMine = String(record.uid || '') === String(St.myId || '');
-  if (!isMine && !St.isGM) {
-    showToast('이 메시지는 삭제할 수 없어요.');
-    return false;
-  }
-  if (!window.confirm('이 메시지를 삭제할까요?')) return false;
-
   try {
     if (!window._FB?.CONFIGURED) throw new Error('Firebase is not configured');
-    const { db, ref, remove } = window._FB;
-    await remove(ref(db, `rooms/${St.roomCode}/${safeChannel}/${key}`));
+    const { db, ref, get, remove } = window._FB;
+    if (!db || !ref || typeof remove !== 'function') throw new Error('Firebase remove helper missing');
+
+    // 팝아웃 전용 캐시와 메인창 캐시는 의도적으로 분리되어 있다. 메인 캐시에
+    // 메시지가 없더라도 정식 Firebase 원본을 조회해 삭제 경로와 권한을 확정한다.
+    const messageRef = ref(db, `rooms/${St.roomCode}/${safeChannel}/${key}`);
+    let record = typeof getStoredRecord === 'function' ? getStoredRecord(safeChannel, key) : null;
+    if (!record && typeof get === 'function') {
+      const snap = await get(messageRef);
+      record = snap?.exists?.() ? snap.val() : null;
+    }
+    if (!record) {
+      showToast('삭제할 메시지를 찾지 못했어요.');
+      return false;
+    }
+
+    const isMine = String(record.uid || '') === String(St.myId || '');
+    if (!isMine && !St.isGM) {
+      showToast('이 메시지는 삭제할 수 없어요.');
+      return false;
+    }
+    if (!window.confirm('이 메시지를 삭제할까요?')) return false;
+
+    await remove(messageRef);
+
     if (safeChannel === 'chat') {
-      const dmKey = String(record.dmChannelKey || window._itcActiveChatChannelKey || 'global').trim() || 'global';
+      const dmKey = String(record.dmChannelKey || 'global').trim() || 'global';
       if (dmKey !== 'global') {
         try { await remove(ref(db, `rooms/${St.roomCode}/dmMessageIndex/${dmKey}/${key}`)); } catch (e) {}
         try { await remove(ref(db, `rooms/${St.roomCode}/dmChats/${dmKey}/messages/${key}`)); } catch (e) {}
       }
     }
+
+    // 팝아웃 watcher의 child_removed 검증이 끝나기 전에도 메인창 캐시와 DOM을
+    // 즉시 정리한다. 팝아웃은 성공 반환 후 자체 캐시 동기화 이벤트를 받는다.
+    if (safeChannel === 'casual' && typeof removeCasualMsg === 'function') removeCasualMsg(key);
+    else if (typeof removeChatMsg === 'function') removeChatMsg(key, safeChannel);
     return true;
   } catch (err) {
     console.error('deleteChatMessageFromPopout failed', err);
@@ -2910,6 +2937,7 @@ window.deleteChatMessageFromPopout = async function(msgKey, channel = 'chat') {
     return false;
   }
 };
+
 
 function fmtText(str) {
   let s = esc(str);
