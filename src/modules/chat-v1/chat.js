@@ -2886,7 +2886,7 @@ window.editChatMessageFromPopout = async function(msgKey, channel = 'chat') {
   }
 };
 
-window.deleteChatMessageFromPopout = async function(msgKey, channel = 'chat') {
+window.deleteChatMessageFromPopout = async function(msgKey, channel = 'chat', confirmedInPopout = false) {
   const key = String(msgKey || '').trim();
   const safeChannel = String(channel || 'chat').trim() || 'chat';
   if (!key) return false;
@@ -2914,7 +2914,7 @@ window.deleteChatMessageFromPopout = async function(msgKey, channel = 'chat') {
       showToast('이 메시지는 삭제할 수 없어요.');
       return false;
     }
-    if (!window.confirm('이 메시지를 삭제할까요?')) return false;
+    if (!confirmedInPopout && !window.confirm('이 메시지를 삭제할까요?')) return false;
 
     await remove(messageRef);
 
