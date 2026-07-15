@@ -106,9 +106,19 @@
           || type.startsWith('listener-')
           || type.startsWith('popout-')
           || type.startsWith('firebase-')
+          || type.startsWith('image-upload-')
           || type.startsWith('room-');
       })
       .slice(-MAX_EXECUTION_PATH);
+  }
+
+  function getRecentUserActions() {
+    return events.filter((entry) => {
+      const type = String(entry?.type || '');
+      return type.startsWith('chat-write-')
+        || type.startsWith('firebase-write-')
+        || type.startsWith('image-upload-');
+    }).slice(-80);
   }
 
   function buildWarnings(chat, popoutWatchers) {
@@ -155,6 +165,7 @@
       bgm: callStatus('getBgmDebugStatus', null),
       warnings: buildWarnings(chat, popoutWatchers),
       recentExecutionPath: getExecutionPath(),
+      recentUserActions: getRecentUserActions(),
       recentEvents: events.slice(),
     };
     try { console.log('[ITC_DIAGNOSTICS]', report); } catch (e) {}

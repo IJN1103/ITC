@@ -10,6 +10,23 @@ function getChatServerTimestamp() {
     : Date.now();
 }
 
+function recordChatDiagnosticEvent(type, detail = {}) {
+  try {
+    if (window.ITCDiagnostics?.isEnabled?.()) {
+      window.ITCDiagnostics.record(String(type || 'chat-event'), {
+        roomCode: String(St?.roomCode || ''),
+        channelKey: String(window._itcActiveChatChannelKey || 'global'),
+        ...detail,
+      });
+    }
+  } catch (e) {}
+}
+
+function getChatDiagnosticError(err) {
+  try { return String(err?.message || err || 'unknown error').slice(0, 500); }
+  catch (e) { return 'unknown error'; }
+}
+
 /**
  * ITC TRPG — Chat 모듈
  *
@@ -2081,15 +2098,22 @@ async function uploadChatImageDataUrl(dataUrl, roomCode, preparedItem = null) {
   const blobInfo = uploadBlob
     ? { blob: uploadBlob, contentType: preparedItem?.uploadMime || uploadBlob.type || 'image/jpeg' }
     : blobFromDataUrl(dataUrl);
+  const sizeBytes = Number(blobInfo.blob?.size || 0);
+  recordChatDiagnosticEvent('image-upload-transport-started', { operation: 'cloudinary-upload', sizeBytes, contentType: String(blobInfo.contentType || '') });
 
-  const uploadedCloudinary = await uploadChatImageBlobToCloudinary(blobInfo.blob, uploadFileName || `chat_${Date.now()}.jpg`);
-  if (!uploadedCloudinary?.url) return null;
-
-  return {
-    url: uploadedCloudinary.url,
-    path: uploadedCloudinary.path || '',
-    contentType: uploadedCloudinary.contentType || blobInfo.contentType || 'image/jpeg',
-  };
+  try {
+    const uploadedCloudinary = await uploadChatImageBlobToCloudinary(blobInfo.blob, uploadFileName || `chat_${Date.now()}.jpg`);
+    if (!uploadedCloudinary?.url) throw new Error('Cloudinary returned no URL');
+    recordChatDiagnosticEvent('image-upload-transport-succeeded', { operation: 'cloudinary-upload', sizeBytes, contentType: String(uploadedCloudinary.contentType || blobInfo.contentType || '') });
+    return {
+      url: uploadedCloudinary.url,
+      path: uploadedCloudinary.path || '',
+      contentType: uploadedCloudinary.contentType || blobInfo.contentType || 'image/jpeg',
+    };
+  } catch (err) {
+    recordChatDiagnosticEvent('image-upload-transport-failed', { operation: 'cloudinary-upload', sizeBytes, contentType: String(blobInfo.contentType || ''), error: getChatDiagnosticError(err) });
+    throw err;
+  }
 }
 
 /* ==========================================================================
@@ -2166,6 +2190,7 @@ async function sendPendingChatImages() {
   }
   if (!_pendingChatImages.length) return true;
   const items = _pendingChatImages.splice(0, _pendingChatImages.length);
+  recordChatDiagnosticEvent('image-upload-started', { operation: 'chat-image-batch', itemCount: items.length });
   renderPendingChatImages();
   showChatUploadStatus();
   try {
@@ -2176,9 +2201,11 @@ async function sendPendingChatImages() {
     _pendingChatImageWide = false;
     _pendingChatImageHideMeta = false;
     renderPendingChatImages();
+    recordChatDiagnosticEvent('image-upload-succeeded', { operation: 'chat-image-batch', itemCount: items.length });
     return true;
   } catch (err) {
     console.error('sendPendingChatImages failed', err);
+    recordChatDiagnosticEvent('image-upload-failed', { operation: 'chat-image-batch', itemCount: items.length, error: getChatDiagnosticError(err) });
     items.reverse().forEach(item => _pendingChatImages.unshift(item));
     renderPendingChatImages();
     showToast(err?.message || '이미지 업로드에 실패했어요. 잠시 후 다시 시도해 주세요.');
@@ -2378,14 +2405,28 @@ function sendMessage(name, text, type = 'normal', extra = null) {
   if (St.myNameColor) msg.nameColor = St.myNameColor;
   if (extra && typeof extra === 'object') Object.assign(msg, extra);
   const currentChannelKey = String(window._itcActiveChatChannelKey || (typeof getCurrentDmChannelKey === 'function' ? getCurrentDmChannelKey() : 'global') || 'global').trim() || 'global';
+  recordChatDiagnosticEvent('chat-write-started', { operation: 'send', channel: 'chat', messageType: String(type || 'normal'), hasImage: type === 'image' || type === 'speak-as-image' });
   if (window._FB?.CONFIGURED) {
     const { db, ref, push } = window._FB;
-    if (!St.roomCode) return Promise.reject(new Error('roomCode missing'));
+    if (!St.roomCode) {
+      const err = new Error('roomCode missing');
+      recordChatDiagnosticEvent('firebase-write-failed', { operation: 'send', channel: 'chat', messageType: String(type || 'normal'), error: getChatDiagnosticError(err) });
+      return Promise.reject(err);
+    }
     const payload = { ...msg, dmChannelKey: currentChannelKey || 'global', time: getChatServerTimestamp() };
     return push(ref(db, `rooms/${St.roomCode}/chat`), payload)
-      .then((pushedRef) => notifyDmMetaAfterChatPush(currentChannelKey, payload, pushedRef));
+      .then((pushedRef) => notifyDmMetaAfterChatPush(currentChannelKey, payload, pushedRef))
+      .then((pushedRef) => {
+        recordChatDiagnosticEvent('chat-write-succeeded', { operation: 'send', channel: 'chat', messageType: String(type || 'normal'), messageKey: String(pushedRef?.key || '') });
+        return pushedRef;
+      })
+      .catch((err) => {
+        recordChatDiagnosticEvent('firebase-write-failed', { operation: 'send', channel: 'chat', messageType: String(type || 'normal'), error: getChatDiagnosticError(err) });
+        throw err;
+      });
   }
   appendChatMsg({ ...msg, timestamp: msg.time, nameColor: msg.nameColor || null, channel: 'chat', imageWide: !!msg.imageWide, imageMeta: msg.imageMeta || null, hideImageMeta: !!msg.hideImageMeta });
+  recordChatDiagnosticEvent('chat-write-succeeded', { operation: 'send-local', channel: 'chat', messageType: String(type || 'normal') });
   return Promise.resolve();
 }
 
@@ -2407,12 +2448,26 @@ function sendCasualMsg(name, text) {
   const localTime = Date.now();
   const msg = { name, text, uid: St.myId, time: localTime };
   if (St.casualNameColor) msg.nameColor = St.casualNameColor;
+  recordChatDiagnosticEvent('chat-write-started', { operation: 'send', channel: 'casual', messageType: 'normal' });
   if (window._FB?.CONFIGURED) {
     const { db, ref, push } = window._FB;
-    if (!St.roomCode) return Promise.reject(new Error('roomCode missing'));
-    return push(ref(db, `rooms/${St.roomCode}/casual`), { ...msg, time: getChatServerTimestamp() });
+    if (!St.roomCode) {
+      const err = new Error('roomCode missing');
+      recordChatDiagnosticEvent('firebase-write-failed', { operation: 'send', channel: 'casual', messageType: 'normal', error: getChatDiagnosticError(err) });
+      return Promise.reject(err);
+    }
+    return push(ref(db, `rooms/${St.roomCode}/casual`), { ...msg, time: getChatServerTimestamp() })
+      .then((pushedRef) => {
+        recordChatDiagnosticEvent('chat-write-succeeded', { operation: 'send', channel: 'casual', messageType: 'normal', messageKey: String(pushedRef?.key || '') });
+        return pushedRef;
+      })
+      .catch((err) => {
+        recordChatDiagnosticEvent('firebase-write-failed', { operation: 'send', channel: 'casual', messageType: 'normal', error: getChatDiagnosticError(err) });
+        throw err;
+      });
   }
   appendCasualMsg(name, text, St.myId, msg.time, null, St.casualNameColor || '');
+  recordChatDiagnosticEvent('chat-write-succeeded', { operation: 'send-local', channel: 'casual', messageType: 'normal' });
   return Promise.resolve();
 }
 
@@ -2756,7 +2811,14 @@ function editMsg(div) {
     textEl.innerHTML = fmtText(newText);
     if (window._FB?.CONFIGURED) {
       const { db, ref, update } = window._FB;
-      update(ref(db, `rooms/${St.roomCode}/${channel}/${key}`), { text: newText, edited: true });
+      recordChatDiagnosticEvent('chat-write-started', { operation: 'edit', channel, messageKey: key });
+      Promise.resolve(update(ref(db, `rooms/${St.roomCode}/${channel}/${key}`), { text: newText, edited: true }))
+        .then(() => recordChatDiagnosticEvent('chat-write-succeeded', { operation: 'edit', channel, messageKey: key }))
+        .catch((err) => {
+          recordChatDiagnosticEvent('firebase-write-failed', { operation: 'edit', channel, messageKey: key, error: getChatDiagnosticError(err) });
+          console.error('editMsg failed', err);
+          showToast('메시지 수정에 실패했어요.');
+        });
     }
   }
 
@@ -2774,6 +2836,7 @@ async function deleteMsg(div) {
   if (!confirm('이 메시지를 삭제할까요?')) return;
   const actionButtons = Array.from(div.querySelectorAll('.msg-act-btn'));
   actionButtons.forEach((btn) => { btn.disabled = true; });
+  recordChatDiagnosticEvent('chat-write-started', { operation: 'delete', channel, messageKey: key });
 
   try {
     if (window._FB?.CONFIGURED) {
@@ -2804,8 +2867,10 @@ async function deleteMsg(div) {
     // 도착해도 키 기반 제거이므로 중복 처리되지 않는다.
     if (channel === 'casual' && typeof removeCasualMsg === 'function') removeCasualMsg(key);
     else if (typeof removeChatMsg === 'function') removeChatMsg(key, channel);
+    recordChatDiagnosticEvent('chat-write-succeeded', { operation: 'delete', channel, messageKey: key });
   } catch (err) {
     console.error('deleteMsg failed', err);
+    recordChatDiagnosticEvent('firebase-write-failed', { operation: 'delete', channel, messageKey: key, error: getChatDiagnosticError(err) });
     showToast('메시지 삭제에 실패했어요. 새로고침 후 다시 시도해주세요.');
     actionButtons.forEach((btn) => { btn.disabled = false; });
   }
@@ -2848,10 +2913,13 @@ window.updateChatMessageFromPopout = async function(msgKey, channel = 'chat', ne
 
     const oldText = String(record.text || '');
     if (newText === oldText) return true;
+    recordChatDiagnosticEvent('chat-write-started', { operation: 'edit-popout', channel: safeChannel, messageKey: key });
     await update(messageRef, { text: newText, edited: true });
+    recordChatDiagnosticEvent('chat-write-succeeded', { operation: 'edit-popout', channel: safeChannel, messageKey: key });
     return true;
   } catch (err) {
     console.error('updateChatMessageFromPopout failed', err);
+    recordChatDiagnosticEvent('firebase-write-failed', { operation: 'edit-popout', channel: safeChannel, messageKey: key, error: getChatDiagnosticError(err) });
     showToast('메시지 수정에 실패했어요.');
     return false;
   }
@@ -2916,6 +2984,7 @@ window.deleteChatMessageFromPopout = async function(msgKey, channel = 'chat', co
     }
     if (!confirmedInPopout && !window.confirm('이 메시지를 삭제할까요?')) return false;
 
+    recordChatDiagnosticEvent('chat-write-started', { operation: 'delete-popout', channel: safeChannel, messageKey: key });
     await remove(messageRef);
 
     if (safeChannel === 'chat') {
@@ -2930,9 +2999,11 @@ window.deleteChatMessageFromPopout = async function(msgKey, channel = 'chat', co
     // 즉시 정리한다. 팝아웃은 성공 반환 후 자체 캐시 동기화 이벤트를 받는다.
     if (safeChannel === 'casual' && typeof removeCasualMsg === 'function') removeCasualMsg(key);
     else if (typeof removeChatMsg === 'function') removeChatMsg(key, safeChannel);
+    recordChatDiagnosticEvent('chat-write-succeeded', { operation: 'delete-popout', channel: safeChannel, messageKey: key });
     return true;
   } catch (err) {
     console.error('deleteChatMessageFromPopout failed', err);
+    recordChatDiagnosticEvent('firebase-write-failed', { operation: 'delete-popout', channel: safeChannel, messageKey: key, error: getChatDiagnosticError(err) });
     showToast('메시지 삭제에 실패했어요.');
     return false;
   }
@@ -3063,12 +3134,25 @@ function sendWhisperMessage(senderName, text, targetUid, targetName, options = {
   } else if (St.myNameColor) {
     msg.nameColor = St.myNameColor;
   }
+  recordChatDiagnosticEvent('chat-write-started', { operation: 'send-whisper', channel: 'chat', messageType: 'whisper' });
   if (window._FB?.CONFIGURED) {
     const { db, ref, push } = window._FB;
-    if (!St.roomCode) return Promise.reject(new Error('roomCode missing'));
+    if (!St.roomCode) {
+      const err = new Error('roomCode missing');
+      recordChatDiagnosticEvent('firebase-write-failed', { operation: 'send-whisper', channel: 'chat', messageType: 'whisper', error: getChatDiagnosticError(err) });
+      return Promise.reject(err);
+    }
     const payload = { ...msg, time: getChatServerTimestamp() };
     return push(ref(db, `rooms/${St.roomCode}/chat`), payload)
-      .then((pushedRef) => notifyDmMetaAfterChatPush(channelKey, payload, pushedRef));
+      .then((pushedRef) => notifyDmMetaAfterChatPush(channelKey, payload, pushedRef))
+      .then((pushedRef) => {
+        recordChatDiagnosticEvent('chat-write-succeeded', { operation: 'send-whisper', channel: 'chat', messageType: 'whisper', messageKey: String(pushedRef?.key || '') });
+        return pushedRef;
+      })
+      .catch((err) => {
+        recordChatDiagnosticEvent('firebase-write-failed', { operation: 'send-whisper', channel: 'chat', messageType: 'whisper', error: getChatDiagnosticError(err) });
+        throw err;
+      });
   }
   appendChatMsg({
     name: msg.name, text, type: 'whisper', uid: St.myId, timestamp: msg.time,
@@ -3076,6 +3160,7 @@ function sendWhisperMessage(senderName, text, targetUid, targetName, options = {
     speakAsJournalId: msg.speakAsJournalId || null, speakAsAvatar: msg.speakAsAvatar || null,
     nameColor: msg.nameColor || null, channel: 'chat'
   });
+  recordChatDiagnosticEvent('chat-write-succeeded', { operation: 'send-whisper-local', channel: 'chat', messageType: 'whisper' });
   return Promise.resolve();
 }
 
