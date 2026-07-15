@@ -62,6 +62,7 @@ function getSharedAvatarRuntime() {
 let _popoutWins = [];
 let _popoutMirrorBound = false;
 let _popoutMirrorCleanup = null;
+let _popoutLifecycleTimer = 0;
 let _popoutSyncDebugState = {
   requested: 0,
   completed: 0,
@@ -85,6 +86,10 @@ function cleanupPopoutMirror() {
   }
   _popoutMirrorCleanup = null;
   _popoutMirrorBound = false;
+  if (_popoutLifecycleTimer) {
+    clearInterval(_popoutLifecycleTimer);
+    _popoutLifecycleTimer = 0;
+  }
   try {
     if (window.forcePopoutSync && window.forcePopoutSync.__itcPopoutMirrorOwned) {
       window.forcePopoutSync = null;
@@ -889,6 +894,31 @@ function popoutChat() {
     } catch (e) {}
   };
 
+  // OPT-1I: 팝아웃을 브라우저 X 버튼으로 닫으면 본창 DOM 변화가 없을 수 있다.
+  // 별도 생명주기 점검으로 닫힌 창을 제거하고 해당 채널 watcher를 즉시 정리한다.
+  const ensurePopoutLifecycleMonitor = () => {
+    if (_popoutLifecycleTimer) return;
+    _popoutLifecycleTimer = setInterval(() => {
+      try {
+        const beforeCount = _popoutWins.length;
+        _popoutWins = _popoutWins.filter((w) => w && !w.closed);
+        const afterCount = _popoutWins.length;
+        pruneUnusedPopoutChannelWatchers();
+        if (beforeCount !== afterCount) {
+          _popoutSyncDebugState.lastWindowCount = afterCount;
+          _popoutSyncDebugState.lastChannels = getOpenPopoutChatChannelKeys();
+        }
+        if (afterCount === 0) {
+          clearInterval(_popoutLifecycleTimer);
+          _popoutLifecycleTimer = 0;
+          if (typeof window.prunePopoutChatChannelWatchers === 'function') {
+            window.prunePopoutChatChannelWatchers([]);
+          }
+        }
+      } catch (e) {}
+    }, 1000);
+  };
+
   const schedulePopoutSync = (() => {
     let timer = 0;
     return () => {
@@ -969,6 +999,7 @@ function popoutChat() {
 
   try { schedulePopoutSync.__itcPopoutMirrorOwned = true; } catch (e) {}
   bindPopoutMirror();
+  ensurePopoutLifecycleMonitor();
   let tries = 0;
   const t = setInterval(() => { tries++; if ((win && win._popReady) || tries > 15) { clearInterval(t); syncExisting(); } }, 200);
   showToast('채팅이 새 창으로 분리됐어요! (' + _popoutWins.length + '/3)');
