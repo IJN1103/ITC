@@ -241,14 +241,47 @@ async function fetchCasualPage(state) {
   return entries.map(([key, value]) => [key, value || {}]);
 }
 async function fetchDmPage(state) {
-  if (!activeDmChannel || !dmChannels.some(item => item.channelKey === activeDmChannel)) throw new Error('이 DM 방의 기록을 볼 권한이 없습니다.');
-  const base = ref(db, `rooms/${roomCode}/dmChats/${activeDmChannel}/messages`);
-  const q = state.cursorKey ? query(base, orderByKey(), endBefore(state.cursorKey), limitToLast(PAGE_SIZE)) : query(base, orderByKey(), limitToLast(PAGE_SIZE));
-  const snap = await get(q);
-  const entries = Object.entries(snap.val() || {});
-  if (entries.length) state.cursorKey = entries[0][0];
-  state.exhausted = entries.length < PAGE_SIZE;
-  return entries.map(([key, value]) => [key, value || {}]);
+  if (!activeDmChannel || !dmChannels.some(item => item.channelKey === activeDmChannel)) {
+    throw new Error('이 DM 방의 기록을 볼 권한이 없습니다.');
+  }
+
+  // 실제 DM 메시지는 일반 채팅과 동일한 rooms/{roomCode}/chat 경로에 저장되고,
+  // dmChannelKey 값으로 각 DM 방을 구분한다. 기록 페이지에서도 같은 원본 경로를
+  // 역방향으로 스캔해 현재 DM 방의 메시지만 최대 PAGE_SIZE개 수집한다.
+  const base = ref(db, `rooms/${roomCode}/chat`);
+  const collected = [];
+  let scanCursor = state.cursorKey;
+  let reachedEnd = false;
+
+  for (let attempt = 0; attempt < 24 && collected.length < PAGE_SIZE && !reachedEnd; attempt += 1) {
+    const q = scanCursor
+      ? query(base, orderByKey(), endBefore(scanCursor), limitToLast(SCAN_SIZE))
+      : query(base, orderByKey(), limitToLast(SCAN_SIZE));
+    const snap = await get(q);
+    const entries = Object.entries(snap.val() || {});
+
+    if (!entries.length) {
+      reachedEnd = true;
+      break;
+    }
+
+    scanCursor = entries[0][0];
+
+    for (let i = entries.length - 1; i >= 0 && collected.length < PAGE_SIZE; i -= 1) {
+      const [key, value] = entries[i];
+      const record = value || {};
+      const channelKey = String(record.dmChannelKey || '').trim();
+      if (channelKey !== activeDmChannel) continue;
+      if (record.type === 'dm-bootstrap') continue;
+      collected.push([key, record]);
+    }
+
+    if (entries.length < SCAN_SIZE) reachedEnd = true;
+  }
+
+  state.cursorKey = scanCursor || state.cursorKey;
+  state.exhausted = reachedEnd;
+  return collected.reverse();
 }
 async function fetchGlobalPage(state) {
   const base = ref(db, `rooms/${roomCode}/chat`);
