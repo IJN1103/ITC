@@ -121,6 +121,69 @@
     }).slice(-80);
   }
 
+
+  function classifyFailure(entry) {
+    const type = String(entry?.type || '');
+    if (type === 'window-error' || type === 'unhandled-rejection') return 'runtime';
+    if (type === 'firebase-read-failed') return 'firebaseRead';
+    if (type === 'firebase-write-failed') return 'firebaseWrite';
+    if (type === 'image-upload-transport-failed' || type === 'image-upload-failed') return 'imageUpload';
+    if (type === 'popout-sync-failed' || type === 'popout-channel-sync-failed' || type === 'popout-open-blocked') return 'popout';
+    return '';
+  }
+
+  function getRecentFailures() {
+    return events.filter((entry) => !!classifyFailure(entry)).slice(-80);
+  }
+
+  function buildFailureSummary(recentFailures, warnings) {
+    const categories = {
+      runtime: 0,
+      firebaseRead: 0,
+      firebaseWrite: 0,
+      imageUpload: 0,
+      popout: 0,
+      listener: Array.isArray(warnings) ? warnings.length : 0,
+    };
+    const latestByCategory = {};
+
+    for (const entry of recentFailures) {
+      const category = classifyFailure(entry);
+      if (!category) continue;
+      categories[category] += 1;
+      latestByCategory[category] = {
+        at: String(entry?.at || ''),
+        type: String(entry?.type || ''),
+        operation: String(entry?.detail?.operation || ''),
+        error: safeText(entry?.detail?.error || entry?.detail?.message || entry?.detail?.reason || '', 500),
+      };
+    }
+
+    const failureCount = recentFailures.length;
+    const warningCount = Array.isArray(warnings) ? warnings.length : 0;
+    const latestFailure = failureCount ? recentFailures[failureCount - 1] : null;
+    const highPriorityIssues = [];
+
+    if (categories.runtime) highPriorityIssues.push({ code: 'runtime-error', count: categories.runtime });
+    if (categories.firebaseWrite) highPriorityIssues.push({ code: 'firebase-write-failure', count: categories.firebaseWrite });
+    if (categories.firebaseRead) highPriorityIssues.push({ code: 'firebase-read-failure', count: categories.firebaseRead });
+    if (categories.imageUpload) highPriorityIssues.push({ code: 'image-upload-failure', count: categories.imageUpload });
+    if (categories.popout) highPriorityIssues.push({ code: 'popout-failure', count: categories.popout });
+    if (categories.listener) highPriorityIssues.push({ code: 'listener-warning', count: categories.listener });
+
+    return {
+      status: failureCount > 0 ? 'error' : (warningCount > 0 ? 'warning' : 'ok'),
+      capturedEventCount: events.length,
+      failureCount,
+      warningCount,
+      categories,
+      latestFailureAt: String(latestFailure?.at || ''),
+      latestFailureType: String(latestFailure?.type || ''),
+      latestByCategory,
+      highPriorityIssues,
+    };
+  }
+
   function buildWarnings(chat, popoutWatchers) {
     const warnings = [];
     try {
@@ -155,21 +218,31 @@
   function getStatus() {
     const chat = callStatus('itcChatDebugReport', null);
     const popoutWatchers = callStatus('getPopoutChatWatcherDebugStatus', []);
+    const warnings = buildWarnings(chat, popoutWatchers);
+    const recentFailures = getRecentFailures();
     const report = {
       generatedAt: nowIso(),
       diagnosticsEnabled: enabled,
+      summary: buildFailureSummary(recentFailures, warnings),
       state: getState(),
       chat,
       popout: callStatus('getPopoutChatSyncDebugStatus', null),
       popoutWatchers,
       bgm: callStatus('getBgmDebugStatus', null),
-      warnings: buildWarnings(chat, popoutWatchers),
+      warnings,
+      recentFailures,
       recentExecutionPath: getExecutionPath(),
       recentUserActions: getRecentUserActions(),
       recentEvents: events.slice(),
     };
     try { console.log('[ITC_DIAGNOSTICS]', report); } catch (e) {}
     return report;
+  }
+
+  function getSummary() {
+    const report = getStatus();
+    try { console.log('[ITC_DIAGNOSTIC_SUMMARY]', report.summary); } catch (e) {}
+    return report.summary;
   }
 
   function start() {
@@ -206,11 +279,18 @@
     anchor.click();
     anchor.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
-    return { filename, eventCount: report.recentEvents.length };
+    return {
+      filename,
+      eventCount: report.recentEvents.length,
+      status: report.summary?.status || 'ok',
+      failureCount: Number(report.summary?.failureCount || 0),
+      warningCount: Number(report.summary?.warningCount || 0),
+    };
   }
 
   window.ITCDiagnostics = Object.freeze({
     getStatus,
+    getSummary,
     start,
     stop,
     clear,
@@ -220,6 +300,7 @@
     getEventCount() { return events.length; },
   });
   window.getItcDiagnosticStatus = getStatus;
+  window.getItcDiagnosticSummary = getSummary;
   window.startItcDiagnostics = start;
   window.stopItcDiagnostics = stop;
   window.clearItcDiagnosticLog = clear;
