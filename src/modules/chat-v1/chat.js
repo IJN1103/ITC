@@ -1163,6 +1163,27 @@ function ensureFullHistoryButton(channel = 'chat') {
   return button;
 }
 
+
+window.openChatHistoryTab = function openChatHistoryTab(context = {}) {
+  const roomCode = String((typeof St !== 'undefined' && St?.roomCode) || sessionStorage.getItem('itc_session_code') || '').trim();
+  if (!roomCode) {
+    if (typeof window.showToast === 'function') window.showToast('세션 방 정보를 확인할 수 없어요.');
+    return null;
+  }
+  const type = context?.type === 'casual' ? 'casual' : (context?.type === 'dm' ? 'dm' : 'global');
+  if (type === 'dm') {
+    if (typeof window.showToast === 'function') window.showToast('DM 전체 기록은 다음 단계에서 연결됩니다.');
+    return null;
+  }
+  const params = new URLSearchParams({ room: roomCode, type });
+  const url = `chat-history.html?${params.toString()}`;
+  const opened = window.open(url, '_blank', 'noopener');
+  if (!opened && typeof window.showToast === 'function') {
+    window.showToast('새 탭이 차단됐어요. 브라우저의 팝업 허용 설정을 확인해 주세요.');
+  }
+  return opened;
+};
+
 function setMainChatVisibleLimit(channel = 'chat', limit = 120) {
   const state = getRenderState(channel);
   state.max = Math.max(1, Number(limit || 0) || 120);

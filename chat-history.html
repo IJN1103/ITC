@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ITC 전체 채팅 기록</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles/chat-history.css">
+</head>
+<body>
+<header class="history-header">
+  <div>
+    <div class="history-kicker">ITC ARCHIVE</div>
+    <h1 id="history-title">전체 채팅 기록</h1>
+  </div>
+  <div id="history-status" class="history-status">인증 확인 중</div>
+</header>
+<main class="history-shell">
+  <div class="history-toolbar">
+    <button id="load-older" type="button" disabled>이전 기록 100개 불러오기</button>
+    <span id="history-count">0개 표시</span>
+  </div>
+  <div id="history-error" class="history-error" hidden></div>
+  <section id="history-list" class="history-list" aria-live="polite"></section>
+  <div id="history-empty" class="history-empty" hidden>표시할 기록이 없습니다.</div>
+</main>
+<script type="module" src="src/modules/chat-history/chat-history.js"></script>
+</body>
+</html>
