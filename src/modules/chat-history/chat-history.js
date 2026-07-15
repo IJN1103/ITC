@@ -39,6 +39,9 @@ let currentUser = null;
 let activeType = initialType;
 let activeDmChannel = '';
 let switching = false;
+let accessReady = false;
+let viewRevision = 0;
+let unauthorizedRequestedDm = false;
 let accessInfo = { isGm: false, ownerId: '', player: null };
 let dmChannels = [];
 const participantProfiles = new Map();
@@ -202,9 +205,18 @@ async function loadDmChannels() {
   }).filter(item => item.channelKey && item.channelKey !== 'global' && (accessInfo.isGm || item.participantIds.includes(uid)))
     .sort((a, b) => b.latestAt - a.latestAt || a.label.localeCompare(b.label, 'ko'));
 
-  if (requestedDmChannel && dmChannels.some(item => item.channelKey === requestedDmChannel)) activeDmChannel = requestedDmChannel;
-  else if (activeDmChannel && !dmChannels.some(item => item.channelKey === activeDmChannel)) activeDmChannel = '';
-  else if (!activeDmChannel && initialType === 'dm' && dmChannels.length === 1) activeDmChannel = dmChannels[0].channelKey;
+  if (requestedDmChannel) {
+    if (dmChannels.some(item => item.channelKey === requestedDmChannel)) {
+      activeDmChannel = requestedDmChannel;
+    } else {
+      activeDmChannel = '';
+      unauthorizedRequestedDm = true;
+    }
+  } else if (activeDmChannel && !dmChannels.some(item => item.channelKey === activeDmChannel)) {
+    activeDmChannel = '';
+  } else if (!activeDmChannel && initialType === 'dm' && dmChannels.length === 1) {
+    activeDmChannel = dmChannels[0].channelKey;
+  }
   renderDmChannelButtons();
 }
 function renderDmChannelButtons() {
@@ -240,8 +252,9 @@ async function fetchCasualPage(state) {
   state.exhausted = entries.length < PAGE_SIZE;
   return entries.map(([key, value]) => [key, value || {}]);
 }
-async function fetchDmPage(state) {
-  if (!activeDmChannel || !dmChannels.some(item => item.channelKey === activeDmChannel)) {
+async function fetchDmPage(state, channelKey) {
+  const safeChannelKey = String(channelKey || '').trim();
+  if (!safeChannelKey || !dmChannels.some(item => item.channelKey === safeChannelKey)) {
     throw new Error('이 DM 방의 기록을 볼 권한이 없습니다.');
   }
 
@@ -271,7 +284,7 @@ async function fetchDmPage(state) {
       const [key, value] = entries[i];
       const record = value || {};
       const channelKey = String(record.dmChannelKey || '').trim();
-      if (channelKey !== activeDmChannel) continue;
+      if (channelKey !== safeChannelKey) continue;
       if (record.type === 'dm-bootstrap') continue;
       collected.push([key, record]);
     }
@@ -306,36 +319,70 @@ async function fetchGlobalPage(state) {
   return collected.reverse();
 }
 async function loadPage(initial = false) {
-  if (activeType === 'dm' && !activeDmChannel) return;
-  const state = currentState();
-  if (state.loading || state.exhausted) return;
+  if (!accessReady) return;
+  const requestType = activeType;
+  const requestChannel = requestType === 'dm' ? activeDmChannel : '';
+  if (requestType === 'dm' && !requestChannel) return;
+
+  const state = requestType === 'dm'
+    ? (dmStates.has(requestChannel) ? dmStates.get(requestChannel) : (dmStates.set(requestChannel, makeState()), dmStates.get(requestChannel)))
+    : baseStates[requestType];
+  if (!state || state.loading || state.exhausted) return;
+
+  const requestRevision = viewRevision;
   state.loading = true;
-  setError('');
-  updateUi();
-  const anchor = !initial ? listEl.firstElementChild : null;
+  if (requestRevision === viewRevision) {
+    setError('');
+    updateUi();
+  }
+
+  const anchor = !initial && requestType === activeType && requestChannel === activeDmChannel
+    ? listEl.firstElementChild
+    : null;
+  const anchorKey = anchor?.dataset?.key || '';
   const anchorTop = anchor?.getBoundingClientRect().top || 0;
+
   try {
-    const entries = activeType === 'casual' ? await fetchCasualPage(state) : (activeType === 'dm' ? await fetchDmPage(state) : await fetchGlobalPage(state));
+    const entries = requestType === 'casual'
+      ? await fetchCasualPage(state)
+      : (requestType === 'dm'
+        ? await fetchDmPage(state, requestChannel)
+        : await fetchGlobalPage(state));
+
     const fresh = entries.filter(([key]) => !state.keys.has(key));
     fresh.forEach(([key]) => state.keys.add(key));
     state.entries = initial ? fresh : [...fresh, ...state.entries];
+
+    const isCurrentView = requestRevision === viewRevision
+      && requestType === activeType
+      && (requestType !== 'dm' || requestChannel === activeDmChannel);
+    if (!isCurrentView) return;
+
     renderActive();
-    if (!initial && anchor) {
-      const same = listEl.querySelector(`[data-key="${CSS.escape(anchor.dataset.key || '')}"]`);
+    if (!initial && anchorKey) {
+      const same = listEl.querySelector(`[data-key="${CSS.escape(anchorKey)}"]`);
       if (same) window.scrollBy(0, same.getBoundingClientRect().top - anchorTop);
     }
   } catch (err) {
     console.error('[chat-history] load failed', err);
-    setError(err?.message || '기록을 불러오지 못했습니다.');
+    const isCurrentView = requestRevision === viewRevision
+      && requestType === activeType
+      && (requestType !== 'dm' || requestChannel === activeDmChannel);
+    if (isCurrentView) setError(err?.message || '기록을 불러오지 못했습니다.');
   } finally {
     state.loading = false;
-    updateUi();
+    const isCurrentView = requestRevision === viewRevision
+      && requestType === activeType
+      && (requestType !== 'dm' || requestChannel === activeDmChannel);
+    if (isCurrentView) updateUi();
   }
 }
 async function selectDmChannel(channelKey) {
   const safeKey = String(channelKey || '').trim();
   if (!dmChannels.some(item => item.channelKey === safeKey)) return;
   activeDmChannel = safeKey;
+  unauthorizedRequestedDm = false;
+  viewRevision += 1;
   const nextParams = new URLSearchParams(location.search);
   nextParams.set('type', 'dm');
   nextParams.set('channel', safeKey);
@@ -346,28 +393,38 @@ async function selectDmChannel(channelKey) {
   if (!state.entries.length && !state.loading) await loadPage(true);
 }
 async function switchType(nextType) {
-  if (!['global', 'casual', 'dm'].includes(nextType) || switching) return;
+  if (!['global', 'casual', 'dm'].includes(nextType) || switching || !accessReady) return;
   switching = true;
-  activeType = nextType;
-  const nextParams = new URLSearchParams(location.search);
-  nextParams.set('type', nextType);
-  if (nextType === 'dm' && activeDmChannel) nextParams.set('channel', activeDmChannel);
-  else nextParams.delete('channel');
-  history.replaceState(null, '', `${location.pathname}?${nextParams.toString()}`);
-  setError('');
-  renderDmChannelButtons();
-  renderActive();
-  const state = currentState();
-  if ((nextType !== 'dm' || activeDmChannel) && !state.entries.length && !state.loading) await loadPage(true);
-  switching = false;
+  try {
+    activeType = nextType;
+    viewRevision += 1;
+    const nextParams = new URLSearchParams(location.search);
+    nextParams.set('type', nextType);
+    if (nextType === 'dm' && activeDmChannel) nextParams.set('channel', activeDmChannel);
+    else nextParams.delete('channel');
+    history.replaceState(null, '', `${location.pathname}?${nextParams.toString()}`);
+    setError('');
+    renderDmChannelButtons();
+    renderActive();
+    const state = currentState();
+    if ((nextType !== 'dm' || activeDmChannel) && !state.entries.length && !state.loading) await loadPage(true);
+  } finally {
+    switching = false;
+  }
 }
 
 loadBtn.addEventListener('click', () => loadPage(false));
 tabButtons.forEach(btn => btn.addEventListener('click', () => switchType(btn.dataset.historyTab)));
+let scrollLoadQueued = false;
 window.addEventListener('scroll', () => {
-  const state = currentState();
-  if ((activeType === 'dm' && !activeDmChannel) || state.loading || state.exhausted) return;
-  if (window.scrollY <= 48) loadPage(false);
+  if (scrollLoadQueued || !accessReady) return;
+  scrollLoadQueued = true;
+  requestAnimationFrame(() => {
+    scrollLoadQueued = false;
+    const state = currentState();
+    if ((activeType === 'dm' && !activeDmChannel) || state.loading || state.exhausted) return;
+    if (window.scrollY <= 48) loadPage(false);
+  });
 }, { passive: true });
 
 try {
@@ -398,8 +455,12 @@ onAuthStateChanged(auth, async (user) => {
     await verifyAccess(user);
     await loadParticipantProfiles();
     await loadDmChannels();
+    accessReady = true;
     statusEl.textContent = '기록 불러오는 중';
     renderActive();
+    if (unauthorizedRequestedDm && activeType === 'dm') {
+      setError('요청한 DM 방의 기록을 볼 권한이 없거나 해당 DM 방이 존재하지 않습니다.');
+    }
     if (activeType !== 'dm' || activeDmChannel) await loadPage(true);
   } catch (err) {
     statusEl.textContent = '접근 불가';
