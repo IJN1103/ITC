@@ -240,6 +240,15 @@ try {
   };
 } catch (e) {}
 
+function applyAvatarShape(value) {
+  const shape = value === 'circle' ? 'circle' : 'rounded';
+  document.documentElement.setAttribute('data-avatar-shape', shape);
+}
+applyAvatarShape(localStorage.getItem('itc_avatar_shape'));
+window.addEventListener('storage', (event) => {
+  if (event.key === 'itc_avatar_shape') applyAvatarShape(event.newValue);
+});
+
 titleEl.textContent = '전체 기록';
 onAuthStateChanged(auth, async (user) => {
   if (!user) {
