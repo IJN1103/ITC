@@ -1333,6 +1333,10 @@ function switchActiveChatChannel(channelKey = 'global') {
       }));
     } catch (e) {}
     try { if (typeof refreshDmChannelButtons === 'function') refreshDmChannelButtons(); } catch (e) {}
+    try {
+      if (typeof setMainChatVisibleLimit === 'function') setMainChatVisibleLimit('chat', safeChannelKey === 'global' ? 120 : 100);
+      if (typeof refreshFullHistoryButton === 'function') refreshFullHistoryButton('chat');
+    } catch (e) {}
     return;
   }
   cleanupActiveChatChannelListeners();
@@ -1342,8 +1346,14 @@ function switchActiveChatChannel(channelKey = 'global') {
   logItcChatDebug('switch-active-channel', { channelKey: safeChannelKey });
   _chatHistoryCursorByChannel.delete(safeChannelKey);
   restoreCachedChannelMessages(safeChannelKey);
+  if (typeof setMainChatVisibleLimit === 'function') {
+    setMainChatVisibleLimit('chat', safeChannelKey === 'global' ? 120 : 100);
+  }
   if (typeof configureHistoryPaging === 'function') {
-    configureHistoryPaging('chat', { loadOlder: () => loadOlderChatHistoryForChannel(safeChannelKey), exhausted: false });
+    configureHistoryPaging('chat', { loadOlder: null, exhausted: true });
+  }
+  if (typeof refreshFullHistoryButton === 'function') {
+    refreshFullHistoryButton('chat');
   }
   try {
     document.dispatchEvent(new CustomEvent('itc:dm-active-channel-applied', {
@@ -2070,8 +2080,14 @@ function setupFirebaseListeners() {
     resetRenderedMessages('chat');
     resetRenderedMessages('casual');
   }
+  if (typeof setMainChatVisibleLimit === 'function') {
+    setMainChatVisibleLimit('casual', 120);
+  }
   if (typeof configureHistoryPaging === 'function') {
-    configureHistoryPaging('casual', { loadOlder: loadOlderCasualHistory, exhausted: false });
+    configureHistoryPaging('casual', { loadOlder: null, exhausted: true });
+  }
+  if (typeof refreshFullHistoryButton === 'function') {
+    refreshFullHistoryButton('casual');
   }
 
   trackFirebaseListener(onValue(ref(db, `rooms/${code}/players`), snap => {

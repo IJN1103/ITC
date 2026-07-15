@@ -404,7 +404,7 @@ const _renderState = {
     raf: 0,
     queue: [],
     map: new Map(),
-    max: (window.ITC_CONFIG?.CHAT.DOM_MAX_VISIBLE ?? 320),
+    max: 120,
     maxMemory: (window.ITC_CONFIG?.CHAT.MEMORY_MAX ?? 2600),
     loadStep: (window.ITC_CONFIG?.CHAT.LOAD_STEP ?? 80),
     storeOrder: [],
@@ -434,7 +434,7 @@ const _renderState = {
     raf: 0,
     queue: [],
     map: new Map(),
-    max: (window.ITC_CONFIG?.CHAT.DOM_MAX_VISIBLE ?? 180),
+    max: 120,
     maxMemory: (window.ITC_CONFIG?.CHAT.MEMORY_MAX ?? 1000),
     loadStep: 48,
     storeOrder: [],
@@ -470,7 +470,7 @@ function ensureChatRenderState(channel = 'chat') {
     raf: 0,
     queue: [],
     map: new Map(),
-    max: base.max,
+    max: safeChannel === 'global' ? 120 : 100,
     maxMemory: base.maxMemory,
     loadStep: base.loadStep,
     storeOrder: [],
@@ -1107,6 +1107,72 @@ function trimRenderedMessages(channel = 'chat', direction = 'top', options = {})
   }
 }
 
+
+function getMainChatHistoryContext(channel = 'chat') {
+  const safeChannel = String(channel || 'chat').trim() || 'chat';
+  if (safeChannel === 'casual') {
+    return { type: 'casual', channelKey: 'casual', label: '전체 잡담 보기', limit: 120 };
+  }
+  const activeKey = String(window._itcActiveChatChannelKey || 'global').trim() || 'global';
+  if (activeKey === 'global') {
+    return { type: 'global', channelKey: 'global', label: '전체 일반 채팅 보기', limit: 120 };
+  }
+  return { type: 'dm', channelKey: activeKey, label: '현재 DM 전체 보기', limit: 100 };
+}
+
+function ensureFullHistoryButton(channel = 'chat') {
+  const safeChannel = String(channel || 'chat').trim() || 'chat';
+  const el = getRenderContainer(safeChannel);
+  if (!el || el.closest?.('.popout-root, .popout-window, [data-popout-root="1"]')) return null;
+
+  let button = el.querySelector(':scope > .chat-full-history-button');
+  if (!button) {
+    button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'chat-full-history-button';
+    button.style.cssText = [
+      'display:block',
+      'width:100%',
+      'margin:0 0 8px',
+      'padding:9px 10px',
+      'border:1px solid rgba(255,255,255,.12)',
+      'border-radius:10px',
+      'background:rgba(255,255,255,.055)',
+      'color:#d8dbe3',
+      'font-size:12px',
+      'font-weight:700',
+      'cursor:pointer'
+    ].join(';');
+    button.addEventListener('click', () => {
+      const context = getMainChatHistoryContext(safeChannel);
+      if (typeof window.openChatHistoryTab === 'function') {
+        window.openChatHistoryTab(context);
+        return;
+      }
+      if (typeof window.showToast === 'function') {
+        window.showToast('전체 기록 새 탭은 다음 단계에서 연결됩니다.');
+      }
+    });
+    el.prepend(button);
+  }
+
+  const context = getMainChatHistoryContext(safeChannel);
+  button.textContent = context.label;
+  button.dataset.historyType = context.type;
+  button.dataset.channelKey = context.channelKey;
+  return button;
+}
+
+function setMainChatVisibleLimit(channel = 'chat', limit = 120) {
+  const state = getRenderState(channel);
+  state.max = Math.max(1, Number(limit || 0) || 120);
+  trimRenderedMessages(channel, { direction: 'top' });
+}
+
+function refreshFullHistoryButton(channel = 'chat') {
+  return ensureFullHistoryButton(channel);
+}
+
 function ensureHistoryNotice(channel = 'chat') {
   const el = getRenderContainer(channel);
   if (!el) return null;
@@ -1223,6 +1289,7 @@ function flushMessageRender(channel = 'chat') {
     return;
   }
 
+  ensureFullHistoryButton(channel);
   ensureHistoryNotice(channel);
   const keepBottom = isNearBottom(el);
   const anchor = (keepBottom || state.stickyToBottom) ? null : captureRenderedScrollAnchor(channel);
@@ -1359,6 +1426,7 @@ function bindMessageViewport(channel = 'chat') {
   const el = getRenderContainer(channel);
   if (!el || state.scrollBound) return;
   state.scrollBound = true;
+  ensureFullHistoryButton(channel);
   ensureHistoryNotice(channel);
   if (state.virtualEnabled) ensureVirtualElements(channel);
   el.addEventListener('scroll', () => {
@@ -1389,15 +1457,7 @@ function bindMessageViewport(channel = 'chat') {
       }
 
       if (isNearTop(el, 28)) {
-        if (!prependStoredWindow(channel)) {
-          requestOlderHistory(channel).then((loadedCount) => {
-            if (loadedCount > 0) {
-              if (state.virtualEnabled) scheduleVirtualRender(channel, { forceStickBottom: false });
-              else prependStoredWindow(channel, loadedCount);
-            }
-            syncStickyState(channel, el);
-          });
-        }
+        ensureFullHistoryButton(channel);
       } else if (isNearBottom(el, 28)) {
         if (appendStoredWindow(channel)) {
           requestAnimationFrame(() => syncStickyState(channel, el));
@@ -1443,6 +1503,7 @@ function resetRenderedMessages(channel = 'chat') {
   if (!el) return;
   el.innerHTML = '';
   if (state.virtualEnabled) ensureVirtualElements(channel);
+  ensureFullHistoryButton(channel);
   ensureHistoryNotice(channel);
   syncStickyState(channel, el);
 }
@@ -1479,6 +1540,7 @@ function activateChatRenderChannel(channel = 'chat') {
     ensureVirtualElements(safeChannel);
     scheduleVirtualRender(safeChannel, { forceStickBottom: true });
   } else {
+    ensureFullHistoryButton(safeChannel);
     ensureHistoryNotice(safeChannel);
     appendStoredWindow(safeChannel, Math.max(state.loadStep, state.storeOrder.length || 0));
     requestAnimationFrame(() => {
@@ -3393,6 +3455,8 @@ window.activateChatRenderChannel = activateChatRenderChannel;
 window.storeMessageRecord = storeMessageRecord;
 window.prependStoredWindow = prependStoredWindow;
 window.configureHistoryPaging = configureHistoryPaging;
+window.setMainChatVisibleLimit = setMainChatVisibleLimit;
+window.refreshFullHistoryButton = refreshFullHistoryButton;
 window.requestOlderHistory = requestOlderHistory;
 window.prependStoredWindow = prependStoredWindow;
 window.seedChatHistoryStore = seedChatHistoryStore;
