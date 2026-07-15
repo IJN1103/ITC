@@ -46,6 +46,17 @@ const ITC_PRESENCE_STALE_MS = 45000;
 
 let _lastChatDebugLogAt = 0;
 
+function recordItcDiagnosticEvent(type, detail = {}) {
+  try {
+    if (window.ITCDiagnostics && typeof window.ITCDiagnostics.record === 'function') {
+      window.ITCDiagnostics.record(type, {
+        roomCode: String(window.St?.roomCode || _activeFirebaseRoomCode || ''),
+        ...detail,
+      });
+    }
+  } catch (e) {}
+}
+
 function isItcChatDebugEnabled() {
   try {
     return window.ITC_DEBUG_CHAT === true || localStorage.getItem('ITC_DEBUG_CHAT') === 'true';
@@ -283,6 +294,11 @@ function refreshTopbarProfileSafe() {
 
 function cleanupFirebaseListeners() {
   const cleanupRoomCode = String(_activeFirebaseRoomCode || St.roomCode || '').trim();
+  recordItcDiagnosticEvent('room-listener-cleanup-start', {
+    activeListenerCount: _activeChatChannelUnsubs.length,
+    popoutWatcherCount: _popoutChatChannelWatchers.size,
+    firebaseListenerCount: _firebaseUnsubs.length,
+  });
   const cleanupUid = String(St.myId || '').trim();
   try {
     if (typeof clearTypingState === 'function') clearTypingState(cleanupRoomCode, cleanupUid);
@@ -328,6 +344,12 @@ function cleanupFirebaseListeners() {
     }
   } catch (e) {}
   try { if (typeof refreshDmChannelButtons === 'function') refreshDmChannelButtons(); } catch (e) {}
+  recordItcDiagnosticEvent('room-listener-cleanup-complete', {
+    cleanupRoomCode,
+    activeListenerCount: _activeChatChannelUnsubs.length,
+    popoutWatcherCount: _popoutChatChannelWatchers.size,
+    firebaseListenerCount: _firebaseUnsubs.length,
+  });
 }
 
 function cleanupActiveChatChannelListeners() {
@@ -336,12 +358,24 @@ function cleanupActiveChatChannelListeners() {
   _activeChatChannelUnsubs.forEach(unsub => { try { if (typeof unsub === 'function') unsub(); } catch (e) {} });
   _activeChatChannelUnsubs = [];
   logItcChatDebug('active-listener-cleanup', { previousListenerCount: prevCount });
+  recordItcDiagnosticEvent('listener-active-chat-cleanup', {
+    previousListenerCount: prevCount,
+    listenerVersion: _activeChatChannelListenerVersion,
+    channelKey: _activeChatChannelKey || 'global',
+  });
 }
 
 function trackActiveChatChannelListener(unsub) {
   if (typeof unsub === 'function') {
     _activeChatChannelUnsubs.push(unsub);
     logItcChatDebug('active-listener-registered', { registeredListenerCount: _activeChatChannelUnsubs.length });
+    const registeredListenerCount = _activeChatChannelUnsubs.length;
+    recordItcDiagnosticEvent('listener-active-chat-registered', {
+      registeredListenerCount,
+      listenerVersion: _activeChatChannelListenerVersion,
+      channelKey: _activeChatChannelKey || 'global',
+      duplicateSuspected: registeredListenerCount > ((_activeChatChannelKey || 'global') === 'global' ? 6 : 3),
+    });
   }
 }
 
@@ -353,6 +387,7 @@ function cleanupPopoutChatChannelWatchers() {
   });
   _popoutChatChannelWatchers = new Map();
   logItcChatDebug('popout-channel-watch-cleanup', { previousWatcherCount: prevCount }, { throttleMs: 1000 });
+  recordItcDiagnosticEvent('listener-popout-watch-cleanup', { previousWatcherCount: prevCount });
 }
 
 function normalizePopoutWatchChannelKey(channelKey = 'global') {
@@ -391,6 +426,11 @@ function prunePopoutChatChannelWatchers(keepKeys = []) {
       removedWatcherCount: removed,
       remainingWatcherCount: _popoutChatChannelWatchers.size,
     }, { throttleMs: 1000 });
+    recordItcDiagnosticEvent('listener-popout-watch-pruned', {
+      keepKeys: Array.from(keepSet),
+      removedWatcherCount: removed,
+      remainingWatcherCount: _popoutChatChannelWatchers.size,
+    });
   }
 }
 
@@ -427,6 +467,10 @@ function watchPopoutChatChannel(channelKey = 'global') {
   if (!activeRoomCode) return Promise.resolve([]);
   const existing = _popoutChatChannelWatchers.get(safeKey);
   if (existing && existing.roomCode === activeRoomCode) {
+    recordItcDiagnosticEvent('listener-popout-watch-reused', {
+      channelKey: safeKey,
+      watcherCount: _popoutChatChannelWatchers.size,
+    });
     return existing.ready || Promise.resolve(window.getChatRecordsForChannel ? window.getChatRecordsForChannel(safeKey) : []);
   }
   if (existing && typeof existing.unsub === 'function') {
@@ -454,6 +498,11 @@ function watchPopoutChatChannel(channelKey = 'global') {
     generation: Date.now(),
   };
   _popoutChatChannelWatchers.set(safeKey, watcher);
+  recordItcDiagnosticEvent('listener-popout-watch-registered', {
+    channelKey: safeKey,
+    watcherCount: _popoutChatChannelWatchers.size,
+    duplicateSuspected: Array.from(_popoutChatChannelWatchers.keys()).filter((key) => key === safeKey).length > 1,
+  });
 
   const isCurrentWatcher = () => (
     String(St.roomCode || '').trim() === activeRoomCode
@@ -1411,10 +1460,19 @@ function switchActiveChatChannel(channelKey = 'global') {
   const activeRoomCode = String(St.roomCode || '').trim();
   if (!activeRoomCode) return;
   const safeChannelKey = String(channelKey || 'global').trim() || 'global';
+  recordItcDiagnosticEvent('chat-channel-switch-requested', {
+    fromChannelKey: _activeChatChannelKey || 'global',
+    toChannelKey: safeChannelKey,
+    activeRoomCode,
+  });
   const { db, ref, onValue, onChildAdded, onChildChanged, onChildRemoved, query, limitToLast, orderByChild, equalTo } = window._FB;
   if (safeChannelKey === _activeChatChannelKey && _activeChatChannelUnsubs.length > 0 && _activeChatChannelRoomCode === activeRoomCode) {
     window._itcActiveChatChannelKey = safeChannelKey;
     logItcChatDebug('switch-active-channel-skip-same', { channelKey: safeChannelKey, roomCode: activeRoomCode }, { throttleMs: 1000 });
+    recordItcDiagnosticEvent('chat-channel-switch-skipped-same', {
+      channelKey: safeChannelKey,
+      listenerCount: _activeChatChannelUnsubs.length,
+    });
     try {
       document.dispatchEvent(new CustomEvent('itc:dm-active-channel-applied', {
         detail: { channelKey: safeChannelKey }
@@ -1432,6 +1490,10 @@ function switchActiveChatChannel(channelKey = 'global') {
   _activeChatChannelRoomCode = activeRoomCode;
   window._itcActiveChatChannelKey = safeChannelKey;
   logItcChatDebug('switch-active-channel', { channelKey: safeChannelKey });
+  recordItcDiagnosticEvent('chat-channel-switch-applied', {
+    channelKey: safeChannelKey,
+    listenerVersion: _activeChatChannelListenerVersion,
+  });
   _chatHistoryCursorByChannel.delete(safeChannelKey);
   restoreCachedChannelMessages(safeChannelKey);
   if (typeof setMainChatVisibleLimit === 'function') {
@@ -1545,6 +1607,12 @@ function switchActiveChatChannel(channelKey = 'global') {
           }
         } catch (err) {
           console.warn('[chat] removed message verification failed', key, err);
+          recordItcDiagnosticEvent('firebase-read-failed', {
+            operation: 'verify-removed-global-message',
+            channelKey: 'global',
+            messageKey: key,
+            error: String(err?.message || err || ''),
+          });
           return;
         }
 
@@ -1560,6 +1628,12 @@ function switchActiveChatChannel(channelKey = 'global') {
       channelKey: 'global',
       listenLimit: globalListenLimit,
       listenerCount: _activeChatChannelUnsubs.length,
+    });
+    recordItcDiagnosticEvent('listener-active-chat-ready', {
+      channelKey: 'global',
+      listenLimit: globalListenLimit,
+      listenerCount: _activeChatChannelUnsubs.length,
+      listenerVersion,
     });
     return;
   }
@@ -1649,6 +1723,12 @@ function switchActiveChatChannel(channelKey = 'global') {
         }
       } catch (err) {
         console.warn('[dm] removed message verification failed', key, err);
+        recordItcDiagnosticEvent('firebase-read-failed', {
+          operation: 'verify-removed-dm-message',
+          channelKey: safeChannelKey,
+          messageKey: key,
+          error: String(err?.message || err || ''),
+        });
         return;
       }
 
@@ -1666,6 +1746,12 @@ function switchActiveChatChannel(channelKey = 'global') {
       channelKey: safeChannelKey,
       listenLimit: dmListenLimit,
       listenerCount: _activeChatChannelUnsubs.length,
+    });
+    recordItcDiagnosticEvent('listener-active-chat-ready', {
+      channelKey: safeChannelKey,
+      listenLimit: dmListenLimit,
+      listenerCount: _activeChatChannelUnsubs.length,
+      listenerVersion,
     });
     return;
   }
@@ -2153,6 +2239,9 @@ function digestPlayers(players) {
 
 function setupFirebaseListeners() {
   if (!window._FB?.CONFIGURED) return;
+  recordItcDiagnosticEvent('room-listener-setup-start', {
+    requestedRoomCode: String(window.St?.roomCode || ''),
+  });
   cleanupFirebaseListeners();
   resetRoomScopedUiState();
   bindRoomStabilityEvents();
@@ -2161,6 +2250,9 @@ function setupFirebaseListeners() {
   const { db, ref, onValue, onChildAdded, onChildChanged, onChildRemoved, query, limitToLast } = window._FB;
   const code = St.roomCode;
   _activeFirebaseRoomCode = String(code || '').trim();
+  recordItcDiagnosticEvent('room-listener-setup-applied', {
+    activeRoomCode: _activeFirebaseRoomCode,
+  });
 
   _processedChatKeys.clear();
   _processedCasualKeys.clear();
@@ -2240,6 +2332,10 @@ function setupFirebaseListeners() {
     trackFirebaseListener(onChildAdded(casualRef, snap => addCasualRecord(snap.key, snap.val() || {})));
     trackFirebaseListener(onChildChanged(casualRef, snap => changeCasualRecord(snap.key, snap.val() || {})));
     trackFirebaseListener(onChildRemoved(casualRef, snap => removeCasualRecord(snap.key)));
+    recordItcDiagnosticEvent('listener-casual-ready', {
+      listenerCount: 3,
+      listenLimit: window.ITC_CONFIG?.CHAT.CASUAL_LISTEN_LIMIT ?? 160,
+    });
   } else {
     trackFirebaseListener(onValue(casualRef, snap => {
       const msgs = snap.val() || {};

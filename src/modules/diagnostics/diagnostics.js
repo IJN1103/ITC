@@ -8,6 +8,7 @@
 
   const STORAGE_KEY = 'ITC_DIAGNOSTICS_ENABLED';
   const MAX_EVENTS = 200;
+  const MAX_EXECUTION_PATH = 80;
   const events = [];
   let enabled = false;
   let errorBound = false;
@@ -97,15 +98,63 @@
     return fallback;
   }
 
+  function getExecutionPath() {
+    return events
+      .filter((entry) => {
+        const type = String(entry?.type || '');
+        return type.startsWith('chat-')
+          || type.startsWith('listener-')
+          || type.startsWith('popout-')
+          || type.startsWith('firebase-')
+          || type.startsWith('room-');
+      })
+      .slice(-MAX_EXECUTION_PATH);
+  }
+
+  function buildWarnings(chat, popoutWatchers) {
+    const warnings = [];
+    try {
+      const listenerCount = Number(chat?.activeChatChannelListenerCount || 0);
+      const channelKey = String(chat?.activeChannelKey || 'global');
+      const expectedMax = channelKey === 'global' ? 6 : 3;
+      if (listenerCount > expectedMax) {
+        warnings.push({
+          code: 'active-chat-listener-count-high',
+          channelKey,
+          listenerCount,
+          expectedMax,
+        });
+      }
+    } catch (e) {}
+
+    try {
+      const watcherKeys = (Array.isArray(popoutWatchers) ? popoutWatchers : [])
+        .map((item) => `${String(item?.roomCode || '')}:${String(item?.channelKey || '')}`);
+      const duplicates = watcherKeys.filter((key, index) => key && watcherKeys.indexOf(key) !== index);
+      if (duplicates.length) {
+        warnings.push({
+          code: 'duplicate-popout-watcher',
+          watcherKeys: Array.from(new Set(duplicates)),
+        });
+      }
+    } catch (e) {}
+
+    return warnings;
+  }
+
   function getStatus() {
+    const chat = callStatus('itcChatDebugReport', null);
+    const popoutWatchers = callStatus('getPopoutChatWatcherDebugStatus', []);
     const report = {
       generatedAt: nowIso(),
       diagnosticsEnabled: enabled,
       state: getState(),
-      chat: callStatus('itcChatDebugReport', null),
+      chat,
       popout: callStatus('getPopoutChatSyncDebugStatus', null),
-      popoutWatchers: callStatus('getPopoutChatWatcherDebugStatus', []),
+      popoutWatchers,
       bgm: callStatus('getBgmDebugStatus', null),
+      warnings: buildWarnings(chat, popoutWatchers),
+      recentExecutionPath: getExecutionPath(),
       recentEvents: events.slice(),
     };
     try { console.log('[ITC_DIAGNOSTICS]', report); } catch (e) {}
@@ -156,6 +205,8 @@
     clear,
     exportReport,
     record(type, detail) { pushEvent(type, detail || {}); },
+    isEnabled() { return enabled; },
+    getEventCount() { return events.length; },
   });
   window.getItcDiagnosticStatus = getStatus;
   window.startItcDiagnostics = start;

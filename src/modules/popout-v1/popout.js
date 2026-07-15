@@ -80,7 +80,21 @@ let _popoutSyncDebugState = {
 // 본창 채널까지 같이 전환되는 회귀가 생기므로, 채널 수신은 game.js의
 // watchPopoutChatChannel() 기반 전용 watcher로 처리한다.
 
+function recordPopoutDiagnosticEvent(type, detail = {}) {
+  try {
+    if (window.ITCDiagnostics && typeof window.ITCDiagnostics.record === 'function') {
+      window.ITCDiagnostics.record(type, {
+        roomCode: String(window.St?.roomCode || ''),
+        ...detail,
+      });
+    }
+  } catch (e) {}
+}
+
 function cleanupPopoutMirror() {
+  recordPopoutDiagnosticEvent('popout-mirror-cleanup-start', {
+    openPopoutCount: Array.isArray(_popoutWins) ? _popoutWins.filter((w) => w && !w.closed).length : 0,
+  });
   if (typeof _popoutMirrorCleanup === 'function') {
     try { _popoutMirrorCleanup(); } catch (e) {}
   }
@@ -688,8 +702,17 @@ function popoutChat() {
   const pl = window.screen.width - pw - 20 - offset;
   const pt = Math.floor((window.screen.height - ph2) / 2) + offset;
   const win = window.open(blobUrl, 'ITC_Pop_' + Date.now(), `width=${pw},height=${ph2},left=${pl},top=${pt},resizable=yes`);
-  if (!win) { URL.revokeObjectURL(blobUrl); showToast('팝업 차단을 해제해 주세요!'); return; }
+  if (!win) {
+    URL.revokeObjectURL(blobUrl);
+    recordPopoutDiagnosticEvent('popout-open-blocked', { requestedIndex: _popoutWins.length + 1 });
+    showToast('팝업 차단을 해제해 주세요!');
+    return;
+  }
   _popoutWins.push(win);
+  recordPopoutDiagnosticEvent('popout-opened', {
+    openPopoutCount: _popoutWins.length,
+    activeMainChannelKey: String(window._itcActiveChatChannelKey || 'global'),
+  });
   setTimeout(() => URL.revokeObjectURL(blobUrl), 3000);
 
   const extractMsgData = (m) => {
@@ -907,6 +930,11 @@ function popoutChat() {
         if (beforeCount !== afterCount) {
           _popoutSyncDebugState.lastWindowCount = afterCount;
           _popoutSyncDebugState.lastChannels = getOpenPopoutChatChannelKeys();
+          recordPopoutDiagnosticEvent('popout-window-count-changed', {
+            beforeCount,
+            afterCount,
+            channels: _popoutSyncDebugState.lastChannels.slice(),
+          });
         }
         if (afterCount === 0) {
           clearInterval(_popoutLifecycleTimer);
@@ -942,6 +970,10 @@ function popoutChat() {
             _popoutSyncDebugState.errors += 1;
             _popoutSyncDebugState.lastError = err && (err.stack || err.message || String(err)) || '';
           } catch (e) {}
+          recordPopoutDiagnosticEvent('popout-sync-failed', {
+            error: String(err?.message || err || ''),
+            openPopoutCount: Array.isArray(_popoutWins) ? _popoutWins.filter((w) => w && !w.closed).length : 0,
+          });
         }
       }, 40);
     };
@@ -1052,9 +1084,18 @@ window.getPopoutChatSyncDebugStatus = getPopoutChatSyncDebugStatus;
 
 function requestPopoutChannelSync(channelKey = 'global') {
   const safeKey = normalizePopoutChatChannelKey(channelKey);
+  recordPopoutDiagnosticEvent('popout-channel-sync-requested', {
+    channelKey: safeKey,
+    openPopoutCount: Array.isArray(_popoutWins) ? _popoutWins.filter((w) => w && !w.closed).length : 0,
+  });
   try {
     if (typeof window.watchPopoutChatChannel === 'function') window.watchPopoutChatChannel(safeKey);
-  } catch (e) {}
+  } catch (e) {
+    recordPopoutDiagnosticEvent('popout-channel-sync-failed', {
+      channelKey: safeKey,
+      error: String(e?.message || e || ''),
+    });
+  }
   return safeKey;
 }
 
