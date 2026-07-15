@@ -23,6 +23,13 @@
     <button type="button" class="history-tab" data-history-tab="casual">잡담</button>
     <button type="button" class="history-tab" data-history-tab="dm">DM</button>
   </nav>
+  <section id="dm-channel-panel" class="dm-channel-panel" hidden>
+    <div class="dm-channel-heading">
+      <strong>DM 방</strong>
+      <span id="dm-channel-summary">접근 가능한 DM 방을 확인하는 중입니다.</span>
+    </div>
+    <div id="dm-channel-list" class="dm-channel-list" role="list"></div>
+  </section>
   <div class="history-toolbar">
     <button id="load-older" type="button" disabled>이전 기록 100개 불러오기</button>
     <span id="history-count">0개 표시</span>

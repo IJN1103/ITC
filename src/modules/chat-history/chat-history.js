@@ -15,6 +15,7 @@ const firebaseConfig = {
 const params = new URLSearchParams(location.search);
 const roomCode = String(params.get('room') || '').trim();
 const initialType = ['global', 'casual', 'dm'].includes(params.get('type')) ? params.get('type') : 'global';
+const requestedDmChannel = String(params.get('channel') || '').trim();
 const PAGE_SIZE = 100;
 const SCAN_SIZE = 320;
 const app = initializeApp(firebaseConfig);
@@ -30,17 +31,24 @@ const loadingEl = document.getElementById('history-loading');
 const errorEl = document.getElementById('history-error');
 const titleEl = document.getElementById('history-title');
 const tabButtons = [...document.querySelectorAll('[data-history-tab]')];
+const dmPanelEl = document.getElementById('dm-channel-panel');
+const dmListEl = document.getElementById('dm-channel-list');
+const dmSummaryEl = document.getElementById('dm-channel-summary');
 
 let currentUser = null;
 let activeType = initialType;
+let activeDmChannel = '';
 let switching = false;
+let accessInfo = { isGm: false, ownerId: '', player: null };
+let dmChannels = [];
 const participantProfiles = new Map();
-const states = {
+const baseStates = {
   global: { cursorKey: '', exhausted: false, loading: false, entries: [], keys: new Set() },
-  casual: { cursorKey: '', exhausted: false, loading: false, entries: [], keys: new Set() },
-  dm: { cursorKey: '', exhausted: true, loading: false, entries: [], keys: new Set() }
+  casual: { cursorKey: '', exhausted: false, loading: false, entries: [], keys: new Set() }
 };
+const dmStates = new Map();
 
+function makeState() { return { cursorKey: '', exhausted: false, loading: false, entries: [], keys: new Set() }; }
 const esc = (value) => String(value ?? '').replace(/[&<>'"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]));
 function fmtText(value) {
   let s = esc(value);
@@ -92,41 +100,52 @@ function createMessage(record, key) {
   article.innerHTML = `${avatarHtml}<div class="history-body"><div class="history-meta"><strong style="${record?.nameColor ? `color:${esc(record.nameColor)}` : ''}">${esc(name)}</strong>${tag ? `<span class="history-tag">${tag}</span>` : ''}<time>${esc(messageTime(record))}</time></div>${body}</div>`;
   return article;
 }
-function setError(message) {
-  errorEl.hidden = !message;
-  errorEl.textContent = message || '';
+function setError(message) { errorEl.hidden = !message; errorEl.textContent = message || ''; }
+function normalizeParticipantIds(value) {
+  const raw = Array.isArray(value) ? value : (value && typeof value === 'object' ? Object.values(value) : []);
+  return Array.from(new Set(raw.map(uid => String(uid || '').trim()).filter(Boolean))).sort();
 }
-function currentState() { return states[activeType]; }
+function currentState() {
+  if (activeType !== 'dm') return baseStates[activeType];
+  if (!activeDmChannel) return makeState();
+  if (!dmStates.has(activeDmChannel)) dmStates.set(activeDmChannel, makeState());
+  return dmStates.get(activeDmChannel);
+}
 function labelFor(type) {
   if (type === 'casual') return '잡담 기록';
-  if (type === 'dm') return 'DM 기록';
+  if (type === 'dm') {
+    const room = dmChannels.find(item => item.channelKey === activeDmChannel);
+    return room ? `DM 기록 · ${room.label}` : 'DM 기록';
+  }
   return '일반 채팅 기록';
 }
 function updateUi() {
   const state = currentState();
-  const dmPending = activeType === 'dm';
+  const dmWithoutRoom = activeType === 'dm' && !activeDmChannel;
   countEl.textContent = `${state.entries.length}개 표시`;
-  emptyEl.hidden = dmPending || state.entries.length > 0 || state.loading;
+  emptyEl.hidden = dmWithoutRoom || state.entries.length > 0 || state.loading;
   loadingEl.hidden = !state.loading;
-  loadBtn.hidden = dmPending;
+  loadBtn.hidden = dmWithoutRoom;
   loadBtn.disabled = state.loading || state.exhausted;
   loadBtn.textContent = state.exhausted ? '가장 오래된 기록입니다' : (state.loading ? '불러오는 중…' : '이전 기록 100개 불러오기');
   statusEl.textContent = labelFor(activeType);
   tabButtons.forEach(btn => btn.classList.toggle('active', btn.dataset.historyTab === activeType));
+  dmPanelEl.hidden = activeType !== 'dm';
 }
 function renderActive() {
   listEl.innerHTML = '';
-  const state = currentState();
-  if (activeType === 'dm') {
+  if (activeType === 'dm' && !activeDmChannel) {
     const placeholder = document.createElement('div');
     placeholder.className = 'history-dm-placeholder';
-    placeholder.innerHTML = '<strong>DM 기록</strong><br><span>접근 가능한 DM 방 목록과 기록은 다음 단계에서 연결됩니다.</span>';
+    placeholder.innerHTML = dmChannels.length
+      ? '<strong>DM 기록</strong><br><span>위에서 열람할 DM 방을 선택해 주세요.</span>'
+      : '<strong>DM 기록</strong><br><span>접근 가능한 DM 방이 없습니다.</span>';
     listEl.appendChild(placeholder);
     updateUi();
     return;
   }
   const fragment = document.createDocumentFragment();
-  state.entries.forEach(([key, record]) => fragment.appendChild(createMessage(record, key)));
+  currentState().entries.forEach(([key, record]) => fragment.appendChild(createMessage(record, key)));
   listEl.appendChild(fragment);
   updateUi();
 }
@@ -136,8 +155,11 @@ async function verifyAccess(user) {
     get(ref(db, `rooms/${roomCode}/players/${user.uid}`)),
     get(ref(db, `rooms/${roomCode}/meta`))
   ]);
+  const player = playerSnap.val() || null;
   const ownerId = String(metaSnap.val()?.ownerId || '');
   if (!playerSnap.exists() && ownerId !== user.uid) throw new Error('이 세션 방의 채팅 기록을 볼 권한이 없습니다.');
+  const role = String(player?.role || '').trim().toLowerCase();
+  accessInfo = { player, ownerId, isGm: ownerId === user.uid || role === 'gm' };
 }
 async function loadParticipantProfiles() {
   const [playersSnap, avatarsSnap] = await Promise.all([
@@ -150,11 +172,77 @@ async function loadParticipantProfiles() {
     const p = player || {};
     const roomAvatar = avatars?.[uid];
     const avatar = String(p.avatarUrl || p.avatar || roomAvatar?.avatarUrl || roomAvatar?.avatar || roomAvatar || '').trim();
-    participantProfiles.set(String(uid), { name: String(p.name || ''), avatar });
+    participantProfiles.set(String(uid), { name: String(p.name || ''), avatar, role: String(p.role || '') });
   });
+}
+function dmChannelLabel(participantIds) {
+  const myUid = String(currentUser?.uid || '');
+  const names = participantIds
+    .filter(uid => uid !== myUid)
+    .map(uid => {
+      const profile = participantProfiles.get(uid) || {};
+      return String(profile.role || '').toLowerCase() === 'gm' ? 'GM' : (profile.name || '알 수 없는 사용자');
+    });
+  if (!names.length) return '개인 DM';
+  return names.join(', ');
+}
+async function loadDmChannels() {
+  const snap = await get(ref(db, `rooms/${roomCode}/dmChats`));
+  const raw = snap.val() || {};
+  const uid = String(currentUser?.uid || '');
+  dmChannels = Object.entries(raw).map(([channelKey, node]) => {
+    const meta = node?.meta || {};
+    const participantIds = normalizeParticipantIds(meta.participantIds);
+    return {
+      channelKey: String(channelKey || '').trim(),
+      participantIds,
+      latestAt: Number(meta.latestAt || 0) || 0,
+      label: dmChannelLabel(participantIds)
+    };
+  }).filter(item => item.channelKey && item.channelKey !== 'global' && (accessInfo.isGm || item.participantIds.includes(uid)))
+    .sort((a, b) => b.latestAt - a.latestAt || a.label.localeCompare(b.label, 'ko'));
+
+  if (requestedDmChannel && dmChannels.some(item => item.channelKey === requestedDmChannel)) activeDmChannel = requestedDmChannel;
+  else if (activeDmChannel && !dmChannels.some(item => item.channelKey === activeDmChannel)) activeDmChannel = '';
+  else if (!activeDmChannel && initialType === 'dm' && dmChannels.length === 1) activeDmChannel = dmChannels[0].channelKey;
+  renderDmChannelButtons();
+}
+function renderDmChannelButtons() {
+  dmListEl.innerHTML = '';
+  dmSummaryEl.textContent = dmChannels.length ? `${dmChannels.length}개의 DM 방에 접근할 수 있습니다.` : '접근 가능한 DM 방이 없습니다.';
+  if (!dmChannels.length) {
+    const empty = document.createElement('div');
+    empty.className = 'dm-channel-empty';
+    empty.textContent = '표시할 DM 방이 없습니다.';
+    dmListEl.appendChild(empty);
+    return;
+  }
+  const fragment = document.createDocumentFragment();
+  dmChannels.forEach(room => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'dm-channel-button';
+    button.classList.toggle('active', room.channelKey === activeDmChannel);
+    button.textContent = room.label;
+    button.title = room.label;
+    button.dataset.channelKey = room.channelKey;
+    button.addEventListener('click', () => selectDmChannel(room.channelKey));
+    fragment.appendChild(button);
+  });
+  dmListEl.appendChild(fragment);
 }
 async function fetchCasualPage(state) {
   const base = ref(db, `rooms/${roomCode}/casual`);
+  const q = state.cursorKey ? query(base, orderByKey(), endBefore(state.cursorKey), limitToLast(PAGE_SIZE)) : query(base, orderByKey(), limitToLast(PAGE_SIZE));
+  const snap = await get(q);
+  const entries = Object.entries(snap.val() || {});
+  if (entries.length) state.cursorKey = entries[0][0];
+  state.exhausted = entries.length < PAGE_SIZE;
+  return entries.map(([key, value]) => [key, value || {}]);
+}
+async function fetchDmPage(state) {
+  if (!activeDmChannel || !dmChannels.some(item => item.channelKey === activeDmChannel)) throw new Error('이 DM 방의 기록을 볼 권한이 없습니다.');
+  const base = ref(db, `rooms/${roomCode}/dmChats/${activeDmChannel}/messages`);
   const q = state.cursorKey ? query(base, orderByKey(), endBefore(state.cursorKey), limitToLast(PAGE_SIZE)) : query(base, orderByKey(), limitToLast(PAGE_SIZE));
   const snap = await get(q);
   const entries = Object.entries(snap.val() || {});
@@ -185,15 +273,16 @@ async function fetchGlobalPage(state) {
   return collected.reverse();
 }
 async function loadPage(initial = false) {
+  if (activeType === 'dm' && !activeDmChannel) return;
   const state = currentState();
-  if (activeType === 'dm' || state.loading || state.exhausted) return;
+  if (state.loading || state.exhausted) return;
   state.loading = true;
   setError('');
   updateUi();
   const anchor = !initial ? listEl.firstElementChild : null;
   const anchorTop = anchor?.getBoundingClientRect().top || 0;
   try {
-    const entries = activeType === 'casual' ? await fetchCasualPage(state) : await fetchGlobalPage(state);
+    const entries = activeType === 'casual' ? await fetchCasualPage(state) : (activeType === 'dm' ? await fetchDmPage(state) : await fetchGlobalPage(state));
     const fresh = entries.filter(([key]) => !state.keys.has(key));
     fresh.forEach(([key]) => state.keys.add(key));
     state.entries = initial ? fresh : [...fresh, ...state.entries];
@@ -210,17 +299,33 @@ async function loadPage(initial = false) {
     updateUi();
   }
 }
+async function selectDmChannel(channelKey) {
+  const safeKey = String(channelKey || '').trim();
+  if (!dmChannels.some(item => item.channelKey === safeKey)) return;
+  activeDmChannel = safeKey;
+  const nextParams = new URLSearchParams(location.search);
+  nextParams.set('type', 'dm');
+  nextParams.set('channel', safeKey);
+  history.replaceState(null, '', `${location.pathname}?${nextParams.toString()}`);
+  renderDmChannelButtons();
+  renderActive();
+  const state = currentState();
+  if (!state.entries.length && !state.loading) await loadPage(true);
+}
 async function switchType(nextType) {
   if (!['global', 'casual', 'dm'].includes(nextType) || switching) return;
   switching = true;
   activeType = nextType;
   const nextParams = new URLSearchParams(location.search);
   nextParams.set('type', nextType);
+  if (nextType === 'dm' && activeDmChannel) nextParams.set('channel', activeDmChannel);
+  else nextParams.delete('channel');
   history.replaceState(null, '', `${location.pathname}?${nextParams.toString()}`);
   setError('');
+  renderDmChannelButtons();
   renderActive();
   const state = currentState();
-  if (nextType !== 'dm' && !state.entries.length && !state.loading) await loadPage(true);
+  if ((nextType !== 'dm' || activeDmChannel) && !state.entries.length && !state.loading) await loadPage(true);
   switching = false;
 }
 
@@ -228,7 +333,7 @@ loadBtn.addEventListener('click', () => loadPage(false));
 tabButtons.forEach(btn => btn.addEventListener('click', () => switchType(btn.dataset.historyTab)));
 window.addEventListener('scroll', () => {
   const state = currentState();
-  if (activeType === 'dm' || state.loading || state.exhausted) return;
+  if ((activeType === 'dm' && !activeDmChannel) || state.loading || state.exhausted) return;
   if (window.scrollY <= 48) loadPage(false);
 }, { passive: true });
 
@@ -239,7 +344,6 @@ try {
     document.documentElement.setAttribute('data-theme', theme);
   };
 } catch (e) {}
-
 function applyAvatarShape(value) {
   const shape = value === 'circle' ? 'circle' : 'rounded';
   document.documentElement.setAttribute('data-avatar-shape', shape);
@@ -260,9 +364,10 @@ onAuthStateChanged(auth, async (user) => {
   try {
     await verifyAccess(user);
     await loadParticipantProfiles();
+    await loadDmChannels();
     statusEl.textContent = '기록 불러오는 중';
     renderActive();
-    if (activeType !== 'dm') await loadPage(true);
+    if (activeType !== 'dm' || activeDmChannel) await loadPage(true);
   } catch (err) {
     statusEl.textContent = '접근 불가';
     setError(err?.message || '기록 접근 권한을 확인하지 못했습니다.');

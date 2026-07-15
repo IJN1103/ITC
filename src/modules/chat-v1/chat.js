@@ -1171,11 +1171,15 @@ window.openChatHistoryTab = function openChatHistoryTab(context = {}) {
     return null;
   }
   const type = context?.type === 'casual' ? 'casual' : (context?.type === 'dm' ? 'dm' : 'global');
-  if (type === 'dm') {
-    if (typeof window.showToast === 'function') window.showToast('DM 전체 기록은 다음 단계에서 연결됩니다.');
-    return null;
-  }
   const params = new URLSearchParams({ room: roomCode, type });
+  if (type === 'dm') {
+    const channelKey = String(context?.channelKey || window._itcActiveChatChannelKey || '').trim();
+    if (!channelKey || channelKey === 'global') {
+      if (typeof window.showToast === 'function') window.showToast('먼저 확인할 DM 방을 선택해 주세요.');
+      return null;
+    }
+    params.set('channel', channelKey);
+  }
   const url = `chat-history.html?${params.toString()}`;
   const opened = window.open(url, '_blank', 'noopener');
   if (!opened && typeof window.showToast === 'function') {
