@@ -2713,6 +2713,83 @@ async function deleteMsg(div) {
   }
 }
 
+
+window.editChatMessageFromPopout = async function(msgKey, channel = 'chat') {
+  const key = String(msgKey || '').trim();
+  const safeChannel = String(channel || 'chat').trim() || 'chat';
+  if (!key) return false;
+
+  const record = typeof getStoredRecord === 'function' ? getStoredRecord(safeChannel, key) : null;
+  if (!record) {
+    showToast('수정할 메시지를 찾지 못했어요.');
+    return false;
+  }
+  const type = String(record.type || 'normal');
+  const isMine = String(record.uid || '') === String(St.myId || '');
+  const canEdit = isMine && type !== 'dice' && type !== 'image' && type !== 'speak-as-image';
+  if (!canEdit) {
+    showToast('이 메시지는 수정할 수 없어요.');
+    return false;
+  }
+
+  const oldText = String(record.text || '');
+  const next = window.prompt('메시지를 수정하세요.', oldText);
+  if (next === null) return false;
+  const newText = String(next).trim();
+  if (!newText) {
+    showToast('빈 메시지는 입력할 수 없어요.');
+    return false;
+  }
+  if (newText === oldText) return true;
+
+  try {
+    if (!window._FB?.CONFIGURED) throw new Error('Firebase is not configured');
+    const { db, ref, update } = window._FB;
+    await update(ref(db, `rooms/${St.roomCode}/${safeChannel}/${key}`), { text: newText, edited: true });
+    return true;
+  } catch (err) {
+    console.error('editChatMessageFromPopout failed', err);
+    showToast('메시지 수정에 실패했어요.');
+    return false;
+  }
+};
+
+window.deleteChatMessageFromPopout = async function(msgKey, channel = 'chat') {
+  const key = String(msgKey || '').trim();
+  const safeChannel = String(channel || 'chat').trim() || 'chat';
+  if (!key) return false;
+
+  const record = typeof getStoredRecord === 'function' ? getStoredRecord(safeChannel, key) : null;
+  if (!record) {
+    showToast('삭제할 메시지를 찾지 못했어요.');
+    return false;
+  }
+  const isMine = String(record.uid || '') === String(St.myId || '');
+  if (!isMine && !St.isGM) {
+    showToast('이 메시지는 삭제할 수 없어요.');
+    return false;
+  }
+  if (!window.confirm('이 메시지를 삭제할까요?')) return false;
+
+  try {
+    if (!window._FB?.CONFIGURED) throw new Error('Firebase is not configured');
+    const { db, ref, remove } = window._FB;
+    await remove(ref(db, `rooms/${St.roomCode}/${safeChannel}/${key}`));
+    if (safeChannel === 'chat') {
+      const dmKey = String(record.dmChannelKey || window._itcActiveChatChannelKey || 'global').trim() || 'global';
+      if (dmKey !== 'global') {
+        try { await remove(ref(db, `rooms/${St.roomCode}/dmMessageIndex/${dmKey}/${key}`)); } catch (e) {}
+        try { await remove(ref(db, `rooms/${St.roomCode}/dmChats/${dmKey}/messages/${key}`)); } catch (e) {}
+      }
+    }
+    return true;
+  } catch (err) {
+    console.error('deleteChatMessageFromPopout failed', err);
+    showToast('메시지 삭제에 실패했어요.');
+    return false;
+  }
+};
+
 function fmtText(str) {
   let s = esc(str);
   s = s.replace(/\*\*\*(.+?)\*\*\*/g, '<b><i>$1</i></b>');
