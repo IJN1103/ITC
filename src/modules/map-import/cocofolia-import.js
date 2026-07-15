@@ -6,6 +6,121 @@
     lastDiagnostics: null,
   };
 
+
+  const MAP_IMPORT_DIAGNOSTICS = {
+    activeRun: null,
+    lastRun: null,
+    runs: [],
+  };
+
+  function diagnosticNow() {
+    try { return performance.now(); } catch (e) { return Date.now(); }
+  }
+
+  function recordMapImportEvent(type, detail = {}) {
+    try {
+      window.ITCDiagnostics?.record?.(type, detail);
+    } catch (e) {}
+  }
+
+  function beginMapImportDiagnostic(kind, file) {
+    const run = {
+      id: `map-import-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      kind: String(kind || 'unknown'),
+      fileSize: Number(file?.size || 0),
+      fileType: String(file?.type || ''),
+      startedAt: new Date().toISOString(),
+      startedPerf: diagnosticNow(),
+      stages: [],
+      counts: {},
+      status: 'running',
+      error: '',
+    };
+    MAP_IMPORT_DIAGNOSTICS.activeRun = run;
+    recordMapImportEvent('map-import-started', {
+      runId: run.id,
+      kind: run.kind,
+      fileSize: run.fileSize,
+      fileType: run.fileType,
+    });
+    return run;
+  }
+
+  function markMapImportStage(run, name, startedPerf, detail = {}) {
+    if (!run) return null;
+    const durationMs = Math.max(0, Math.round(diagnosticNow() - Number(startedPerf || diagnosticNow())));
+    const stage = {
+      name: String(name || 'stage'),
+      durationMs,
+      ...detail,
+    };
+    run.stages.push(stage);
+    recordMapImportEvent('map-import-stage-completed', {
+      runId: run.id,
+      kind: run.kind,
+      stage: stage.name,
+      durationMs,
+      ...detail,
+    });
+    return stage;
+  }
+
+  function finishMapImportDiagnostic(run, status, detail = {}) {
+    if (!run) return;
+    run.status = String(status || 'completed');
+    run.completedAt = new Date().toISOString();
+    run.totalDurationMs = Math.max(0, Math.round(diagnosticNow() - Number(run.startedPerf || diagnosticNow())));
+    run.counts = { ...(run.counts || {}), ...(detail.counts || {}) };
+    run.error = String(detail.error || '');
+    const safeRun = {
+      id: run.id,
+      kind: run.kind,
+      fileSize: run.fileSize,
+      fileType: run.fileType,
+      startedAt: run.startedAt,
+      completedAt: run.completedAt,
+      totalDurationMs: run.totalDurationMs,
+      stages: run.stages.slice(),
+      counts: { ...run.counts },
+      status: run.status,
+      error: run.error,
+    };
+    MAP_IMPORT_DIAGNOSTICS.lastRun = safeRun;
+    MAP_IMPORT_DIAGNOSTICS.runs.push(safeRun);
+    if (MAP_IMPORT_DIAGNOSTICS.runs.length > 10) {
+      MAP_IMPORT_DIAGNOSTICS.runs.splice(0, MAP_IMPORT_DIAGNOSTICS.runs.length - 10);
+    }
+    if (MAP_IMPORT_DIAGNOSTICS.activeRun === run) MAP_IMPORT_DIAGNOSTICS.activeRun = null;
+    recordMapImportEvent(
+      run.status === 'failed' ? 'map-import-failed' : 'map-import-completed',
+      {
+        runId: run.id,
+        kind: run.kind,
+        totalDurationMs: run.totalDurationMs,
+        counts: safeRun.counts,
+        error: run.error,
+      }
+    );
+  }
+
+  function getMapImportDiagnosticStatus() {
+    const active = MAP_IMPORT_DIAGNOSTICS.activeRun;
+    return {
+      isBusy: !!IMPORT_STATE.isBusy,
+      activeRun: active ? {
+        id: active.id,
+        kind: active.kind,
+        fileSize: active.fileSize,
+        startedAt: active.startedAt,
+        elapsedMs: Math.max(0, Math.round(diagnosticNow() - Number(active.startedPerf || diagnosticNow()))),
+        stages: active.stages.slice(),
+        counts: { ...(active.counts || {}) },
+      } : null,
+      lastRun: MAP_IMPORT_DIAGNOSTICS.lastRun,
+      recentRuns: MAP_IMPORT_DIAGNOSTICS.runs.slice(),
+    };
+  }
+
   const SCENE_IMPORT = window.ITCCocofoliaSceneImport || null;
 
   function canManageMapImport() {
@@ -578,13 +693,22 @@
     if (!file) return;
     if (IMPORT_STATE.isBusy) return;
     IMPORT_STATE.isBusy = true;
+    const validationRun = beginMapImportDiagnostic(
+      isImageFile(file) ? 'single-image-validation' : (/\.zip$/i.test(file.name) ? 'zip-validation' : 'unsupported-validation'),
+      file
+    );
     const { hint } = getModalElements();
     try {
       if (isImageFile(file)) {
         // 단일 이미지: 검사 없이 바로 적용 준비
         if (hint) { hint.style.display = ''; hint.textContent = '이미지 파일을 확인하는 중이에요…'; }
         // 이미지 크기 확인
+        const imageProbeStarted = diagnosticNow();
         const imgSize = await getImageSizeFromBlob(file);
+        markMapImportStage(validationRun, 'image-dimensions', imageProbeStarted, {
+          width: Number(imgSize?.width || 0),
+          height: Number(imgSize?.height || 0),
+        });
         const ext = file.name.split('.').pop()?.toLowerCase() || 'png';
         const imgW = imgSize?.width || 1920;
         const imgH = imgSize?.height || 1080;
@@ -611,9 +735,22 @@
         if (typeof showToast === 'function') showToast('이미지 파일 확인 완료');
       } else if (/\.zip$/i.test(file.name)) {
         if (hint) { hint.style.display = ''; hint.textContent = '맵세팅 ZIP을 검사하는 중이에요…'; }
+        const parseStarted = diagnosticNow();
         const parsed = await parseCocofoliaZip(file);
+        markMapImportStage(validationRun, 'zip-parse-and-json', parseStarted);
+
+        const zipLoadStarted = diagnosticNow();
         const zip = await window.JSZip.loadAsync(file);
+        markMapImportStage(validationRun, 'zip-secondary-load', zipLoadStarted, {
+          entryCount: Object.keys(zip?.files || {}).length,
+        });
+
+        const diagnosticsStarted = diagnosticNow();
         const diagnostics = buildCocofoliaDiagnostics(zip, parsed);
+        markMapImportStage(validationRun, 'zip-reference-diagnostics', diagnosticsStarted, {
+          referencedImageCount: Number(diagnostics?.referencedImageCount || diagnostics?.referencedImages || 0),
+          missingImageCount: Number(diagnostics?.missingCount || diagnostics?.missingImages || 0),
+        });
         IMPORT_STATE.lastValidated = { fileName: file.name, parsed, diagnostics };
         IMPORT_STATE.lastDiagnostics = diagnostics;
         IMPORT_STATE.pendingFile = file;
@@ -623,7 +760,9 @@
       } else {
         throw new Error('ZIP 또는 이미지 파일(PNG/JPG)만 업로드할 수 있어요.');
       }
+      finishMapImportDiagnostic(validationRun, 'completed');
     } catch (err) {
+      finishMapImportDiagnostic(validationRun, 'failed', { error: err?.message || String(err || '') });
       console.error('map import validation failed', err);
       IMPORT_STATE.lastValidated = null;
       IMPORT_STATE.pendingFile = null;
@@ -647,13 +786,18 @@
     // ── 단일 이미지 업로드 경로 ──
     if (validated.parsed._isSingleImage) {
       IMPORT_STATE.isBusy = true;
+      const applyRun = beginMapImportDiagnostic('single-image-apply', pendingFile);
       try {
         setHint('이미지를 업로드하는 중이에요…');
         const { roomCode } = await ensureLiveRoomContext();
         const ext = validated.parsed._imageExt || 'png';
         const fit = validated.parsed._imageFit || 'contain';
         // File은 Blob의 서브클래스 — 이중 래핑하지 않고 그대로 전달
+        const uploadStarted = diagnosticNow();
         const uploadedUrl = await uploadMapLayerBlob(pendingFile, roomCode, `map-bg-${Date.now()}.${ext}`);
+        markMapImportStage(applyRun, 'background-upload', uploadStarted, {
+          bytes: Number(pendingFile?.size || 0),
+        });
         if (!uploadedUrl) throw new Error('이미지 업로드에 실패했어요.');
         const nextMapState = {
           background: { url: uploadedUrl, sourceName: pendingFile.name, fit, importedAt: Date.now() },
@@ -664,6 +808,7 @@
         const nextLayerState = buildDefaultImportedMapLayerState(nextMapState);
         if (window._FB?.CONFIGURED) {
           const { db, ref, update } = window._FB;
+          const firebaseSaveStarted = diagnosticNow();
           await update(ref(db, `rooms/${roomCode}`), {
             mapState: nextMapState,
             mapLayerState: nextLayerState,
@@ -678,6 +823,7 @@
             'bgm/mapObjects': [],
             'bgm/mapLayerState': nextLayerState,
           });
+          markMapImportStage(applyRun, 'firebase-map-save', firebaseSaveStarted);
         }
         if (window.St) { window.St.mapState = nextMapState; window.St.mapLayerState = nextLayerState; }
         if (typeof window._itcApplyRoomMapStateLocal === 'function') {
@@ -690,7 +836,11 @@
         IMPORT_STATE.pendingFile = null;
         IMPORT_STATE.lastValidated = null;
         if (typeof window.hideMapImportPanel === 'function') window.hideMapImportPanel();
+        finishMapImportDiagnostic(applyRun, 'completed', {
+          counts: { backgroundUploads: 1, objectUploads: 0, sceneUploads: 0 },
+        });
       } catch (err) {
+        finishMapImportDiagnostic(applyRun, 'failed', { error: err?.message || String(err || '') });
         setError(err?.message || '이미지 업로드 중 오류가 발생했어요.');
         console.error('single image apply failed', err);
       } finally {
@@ -709,18 +859,36 @@
       return;
     }
     IMPORT_STATE.isBusy = true;
+    const applyRun = beginMapImportDiagnostic('zip-apply', pendingFile);
     try {
       setHint('세션 상태를 확인한 뒤 맵 이미지를 업로드하는 중이에요…');
+      const contextStarted = diagnosticNow();
       const { roomCode } = await ensureLiveRoomContext();
+      markMapImportStage(applyRun, 'room-context-check', contextStarted);
+
+      const zipLoadStarted = diagnosticNow();
       const zip = await window.JSZip.loadAsync(pendingFile);
+      markMapImportStage(applyRun, 'zip-load-for-apply', zipLoadStarted, {
+        entryCount: Object.keys(zip?.files || {}).length,
+      });
 
       // ── 배경 이미지 업로드 ──
       const backgroundEntry = zip.file(mapImageName);
       if (!backgroundEntry) throw new Error('ZIP 안에서 맵 이미지 파일을 찾지 못했어요.');
+      const backgroundExtractStarted = diagnosticNow();
       const blob = await backgroundEntry.async('blob');
       const backgroundSize = await getImageSizeFromBlob(blob);
+      markMapImportStage(applyRun, 'background-extract-and-probe', backgroundExtractStarted, {
+        bytes: Number(blob?.size || 0),
+        width: Number(backgroundSize?.width || 0),
+        height: Number(backgroundSize?.height || 0),
+      });
       const ext = mapImageName.split('.').pop() || 'png';
+      const backgroundUploadStarted = diagnosticNow();
       const uploadedUrl = await uploadMapLayerBlob(blob, roomCode, `map-bg-${Date.now()}.${ext}`);
+      markMapImportStage(applyRun, 'background-upload', backgroundUploadStarted, {
+        bytes: Number(blob?.size || 0),
+      });
       if (!uploadedUrl) throw new Error('맵 이미지 업로드에 실패했어요.');
 
       // PHASE D-2: 장면 배경 업로드 결과를 파일명 기준으로 재사용한다.
@@ -747,6 +915,7 @@
         uploadTasks.push({ type: 'object', blueprint, index });
       });
 
+      const objectBatchStarted = diagnosticNow();
       const uploadResults = await runWithConcurrency(
         uploadTasks,
         3,
@@ -803,6 +972,11 @@
         }
       );
 
+      markMapImportStage(applyRun, 'foreground-and-object-upload-batch', objectBatchStarted, {
+        taskCount: uploadTasks.length,
+        concurrency: 3,
+      });
+
       let uploadedFgUrl = null;
       const orderedObjectResults = new Array(objectBlueprints.length);
       uploadResults.forEach((result) => {
@@ -834,6 +1008,7 @@
 
       if (uniqueSceneBackgroundNames.length > 0) {
         setHint(`장면 배경 ${uniqueSceneBackgroundNames.length}개를 업로드하는 중이에요…`);
+        const sceneBackgroundBatchStarted = diagnosticNow();
         const sceneBackgroundResults = await runWithConcurrency(
           uniqueSceneBackgroundNames,
           3,
@@ -858,6 +1033,11 @@
           if (!result?.imageName || !result.url) return;
           sceneBackgroundByName.set(result.imageName, result.url);
           if (result.size) sceneBackgroundMetaByName.set(result.imageName, result.size);
+        });
+        markMapImportStage(applyRun, 'scene-background-upload-batch', sceneBackgroundBatchStarted, {
+          requestedCount: uniqueSceneBackgroundNames.length,
+          uploadedCount: sceneBackgroundResults.filter((result) => !!result?.url).length,
+          concurrency: 3,
         });
       }
 
@@ -1039,6 +1219,7 @@
       };
       const nextLayerState = buildDefaultImportedMapLayerState(nextMapState);
       const { db, ref, update } = window._FB;
+      const finalMapSaveStarted = diagnosticNow();
       await update(ref(db, `rooms/${roomCode}`), {
         mapState: nextMapState,
         mapLayerState: nextLayerState,
@@ -1052,6 +1233,9 @@
         'bgm/mapForegroundImportedAt': nextMapState.foreground?.importedAt || 0,
         'bgm/mapObjects': nextMapState.objects || [],
         'bgm/mapLayerState': nextLayerState,
+      });
+      markMapImportStage(applyRun, 'firebase-map-save', finalMapSaveStarted, {
+        objectCount: importedObjects.length,
       });
       if (window.St) {
         window.St.mapState = nextMapState;
@@ -1086,6 +1270,7 @@
         });
         if (sceneBuild.records.length > 0) {
           setHint(`장면 카드 ${sceneBuild.records.length}개를 저장하는 중이에요…`);
+          const sceneSaveStarted = diagnosticNow();
           const sceneSaveResult = await SCENE_IMPORT.persistSceneRecords({
             roomCode,
             importKey: sceneBuild.importKey,
@@ -1093,6 +1278,10 @@
             firstSceneId: sceneBuild.firstSceneId,
           });
           importedSceneCount = Number(sceneSaveResult?.saved || 0);
+          markMapImportStage(applyRun, 'firebase-scene-save', sceneSaveStarted, {
+            requestedCount: sceneBuild.records.length,
+            savedCount: importedSceneCount,
+          });
         }
       }
 
@@ -1117,7 +1306,19 @@
       const sceneNote = importedSceneCount > 0 ? ` / 장면 ${importedSceneCount}개 생성` : '';
       if (typeof showToast === 'function') showToast(`맵 이미지 + 스크린 패널${cutinNote}${sceneNote} 적용 완료`);
       if (typeof window.hideMapImportPanel === 'function') window.hideMapImportPanel();
+      finishMapImportDiagnostic(applyRun, 'completed', {
+        counts: {
+          backgroundUploads: 1,
+          foregroundUploads: uploadedFgUrl ? 1 : 0,
+          objectUploadsRequested: objectBlueprints.length,
+          objectUploadsSucceeded: importedObjects.length,
+          sceneBackgroundUploads: Math.max(0, sceneBackgroundByName.size - 1),
+          scenesSaved: importedSceneCount,
+          cutinsDetected: cutinCount,
+        },
+      });
     } catch (err) {
+      finishMapImportDiagnostic(applyRun, 'failed', { error: err?.message || String(err || '') });
       console.error('map background apply failed', err);
       setError(err?.message || '맵 이미지 적용 중 오류가 발생했어요.');
     } finally {
@@ -1130,4 +1331,5 @@
   window.applyValidatedMapBackground = applyValidatedMapBackground;
   window.openMapImportModal = openMapImportModal;
   window.handleMapImportFile = handleMapImportFile;
+  window.getMapImportDiagnosticStatus = getMapImportDiagnosticStatus;
 })();

@@ -107,6 +107,7 @@
           || type.startsWith('popout-')
           || type.startsWith('firebase-')
           || type.startsWith('image-upload-')
+          || type.startsWith('map-import-')
           || type.startsWith('room-');
       })
       .slice(-MAX_EXECUTION_PATH);
@@ -117,7 +118,8 @@
       const type = String(entry?.type || '');
       return type.startsWith('chat-write-')
         || type.startsWith('firebase-write-')
-        || type.startsWith('image-upload-');
+        || type.startsWith('image-upload-')
+        || type.startsWith('map-import-');
     }).slice(-80);
   }
 
@@ -128,6 +130,7 @@
     if (type === 'firebase-read-failed') return 'firebaseRead';
     if (type === 'firebase-write-failed') return 'firebaseWrite';
     if (type === 'image-upload-transport-failed' || type === 'image-upload-failed') return 'imageUpload';
+    if (type === 'map-import-failed') return 'mapImport';
     if (type === 'popout-sync-failed' || type === 'popout-channel-sync-failed' || type === 'popout-open-blocked') return 'popout';
     return '';
   }
@@ -142,6 +145,7 @@
       firebaseRead: 0,
       firebaseWrite: 0,
       imageUpload: 0,
+      mapImport: 0,
       popout: 0,
       listener: Array.isArray(warnings) ? warnings.length : 0,
     };
@@ -168,6 +172,7 @@
     if (categories.firebaseWrite) highPriorityIssues.push({ code: 'firebase-write-failure', count: categories.firebaseWrite });
     if (categories.firebaseRead) highPriorityIssues.push({ code: 'firebase-read-failure', count: categories.firebaseRead });
     if (categories.imageUpload) highPriorityIssues.push({ code: 'image-upload-failure', count: categories.imageUpload });
+    if (categories.mapImport) highPriorityIssues.push({ code: 'map-import-failure', count: categories.mapImport });
     if (categories.popout) highPriorityIssues.push({ code: 'popout-failure', count: categories.popout });
     if (categories.listener) highPriorityIssues.push({ code: 'listener-warning', count: categories.listener });
 
@@ -229,6 +234,7 @@
       popout: callStatus('getPopoutChatSyncDebugStatus', null),
       popoutWatchers,
       bgm: callStatus('getBgmDebugStatus', null),
+      mapImport: callStatus('getMapImportDiagnosticStatus', null),
       warnings,
       recentFailures,
       recentExecutionPath: getExecutionPath(),
