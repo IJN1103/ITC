@@ -2714,39 +2714,73 @@ async function deleteMsg(div) {
 }
 
 
+window.updateChatMessageFromPopout = async function(msgKey, channel = 'chat', nextText = '') {
+  const key = String(msgKey || '').trim();
+  const safeChannel = String(channel || 'chat').trim() || 'chat';
+  const newText = String(nextText ?? '').trim();
+  if (!key || !newText) {
+    showToast('빈 메시지는 입력할 수 없어요.');
+    return false;
+  }
+
+  try {
+    if (!window._FB?.CONFIGURED) throw new Error('Firebase is not configured');
+    const { db, ref, get, update } = window._FB;
+    const messageRef = ref(db, `rooms/${St.roomCode}/${safeChannel}/${key}`);
+
+    // The main render store can legitimately be empty when the message is only
+    // visible in a popout. Always fall back to the canonical Firebase record.
+    let record = typeof getStoredRecord === 'function' ? getStoredRecord(safeChannel, key) : null;
+    if (!record) {
+      const snap = await get(messageRef);
+      record = snap.exists() ? snap.val() : null;
+    }
+    if (!record) {
+      showToast('수정할 메시지를 찾지 못했어요.');
+      return false;
+    }
+
+    const type = String(record.type || 'normal');
+    const isMine = String(record.uid || '') === String(St.myId || '');
+    const canEdit = isMine && type !== 'dice' && type !== 'image' && type !== 'speak-as-image';
+    if (!canEdit) {
+      showToast('이 메시지는 수정할 수 없어요.');
+      return false;
+    }
+
+    const oldText = String(record.text || '');
+    if (newText === oldText) return true;
+    await update(messageRef, { text: newText, edited: true });
+    return true;
+  } catch (err) {
+    console.error('updateChatMessageFromPopout failed', err);
+    showToast('메시지 수정에 실패했어요.');
+    return false;
+  }
+};
+
+// Backward-compatible entry point. New popouts collect the edit text in the
+// popout window itself so the prompt cannot open behind the main window.
 window.editChatMessageFromPopout = async function(msgKey, channel = 'chat') {
   const key = String(msgKey || '').trim();
   const safeChannel = String(channel || 'chat').trim() || 'chat';
   if (!key) return false;
 
-  const record = typeof getStoredRecord === 'function' ? getStoredRecord(safeChannel, key) : null;
-  if (!record) {
-    showToast('수정할 메시지를 찾지 못했어요.');
-    return false;
-  }
-  const type = String(record.type || 'normal');
-  const isMine = String(record.uid || '') === String(St.myId || '');
-  const canEdit = isMine && type !== 'dice' && type !== 'image' && type !== 'speak-as-image';
-  if (!canEdit) {
-    showToast('이 메시지는 수정할 수 없어요.');
-    return false;
-  }
-
-  const oldText = String(record.text || '');
-  const next = window.prompt('메시지를 수정하세요.', oldText);
-  if (next === null) return false;
-  const newText = String(next).trim();
-  if (!newText) {
-    showToast('빈 메시지는 입력할 수 없어요.');
-    return false;
-  }
-  if (newText === oldText) return true;
-
   try {
     if (!window._FB?.CONFIGURED) throw new Error('Firebase is not configured');
-    const { db, ref, update } = window._FB;
-    await update(ref(db, `rooms/${St.roomCode}/${safeChannel}/${key}`), { text: newText, edited: true });
-    return true;
+    const { db, ref, get } = window._FB;
+    let record = typeof getStoredRecord === 'function' ? getStoredRecord(safeChannel, key) : null;
+    if (!record) {
+      const snap = await get(ref(db, `rooms/${St.roomCode}/${safeChannel}/${key}`));
+      record = snap.exists() ? snap.val() : null;
+    }
+    if (!record) {
+      showToast('수정할 메시지를 찾지 못했어요.');
+      return false;
+    }
+    const next = window.prompt('메시지를 수정하세요.', String(record.text || ''));
+    if (next === null) return false;
+    return window.updateChatMessageFromPopout(key, safeChannel, next);
   } catch (err) {
     console.error('editChatMessageFromPopout failed', err);
     showToast('메시지 수정에 실패했어요.');
