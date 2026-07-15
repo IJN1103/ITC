@@ -1466,6 +1466,112 @@ function switchActiveChatChannel(channelKey = 'global') {
     return;
   }
 
+
+  // OPT-1C — 현재 선택한 DM 채널은 최근 100개만 개별 child 이벤트로 수신한다.
+  // 저장 경로와 권한 구조는 유지하고, 해당 dmChannelKey를 서버 쿼리에서 직접 선별한다.
+  if (
+    safeChannelKey !== 'global'
+    && typeof onChildAdded === 'function'
+    && typeof onChildChanged === 'function'
+    && typeof onChildRemoved === 'function'
+    && query && orderByChild && equalTo && limitToLast
+  ) {
+    const dmListenLimit = 100;
+    const dmListenRef = query(
+      chatBaseRef,
+      orderByChild('dmChannelKey'),
+      equalTo(safeChannelKey),
+      limitToLast(dmListenLimit)
+    );
+
+    const isCurrentDmListener = () => (
+      listenerVersion === _activeChatChannelListenerVersion
+      && String(St.roomCode || '').trim() === activeRoomCode
+      && String(window._itcActiveChatChannelKey || 'global').trim() === safeChannelKey
+    );
+
+    const applyDmRecord = (snap, mode = 'added') => {
+      if (!isCurrentDmListener()) return;
+      const key = String(snap?.key || '').trim();
+      if (!key) return;
+      const message = { ...(snap.val() || {}), _key: key };
+      if (!shouldShowChatMessage(message)) return;
+
+      const nextSig = buildChatMessageSignature(message);
+      const prevSig = signatures.get(key);
+      const payload = makePayload(key, message);
+      const alreadyProcessed = processed.has(key);
+
+      cacheChannelMessages(safeChannelKey, [message], { merge: true, seed: false });
+      if (!alreadyProcessed) {
+        appendChatMsg(payload);
+        processed.add(key);
+      } else if (prevSig !== nextSig) {
+        replaceChatMsg(payload);
+      }
+      signatures.set(key, nextSig);
+      if (!newestSeenKey || key > newestSeenKey) newestSeenKey = key;
+
+      try {
+        if (typeof updateDmChannelMetaForMessage === 'function') {
+          updateDmChannelMetaForMessage(safeChannelKey, message, key);
+        }
+      } catch (e) {}
+
+      logItcChatDebug(`active-dm-child-${mode}`, {
+        channelKey: safeChannelKey,
+        messageKey: key,
+        cachedCount: Array.isArray(_chatRecordsByChannel.get(safeChannelKey))
+          ? _chatRecordsByChannel.get(safeChannelKey).length
+          : 0,
+      }, { throttleMs: 250 });
+    };
+
+    trackActiveChatChannelListener(onChildAdded(dmListenRef, (snap) => applyDmRecord(snap, 'added')));
+    trackActiveChatChannelListener(onChildChanged(dmListenRef, (snap) => applyDmRecord(snap, 'changed')));
+    trackActiveChatChannelListener(onChildRemoved(dmListenRef, async (snap) => {
+      if (!isCurrentDmListener()) return;
+      const key = String(snap?.key || '').trim();
+      if (!key) return;
+      const removedMessage = { ...(snap.val() || {}), _key: key };
+      if (!shouldShowChatMessage(removedMessage)) return;
+
+      // 제한 쿼리 범위 이탈과 실제 삭제를 구분한다.
+      try {
+        if (typeof window._FB?.get === 'function') {
+          const verifySnap = await window._FB.get(ref(db, `rooms/${activeRoomCode}/chat/${key}`));
+          if (!isCurrentDmListener()) return;
+          if (verifySnap?.exists?.()) {
+            const latest = { ...(verifySnap.val() || {}), _key: key };
+            if (shouldShowChatMessage(latest)) {
+              applyDmRecord(verifySnap, 'verified');
+            }
+            return;
+          }
+        }
+      } catch (err) {
+        console.warn('[dm] removed message verification failed', key, err);
+        return;
+      }
+
+      removeCachedChannelMessage(safeChannelKey, key);
+      removeChatMsg(key, 'chat');
+      processed.delete(key);
+      signatures.delete(key);
+      logItcChatDebug('active-dm-child-removed', {
+        channelKey: safeChannelKey,
+        messageKey: key,
+      }, { throttleMs: 250 });
+    }));
+
+    logItcChatDebug('active-dm-child-listeners-ready', {
+      channelKey: safeChannelKey,
+      listenLimit: dmListenLimit,
+      listenerCount: _activeChatChannelUnsubs.length,
+    });
+    return;
+  }
+
   trackActiveChatChannelListener(onValue(listenRef, snap => {
     const currentRoomCode = String(St.roomCode || '').trim();
     if (listenerVersion !== _activeChatChannelListenerVersion || currentRoomCode !== activeRoomCode) {
