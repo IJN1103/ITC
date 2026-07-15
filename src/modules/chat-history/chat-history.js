@@ -23,7 +23,6 @@ const auth = getAuth(app);
 const db = getDatabase(app);
 
 const listEl = document.getElementById('history-list');
-const loadBtn = document.getElementById('load-older');
 const statusEl = document.getElementById('history-status');
 const countEl = document.getElementById('history-count');
 const emptyEl = document.getElementById('history-empty');
@@ -128,9 +127,6 @@ function updateUi() {
   countEl.textContent = `${state.entries.length}개 표시`;
   emptyEl.hidden = dmWithoutRoom || state.entries.length > 0 || state.loading;
   loadingEl.hidden = !state.loading;
-  loadBtn.hidden = dmWithoutRoom;
-  loadBtn.disabled = state.loading || state.exhausted;
-  loadBtn.textContent = state.exhausted ? '가장 오래된 기록입니다' : (state.loading ? '불러오는 중…' : '이전 기록 100개 불러오기');
   statusEl.textContent = labelFor(activeType);
   tabButtons.forEach(btn => btn.classList.toggle('active', btn.dataset.historyTab === activeType));
   dmPanelEl.hidden = activeType !== 'dm';
@@ -318,7 +314,7 @@ async function fetchGlobalPage(state) {
   state.exhausted = reachedEnd;
   return collected.reverse();
 }
-async function loadPage(initial = false) {
+async function loadAllRecords() {
   if (!accessReady) return;
   const requestType = activeType;
   const requestChannel = requestType === 'dm' ? activeDmChannel : '';
@@ -331,44 +327,64 @@ async function loadPage(initial = false) {
 
   const requestRevision = viewRevision;
   state.loading = true;
-  if (requestRevision === viewRevision) {
-    setError('');
-    updateUi();
-  }
-
-  const anchor = !initial && requestType === activeType && requestChannel === activeDmChannel
-    ? listEl.firstElementChild
-    : null;
-  const anchorKey = anchor?.dataset?.key || '';
-  const anchorTop = anchor?.getBoundingClientRect().top || 0;
+  setError('');
+  updateUi();
 
   try {
-    const entries = requestType === 'casual'
-      ? await fetchCasualPage(state)
-      : (requestType === 'dm'
-        ? await fetchDmPage(state, requestChannel)
-        : await fetchGlobalPage(state));
+    let batchCount = 0;
+    let previousCursor = state.cursorKey;
 
-    const fresh = entries.filter(([key]) => !state.keys.has(key));
-    fresh.forEach(([key]) => state.keys.add(key));
-    state.entries = initial ? fresh : [...fresh, ...state.entries];
+    while (!state.exhausted) {
+      const entries = requestType === 'casual'
+        ? await fetchCasualPage(state)
+        : (requestType === 'dm'
+          ? await fetchDmPage(state, requestChannel)
+          : await fetchGlobalPage(state));
 
-    const isCurrentView = requestRevision === viewRevision
-      && requestType === activeType
-      && (requestType !== 'dm' || requestChannel === activeDmChannel);
-    if (!isCurrentView) return;
+      const fresh = entries.filter(([key]) => !state.keys.has(key));
+      fresh.forEach(([key]) => state.keys.add(key));
+      if (fresh.length) state.entries = [...fresh, ...state.entries];
 
-    renderActive();
-    if (!initial && anchorKey) {
-      const same = listEl.querySelector(`[data-key="${CSS.escape(anchorKey)}"]`);
-      if (same) window.scrollBy(0, same.getBoundingClientRect().top - anchorTop);
+      batchCount += 1;
+      const isCurrentView = requestRevision === viewRevision
+        && requestType === activeType
+        && (requestType !== 'dm' || requestChannel === activeDmChannel);
+
+      if (isCurrentView) {
+        countEl.textContent = `${state.entries.length}개 불러오는 중`;
+        statusEl.textContent = `${labelFor(requestType)} · 전체 기록 불러오는 중`;
+      }
+
+      // 사용자가 다른 탭이나 DM 방으로 이동하면 현재 조회를 중단한다.
+      // 지금까지 받은 데이터와 커서는 캐시에 남아 다시 돌아왔을 때 이어서 조회한다.
+      if (!isCurrentView) break;
+
+      // 필터 결과가 비어 있더라도 Firebase 스캔 커서가 앞으로 진행하면 계속 조회한다.
+      // 커서가 진행하지 않는 예외 상황에서는 무한 반복을 막는다.
+      if (!state.exhausted && state.cursorKey === previousCursor) {
+        throw new Error('전체 기록 조회 커서가 진행되지 않아 불러오기를 중단했습니다.');
+      }
+      previousCursor = state.cursorKey;
+
+      // 비정상적으로 큰 데이터나 손상된 커서로 인한 무한 요청 방지용 상한이다.
+      if (batchCount >= 10000) {
+        throw new Error('전체 기록의 양이 너무 많아 안전 상한에서 불러오기를 중단했습니다.');
+      }
     }
-  } catch (err) {
-    console.error('[chat-history] load failed', err);
+
     const isCurrentView = requestRevision === viewRevision
       && requestType === activeType
       && (requestType !== 'dm' || requestChannel === activeDmChannel);
-    if (isCurrentView) setError(err?.message || '기록을 불러오지 못했습니다.');
+    if (isCurrentView) renderActive();
+  } catch (err) {
+    console.error('[chat-history] load all failed', err);
+    const isCurrentView = requestRevision === viewRevision
+      && requestType === activeType
+      && (requestType !== 'dm' || requestChannel === activeDmChannel);
+    if (isCurrentView) {
+      renderActive();
+      setError(err?.message || '전체 기록을 불러오지 못했습니다.');
+    }
   } finally {
     state.loading = false;
     const isCurrentView = requestRevision === viewRevision
@@ -390,7 +406,7 @@ async function selectDmChannel(channelKey) {
   renderDmChannelButtons();
   renderActive();
   const state = currentState();
-  if (!state.entries.length && !state.loading) await loadPage(true);
+  if (!state.exhausted && !state.loading) void loadAllRecords();
 }
 async function switchType(nextType) {
   if (!['global', 'casual', 'dm'].includes(nextType) || switching || !accessReady) return;
@@ -407,26 +423,13 @@ async function switchType(nextType) {
     renderDmChannelButtons();
     renderActive();
     const state = currentState();
-    if ((nextType !== 'dm' || activeDmChannel) && !state.entries.length && !state.loading) await loadPage(true);
+    if ((nextType !== 'dm' || activeDmChannel) && !state.exhausted && !state.loading) void loadAllRecords();
   } finally {
     switching = false;
   }
 }
 
-loadBtn.addEventListener('click', () => loadPage(false));
 tabButtons.forEach(btn => btn.addEventListener('click', () => switchType(btn.dataset.historyTab)));
-let scrollLoadQueued = false;
-window.addEventListener('scroll', () => {
-  if (scrollLoadQueued || !accessReady) return;
-  scrollLoadQueued = true;
-  requestAnimationFrame(() => {
-    scrollLoadQueued = false;
-    const state = currentState();
-    if ((activeType === 'dm' && !activeDmChannel) || state.loading || state.exhausted) return;
-    if (window.scrollY <= 48) loadPage(false);
-  });
-}, { passive: true });
-
 try {
   const channel = new BroadcastChannel('itc_theme_sync');
   channel.onmessage = (event) => {
@@ -461,7 +464,7 @@ onAuthStateChanged(auth, async (user) => {
     if (unauthorizedRequestedDm && activeType === 'dm') {
       setError('요청한 DM 방의 기록을 볼 권한이 없거나 해당 DM 방이 존재하지 않습니다.');
     }
-    if (activeType !== 'dm' || activeDmChannel) await loadPage(true);
+    if (activeType !== 'dm' || activeDmChannel) await loadAllRecords();
   } catch (err) {
     statusEl.textContent = '접근 불가';
     setError(err?.message || '기록 접근 권한을 확인하지 못했습니다.');
