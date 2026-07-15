@@ -583,7 +583,110 @@ function watchPopoutChatChannel(channelKey = 'global') {
     return ready;
   }
 
-  // DM은 OPT-1C 전까지 기존 구독 방식을 유지한다.
+  // OPT-1H: 팝아웃 DM도 전체 onValue 스냅샷 대신 최근 100개의 child 이벤트만 수신한다.
+  // 메시지 한 건의 추가/수정/삭제 때 전체 DM 목록을 Firebase에서 다시 내려받지 않는다.
+  if (
+    safeKey !== 'global'
+    && typeof get === 'function'
+    && typeof query === 'function'
+    && typeof orderByChild === 'function'
+    && typeof equalTo === 'function'
+    && typeof limitToLast === 'function'
+    && typeof onChildAdded === 'function'
+    && typeof onChildChanged === 'function'
+    && typeof onChildRemoved === 'function'
+  ) {
+    const dmListenLimit = window.ITC_CONFIG?.CHAT.DM_DISPLAY_LIMIT ?? 100;
+    const dmListenRef = query(
+      chatBaseRef,
+      orderByChild('dmChannelKey'),
+      equalTo(safeKey),
+      limitToLast(dmListenLimit)
+    );
+    const unsubs = [];
+
+    const rebuildDmVisibleCache = (records = null) => {
+      if (!isCurrentWatcher()) return [];
+      let next = Array.isArray(records)
+        ? records
+        : (window.getPopoutChatRecordsForChannel ? window.getPopoutChatRecordsForChannel(safeKey) : []);
+      next = sortChatRecordsChronologically(next)
+        .filter((record) => shouldShowChatMessageForChannel(safeKey, record))
+        .slice(-dmListenLimit);
+      watcher.visibleKeys = new Set(next.map((m) => String(m?._key || '').trim()).filter(Boolean));
+      cachePopoutChannelMessages(safeKey, next, { merge: false });
+      notifyPopoutChatChannelCacheChanged(safeKey, next.length);
+      return next;
+    };
+
+    const applyDmRecord = (snap, mode) => {
+      if (!isCurrentWatcher()) return;
+      const key = String(snap?.key || '').trim();
+      if (!key) return;
+      const message = { ...(snap.val() || {}), _key: key };
+      if (!shouldShowChatMessageForChannel(safeKey, message)) return;
+      cachePopoutChannelMessages(safeKey, [message], { merge: true });
+      rebuildDmVisibleCache();
+      logItcChatDebug(`popout-dm-child-${mode}`, {
+        channelKey: safeKey,
+        messageKey: key,
+      }, { throttleMs: 250 });
+    };
+
+    const removeDmRecord = async (snap) => {
+      if (!isCurrentWatcher()) return;
+      const key = String(snap?.key || '').trim();
+      if (!key) return;
+      try {
+        // limitToLast 범위에서 밀려난 child_removed와 실제 삭제를 구분한다.
+        const sourceSnap = await get(ref(db, `rooms/${activeRoomCode}/chat/${key}`));
+        if (!isCurrentWatcher()) return;
+        if (sourceSnap?.exists?.()) {
+          rebuildDmVisibleCache();
+          return;
+        }
+      } catch (e) {
+        // 원본 확인 실패 시 잘못된 삭제를 피하고 다음 이벤트/동기화에 맡긴다.
+        return;
+      }
+      removePopoutCachedChannelMessage(safeKey, key);
+      rebuildDmVisibleCache();
+      logItcChatDebug('popout-dm-child-removed', {
+        channelKey: safeKey,
+        messageKey: key,
+      }, { throttleMs: 250 });
+    };
+
+    unsubs.push(onChildAdded(dmListenRef, (snap) => applyDmRecord(snap, 'added')));
+    unsubs.push(onChildChanged(dmListenRef, (snap) => applyDmRecord(snap, 'changed')));
+    unsubs.push(onChildRemoved(dmListenRef, (snap) => { void removeDmRecord(snap); }));
+
+    watcher.unsub = () => {
+      unsubs.forEach((unsub) => { try { if (typeof unsub === 'function') unsub(); } catch (e) {} });
+    };
+
+    get(dmListenRef).then((snap) => {
+      if (!isCurrentWatcher()) return;
+      const initial = Object.entries(snap.val() || {})
+        .map(([key, value]) => ({ ...(value || {}), _key: key }))
+        .filter((message) => shouldShowChatMessageForChannel(safeKey, message));
+      rebuildDmVisibleCache(initial);
+      logItcChatDebug('popout-dm-initial-ready', {
+        channelKey: safeKey,
+        visibleCount: initial.length,
+        newestKey: initial[initial.length - 1]?._key || '',
+      });
+    }).catch((err) => {
+      console.warn('[popout] DM initial chat load failed', safeKey, err);
+      rebuildDmVisibleCache();
+    }).finally(() => {
+      finishReady();
+    });
+
+    return ready;
+  }
+
+  // 구형 Firebase SDK 호환용 폴백. 최신 구성에서는 위 child 이벤트 경로를 사용한다.
   if (typeof onValue !== 'function') {
     finishReady();
     return ready;
@@ -599,26 +702,11 @@ function watchPopoutChatChannel(channelKey = 'global') {
     const raw = snap.val() || {};
     const filtered = Object.entries(raw)
       .map(([k, m]) => ({ ...(m || {}), _key: k }))
-      .filter((m) => shouldShowChatMessageForChannel(safeKey, m))
-      .sort((a, b) => {
-        const at = Number(a.time || a.timestamp || 0);
-        const bt = Number(b.time || b.timestamp || 0);
-        if (at && bt && at !== bt) return at - bt;
-        return String(a._key || '').localeCompare(String(b._key || ''));
-      });
-    const nextKeys = new Set(filtered.map((m) => String(m?._key || '').trim()).filter(Boolean));
-    watcher.visibleKeys.forEach((key) => {
-      if (!nextKeys.has(key)) removePopoutCachedChannelMessage(safeKey, key);
-    });
-    watcher.visibleKeys = nextKeys;
+      .filter((m) => shouldShowChatMessageForChannel(safeKey, m));
+    rebuildChatRecordCacheFromRaw(raw);
     cachePopoutChannelMessages(safeKey, filtered, { merge: false });
     notifyPopoutChatChannelCacheChanged(safeKey, filtered.length);
     finishReady();
-    logItcChatDebug('popout-channel-watch-snapshot', {
-      channelKey: safeKey,
-      rawCount: Object.keys(raw || {}).length,
-      visibleCount: filtered.length,
-    }, { throttleMs: 1000 });
   }, (err) => {
     console.warn('[popout] chat channel watch failed', safeKey, err);
     finishReady();
