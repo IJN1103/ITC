@@ -574,9 +574,31 @@ function getRenderedNodeByKey(channel = 'chat', key = '') {
   }
 }
 
-function getStoredMessageSortTime(record = {}) {
+const FIREBASE_PUSH_KEY_ALPHABET = '-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz';
+
+function getFirebasePushKeyTime(key = '') {
+  const safeKey = String(key || '').trim();
+  if (!/^-[A-Za-z0-9_-]{15,}$/.test(safeKey) || safeKey.length < 8) return 0;
+  let value = 0;
+  for (let i = 0; i < 8; i += 1) {
+    const index = FIREBASE_PUSH_KEY_ALPHABET.indexOf(safeKey[i]);
+    if (index < 0) return 0;
+    value = (value * 64) + index;
+  }
+  return Number.isFinite(value) ? value : 0;
+}
+
+function getLocalMessageKeyTime(key = '') {
+  const match = String(key || '').match(/^__local_[^_]+_(\d+)_/);
+  if (!match) return 0;
+  const value = Number(match[1]);
+  return Number.isFinite(value) ? value : 0;
+}
+
+function getStoredMessageSortTime(record = {}, key = '') {
   const n = Number(record?.timestamp || record?.time || 0);
-  return Number.isFinite(n) ? n : 0;
+  if (Number.isFinite(n) && n > 0) return n;
+  return getFirebasePushKeyTime(key) || getLocalMessageKeyTime(key) || 0;
 }
 
 function isFirebasePushMessageKey(key = '') {
@@ -607,8 +629,8 @@ function compareMessageOrderValues(leftKey = '', leftRecord = {}, rightKey = '',
     return compareFirebasePushKeys(safeLeftKey, safeRightKey);
   }
 
-  const lt = getStoredMessageSortTime(leftRecord);
-  const rt = getStoredMessageSortTime(rightRecord);
+  const lt = getStoredMessageSortTime(leftRecord, safeLeftKey);
+  const rt = getStoredMessageSortTime(rightRecord, safeRightKey);
   if (lt && rt && lt !== rt) return lt - rt;
   return compareFirebasePushKeys(safeLeftKey, safeRightKey);
 }
