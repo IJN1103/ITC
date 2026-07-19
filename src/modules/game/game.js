@@ -852,6 +852,15 @@ function isFirebasePushChatKey(key = '') {
   return /^-[A-Za-z0-9_-]{15,}$/.test(safeKey);
 }
 
+function compareFirebasePushChatKeys(leftKey = '', rightKey = '') {
+  const left = String(leftKey || '');
+  const right = String(rightKey || '');
+  if (left === right) return 0;
+  // Firebase push key의 시간 순서는 코드 단위 사전순이다.
+  // localeCompare()는 브라우저 로케일에 따라 대소문자/기호 순서를 바꿀 수 있다.
+  return left < right ? -1 : 1;
+}
+
 function sortChatRecordsChronologically(records = []) {
   return (Array.isArray(records) ? records : []).slice().sort((a, b) => {
     const ak = String(a?._key || '').trim();
@@ -861,13 +870,13 @@ function sortChatRecordsChronologically(records = []) {
     // serverTimestamp 확정 시점이나 사용자별 시스템 시계 차이 때문에
     // 새 메시지가 이전 메시지 위로 튀는 현상을 방지한다.
     if (isFirebasePushChatKey(ak) && isFirebasePushChatKey(bk) && ak !== bk) {
-      return ak.localeCompare(bk);
+      return compareFirebasePushChatKeys(ak, bk);
     }
 
     const at = Number(a?.time || a?.timestamp || 0);
     const bt = Number(b?.time || b?.timestamp || 0);
     if (at && bt && at !== bt) return at - bt;
-    return ak.localeCompare(bk);
+    return compareFirebasePushChatKeys(ak, bk);
   });
 }
 

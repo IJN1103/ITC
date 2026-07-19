@@ -584,6 +584,16 @@ function isFirebasePushMessageKey(key = '') {
   return /^-[A-Za-z0-9_-]{15,}$/.test(safeKey);
 }
 
+function compareFirebasePushKeys(leftKey = '', rightKey = '') {
+  const left = String(leftKey || '');
+  const right = String(rightKey || '');
+  if (left === right) return 0;
+  // Firebase push key는 전용 문자표의 코드 단위 사전순으로 시간 순서를 보장한다.
+  // localeCompare()는 브라우저/언어권별 정렬 규칙을 적용해 대소문자와 기호 순서를
+  // 바꿀 수 있으므로 push key 순서 판정에는 사용하면 안 된다.
+  return left < right ? -1 : 1;
+}
+
 function compareMessageOrderValues(leftKey = '', leftRecord = {}, rightKey = '', rightRecord = {}) {
   const safeLeftKey = String(leftKey || '').trim();
   const safeRightKey = String(rightKey || '').trim();
@@ -594,13 +604,13 @@ function compareMessageOrderValues(leftKey = '', leftRecord = {}, rightKey = '',
   // 새 메시지의 serverTimestamp가 확정되거나 클라이언트 시계가 달라도
   // 이미 표시된 메시지가 위로 재정렬되지 않도록 push key를 최우선으로 사용한다.
   if (leftIsPushKey && rightIsPushKey && safeLeftKey !== safeRightKey) {
-    return safeLeftKey.localeCompare(safeRightKey);
+    return compareFirebasePushKeys(safeLeftKey, safeRightKey);
   }
 
   const lt = getStoredMessageSortTime(leftRecord);
   const rt = getStoredMessageSortTime(rightRecord);
   if (lt && rt && lt !== rt) return lt - rt;
-  return safeLeftKey.localeCompare(safeRightKey);
+  return compareFirebasePushKeys(safeLeftKey, safeRightKey);
 }
 
 function compareStoredMessageKeys(channel = 'chat', leftKey = '', rightKey = '') {
