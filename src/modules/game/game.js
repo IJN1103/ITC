@@ -2467,28 +2467,39 @@ function getRoomEntryNoticeStorageKey(roomCode = St.roomCode, uid = St.myId) {
 function readRoomEntryNoticeIdentity(roomCode = St.roomCode, uid = St.myId) {
   const storageKey = getRoomEntryNoticeStorageKey(roomCode, uid);
   if (!storageKey) return null;
-  try {
-    const saved = JSON.parse(sessionStorage.getItem(storageKey) || 'null');
-    const timestamp = Number(saved?.timestamp || 0);
-    const msgKey = String(saved?.msgKey || '').trim();
-    const persisted = saved?.persisted === true;
-    if (Number.isFinite(timestamp) && timestamp > 0 && msgKey) {
-      return { timestamp, msgKey, persisted };
-    }
-  } catch (e) {}
+
+  // 입장 안내는 방별·사용자별 최초 1회만 생성되어야 하므로
+  // 방 나가기나 브라우저 재시작 후에도 유지되는 localStorage를 기준으로 한다.
+  // 이전 패치의 sessionStorage 값이 있으면 한 번 자동 이관한다.
+  for (const storage of [localStorage, sessionStorage]) {
+    try {
+      const saved = JSON.parse(storage.getItem(storageKey) || 'null');
+      const timestamp = Number(saved?.timestamp || 0);
+      const msgKey = String(saved?.msgKey || '').trim();
+      const persisted = saved?.persisted === true;
+      if (Number.isFinite(timestamp) && timestamp > 0 && msgKey) {
+        const identity = { timestamp, msgKey, persisted };
+        if (storage === sessionStorage) {
+          try { localStorage.setItem(storageKey, JSON.stringify(identity)); } catch (e) {}
+        }
+        return identity;
+      }
+    } catch (e) {}
+  }
   return null;
 }
 
 function saveRoomEntryNoticeIdentity(roomCode, uid, identity = {}) {
   const storageKey = getRoomEntryNoticeStorageKey(roomCode, uid);
   if (!storageKey) return;
-  try {
-    sessionStorage.setItem(storageKey, JSON.stringify({
-      timestamp: Number(identity.timestamp || Date.now()),
-      msgKey: String(identity.msgKey || '').trim(),
-      persisted: identity.persisted === true
-    }));
-  } catch (e) {}
+  const value = JSON.stringify({
+    timestamp: Number(identity.timestamp || Date.now()),
+    msgKey: String(identity.msgKey || '').trim(),
+    persisted: identity.persisted === true
+  });
+  try { localStorage.setItem(storageKey, value); } catch (e) {}
+  // 현재 탭에서도 즉시 재사용할 수 있도록 호환용으로 함께 보관한다.
+  try { sessionStorage.setItem(storageKey, value); } catch (e) {}
 }
 
 async function ensureRoomEntryNotice(roomCode = St.roomCode, uid = St.myId) {
@@ -2552,6 +2563,9 @@ async function ensureRoomEntryNotice(roomCode = St.roomCode, uid = St.myId) {
 function clearRoomEntryNoticeIdentity(roomCode = St.roomCode, uid = St.myId) {
   const storageKey = getRoomEntryNoticeStorageKey(roomCode, uid);
   if (!storageKey) return;
+
+  // 방 나가기·로비 복귀에서는 최초 입장 완료 기록을 지우지 않는다.
+  // sessionStorage의 임시 사본만 정리하고 localStorage의 영구 표시는 유지한다.
   try { sessionStorage.removeItem(storageKey); } catch (e) {}
 }
 
