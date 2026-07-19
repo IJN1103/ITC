@@ -3214,7 +3214,19 @@ function openLightbox(src) {
   document.body.appendChild(lb);
 }
 
-function addLocalMessage(type, name, text) { appendChatMsg({ name, text, type }); }
+function addLocalMessage(type, name, text) {
+  // 입장/퇴장/시스템 안내처럼 Firebase에 저장하지 않는 로컬 메시지도
+  // 생성 시각을 가져야 이후 실시간 메시지와 같은 시간축에서 정렬된다.
+  // timestamp가 없으면 __local_* 키가 Firebase push key보다 뒤로 정렬되어
+  // 오래된 시스템 메시지가 채팅 최하단에 계속 고정될 수 있다.
+  appendChatMsg({
+    name,
+    text,
+    type,
+    timestamp: Date.now(),
+    channel: 'chat'
+  });
+}
 
 
 /* ==========================================================================
