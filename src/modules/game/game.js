@@ -837,9 +837,9 @@ function rebuildChatRecordCacheFromRaw(rawMessages = {}) {
     grouped.get(channelKey).push(safeMessage);
   });
   grouped.forEach((records, channelKey) => {
-    const filtered = records
-      .filter((record) => shouldShowChatMessageForChannel(channelKey, record))
-      .sort((a, b) => (a.time || 0) - (b.time || 0));
+    const filtered = sortChatRecordsChronologically(
+      records.filter((record) => shouldShowChatMessageForChannel(channelKey, record))
+    );
     cacheChannelMessages(channelKey, filtered);
   });
   Array.from(_chatRecordsByChannel.keys()).forEach((channelKey) => {
@@ -847,12 +847,27 @@ function rebuildChatRecordCacheFromRaw(rawMessages = {}) {
   });
 }
 
+function isFirebasePushChatKey(key = '') {
+  const safeKey = String(key || '').trim();
+  return /^-[A-Za-z0-9_-]{15,}$/.test(safeKey);
+}
+
 function sortChatRecordsChronologically(records = []) {
   return (Array.isArray(records) ? records : []).slice().sort((a, b) => {
+    const ak = String(a?._key || '').trim();
+    const bk = String(b?._key || '').trim();
+
+    // 실시간 채팅은 Firebase push key의 생성 순서를 기준으로 고정한다.
+    // serverTimestamp 확정 시점이나 사용자별 시스템 시계 차이 때문에
+    // 새 메시지가 이전 메시지 위로 튀는 현상을 방지한다.
+    if (isFirebasePushChatKey(ak) && isFirebasePushChatKey(bk) && ak !== bk) {
+      return ak.localeCompare(bk);
+    }
+
     const at = Number(a?.time || a?.timestamp || 0);
     const bt = Number(b?.time || b?.timestamp || 0);
     if (at && bt && at !== bt) return at - bt;
-    return String(a?._key || '').localeCompare(String(b?._key || ''));
+    return ak.localeCompare(bk);
   });
 }
 

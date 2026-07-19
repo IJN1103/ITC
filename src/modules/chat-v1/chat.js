@@ -579,14 +579,35 @@ function getStoredMessageSortTime(record = {}) {
   return Number.isFinite(n) ? n : 0;
 }
 
+function isFirebasePushMessageKey(key = '') {
+  const safeKey = String(key || '').trim();
+  return /^-[A-Za-z0-9_-]{15,}$/.test(safeKey);
+}
+
+function compareMessageOrderValues(leftKey = '', leftRecord = {}, rightKey = '', rightRecord = {}) {
+  const safeLeftKey = String(leftKey || '').trim();
+  const safeRightKey = String(rightKey || '').trim();
+  const leftIsPushKey = isFirebasePushMessageKey(safeLeftKey);
+  const rightIsPushKey = isFirebasePushMessageKey(safeRightKey);
+
+  // Firebase push key에는 서버 기준 생성 순서가 포함된다.
+  // 새 메시지의 serverTimestamp가 확정되거나 클라이언트 시계가 달라도
+  // 이미 표시된 메시지가 위로 재정렬되지 않도록 push key를 최우선으로 사용한다.
+  if (leftIsPushKey && rightIsPushKey && safeLeftKey !== safeRightKey) {
+    return safeLeftKey.localeCompare(safeRightKey);
+  }
+
+  const lt = getStoredMessageSortTime(leftRecord);
+  const rt = getStoredMessageSortTime(rightRecord);
+  if (lt && rt && lt !== rt) return lt - rt;
+  return safeLeftKey.localeCompare(safeRightKey);
+}
+
 function compareStoredMessageKeys(channel = 'chat', leftKey = '', rightKey = '') {
   const state = getRenderState(channel);
   const left = state.storeMap.get(leftKey) || {};
   const right = state.storeMap.get(rightKey) || {};
-  const lt = getStoredMessageSortTime(left);
-  const rt = getStoredMessageSortTime(right);
-  if (lt && rt && lt !== rt) return lt - rt;
-  return String(leftKey || '').localeCompare(String(rightKey || ''));
+  return compareMessageOrderValues(leftKey, left, rightKey, right);
 }
 
 function insertStoredKeyInOrder(channel = 'chat', key = '') {
@@ -951,12 +972,7 @@ function seedChatHistoryStore(channel = 'chat', records = [], options = {}) {
   const ordered = list
     .map((record) => ({ ...(record || {}), _key: String(record?._key || record?.msgKey || '').trim() }))
     .filter((record) => !!record._key)
-    .sort((a, b) => {
-      const at = Number(a.time || a.timestamp || 0);
-      const bt = Number(b.time || b.timestamp || 0);
-      if (at && bt && at !== bt) return at - bt;
-      return String(a._key).localeCompare(String(b._key));
-    });
+    .sort((a, b) => compareMessageOrderValues(a._key, a, b._key, b));
   const applyList = position === 'prepend' ? ordered.slice().reverse() : ordered;
   let count = 0;
   applyList.forEach((record) => {
