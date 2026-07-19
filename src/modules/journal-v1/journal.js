@@ -49,13 +49,19 @@ async function makeJournalAvatarBlob(file) {
   const size = 256;
   canvas.width = size;
   canvas.height = size;
-  const ctx = canvas.getContext('2d', { alpha: false });
+
+  // 투명 PNG/WebP의 알파 채널을 유지한다.
+  // 기존 alpha:false + JPEG 변환은 투명 영역을 검은색으로 굳혀 버렸다.
+  const ctx = canvas.getContext('2d', { alpha: true });
+  ctx.clearRect(0, 0, size, size);
+
   const min = Math.min(bitmap.width, bitmap.height);
   const sx = Math.floor((bitmap.width - min) / 2);
   const sy = Math.floor((bitmap.height - min) / 2);
   ctx.drawImage(bitmap, sx, sy, min, min, 0, 0, size, size);
   if (typeof bitmap.close === 'function') bitmap.close();
-  return blobFromCanvas(canvas, 'image/jpeg', 0.84);
+
+  return blobFromCanvas(canvas, 'image/png');
 }
 
 async function uploadJournalAvatarToCloudinary(file, journalId) {
@@ -63,7 +69,7 @@ async function uploadJournalAvatarToCloudinary(file, journalId) {
   const result = await _itcUploadToCloudinary({
     blob,
     folder: 'itc/journal-avatars',
-    fileName: `journal-avatar-${journalId || Date.now()}.jpg`,
+    fileName: `journal-avatar-${journalId || Date.now()}.png`,
     publicId: journalId ? `journal-${journalId}-${Date.now()}` : undefined,
   });
   return result.url;

@@ -583,7 +583,8 @@ to{transform:translateX(0);opacity:1;}
 .journal-item-title{font-size:13px;color:var(--text);font-weight:500;margin-bottom:3px;}
 .journal-item-meta{font-size:10px;color:var(--muted);display:flex;align-items:center;justify-content:space-between;}
 .sh-avatar-wrap{display:flex;flex-direction:column;align-items:center;gap:4px;padding:0 10px 0 0;flex-shrink:0;}
-.sh-avatar{width:64px;height:64px;border-radius:10px;background:var(--s3);border:1px solid var(--border2);display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:600;color:var(--accent-text);overflow:hidden;cursor:pointer;position:relative;transition:var(--t);}
+.sh-avatar{width:64px;height:64px;border-radius:10px;background:var(--s1);border:1px solid var(--border2);display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:600;color:var(--accent-text);overflow:hidden;cursor:pointer;position:relative;transition:var(--t);}
+[data-theme="dark"] .sh-avatar{background:var(--s3);}
 .sh-avatar:hover{border-color:var(--accent);}
 .sh-avatar img{width:100%;height:100%;object-fit:cover;border-radius:10px;}
 .sh-avatar-hint{font-size:10px;color:var(--muted);letter-spacing:.04em;}
