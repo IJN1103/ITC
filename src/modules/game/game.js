@@ -2464,31 +2464,89 @@ function getRoomEntryNoticeStorageKey(roomCode = St.roomCode, uid = St.myId) {
   return `itc_room_entry_notice_${safeRoomCode}_${safeUid}`;
 }
 
-function getOrCreateRoomEntryNoticeIdentity(roomCode = St.roomCode, uid = St.myId) {
+function readRoomEntryNoticeIdentity(roomCode = St.roomCode, uid = St.myId) {
   const storageKey = getRoomEntryNoticeStorageKey(roomCode, uid);
-  const now = Date.now();
-  if (!storageKey) {
-    return {
-      timestamp: now,
-      msgKey: `__local_chat_${now}_entry_${Math.random().toString(36).slice(2, 9)}`
-    };
-  }
-
+  if (!storageKey) return null;
   try {
     const saved = JSON.parse(sessionStorage.getItem(storageKey) || 'null');
-    const savedTimestamp = Number(saved?.timestamp || 0);
-    const savedMsgKey = String(saved?.msgKey || '').trim();
-    if (Number.isFinite(savedTimestamp) && savedTimestamp > 0 && savedMsgKey) {
-      return { timestamp: savedTimestamp, msgKey: savedMsgKey };
+    const timestamp = Number(saved?.timestamp || 0);
+    const msgKey = String(saved?.msgKey || '').trim();
+    const persisted = saved?.persisted === true;
+    if (Number.isFinite(timestamp) && timestamp > 0 && msgKey) {
+      return { timestamp, msgKey, persisted };
     }
   } catch (e) {}
+  return null;
+}
 
-  const identity = {
-    timestamp: now,
-    msgKey: `__local_chat_${now}_entry_${String(uid || '').replace(/[^A-Za-z0-9_-]/g, '').slice(-12) || Math.random().toString(36).slice(2, 9)}`
+function saveRoomEntryNoticeIdentity(roomCode, uid, identity = {}) {
+  const storageKey = getRoomEntryNoticeStorageKey(roomCode, uid);
+  if (!storageKey) return;
+  try {
+    sessionStorage.setItem(storageKey, JSON.stringify({
+      timestamp: Number(identity.timestamp || Date.now()),
+      msgKey: String(identity.msgKey || '').trim(),
+      persisted: identity.persisted === true
+    }));
+  } catch (e) {}
+}
+
+async function ensureRoomEntryNotice(roomCode = St.roomCode, uid = St.myId) {
+  const safeRoomCode = String(roomCode || '').trim();
+  const safeUid = String(uid || '').trim();
+  if (!safeRoomCode || !safeUid) return null;
+
+  const saved = readRoomEntryNoticeIdentity(safeRoomCode, safeUid);
+
+  // 이미 Firebase에 저장된 입장 메시지는 새로고침 시 다시 만들지 않는다.
+  // 실제 채팅 레코드이므로 일반 채팅 listener가 원래 위치에 복원한다.
+  if (saved?.persisted && /^-[A-Za-z0-9_-]{15,}$/.test(saved.msgKey)) {
+    return saved;
+  }
+
+  const occurredAt = Date.now();
+  const noticeText = `${St.myName}님이 입장했습니다 — ${SYS_LABELS[St.system]}`;
+
+  if (window._FB?.CONFIGURED) {
+    const { db, ref, push, serverTimestamp } = window._FB;
+    if (db && ref && typeof push === 'function') {
+      const payload = {
+        name: '',
+        text: noticeText,
+        type: 'system',
+        uid: safeUid,
+        dmChannelKey: 'global',
+        systemNotice: 'room-entry',
+        time: typeof serverTimestamp === 'function' ? serverTimestamp() : occurredAt
+      };
+      try {
+        const pushedRef = await push(ref(db, `rooms/${safeRoomCode}/chat`), payload);
+        const identity = {
+          timestamp: occurredAt,
+          msgKey: String(pushedRef?.key || '').trim(),
+          persisted: true
+        };
+        saveRoomEntryNoticeIdentity(safeRoomCode, safeUid, identity);
+        return identity;
+      } catch (error) {
+        console.warn('[chat] failed to persist room entry notice; using local fallback', error);
+      }
+    }
+  }
+
+  // Firebase를 사용하지 못하는 로컬 모드에서만 화면 전용 메시지를 사용한다.
+  const localIdentity = {
+    timestamp: occurredAt,
+    msgKey: `__local_chat_${occurredAt}_entry_${safeUid.replace(/[^A-Za-z0-9_-]/g, '').slice(-12) || Math.random().toString(36).slice(2, 9)}`,
+    persisted: false
   };
-  try { sessionStorage.setItem(storageKey, JSON.stringify(identity)); } catch (e) {}
-  return identity;
+  saveRoomEntryNoticeIdentity(safeRoomCode, safeUid, localIdentity);
+  addLocalMessage('system', '', noticeText, {
+    timestamp: localIdentity.timestamp,
+    msgKey: localIdentity.msgKey,
+    channel: 'chat'
+  });
+  return localIdentity;
 }
 
 function clearRoomEntryNoticeIdentity(roomCode = St.roomCode, uid = St.myId) {
@@ -2548,17 +2606,9 @@ async function enterGame() {
   bindRoomStabilityEvents();
   syncMyAvatarToRoom(undefined, true);
 
-  const entryNoticeIdentity = getOrCreateRoomEntryNoticeIdentity(St.roomCode, St.myId);
-  addLocalMessage(
-    'system',
-    '',
-    `${St.myName}님이 입장했습니다 — ${SYS_LABELS[St.system]}`,
-    {
-      timestamp: entryNoticeIdentity.timestamp,
-      msgKey: entryNoticeIdentity.msgKey,
-      channel: 'chat'
-    }
-  );
+  // 입장 안내는 일반 채팅과 동일한 Firebase 레코드로 저장한다.
+  // 그래야 새로고침·퇴장 후 재입장·채널 재렌더 뒤에도 실제 발생 위치가 유지된다.
+  await ensureRoomEntryNotice(St.roomCode, St.myId);
   migrateLocalJournals();
   if (typeof migrateLocalHandouts === 'function') migrateLocalHandouts();
   loadCasualNick();
