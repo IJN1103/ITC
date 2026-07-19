@@ -2457,6 +2457,48 @@ function setupFirebaseListeners() {
   }));
 }
 
+function getRoomEntryNoticeStorageKey(roomCode = St.roomCode, uid = St.myId) {
+  const safeRoomCode = String(roomCode || '').trim();
+  const safeUid = String(uid || '').trim();
+  if (!safeRoomCode || !safeUid) return '';
+  return `itc_room_entry_notice_${safeRoomCode}_${safeUid}`;
+}
+
+function getOrCreateRoomEntryNoticeIdentity(roomCode = St.roomCode, uid = St.myId) {
+  const storageKey = getRoomEntryNoticeStorageKey(roomCode, uid);
+  const now = Date.now();
+  if (!storageKey) {
+    return {
+      timestamp: now,
+      msgKey: `__local_chat_${now}_entry_${Math.random().toString(36).slice(2, 9)}`
+    };
+  }
+
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(storageKey) || 'null');
+    const savedTimestamp = Number(saved?.timestamp || 0);
+    const savedMsgKey = String(saved?.msgKey || '').trim();
+    if (Number.isFinite(savedTimestamp) && savedTimestamp > 0 && savedMsgKey) {
+      return { timestamp: savedTimestamp, msgKey: savedMsgKey };
+    }
+  } catch (e) {}
+
+  const identity = {
+    timestamp: now,
+    msgKey: `__local_chat_${now}_entry_${String(uid || '').replace(/[^A-Za-z0-9_-]/g, '').slice(-12) || Math.random().toString(36).slice(2, 9)}`
+  };
+  try { sessionStorage.setItem(storageKey, JSON.stringify(identity)); } catch (e) {}
+  return identity;
+}
+
+function clearRoomEntryNoticeIdentity(roomCode = St.roomCode, uid = St.myId) {
+  const storageKey = getRoomEntryNoticeStorageKey(roomCode, uid);
+  if (!storageKey) return;
+  try { sessionStorage.removeItem(storageKey); } catch (e) {}
+}
+
+window.clearRoomEntryNoticeIdentity = clearRoomEntryNoticeIdentity;
+
 async function enterGame() {
   sessionStorage.setItem('itc_session_code', St.roomCode);
   sessionStorage.setItem('itc_session_sys',  St.system);
@@ -2506,7 +2548,17 @@ async function enterGame() {
   bindRoomStabilityEvents();
   syncMyAvatarToRoom(undefined, true);
 
-  addLocalMessage('system', '', `${St.myName}님이 입장했습니다 — ${SYS_LABELS[St.system]}`);
+  const entryNoticeIdentity = getOrCreateRoomEntryNoticeIdentity(St.roomCode, St.myId);
+  addLocalMessage(
+    'system',
+    '',
+    `${St.myName}님이 입장했습니다 — ${SYS_LABELS[St.system]}`,
+    {
+      timestamp: entryNoticeIdentity.timestamp,
+      msgKey: entryNoticeIdentity.msgKey,
+      channel: 'chat'
+    }
+  );
   migrateLocalJournals();
   if (typeof migrateLocalHandouts === 'function') migrateLocalHandouts();
   loadCasualNick();
@@ -2778,6 +2830,7 @@ async function leaveRoom() {
     const { db, ref, remove } = window._FB;
     await remove(ref(db, `rooms/${St.roomCode}/players/${St.myId}`));
   }
+  clearRoomEntryNoticeIdentity(St.roomCode, St.myId);
   sessionStorage.removeItem('itc_session_code');
   sessionStorage.removeItem('itc_session_sys');
   sessionStorage.removeItem('itc_session_role');

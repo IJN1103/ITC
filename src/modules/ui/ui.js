@@ -244,6 +244,9 @@ async function endRoom() {
       localStorage.setItem('tt_recent', JSON.stringify(recent));
     } catch (err) {}
 
+    if (typeof window.clearRoomEntryNoticeIdentity === 'function') {
+      window.clearRoomEntryNoticeIdentity(St.roomCode, St.myId);
+    }
     sessionStorage.removeItem('itc_session_code');
     sessionStorage.removeItem('itc_session_sys');
     sessionStorage.removeItem('itc_session_role');
@@ -309,6 +312,9 @@ async function goToLobby() {
     await update(ref(db, `rooms/${St.roomCode}/players/${St.myId}`), { online: false });
   }
   if (_campaignUnsub) { _campaignUnsub(); _campaignUnsub = null; }
+  if (typeof window.clearRoomEntryNoticeIdentity === 'function') {
+    window.clearRoomEntryNoticeIdentity(St.roomCode, St.myId);
+  }
   sessionStorage.removeItem('itc_session_code');
   sessionStorage.removeItem('itc_session_sys');
   sessionStorage.removeItem('itc_session_role');
