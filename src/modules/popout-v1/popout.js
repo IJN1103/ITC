@@ -604,9 +604,12 @@ L.push('window.renderDmBar=renderDmBar;');
   L.push('function popSigVal(v){return String(v==null?"":v).replace(/[\\|\\n\\r]/g," ")}');
   L.push('function getPopMessageKey(item){item=item||{};var stable=String(item.key||item._key||item.id||"").trim();if(stable)return "id:"+stable;return "legacy:"+[item.time||"",item.name||"",item.uid||"",item.type||"",item.text||""].map(popSigVal).join("^")}');
   L.push('function makePopMessageSignature(ch,list){var channelPart=ch==="chat"?getCurrentDmChannelKey():ch;return String(ch||"chat")+"@"+String(channelPart||"")+"#"+(Array.isArray(list)?list:[]).map(function(item,idx){item=item||{};var meta=item.imageMeta&&typeof item.imageMeta==="object"?(String(item.imageMeta.width||"")+"x"+String(item.imageMeta.height||"")):"";return [idx,item.key||item._key||"",item.time||"",item.type||"",item.name||"",item.nameColor||"",item.text||"",item.fhtml||"",item.avatar||"",item.imageWide?"w":"",item.hideImageMeta?"h":"",meta,item.uid||"",item.whisperTo||"",item.whisperToName||"",item.whisperToJournal||""].map(popSigVal).join("^")}).join("|")}');
-  L.push('window.setMessages=function(ch,list){ch=ch||"chat";var c=document.getElementById("pm-"+ch)||document.getElementById("pm-chat");if(!c)return;var arr=Array.isArray(list)?list:[];window._popoutMessageSignatures=window._popoutMessageSignatures||{};var sigKey=String(ch||"chat");var sig=makePopMessageSignature(sigKey,arr);if(window._popoutMessageSignatures[sigKey]===sig&&c.dataset.popLastSig===sig)return;var nearBottom=(c.scrollHeight-c.scrollTop-c.clientHeight)<=56;var prevHeight=c.scrollHeight;var prevTop=c.scrollTop;' +
-// 차분 업데이트: 기존 노드 키 추출
-'var existingKeys={};Array.prototype.forEach.call(c.querySelectorAll("[data-pop-key]"),function(el){existingKeys[el.dataset.popKey]=el});' +
+  L.push('window.setMessages=function(ch,list){ch=ch||"chat";var c=document.getElementById("pm-"+ch)||document.getElementById("pm-chat");if(!c)return;var arr=Array.isArray(list)?list:[];' +
+// 팝아웃 잡담 핫픽스: 초기 스냅샷과 실시간 동기화가 겹쳐 같은 key가 두 번 전달되어도 한 건만 유지한다.
+'if(ch==="casual"&&arr.length>1){var casualSeen={};var casualUnique=[];arr.forEach(function(item){var k=getPopMessageKey(item);if(casualSeen[k]){casualUnique[casualSeen[k]-1]=item;return}casualSeen[k]=casualUnique.length+1;casualUnique.push(item)});arr=casualUnique;}' +
+'window._popoutMessageSignatures=window._popoutMessageSignatures||{};var sigKey=String(ch||"chat");var sig=makePopMessageSignature(sigKey,arr);if(window._popoutMessageSignatures[sigKey]===sig&&c.dataset.popLastSig===sig)return;var nearBottom=(c.scrollHeight-c.scrollTop-c.clientHeight)<=56;var prevHeight=c.scrollHeight;var prevTop=c.scrollTop;' +
+// 차분 업데이트: 기존 노드 키 추출. 잡담 DOM에 같은 key가 이미 중복되어 있으면 최신 노드 하나만 남긴다.
+'var existingKeys={};Array.prototype.forEach.call(c.querySelectorAll("[data-pop-key]"),function(el){var k=el.dataset.popKey||"";if(ch==="casual"&&k&&existingKeys[k]){el.remove();return}existingKeys[k]=el});' +
 // 새 메시지 목록의 키 세트
 'var newKeys={};arr.forEach(function(item){var k=getPopMessageKey(item);newKeys[k]=item});' +
 // 추가분만 append
