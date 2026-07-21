@@ -1276,6 +1276,7 @@ function createNewJournal() {
   if (notes) notes.value = '';
   document.getElementById('sh-unarmed-skill').value = '근접전(격투)';
   document.getElementById('sh-unarmed-dmg').value = '1d3+db';
+  syncUnarmedSkillButton();
   _combatRowCount = 0;
   const tbody = document.getElementById('sh-combat-rows');
   if (tbody) tbody.innerHTML = '';
@@ -2172,6 +2173,8 @@ function initSheetUI() {
     });
     bindStatRollInteractions(grid);
   }
+
+  bindUnarmedAttackInteraction();
 
   const wrap = document.getElementById('sh-skills-wrap');
   if (!wrap) return;
@@ -3283,6 +3286,7 @@ function openSheet(journalId) {
 
   document.getElementById('sh-unarmed-skill').value = data.unarmed_skill || '근접전(격투)';
   document.getElementById('sh-unarmed-dmg').value   = data.unarmed_dmg   || '1d3+db';
+  syncUnarmedSkillButton();
   _combatRowCount = 0;
   const tbody = document.getElementById('sh-combat-rows');
   if (tbody) tbody.innerHTML = '';
@@ -3452,17 +3456,17 @@ function resolveCombatDamageFormula(rawDamage) {
   return formula;
 }
 
-function rollCombatRowAttack(index) {
-  const weaponName = getCombatRowInput(index, 'name')?.value?.trim() || '무기';
-  const rawSkillName = getCombatRowInput(index, 'skill')?.value?.trim() || '';
-  if (!rawSkillName) {
+function rollCombatAttackValues(weaponName, rawSkillName, rawDamage) {
+  const safeWeaponName = String(weaponName || '').trim() || '무기';
+  const safeSkillName = String(rawSkillName || '').trim();
+  if (!safeSkillName) {
     showToast('무기에 사용할 기능치를 입력해주세요.');
     return;
   }
 
-  const resolvedSkill = findCombatSkillValue(rawSkillName);
+  const resolvedSkill = findCombatSkillValue(safeSkillName);
   if (!resolvedSkill) {
-    showToast(`시트에서 '${rawSkillName}' 기능치와 수치를 찾지 못했어요.`);
+    showToast(`시트에서 '${safeSkillName}' 기능치와 수치를 찾지 못했어요.`);
     return;
   }
 
@@ -3475,14 +3479,13 @@ function rollCombatRowAttack(index) {
 
   const roll = Math.ceil(Math.random() * 100);
   const outcome = getSkillCheckOutcome(resolvedSkill.value, roll);
-  const rollName = weaponName ? `${weaponName} · ${resolvedSkill.name}` : resolvedSkill.name;
+  const rollName = `${safeWeaponName} · ${resolvedSkill.name}`;
   renderSkillCheckResult(rollName, resolvedSkill.value, roll, outcome);
   sendSkillCheckMessage(rollName, resolvedSkill.value, roll, outcome);
 
   // 실패 시 명중 판정만 출력한다.
   if (!outcome?.success) return;
 
-  const rawDamage = getCombatRowInput(index, 'dmg')?.value || '';
   const formula = resolveCombatDamageFormula(rawDamage);
   if (!formula) {
     showToast('명중했지만 굴릴 수 있는 피해 수식이 없어요. DB는 현재 제외됩니다.');
@@ -3496,12 +3499,69 @@ function rollCombatRowAttack(index) {
   rollFromFormula(formula);
   const hint = document.getElementById('sheet-hint');
   if (hint) {
-    const text = `${weaponName} 명중 · 피해 ${formula}${/\bdb\b/i.test(rawDamage) ? ' (DB 제외)' : ''}`;
+    const text = `${safeWeaponName} 명중 · 피해 ${formula}${/\bdb\b/i.test(String(rawDamage || '')) ? ' (DB 제외)' : ''}`;
     hint.textContent = text;
     setTimeout(() => {
       if (hint && hint.isConnected && hint.textContent === text) hint.textContent = '';
     }, 1800);
   }
+}
+
+function rollCombatRowAttack(index) {
+  rollCombatAttackValues(
+    getCombatRowInput(index, 'name')?.value,
+    getCombatRowInput(index, 'skill')?.value,
+    getCombatRowInput(index, 'dmg')?.value
+  );
+}
+
+function syncUnarmedSkillButton() {
+  const input = document.getElementById('sh-unarmed-skill');
+  const button = document.getElementById('sh-unarmed-skill-roll-btn');
+  if (!input || !button) return;
+  const skillName = String(input.value || '').trim();
+  button.textContent = skillName || '기능명';
+  button.title = skillName ? `${skillName} 명중 판정` : '기능명을 입력한 뒤 명중 판정';
+}
+
+function rollUnarmedAttack() {
+  rollCombatAttackValues(
+    '비무장',
+    document.getElementById('sh-unarmed-skill')?.value,
+    document.getElementById('sh-unarmed-dmg')?.value
+  );
+}
+
+function bindUnarmedAttackInteraction() {
+  const row = document.getElementById('sh-unarmed-row');
+  const input = document.getElementById('sh-unarmed-skill');
+  const button = document.getElementById('sh-unarmed-skill-roll-btn');
+  if (!row || !input || !button || row.dataset.unarmedRollBound === '1') return;
+  row.dataset.unarmedRollBound = '1';
+
+  syncUnarmedSkillButton();
+  input.addEventListener('input', syncUnarmedSkillButton);
+  input.addEventListener('change', syncUnarmedSkillButton);
+
+  button.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    rollUnarmedAttack();
+  });
+
+  row.addEventListener('click', (event) => {
+    if (event.defaultPrevented || event.button !== 0) return;
+    if (event.target.closest('#sh-unarmed-skill-roll-btn')) return;
+    if (event.target.closest('button, select, textarea')) return;
+
+    // 편집 가능한 시트에서는 입력칸 편집을 우선하고,
+    // 읽기 전용 시트에서는 비무장 행 전체를 판정 버튼으로 사용한다.
+    const inputTarget = event.target.closest('input');
+    if (inputTarget && isCombatRowEditable()) return;
+
+    event.preventDefault();
+    rollUnarmedAttack();
+  });
 }
 
 function syncCombatSkillButton(index) {

@@ -733,9 +733,12 @@ window._FB = {
                 <th style="text-align:center;padding:5px 8px;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:400;width:10%">탄약</th>
                 <th style="text-align:center;padding:5px 8px;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:400;width:10%">고장</th>
               </tr>
-              <tr style="border-bottom:1px solid var(--border);background:var(--s2)">
+              <tr id="sh-unarmed-row" class="sheet-unarmed-row" style="border-bottom:1px solid var(--border);background:var(--s2)" title="좌클릭: 명중 판정 후 성공 시 피해 굴림">
                 <td style="padding:4px 8px;color:var(--muted);font-size:11px">비무장</td>
-                <td style="padding:4px 8px"><input class="sh-input" id="sh-unarmed-skill" value="근접전(격투)" style="font-size:11px;color:var(--dim)"></td>
+                <td class="sheet-combat-skill-cell" style="padding:4px 8px">
+                  <button type="button" id="sh-unarmed-skill-roll-btn" class="skill-name skill-roll-trigger sheet-combat-skill-roll-btn" title="근접전(격투) 명중 판정">근접전(격투)</button>
+                  <input class="sh-input sheet-combat-skill-input sheet-combat-skill-input-hidden" id="sh-unarmed-skill" value="근접전(격투)" style="font-size:11px;color:var(--dim)" aria-hidden="true">
+                </td>
                 <td style="padding:4px 8px;text-align:center"><input class="sh-input" id="sh-unarmed-dmg" value="1d3+db" style="font-size:11px;text-align:center"></td>
                 <td style="padding:4px 8px;text-align:center;color:var(--muted);font-size:11px">—</td>
                 <td style="padding:4px 8px;text-align:center;color:var(--muted);font-size:11px">1</td>
