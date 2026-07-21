@@ -3497,6 +3497,11 @@ function rollCombatAttackValues(weaponName, rawSkillName, rawDamage) {
   }
 
   rollFromFormula(formula);
+
+  // 기본 비무장 판정 성공 시 저장 버튼 옆에 별도 문구를 표시하지 않는다.
+  // 실제 명중·피해 결과는 기존 채팅 다이스 출력만 사용한다.
+  if (safeWeaponName === '비무장') return;
+
   const hint = document.getElementById('sheet-hint');
   if (hint) {
     const text = `${safeWeaponName} 명중 · 피해 ${formula}${/\bdb\b/i.test(String(rawDamage || '')) ? ' (DB 제외)' : ''}`;
