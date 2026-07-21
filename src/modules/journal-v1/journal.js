@@ -3399,52 +3399,108 @@ function getCombatSkillButton(index) {
   return document.querySelector(`.sheet-combat-skill-roll-btn[data-combat-index="${index}"]`);
 }
 
-function normalizeSheetDbFormula(raw) {
-  const value = String(raw || '').trim().replace(/\s+/g, '').toLowerCase();
-  if (!value || value === '없음' || value === 'none' || value === 'no' || value === '-' || value === '—') return '0';
-  if (/^[+-]?(?:\d+d\d+|\d+)(?:[*/]\d+)?$/i.test(value)) return value;
-  return '0';
+function normalizeCombatSkillLookupName(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  const imported = normalizeImportedCocSkillName(raw);
+  return String(imported || raw)
+    .replace(/\s+/g, '')
+    .replace(/[：:]/g, ':')
+    .toLowerCase();
+}
+
+function findCombatSkillValue(rawSkillName) {
+  const lookup = normalizeCombatSkillLookupName(rawSkillName);
+  if (!lookup) return null;
+
+  for (let index = 0; index < COC_SKILLS.length; index += 1) {
+    const skill = COC_SKILLS[index];
+    if (normalizeCombatSkillLookupName(skill?.name) !== lookup) continue;
+    const input = document.getElementById(`sk-val-${index}`);
+    const value = Number.parseInt(input?.value, 10);
+    if (!Number.isFinite(value) || value <= 0) return null;
+    return { name: skill.name, value };
+  }
+
+  for (const row of document.querySelectorAll('.custom-skill-row')) {
+    const index = row.dataset.customSkillIndex;
+    if (index === undefined) continue;
+    const name = getCustomSkillNameValue(row, index);
+    if (normalizeCombatSkillLookupName(name) !== lookup) continue;
+    const input = document.getElementById(`sk-custom-val-${index}`);
+    const value = Number.parseInt(input?.value, 10);
+    if (!Number.isFinite(value) || value <= 0) return null;
+    return { name, value };
+  }
+
+  return null;
 }
 
 function resolveCombatDamageFormula(rawDamage) {
   let formula = String(rawDamage || '').trim().replace(/\s+/g, '').toLowerCase();
   if (!formula) return '';
 
-  const dbFormula = normalizeSheetDbFormula(document.getElementById('sh-db')?.value || '');
-  if (/db\b/i.test(formula)) {
-    const cleanDb = dbFormula.replace(/^\+/, '');
-    formula = formula
-      .replace(/\+db\b/ig, cleanDb.startsWith('-') ? cleanDb : `+${cleanDb}`)
-      .replace(/-db\b/ig, cleanDb.startsWith('-') ? `+${cleanDb.slice(1)}` : `-${cleanDb}`)
-      .replace(/\bdb\b/ig, cleanDb);
-  }
+  // 이번 단계에서는 DB를 계산하지 않고 수식에서 완전히 제외한다.
+  formula = formula
+    .replace(/([+-]?)\bdb\b/ig, '')
+    .replace(/\+{2,}/g, '+')
+    .replace(/-{2,}/g, '+')
+    .replace(/\+-|-\+/g, '-')
+    .replace(/^\+|\+$/g, '');
 
-  formula = formula.replace(/^\+/, '');
+  if (!formula || formula === '-' || !/\d/i.test(formula)) return '';
   return formula;
 }
 
-function rollCombatRowDamage(index) {
-  const weaponName = getCombatRowInput(index, 'name')?.value?.trim() || '';
-  const skillName = getCombatRowInput(index, 'skill')?.value?.trim() || '';
-  const dmg = getCombatRowInput(index, 'dmg')?.value || '';
-  const formula = resolveCombatDamageFormula(dmg);
+function rollCombatRowAttack(index) {
+  const weaponName = getCombatRowInput(index, 'name')?.value?.trim() || '무기';
+  const rawSkillName = getCombatRowInput(index, 'skill')?.value?.trim() || '';
+  if (!rawSkillName) {
+    showToast('무기에 사용할 기능치를 입력해주세요.');
+    return;
+  }
+
+  const resolvedSkill = findCombatSkillValue(rawSkillName);
+  if (!resolvedSkill) {
+    showToast(`시트에서 '${rawSkillName}' 기능치와 수치를 찾지 못했어요.`);
+    return;
+  }
+
+  if (typeof getSkillCheckOutcome !== 'function' ||
+      typeof renderSkillCheckResult !== 'function' ||
+      typeof sendSkillCheckMessage !== 'function') {
+    showToast('기능치 판정 기능을 찾지 못했어요.');
+    return;
+  }
+
+  const roll = Math.ceil(Math.random() * 100);
+  const outcome = getSkillCheckOutcome(resolvedSkill.value, roll);
+  const rollName = weaponName ? `${weaponName} · ${resolvedSkill.name}` : resolvedSkill.name;
+  renderSkillCheckResult(rollName, resolvedSkill.value, roll, outcome);
+  sendSkillCheckMessage(rollName, resolvedSkill.value, roll, outcome);
+
+  // 실패 시 명중 판정만 출력한다.
+  if (!outcome?.success) return;
+
+  const rawDamage = getCombatRowInput(index, 'dmg')?.value || '';
+  const formula = resolveCombatDamageFormula(rawDamage);
   if (!formula) {
-    showToast('피해 수치를 입력해주세요. 예: 1d6, 1d3+db');
+    showToast('명중했지만 굴릴 수 있는 피해 수식이 없어요. DB는 현재 제외됩니다.');
     return;
   }
   if (typeof rollFromFormula !== 'function') {
-    showToast('다이스 롤 기능을 찾지 못했어요.');
+    showToast('피해 다이스 기능을 찾지 못했어요.');
     return;
   }
-  const label = [weaponName, skillName].filter(Boolean).join(' / ');
+
   rollFromFormula(formula);
-  if (label) {
-    const hint = document.getElementById('sheet-hint');
-    if (hint) {
-      const text = `${label} 피해 굴림: ${formula}`;
-      hint.textContent = text;
-      setTimeout(() => { if (hint && hint.isConnected && hint.textContent === text) hint.textContent = ''; }, 1800);
-    }
+  const hint = document.getElementById('sheet-hint');
+  if (hint) {
+    const text = `${weaponName} 명중 · 피해 ${formula}${/\bdb\b/i.test(rawDamage) ? ' (DB 제외)' : ''}`;
+    hint.textContent = text;
+    setTimeout(() => {
+      if (hint && hint.isConnected && hint.textContent === text) hint.textContent = '';
+    }, 1800);
   }
 }
 
@@ -3455,7 +3511,7 @@ function syncCombatSkillButton(index) {
   const rawName = String(input.value || '').trim();
   const name = rawName || '기능명';
   btn.textContent = name;
-  btn.title = rawName ? `${name} 피해 굴림` : '기능명을 입력한 뒤 피해 굴림';
+  btn.title = rawName ? `${name} 명중 판정` : '기능명을 입력한 뒤 명중 판정';
   btn.dataset.empty = rawName ? '0' : '1';
 }
 
@@ -3521,7 +3577,7 @@ function bindCombatSkillEditor(index) {
   btn.addEventListener('click', (event) => {
     event.preventDefault();
     event.stopPropagation();
-    rollCombatRowDamage(index);
+    rollCombatRowAttack(index);
   });
 }
 
@@ -3572,6 +3628,20 @@ function bindCombatRowContextMenu(row, index) {
   row.dataset.combatContextBound = '1';
   row.addEventListener('contextmenu', (event) => {
     showCombatRowContextMenu(event, row, index);
+  });
+
+  row.addEventListener('click', (event) => {
+    if (event.defaultPrevented || event.button !== 0) return;
+    if (event.target.closest('.sheet-combat-skill-roll-btn')) return;
+    if (event.target.closest('button, select, textarea')) return;
+
+    // 편집 가능한 시트에서는 입력 칸을 클릭할 때 기존 편집 동작을 우선한다.
+    // 읽기 전용 시트에서는 행 어느 칸을 눌러도 무기 판정을 실행한다.
+    const input = event.target.closest('input');
+    if (input && isCombatRowEditable()) return;
+
+    event.preventDefault();
+    rollCombatRowAttack(index);
   });
 }
 
@@ -3658,10 +3728,11 @@ function addCombatRow(rowData = null) {
   tr.className = 'sheet-combat-row';
   tr.dataset.combatIndex = String(i);
   tr.style.borderBottom = '1px solid var(--border)';
+  tr.title = '좌클릭: 명중 판정 후 성공 시 피해 굴림 · 우클릭: 수정/삭제';
   tr.innerHTML = `
     <td style="padding:3px 4px"><input class="sh-input" id="sh-w-name-${i}" placeholder="무기명" style="font-size:12px"></td>
     <td class="sheet-combat-skill-cell" style="padding:3px 4px">
-      <button type="button" class="skill-name skill-roll-trigger sheet-combat-skill-roll-btn" data-combat-index="${i}" title="기능 피해 굴림">기능명</button>
+      <button type="button" class="skill-name skill-roll-trigger sheet-combat-skill-roll-btn" data-combat-index="${i}" title="기능 명중 판정">기능명</button>
       <input class="sh-input sheet-combat-skill-input" id="sh-w-skill-${i}" placeholder="기능명" style="font-size:12px">
     </td>
     <td style="padding:3px 4px"><input class="sh-input" id="sh-w-dmg-${i}" placeholder="1d6" style="font-size:12px;text-align:center"></td>
