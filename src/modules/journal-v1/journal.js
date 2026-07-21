@@ -3532,6 +3532,23 @@ function rollUnarmedAttack() {
   );
 }
 
+function handleUnarmedRowClick(event) {
+  if (!event || event.button !== 0) return;
+  // 기능명 버튼은 자체 click handler에서 한 번만 처리한다.
+  if (event.target?.closest?.('#sh-unarmed-skill-roll-btn')) return;
+  event.preventDefault();
+  rollUnarmedAttack();
+}
+
+function handleUnarmedRowKeydown(event) {
+  if (!event || (event.key !== 'Enter' && event.key !== ' ')) return;
+  event.preventDefault();
+  rollUnarmedAttack();
+}
+
+window.handleUnarmedRowClick = handleUnarmedRowClick;
+window.handleUnarmedRowKeydown = handleUnarmedRowKeydown;
+
 function bindUnarmedAttackInteraction() {
   const row = document.getElementById('sh-unarmed-row');
   const input = document.getElementById('sh-unarmed-skill');
@@ -3549,19 +3566,6 @@ function bindUnarmedAttackInteraction() {
     rollUnarmedAttack();
   });
 
-  row.addEventListener('click', (event) => {
-    if (event.defaultPrevented || event.button !== 0) return;
-    if (event.target.closest('#sh-unarmed-skill-roll-btn')) return;
-    if (event.target.closest('button, select, textarea')) return;
-
-    // 편집 가능한 시트에서는 입력칸 편집을 우선하고,
-    // 읽기 전용 시트에서는 비무장 행 전체를 판정 버튼으로 사용한다.
-    const inputTarget = event.target.closest('input');
-    if (inputTarget && isCombatRowEditable()) return;
-
-    event.preventDefault();
-    rollUnarmedAttack();
-  });
 }
 
 function syncCombatSkillButton(index) {
