@@ -3103,10 +3103,13 @@ function appendCasualMsg(name, text, uid, timestamp, msgKey, nameColor) {
   bindMessageViewport('casual');
   const div = buildCasualMsgElement(name, text, uid, timestamp, safeKey, nameColor);
   queueMessageRender('casual', div, safeKey, true);
-  if (typeof _popoutWins !== 'undefined') {
-    const av = getPopoutAvatarUrl(name, uid);
-    const renderedTime = div.querySelector('.msg-time')?.textContent || '';
-    _popoutWins.filter(w => w && !w.closed).forEach(w => { if (w.addMsg) w.addMsg(name, text, 'normal', 'casual', nameColor || '', av, renderedTime, fmtText(text)); });
+
+  // 팝아웃 잡담은 저장 스냅샷(setMessages) 경로 하나로만 동기화한다.
+  // 기존에는 여기서 addMsg()로 즉시 한 번 추가한 뒤 forcePopoutSync()가
+  // 같은 Firebase 메시지를 다시 렌더하여 전송 직후 두 건처럼 보였다.
+  // 새로고침하면 한 건만 남았던 이유도 Firebase에는 실제로 한 건만 저장됐기 때문이다.
+  if (typeof window.forcePopoutSync === 'function') {
+    try { window.forcePopoutSync(); } catch (e) {}
   }
 }
 
