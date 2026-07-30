@@ -323,54 +323,43 @@ async function loadAllRecords() {
   const state = requestType === 'dm'
     ? (dmStates.has(requestChannel) ? dmStates.get(requestChannel) : (dmStates.set(requestChannel, makeState()), dmStates.get(requestChannel)))
     : baseStates[requestType];
-  if (!state || state.loading || state.exhausted) return;
+  if (!state || state.loading) return;
 
   const requestRevision = viewRevision;
   state.loading = true;
+  state.exhausted = false;
   setError('');
   updateUi();
 
   try {
-    let batchCount = 0;
-    let previousCursor = state.cursorKey;
+    // “전체 채팅 보기”는 표시 제한이나 페이지 상한을 사용하지 않는다.
+    // 전용 기록 페이지에서 해당 Firebase 원본 경로를 한 번 읽은 뒤,
+    // 현재 탭 조건에 맞는 모든 레코드를 key 순으로 정렬한다.
+    const sourcePath = requestType === 'casual'
+      ? `rooms/${roomCode}/casual`
+      : `rooms/${roomCode}/chat`;
+    const snap = await get(ref(db, sourcePath));
+    const rawEntries = Object.entries(snap.val() || {})
+      .map(([key, value]) => [String(key || ''), value || {}])
+      .filter(([key]) => !!key)
+      .sort((a, b) => a[0] === b[0] ? 0 : (a[0] < b[0] ? -1 : 1));
 
-    while (!state.exhausted) {
-      const entries = requestType === 'casual'
-        ? await fetchCasualPage(state)
-        : (requestType === 'dm'
-          ? await fetchDmPage(state, requestChannel)
-          : await fetchGlobalPage(state));
-
-      const fresh = entries.filter(([key]) => !state.keys.has(key));
-      fresh.forEach(([key]) => state.keys.add(key));
-      if (fresh.length) state.entries = [...fresh, ...state.entries];
-
-      batchCount += 1;
-      const isCurrentView = requestRevision === viewRevision
-        && requestType === activeType
-        && (requestType !== 'dm' || requestChannel === activeDmChannel);
-
-      if (isCurrentView) {
-        countEl.textContent = `${state.entries.length}개 불러오는 중`;
-        statusEl.textContent = `${labelFor(requestType)} · 전체 기록 불러오는 중`;
-      }
-
-      // 사용자가 다른 탭이나 DM 방으로 이동하면 현재 조회를 중단한다.
-      // 지금까지 받은 데이터와 커서는 캐시에 남아 다시 돌아왔을 때 이어서 조회한다.
-      if (!isCurrentView) break;
-
-      // 필터 결과가 비어 있더라도 Firebase 스캔 커서가 앞으로 진행하면 계속 조회한다.
-      // 커서가 진행하지 않는 예외 상황에서는 무한 반복을 막는다.
-      if (!state.exhausted && state.cursorKey === previousCursor) {
-        throw new Error('전체 기록 조회 커서가 진행되지 않아 불러오기를 중단했습니다.');
-      }
-      previousCursor = state.cursorKey;
-
-      // 비정상적으로 큰 데이터나 손상된 커서로 인한 무한 요청 방지용 상한이다.
-      if (batchCount >= 10000) {
-        throw new Error('전체 기록의 양이 너무 많아 안전 상한에서 불러오기를 중단했습니다.');
-      }
+    let entries;
+    if (requestType === 'casual') {
+      entries = rawEntries;
+    } else if (requestType === 'dm') {
+      entries = rawEntries.filter(([, record]) => {
+        const channelKey = String(record?.dmChannelKey || '').trim();
+        return channelKey === requestChannel && record?.type !== 'dm-bootstrap';
+      });
+    } else {
+      entries = rawEntries.filter(([, record]) => visibleGlobal(record));
     }
+
+    state.entries = entries;
+    state.keys = new Set(entries.map(([key]) => key));
+    state.cursorKey = entries[0]?.[0] || '';
+    state.exhausted = true;
 
     const isCurrentView = requestRevision === viewRevision
       && requestType === activeType
@@ -393,6 +382,7 @@ async function loadAllRecords() {
     if (isCurrentView) updateUi();
   }
 }
+
 async function selectDmChannel(channelKey) {
   const safeKey = String(channelKey || '').trim();
   if (!dmChannels.some(item => item.channelKey === safeKey)) return;
