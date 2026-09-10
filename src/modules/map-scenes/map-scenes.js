@@ -118,10 +118,21 @@
   function normalizeScene(raw, id){
     raw = raw || {};
     const sceneId = String(id || raw?.id || '').trim() || makeSceneId();
+    const rawForeground = raw?.foreground && typeof raw.foreground === 'object'
+      ? raw.foreground
+      : null;
+    const foregroundUrl = String(rawForeground?.url || raw?.mapForeground || raw?.foregroundUrl || '').trim();
+    const foreground = foregroundUrl ? {
+      url: foregroundUrl,
+      fit: rawForeground?.fit || raw?.mapForegroundFit || raw?.foregroundFit || 'cover',
+      sourceName: rawForeground?.sourceName || raw?.mapForegroundSourceName || raw?.foregroundSourceName || '',
+      importedAt: Number(rawForeground?.importedAt || raw?.mapForegroundImportedAt || raw?.foregroundImportedAt || 0) || 0,
+    } : null;
     const out = {
       id: sceneId,
       name: String(raw?.name || '기본 씬').trim() || '기본 씬',
       background: normalizeBackground(raw),
+      foreground,
       objects: Array.isArray(raw?.objects) ? raw.objects : [],
       layerState: raw?.layerState || null,
       createdAt: Number(raw?.createdAt) || Date.now(),
@@ -480,16 +491,17 @@
 
   function buildSceneBgmPayload(scene){
     const background = scene?.background || null;
+    const foreground = scene?.foreground || null;
     const objects = Array.isArray(scene?.objects) ? deepCopy(scene.objects) : [];
     return {
       mapBackground: background?.url || '',
       mapBackgroundFit: background?.fit || 'contain',
       mapBackgroundSourceName: background?.sourceName || '',
       mapBackgroundImportedAt: background?.url ? (background?.importedAt || Date.now()) : 0,
-      mapForeground: '',
-      mapForegroundFit: '',
-      mapForegroundSourceName: '',
-      mapForegroundImportedAt: 0,
+      mapForeground: foreground?.url || '',
+      mapForegroundFit: foreground?.fit || 'cover',
+      mapForegroundSourceName: foreground?.sourceName || '',
+      mapForegroundImportedAt: foreground?.url ? (foreground?.importedAt || Date.now()) : 0,
       mapObjects: objects,
       mapLayerState: scene?.layerState ? deepCopy(scene.layerState) : null,
     };
@@ -644,6 +656,7 @@
   function buildSceneApplyKey(roomCode, activeId, scene){
     const sceneBody = {
       background: scene?.background || null,
+      foreground: scene?.foreground || null,
       objects: Array.isArray(scene?.objects) ? scene.objects : [],
       layerState: scene?.layerState || null,
       tokens: scene?.tokens === undefined ? '__NO_TOKEN_FIELD__' : (scene.tokens || {}),
@@ -837,7 +850,13 @@
   function getQuickChangeState(){
     const ms = ROOT.St?.mapState || {};
     const tokens = ROOT.St?.tokens || {};
-    return String(Object.keys(tokens).length) + '|' + String(ms.background?.url || '') + '|' + String(ms.background?.fit || '');
+    return [
+      String(Object.keys(tokens).length),
+      String(ms.background?.url || ''),
+      String(ms.background?.fit || ''),
+      String(ms.foreground?.url || ''),
+      String(ms.foreground?.fit || ''),
+    ].join('|');
   }
 
   function stopActiveSceneAutoSave(){

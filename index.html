@@ -1893,6 +1893,13 @@ window._FB = {
     if (typeof window._itcApplyRoomMapStateLocal === 'function') {
       try { window._itcApplyRoomMapStateLocal(nextMapState, undefined, 'bg-fg-manual'); } catch(e) {}
     }
+
+    // 활성 장면이 있으면 수동 전경/배경 변경을 장면 레코드에도 즉시 반영한다.
+    // room mapState만 갱신되고 mapScenes가 예전 값을 유지하면 새로고침/장면 동기화 때
+    // 오래된 전경·배경이 다시 적용되거나 전경이 사라질 수 있다.
+    if (typeof window.requestActiveMapSceneSave === 'function') {
+      try { window.requestActiveMapSceneSave('bg-fg-manual', 180); } catch(e) {}
+    }
   }
 
 })();
