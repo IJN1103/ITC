@@ -1006,16 +1006,29 @@ window._FB = {
           </button>
         </div>
       </div>
+      <div class="hd-toolbar-group hd-color-group" style="position:relative">
+        <button type="button" class="hd-tool-btn hd-color-trigger" id="hd-color-trigger"
+          onmousedown="captureHandoutSelection()"
+          onclick="triggerHandoutTextColorPicker(event)"
+          title="글자 색상" aria-label="선택한 글자 색상 변경">
+          <span class="hd-color-a">A</span>
+          <span class="hd-color-line" id="hd-color-line" aria-hidden="true"></span>
+        </button>
+        <input type="color" id="hd-text-color-input" value="#131415" tabindex="-1"
+          onchange="applyHandoutTextColor(this.value)" aria-label="글자 색상 선택">
+      </div>
       <div class="hd-toolbar-group hd-font-group" style="position:relative">
         <button type="button" class="hd-tool-btn hd-font-trigger" onclick="toggleHandoutFontMenu(event)" title="글자 크기" aria-label="글자 크기 메뉴"><span id="hd-font-size-label">글자 크기</span></button>
-        <div class="hd-pop-menu hd-font-menu" id="hd-font-menu">
-          <button type="button" class="hd-pop-item" onclick="applyHandoutFontSizePreset(6)">6pt</button>
-          <button type="button" class="hd-pop-item" onclick="applyHandoutFontSizePreset(8)">8pt</button>
-          <button type="button" class="hd-pop-item" onclick="applyHandoutFontSizePreset(10)">10pt</button>
-          <button type="button" class="hd-pop-item" onclick="applyHandoutFontSizePreset(12)">12pt</button>
-          <button type="button" class="hd-pop-item" onclick="applyHandoutFontSizePreset(14)">14pt</button>
-          <button type="button" class="hd-pop-item" onclick="applyHandoutFontSizePreset(16)">16pt</button>
-          <button type="button" class="hd-pop-item" onclick="applyHandoutFontSizePreset(18)">18pt</button>
+        <div class="hd-pop-menu hd-font-menu hd-font-custom-menu" id="hd-font-menu">
+          <label class="hd-font-custom-label" for="hd-font-size-input">글자 크기</label>
+          <div class="hd-font-custom-row">
+            <input type="number" class="hd-font-size-input" id="hd-font-size-input"
+              min="1" max="200" step="1" value="12"
+              onkeydown="handleHandoutFontSizeInputKey(event)"
+              aria-label="글자 크기 pt 직접 입력">
+            <span class="hd-font-unit">pt</span>
+            <button type="button" class="hd-font-apply-btn" onclick="applyHandoutFontSizeFromInput()">적용</button>
+          </div>
         </div>
       </div>
       <div class="hd-toolbar-group hd-toolbar-group-end">

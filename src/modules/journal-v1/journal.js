@@ -533,11 +533,26 @@ function sanitizeHandoutHtml(rawHtml) {
               const val = String(rawVal || '').trim().toLowerCase();
               if (key === 'text-align' && /^(left|center|right)$/.test(val)) rules.push(`text-align:${val}`);
               if (key === 'font-size') {
-                const m = val.match(/^(\d{1,2})(pt|px)$/);
+                const m = val.match(/^(\d{1,3})(pt|px)$/);
                 if (m) {
                   const num = Number(m[1]);
                   const unit = m[2];
-                  if ((unit === 'pt' && num >= 8 && num <= 36) || (unit === 'px' && num >= 10 && num <= 48)) rules.push(`font-size:${num}${unit}`);
+                  if ((unit === 'pt' && num >= 1 && num <= 200) || (unit === 'px' && num >= 1 && num <= 267)) {
+                    rules.push(`font-size:${num}${unit}`);
+                  }
+                }
+              }
+              if (key === 'color') {
+                const hex = val.match(/^#([0-9a-f]{6})$/i);
+                const rgb = val.match(/^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})(?:\s*,\s*(0|1|0?\.\d+))?\s*\)$/i);
+                if (hex) {
+                  rules.push(`color:#${hex[1].toLowerCase()}`);
+                } else if (rgb) {
+                  const r = Math.min(255, Number(rgb[1]));
+                  const g = Math.min(255, Number(rgb[2]));
+                  const b = Math.min(255, Number(rgb[3]));
+                  const a = rgb[4];
+                  rules.push(a == null ? `color:rgb(${r},${g},${b})` : `color:rgba(${r},${g},${b},${a})`);
                 }
               }
             });
@@ -724,8 +739,15 @@ function toggleHandoutFontMenu(event) {
   captureHandoutSelection();
   const menu = document.getElementById('hd-font-menu');
   const alignMenu = document.getElementById('hd-align-menu');
+  const input = document.getElementById('hd-font-size-input');
   alignMenu?.classList.remove('open');
   menu?.classList.toggle('open');
+  if (menu?.classList.contains('open') && input) {
+    input.value = String(_handoutLastFontSize || 12);
+    requestAnimationFrame(() => {
+      try { input.focus(); input.select(); } catch (e) {}
+    });
+  }
 }
 
 function applyHandoutTextAlignFromMenu(align) {
@@ -737,10 +759,72 @@ function updateHandoutFontLabel(sourceHtml = null) {
   const label = document.getElementById('hd-font-size-label');
   if (!label) return;
   if (sourceHtml != null) {
-    const match = String(sourceHtml || '').match(/font-size\s*:\s*(\d{1,2})pt/i);
+    const match = String(sourceHtml || '').match(/font-size\s*:\s*(\d{1,3})pt/i);
     if (match) _handoutLastFontSize = Number(match[1]) || _handoutLastFontSize;
   }
   label.textContent = `${_handoutLastFontSize}pt`;
+  const input = document.getElementById('hd-font-size-input');
+  if (input && document.activeElement !== input) input.value = String(_handoutLastFontSize);
+}
+
+
+function normalizeHandoutTextColor(value) {
+  const color = String(value || '').trim();
+  return /^#[0-9a-fA-F]{6}$/.test(color) ? color.toLowerCase() : '';
+}
+
+function triggerHandoutTextColorPicker(event) {
+  event?.preventDefault?.();
+  event?.stopPropagation?.();
+  captureHandoutSelection();
+  const input = document.getElementById('hd-text-color-input');
+  if (!input) return;
+  try { input.click(); } catch (e) {}
+}
+
+function applyHandoutTextColor(value) {
+  const editor = document.getElementById('hd-body');
+  const color = normalizeHandoutTextColor(value);
+  if (!editor || editor.contentEditable !== 'true' || !color) return;
+
+  const range = restoreHandoutSelection();
+  if (!range) return;
+
+  if (range.collapsed) {
+    // 선택 영역이 없으면 이후 입력 글자에만 적용한다.
+    const span = document.createElement('span');
+    span.style.color = color;
+    span.innerHTML = '&#8203;';
+    range.insertNode(span);
+    const textNode = span.firstChild;
+    const nextRange = document.createRange();
+    nextRange.setStart(textNode || span, textNode?.nodeType === 3 ? textNode.length : 0);
+    nextRange.collapse(true);
+    const sel = window.getSelection();
+    if (sel) {
+      sel.removeAllRanges();
+      sel.addRange(nextRange);
+    }
+  } else {
+    const span = document.createElement('span');
+    span.style.color = color;
+    span.appendChild(range.extractContents());
+    range.insertNode(span);
+
+    const sel = window.getSelection();
+    if (sel) {
+      const nextRange = document.createRange();
+      nextRange.selectNodeContents(span);
+      sel.removeAllRanges();
+      sel.addRange(nextRange);
+    }
+  }
+
+  const input = document.getElementById('hd-text-color-input');
+  const line = document.getElementById('hd-color-line');
+  if (input) input.value = color;
+  if (line) line.style.background = color;
+  captureHandoutSelection();
 }
 
 function applyHandoutInlineFormat(command) {
@@ -862,8 +946,11 @@ function applyHandoutTextAlign(align) {
 function applyHandoutFontSize(value) {
   const editor = document.getElementById('hd-body');
   if (!editor || editor.contentEditable !== 'true') return;
-  const size = Math.max(6, Math.min(18, Math.round(Number(value || 0))));
-  if (!Number.isFinite(size)) return;
+
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return;
+  const size = Math.max(1, Math.min(200, Math.round(parsed)));
+
   const range = restoreHandoutSelection();
   if (!range) return;
   if (range.collapsed) {
@@ -894,8 +981,24 @@ function applyHandoutFontSize(value) {
   captureHandoutSelection();
 }
 
-function applyHandoutFontSizePreset(size) {
-  applyHandoutFontSize(size);
+function applyHandoutFontSizeFromInput() {
+  const input = document.getElementById('hd-font-size-input');
+  if (!input) return;
+  const parsed = Number(input.value);
+  if (!Number.isFinite(parsed) || parsed < 1 || parsed > 200) {
+    showToast('글자 크기는 1pt부터 200pt까지 입력할 수 있어요.');
+    input.value = String(_handoutLastFontSize || 12);
+    return;
+  }
+  applyHandoutFontSize(parsed);
+}
+
+function handleHandoutFontSizeInputKey(event) {
+  if (!event) return;
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    applyHandoutFontSizeFromInput();
+  }
 }
 
 async function saveHandoutFB(handout) {
