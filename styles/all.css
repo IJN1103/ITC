@@ -1951,3 +1951,120 @@ html:not([data-theme="dark"]) .hd-pop-item:hover{
   background:rgba(74,127,245,.12)!important;
   color:#7aa3ff!important;
 }
+
+
+/* ===== PHASE HANDOUT-SHOWALL-1 ===== */
+.hd-access-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  margin-bottom:8px;
+}
+.hd-access-head .hd-access-title{margin-bottom:0;}
+.hd-show-all-btn{
+  flex:0 0 auto;
+  min-width:86px;
+  height:30px;
+  padding:0 13px;
+  border:1px solid var(--accent);
+  border-radius:9px;
+  background:var(--a-dim);
+  color:var(--accent-text);
+  font:700 10px/1 Inter,"Noto Sans KR","Malgun Gothic",sans-serif;
+  letter-spacing:.08em;
+  cursor:pointer;
+  transition:var(--t);
+}
+.hd-show-all-btn:hover{
+  background:var(--accent);
+  color:#fff;
+}
+.hd-show-all-btn:disabled{
+  opacity:.55;
+  cursor:wait;
+}
+
+/* 화면을 막는 overlay가 아니다. 바깥 영역은 pointer-events:none이라 채팅/맵 조작을 계속할 수 있다. */
+.handout-showall-stage{
+  position:fixed;
+  inset:0;
+  z-index:370;
+  display:none;
+  align-items:center;
+  justify-content:center;
+  padding:24px;
+  pointer-events:none;
+}
+.handout-showall-stage.open{display:flex;}
+.handout-showall-card{
+  pointer-events:auto;
+  width:min(720px,calc(100vw - 48px));
+  max-height:min(72vh,680px);
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+  background:var(--s1);
+  border:1px solid var(--border2);
+  border-radius:16px;
+  box-shadow:0 18px 50px rgba(0,0,0,.28);
+  animation:fadeUp .18s ease;
+}
+.handout-showall-head{
+  flex:0 0 auto;
+  min-height:50px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:11px 14px 11px 18px;
+  border-bottom:1px solid var(--border);
+  background:var(--s1);
+}
+.handout-showall-title{
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  color:var(--text);
+  font-size:15px;
+  font-weight:700;
+}
+.handout-showall-close{
+  flex:0 0 auto;
+  width:30px;
+  height:30px;
+  border:1px solid var(--border2);
+  border-radius:9px;
+  background:var(--s2);
+  color:var(--muted);
+  font:inherit;
+  cursor:pointer;
+  transition:var(--t);
+}
+.handout-showall-close:hover{
+  border-color:var(--accent);
+  background:var(--a-dim);
+  color:var(--accent-text);
+}
+.handout-showall-body{
+  min-height:180px!important;
+  border:0!important;
+  border-radius:0!important;
+  padding:20px 22px 24px!important;
+  overflow:auto;
+  background:var(--s1)!important;
+}
+[data-theme="dark"] .handout-showall-card{
+  box-shadow:0 20px 56px rgba(0,0,0,.48);
+}
+
+@media (max-width:700px){
+  .handout-showall-stage{padding:12px;}
+  .handout-showall-card{
+    width:calc(100vw - 24px);
+    max-height:76dvh;
+  }
+  .handout-showall-body{padding:16px!important;}
+  .hd-access-head{align-items:flex-start;}
+}

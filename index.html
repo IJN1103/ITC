@@ -1024,7 +1024,10 @@ window._FB = {
       </div>
     </div>
     <div class="hd-access-bar" id="hd-access-bar">
-      <div class="hd-access-title">열람 가능 플레이어</div>
+      <div class="hd-access-head">
+        <div class="hd-access-title">열람 가능 플레이어</div>
+        <button type="button" class="hd-show-all-btn" id="hd-show-all-btn" onclick="showHandoutToAllPlayers()">SHOW ALL</button>
+      </div>
       <div class="hd-access-list" id="hd-access-list"></div>
     </div>
     <div class="hd-editor-wrap">
@@ -1035,6 +1038,17 @@ window._FB = {
       <span class="hd-footer-hint" id="hd-footer-hint"></span>
       <button class="hd-save-btn" id="hd-save-btn" onclick="saveHandoutFromDrawer()">저장</button>
     </div>
+  </div>
+</div>
+
+<!-- GM SHOW ALL: 플레이어 화면 중앙에 1회 표시되는 핸드아웃 -->
+<div class="handout-showall-stage" id="handout-showall-stage" aria-hidden="true">
+  <div class="handout-showall-card" role="dialog" aria-modal="false" aria-labelledby="handout-showall-title">
+    <div class="handout-showall-head">
+      <div class="handout-showall-title" id="handout-showall-title">핸드아웃</div>
+      <button type="button" class="handout-showall-close" onclick="closeHandoutShowAll()" aria-label="닫기">✕</button>
+    </div>
+    <div class="handout-showall-body hd-body-view" id="handout-showall-body"></div>
   </div>
 </div>
 

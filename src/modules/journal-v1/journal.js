@@ -279,6 +279,11 @@ let _handoutSyncRoom = '';
 let _handoutSelectionRange = null;
 let _handoutLastFontSize = 12;
 
+// SHOW ALL은 저장된 열람 권한과 별개인 실시간 1회 프레젠테이션이다.
+// 최초 동기화 시 과거 이벤트가 재생되지 않도록 현재 토큰을 baseline으로만 기억한다.
+let _handoutPresentationReady = false;
+const _handoutPresentationTokens = new Map();
+
 function loadHandouts() {
   if (St.isGM) return _allHandouts.slice();
   return _allHandouts.filter(h => h && (h.ownerId === St.myId || (Array.isArray(h.allowedTo) && h.allowedTo.includes(St.myId))));
@@ -325,6 +330,123 @@ function setHandoutStateFromData(data) {
   renderHandoutList();
 }
 
+
+function rememberHandoutPresentationBaseline(data) {
+  _handoutPresentationTokens.clear();
+  Object.entries(data || {}).forEach(([id, value]) => {
+    const token = String(value?.showAllToken || '').trim();
+    if (token) _handoutPresentationTokens.set(String(id), token);
+  });
+  _handoutPresentationReady = true;
+}
+
+function openHandoutShowAllFromRaw(raw, handoutId) {
+  if (St.isGM || !raw) return;
+  const stage = document.getElementById('handout-showall-stage');
+  const titleEl = document.getElementById('handout-showall-title');
+  const bodyEl = document.getElementById('handout-showall-body');
+  if (!stage || !titleEl || !bodyEl) return;
+
+  titleEl.textContent = String(raw.title || '무제 핸드아웃').trim() || '무제 핸드아웃';
+  bodyEl.innerHTML = sanitizeHandoutHtml(raw.contentHtml || '') || '<p style="color:var(--muted)">내용이 없어요.</p>';
+  stage.dataset.handoutId = String(handoutId || '');
+  stage.classList.add('open');
+  stage.setAttribute('aria-hidden', 'false');
+}
+
+function closeHandoutShowAll() {
+  const stage = document.getElementById('handout-showall-stage');
+  if (!stage) return;
+  stage.classList.remove('open');
+  stage.setAttribute('aria-hidden', 'true');
+  delete stage.dataset.handoutId;
+}
+
+function processHandoutPresentationEvents(data) {
+  const source = data || {};
+
+  if (!_handoutPresentationReady) {
+    rememberHandoutPresentationBaseline(source);
+    return;
+  }
+
+  Object.entries(source).forEach(([id, raw]) => {
+    const token = String(raw?.showAllToken || '').trim();
+    if (!token) return;
+
+    const previous = _handoutPresentationTokens.get(String(id)) || '';
+    if (previous === token) return;
+
+    _handoutPresentationTokens.set(String(id), token);
+    if (!St.isGM) openHandoutShowAllFromRaw(raw, id);
+  });
+}
+
+async function showHandoutToAllPlayers() {
+  if (!_currentHandoutId || !requireGM()) return;
+  if (!window._FB?.CONFIGURED || !St.roomCode) {
+    showToast('온라인 방에서만 SHOW ALL을 사용할 수 있어요.');
+    return;
+  }
+
+  const button = document.getElementById('hd-show-all-btn');
+  const hint = document.getElementById('hd-footer-hint');
+  const title = (document.getElementById('hd-title')?.value || '').trim() || '무제 핸드아웃';
+  const contentHtml = sanitizeHandoutHtml(document.getElementById('hd-body')?.innerHTML || '');
+  const existing = _allHandouts.find(h => h.id === _currentHandoutId);
+
+  const payload = normalizeHandout(existing
+    ? { ...existing, title, contentHtml, allowedTo: getSelectedHandoutReaders(), updatedAt: Date.now() }
+    : {
+        id: _currentHandoutId,
+        title,
+        contentHtml,
+        allowedTo: getSelectedHandoutReaders(),
+        ownerId: St.myId,
+        createdAt: Date.now(),
+        updatedAt: Date.now()
+      });
+
+  if (!payload) return;
+
+  const oldText = button?.textContent || 'SHOW ALL';
+  if (button) {
+    button.disabled = true;
+    button.textContent = 'SENDING…';
+  }
+  if (hint) hint.textContent = '전체 플레이어에게 표시 준비 중...';
+
+  try {
+    // 편집 중인 최신 내용을 먼저 저장한 뒤, 별도 토큰 변경으로 현재 접속 중인 PC에게 1회 전송한다.
+    const saved = await saveHandoutFB(payload);
+    if (!saved) throw new Error('핸드아웃 저장 실패');
+
+    const { db, ref, update } = window._FB;
+    const token = `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+    await update(ref(db, `rooms/${St.roomCode}/handouts/${payload.id}`), {
+      showAllToken: token,
+      showAllAt: getJournalServerTimestamp(),
+      showAllBy: St.myId || ''
+    });
+
+    if (hint) hint.textContent = '모든 PC에게 표시했어요 ✓';
+    if (typeof showToast === 'function') showToast('핸드아웃을 모든 PC에게 표시했어요.');
+    setTimeout(() => {
+      const el = document.getElementById('hd-footer-hint');
+      if (el && el.textContent === '모든 PC에게 표시했어요 ✓') el.textContent = '';
+    }, 1800);
+  } catch (err) {
+    console.error('handout SHOW ALL failed', err);
+    if (hint) hint.textContent = '';
+    showToast('SHOW ALL 전송에 실패했어요.');
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = oldText;
+    }
+  }
+}
+
 function fetchHandoutsFromFB() {
   if (!St.roomCode) return;
   if (!window._FB?.CONFIGURED) {
@@ -345,12 +467,17 @@ function fetchHandoutsFromFB() {
   if (_handoutSyncOff && _handoutSyncRoom !== St.roomCode) {
     try { _handoutSyncOff(); } catch (e) {}
     _handoutSyncOff = null;
+    _handoutPresentationReady = false;
+    _handoutPresentationTokens.clear();
+    closeHandoutShowAll();
   }
   if (_handoutSyncRoom === St.roomCode && _handoutSyncOff) return;
   _handoutSyncRoom = St.roomCode;
   _handoutSyncOff = () => { try { off(targetRef); } catch (e) {} };
   onValue(targetRef, snap => {
-    setHandoutStateFromData(snap.val() || {});
+    const data = snap.val() || {};
+    processHandoutPresentationEvents(data);
+    setHandoutStateFromData(data);
   }, err => {
     console.error('handout realtime sync failed', err);
   });
@@ -506,8 +633,10 @@ function setHandoutEditorMode(canEdit) {
   if (editor) editor.style.display = editable ? 'block' : 'none';
   if (toolbar) toolbar.style.display = editable ? 'flex' : 'none';
   if (access) access.style.display = editable ? 'block' : 'none';
+  const showAllBtn = document.getElementById('hd-show-all-btn');
   if (saveBtn) saveBtn.style.display = editable ? '' : 'none';
   if (delBtn) delBtn.style.display = editable ? '' : 'none';
+  if (showAllBtn) showAllBtn.style.display = editable ? '' : 'none';
   if (title) title.readOnly = !editable;
 }
 
@@ -4010,3 +4139,10 @@ async function submitJournalApiImport() {
 window.openJournalApiImportModal = openJournalApiImportModal;
 window.closeJournalApiImportModal = closeJournalApiImportModal;
 window.submitJournalApiImport = submitJournalApiImport;
+
+
+document.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape') return;
+  const stage = document.getElementById('handout-showall-stage');
+  if (stage?.classList.contains('open')) closeHandoutShowAll();
+});
