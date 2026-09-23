@@ -1249,7 +1249,7 @@ body.chat-input-is-resizing,body.chat-input-is-resizing *{cursor:ns-resize!impor
 .map-quick-standing-close-btn{width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--border);border-radius:9px;background:var(--s2);color:var(--dim);cursor:pointer;transition:var(--t);padding:0 0 2px;font-size:18px;line-height:1;font-family:var(--font-ui);}
 .map-quick-standing-close-btn:hover{border-color:rgba(37,99,235,.55);background:rgba(37,99,235,.12);color:var(--accent-text);}
 .map-quick-standing-crop-btn{width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--border);border-radius:9px;background:var(--s2);color:var(--dim);cursor:pointer;transition:var(--t);padding:0;}
-.map-quick-standing-crop-btn svg{width:15px;height:15px;display:block;fill:currentColor;opacity:.88;}
+.map-quick-standing-crop-icon{width:15px;height:15px;display:block;background:currentColor;opacity:.88;-webkit-mask:url("../assets/ui/icon-standing-crop.png") center/contain no-repeat;mask:url("../assets/ui/icon-standing-crop.png") center/contain no-repeat;}
 .map-quick-standing-crop-btn:hover{border-color:rgba(37,99,235,.55);background:rgba(37,99,235,.12);color:var(--accent-text);}
 .map-quick-standing-crop-badge{position:absolute;top:10px;right:10px;z-index:1;min-width:28px;height:18px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(37,99,235,.46);border-radius:999px;background:rgba(230,228,220,.90);color:var(--accent-text);font-size:10px;font-weight:700;line-height:1;box-shadow:0 2px 8px rgba(0,0,0,.22);pointer-events:none;}
 .map-quick-standing-context-menu{position:absolute;z-index:5;width:172px;display:flex;flex-direction:column;gap:4px;padding:6px;border:1px solid var(--border2);border-radius:11px;background:var(--s1);box-shadow:0 12px 24px rgba(0,0,0,.36);backdrop-filter:blur(8px);}
@@ -2167,3 +2167,6 @@ html:not([data-theme="dark"]) .hd-pop-item:hover{
   line-height:1;
 }
 .hd-font-direct-control:focus-within .hd-font-direct-unit{color:var(--accent-text);}
+
+.map-cutin-icon{width:20px;height:20px;display:block;background:var(--dim);opacity:.88;-webkit-mask:url("../assets/map-controls/icon-cutin.png") center/contain no-repeat;mask:url("../assets/map-controls/icon-cutin.png") center/contain no-repeat;transition:var(--t);}
+#map-cutin-trigger:hover .map-cutin-icon,#map-cutin-trigger:focus-visible .map-cutin-icon{background:var(--accent-text);opacity:1;}

@@ -2917,7 +2917,7 @@ function getQuickStandingThumbImgStyle(crop) {
 }
 
 function getQuickStandingCropIconSvg() {
-  return `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M8.1 10.2 4.6 6.7a2.4 2.4 0 1 1 1.4-1.4l9.4 9.4 2.3-2.3a1 1 0 0 1 1.4 1.4l-3.1 3.1 3.3 3.3a1 1 0 0 1-1.4 1.4L12.8 16l-2.7 2.7a3.3 3.3 0 1 1-1.4-1.4l2.4-2.4-2.7-2.7-2.4 2.4a3.3 3.3 0 1 1-1.4-1.4l3.1-3.1Zm-2.9 9.6a1.3 1.3 0 1 0 0-2.6 1.3 1.3 0 0 0 0 2.6Zm0-6.4a1.3 1.3 0 1 0 0-2.6 1.3 1.3 0 0 0 0 2.6Z"/></svg>`;
+  return `<span class="map-quick-standing-crop-icon" aria-hidden="true"></span>`;
 }
 
 function getQuickStandingCurrentLabel(journal, token, standings) {
