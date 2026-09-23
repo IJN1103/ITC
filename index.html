@@ -376,11 +376,10 @@ window._FB = {
         <div class="map-status-panel" id="map-status-panel" style="display:none"></div>
 
         <div class="map-solid-color-control gm-only" id="map-solid-color-control" style="display:none">
-          <button type="button" class="map-solid-color-btn" id="map-solid-color-btn" onclick="toggleMapBackdropEditor(event)" aria-label="맵 바탕 수정" aria-expanded="false">
-            <span class="map-solid-color-swatch" id="map-solid-color-swatch" aria-hidden="true"></span>
-            <span class="map-solid-image-mark" aria-hidden="true"></span>
+          <button type="button" class="map-solid-color-btn map-control-btn" id="map-solid-color-btn" onclick="toggleMapBackdropEditor(event)" aria-label="맵 바탕 수정" aria-expanded="false">
+            <img class="map-backdrop-control-icon" src="assets/map-controls/icon-map-backdrop.png" alt="" aria-hidden="true">
+            <span class="map-control-tooltip map-quickview-tooltip map-solid-color-tooltip" aria-hidden="true">맵 바탕 수정</span>
           </button>
-          <span class="map-solid-color-tooltip" aria-hidden="true">맵 바탕 수정</span>
 
           <div class="map-backdrop-editor" id="map-backdrop-editor" style="display:none" onclick="event.stopPropagation()">
             <div class="map-backdrop-editor-head">
@@ -1930,7 +1929,6 @@ window._FB = {
     const control = document.getElementById('map-solid-color-control');
     const input = document.getElementById('map-solid-color-input');
     const hex = document.getElementById('map-solid-color-hex');
-    const swatch = document.getElementById('map-solid-color-swatch');
     const colorPreview = document.getElementById('map-backdrop-color-preview');
     const imagePreview = document.getElementById('map-backdrop-image-preview');
     const imageEmpty = document.getElementById('map-backdrop-image-empty');
@@ -1938,7 +1936,6 @@ window._FB = {
 
     if (input && input.value !== color) input.value = color;
     if (hex && document.activeElement !== hex) hex.value = color;
-    if (swatch) swatch.style.background = color;
     if (colorPreview) colorPreview.style.background = color;
 
     if (imagePreview) {
@@ -1995,13 +1992,48 @@ window._FB = {
     button?.setAttribute('aria-expanded', 'false');
   };
 
-  window.toggleMapBackdropEditor = function(event) {
+  window.toggleMapBackdropEditor = async function(event) {
     event?.preventDefault?.();
     event?.stopPropagation?.();
+
     const panel = document.getElementById('map-backdrop-editor');
     if (!panel) return;
-    if (panel.style.display === 'block') window.closeMapBackdropEditor();
-    else window.openMapBackdropEditor();
+
+    if (panel.style.display === 'block') {
+      window.closeMapBackdropEditor();
+      return;
+    }
+
+    const mapState = window.St?.mapState || {};
+    const hasBackground = !!String(mapState?.background?.url || '').trim();
+    const hasForeground = !!String(mapState?.foreground?.url || '').trim();
+
+    if (hasBackground || hasForeground) {
+      const confirmed = window.confirm(
+        '현재 장면에 이미 맵 이미지가 적용되어 있습니다.\n\n' +
+        '맵 바탕 수정 기능을 사용하려면 기존 배경/전경 이미지를 삭제해야 합니다.\n' +
+        '기존 이미지를 삭제하고 계속할까요?'
+      );
+      if (!confirmed) return;
+
+      const nextMapState = {
+        ...mapState,
+        background: null,
+        foreground: null,
+      };
+
+      try {
+        await _saveAndApplyMapState(nextMapState);
+        window.syncMapSolidColorControl?.(nextMapState);
+        if (typeof showToast === 'function') showToast('기존 맵 이미지를 제거했어요.');
+      } catch (error) {
+        console.warn('failed to clear existing map backdrop before editing', error);
+        if (typeof showToast === 'function') showToast('기존 맵 이미지를 제거하지 못했어요.');
+        return;
+      }
+    }
+
+    window.openMapBackdropEditor();
   };
 
   window.applyMapBackdropImageFile = async function(input) {
