@@ -1772,3 +1772,144 @@ body{scrollbar-color:var(--accent-green) var(--s3);}
 
 /* ── 팝아웃 대사창 override (popout.js 하드코딩 덮어쓰기) ── */
 .dsec-text{font-size:15px!important;font-weight:500!important;color:#c2cee0!important;background:rgba(255,255,255,.06)!important;border:1px solid rgba(255,255,255,.1)!important;border-radius:8px!important;padding:8px 16px!important;display:block!important;text-align:center!important;line-height:1.9!important;letter-spacing:.02em!important;}
+
+
+/* ===== PHASE HANDOUT-THEME-1: 핸드아웃 편집/열람 모달 테마 정합성 =====
+   핸드아웃 UI는 라이트/다크 공통 색상 변수를 사용하며,
+   팝업 메뉴처럼 기존에 다크 색상이 하드코딩된 부분도 테마에 맞게 동기화한다. */
+.hd-overlay{
+  background:rgba(26,32,44,.28);
+  backdrop-filter:blur(3px);
+}
+.hd-modal{
+  background:var(--s1);
+  border-color:var(--border2);
+  color:var(--text);
+  box-shadow:0 24px 70px rgba(29,39,55,.18);
+}
+.hd-header,
+.hd-toolbar,
+.hd-access-bar,
+.hd-footer{
+  background:var(--s1);
+  border-color:var(--border);
+}
+.hd-title-input{
+  color:var(--text);
+  background:transparent;
+}
+.hd-title-input::placeholder{color:var(--muted);}
+.hd-meta,
+.hd-access-title,
+.hd-access-empty,
+.hd-footer-hint{color:var(--muted);}
+
+.hd-del-btn,
+.hd-close,
+.hd-save-btn,
+.hd-tool-btn{
+  background:var(--s2);
+  border-color:var(--border2);
+  color:var(--dim);
+}
+.hd-tool-text strong,
+.hd-tool-text em{color:var(--text);}
+.hd-close:hover,
+.hd-tool-btn:hover,
+.hd-save-btn:hover{
+  border-color:var(--accent);
+  background:var(--a-dim);
+  color:var(--accent-text);
+}
+.hd-del-btn:hover{
+  border-color:rgba(217,79,79,.38);
+  background:rgba(217,79,79,.08);
+  color:var(--red);
+}
+
+.hd-pop-menu{
+  background:var(--s1);
+  border-color:var(--border2);
+  box-shadow:0 14px 32px rgba(29,39,55,.16);
+}
+.hd-pop-item{
+  background:transparent;
+  color:var(--text);
+}
+.hd-pop-item:hover{
+  background:var(--a-dim);
+  color:var(--accent-text);
+}
+.hd-font-trigger::after,
+.hd-align-trigger::after{color:var(--muted);}
+
+.hd-access-chip{
+  background:var(--s2);
+  border-color:var(--border2);
+  color:var(--dim);
+}
+.hd-access-chip:hover{
+  border-color:var(--accent);
+  background:var(--a-dim);
+}
+.hd-access-chip.on{
+  border-color:var(--accent);
+  background:var(--a-dim);
+  color:var(--accent-text);
+}
+
+.hd-editor-wrap{background:var(--s2);}
+.hd-body-editor,
+.hd-body-view{
+  background:var(--s1);
+  border-color:var(--border);
+  color:var(--text);
+  caret-color:var(--text);
+}
+.hd-body-editor:focus{
+  border-color:var(--accent);
+  box-shadow:0 0 0 1px var(--a-glow);
+}
+.hd-body-editor:empty::before{color:var(--muted);}
+.hd-body-editor a,
+.hd-body-view a{color:var(--accent-text);}
+.hd-body-editor hr,
+.hd-body-view hr{border-color:var(--border);}
+.hd-body-editor blockquote,
+.hd-body-view blockquote{
+  border-left:3px solid var(--border2);
+  color:var(--dim);
+  background:var(--s2);
+}
+.hd-body-editor table,
+.hd-body-view table{border-color:var(--border2);}
+.hd-body-editor th,
+.hd-body-editor td,
+.hd-body-view th,
+.hd-body-view td{border-color:var(--border);}
+.hd-body-editor th,
+.hd-body-view th{background:var(--s2);}
+
+/* 다크 모드에서는 같은 구조를 유지하되 다크 팔레트와 그림자만 강화한다. */
+[data-theme="dark"] .hd-overlay{
+  background:rgba(0,0,0,.62);
+}
+[data-theme="dark"] .hd-modal{
+  background:var(--s1);
+  box-shadow:0 28px 80px rgba(0,0,0,.46);
+}
+[data-theme="dark"] .hd-header,
+[data-theme="dark"] .hd-toolbar,
+[data-theme="dark"] .hd-access-bar,
+[data-theme="dark"] .hd-footer{
+  background:var(--s1);
+}
+[data-theme="dark"] .hd-editor-wrap{background:var(--bg);}
+[data-theme="dark"] .hd-pop-menu{
+  background:var(--s1);
+  box-shadow:0 14px 32px rgba(0,0,0,.34);
+}
+[data-theme="dark"] .hd-del-btn:hover{
+  border-color:rgba(224,96,96,.40);
+  background:rgba(224,96,96,.10);
+}
