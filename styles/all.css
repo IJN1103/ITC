@@ -1037,7 +1037,7 @@ body.chat-input-is-resizing,body.chat-input-is-resizing *{cursor:ns-resize!impor
 .hd-tool-btn{height:34px;min-width:34px;padding:0 12px;font:inherit;font-size:12px;display:inline-flex;align-items:center;justify-content:center;gap:8px;}
 .hd-tool-text strong,.hd-tool-text em{font-size:13px;color:var(--text);}
 .hd-tool-italic em{font-style:italic;}
-.hd-pop-menu{position:absolute;top:42px;left:0;min-width:146px;padding:6px;background:rgba(16,18,24,.98);border:1px solid var(--border2);border-radius:12px;box-shadow:0 14px 32px rgba(0,0,0,.32);display:none;flex-direction:column;gap:4px;z-index:30;}
+.hd-pop-menu{position:absolute;top:42px;left:0;min-width:146px;padding:6px;background:var(--s1);border:1px solid var(--border2);border-radius:12px;box-shadow:0 14px 32px rgba(29,39,55,.16);display:none;flex-direction:column;gap:4px;z-index:30;}
 .hd-pop-menu.open{display:flex;}
 .hd-pop-item{height:34px;padding:0 10px;border:none;border-radius:8px;background:transparent;color:var(--text);font:inherit;font-size:12px;display:flex;align-items:center;gap:10px;cursor:pointer;text-align:left;}
 .hd-pop-item:hover{background:var(--a-dim);color:var(--accent-text);}
@@ -1912,4 +1912,42 @@ body{scrollbar-color:var(--accent-green) var(--s3);}
 [data-theme="dark"] .hd-del-btn:hover{
   border-color:rgba(224,96,96,.40);
   background:rgba(224,96,96,.10);
+}
+
+
+/* ===== PHASE HANDOUT-THEME-2: 팝업 메뉴 라이트/다크 강제 분리 ===== */
+:root:not([data-theme="dark"]) .hd-pop-menu,
+body:not([data-theme="dark"]) .hd-pop-menu,
+html:not([data-theme="dark"]) .hd-pop-menu{
+  background:#ffffff!important;
+  border-color:#c8d0da!important;
+  color:#131415!important;
+  box-shadow:0 14px 32px rgba(29,39,55,.16)!important;
+}
+:root:not([data-theme="dark"]) .hd-pop-item,
+body:not([data-theme="dark"]) .hd-pop-item,
+html:not([data-theme="dark"]) .hd-pop-item{
+  background:transparent!important;
+  color:#131415!important;
+}
+:root:not([data-theme="dark"]) .hd-pop-item:hover,
+body:not([data-theme="dark"]) .hd-pop-item:hover,
+html:not([data-theme="dark"]) .hd-pop-item:hover{
+  background:rgba(37,99,235,.10)!important;
+  color:#1a4fd6!important;
+}
+
+[data-theme="dark"] .hd-pop-menu{
+  background:#272727!important;
+  border-color:#444444!important;
+  color:#e4e9f0!important;
+  box-shadow:0 14px 32px rgba(0,0,0,.34)!important;
+}
+[data-theme="dark"] .hd-pop-item{
+  background:transparent!important;
+  color:#e4e9f0!important;
+}
+[data-theme="dark"] .hd-pop-item:hover{
+  background:rgba(74,127,245,.12)!important;
+  color:#7aa3ff!important;
 }
