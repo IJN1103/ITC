@@ -374,6 +374,15 @@ window._FB = {
           </div>
         </div>
         <div class="map-status-panel" id="map-status-panel" style="display:none"></div>
+
+        <div class="map-solid-color-control gm-only" id="map-solid-color-control" style="display:none" title="맵 이미지가 없을 때 사용할 단색 배경">
+          <button type="button" class="map-solid-color-btn" id="map-solid-color-btn" onclick="document.getElementById('map-solid-color-input')?.click()" aria-label="맵 바탕색 변경">
+            <span class="map-solid-color-swatch" id="map-solid-color-swatch" aria-hidden="true"></span>
+          </button>
+          <input type="color" id="map-solid-color-input" value="#272727" onchange="applyMapSolidColor(this.value)" aria-label="맵 바탕색 선택">
+          <span class="map-control-tooltip map-solid-color-tooltip" aria-hidden="true">맵 바탕색</span>
+        </div>
+
         <button type="button" class="map-add-token map-control-btn gm-only" id="map-add-token" onclick="addBlankCharacterToken()" style="display:none" aria-label="캐릭터 토큰">
           <img class="map-control-icon" src="assets/map-controls/icon-character-token.png" alt="" aria-hidden="true">
           <span class="map-control-tooltip" aria-hidden="true">캐릭터 토큰</span>
@@ -1872,6 +1881,31 @@ window._FB = {
     if (typeof showToast === 'function') showToast(`${type === 'bg' ? '배경' : '전경'}이 제거됐어요.`);
   };
 
+  function normalizeMapSolidColor(value) {
+    const color = String(value || '').trim();
+    return /^#[0-9a-fA-F]{6}$/.test(color) ? color.toLowerCase() : '#272727';
+  }
+
+  window.syncMapSolidColorControl = function(mapState = window.St?.mapState || {}) {
+    const color = normalizeMapSolidColor(mapState?.backgroundColor || '#272727');
+    const hasMapImage = !!(mapState?.background?.url || mapState?.foreground?.url);
+    const control = document.getElementById('map-solid-color-control');
+    const input = document.getElementById('map-solid-color-input');
+    const swatch = document.getElementById('map-solid-color-swatch');
+    if (input && input.value !== color) input.value = color;
+    if (swatch) swatch.style.background = color;
+    if (control) control.style.display = (!hasMapImage && window.St?.isGM) ? 'flex' : 'none';
+  };
+
+  window.applyMapSolidColor = async function(value) {
+    const color = normalizeMapSolidColor(value);
+    const mapState = window.St?.mapState || {};
+    const nextMapState = { ...mapState, backgroundColor: color };
+    await _saveAndApplyMapState(nextMapState);
+    window.syncMapSolidColorControl?.(nextMapState);
+    if (typeof showToast === 'function') showToast(`맵 바탕색을 ${color}로 변경했어요.`);
+  };
+
   async function _saveAndApplyMapState(nextMapState) {
     if (window.St) window.St.mapState = nextMapState;
     if (typeof applyImportedMapState === 'function') applyImportedMapState(nextMapState);
@@ -1889,6 +1923,7 @@ window._FB = {
       'bgm/mapForegroundFit': fg.fit || '',
       'bgm/mapForegroundSourceName': fg.sourceName || '',
       'bgm/mapForegroundImportedAt': fg.importedAt || 0,
+      'bgm/mapBackgroundColor': normalizeMapSolidColor(nextMapState.backgroundColor || '#272727'),
     }).catch(e => console.warn('bg/fg save failed', e));
     if (typeof window._itcApplyRoomMapStateLocal === 'function') {
       try { window._itcApplyRoomMapStateLocal(nextMapState, undefined, 'bg-fg-manual'); } catch(e) {}

@@ -133,6 +133,9 @@
       name: String(raw?.name || '기본 씬').trim() || '기본 씬',
       background: normalizeBackground(raw),
       foreground,
+      backgroundColor: /^#[0-9a-fA-F]{6}$/.test(String(raw?.backgroundColor || '').trim())
+        ? String(raw.backgroundColor).trim().toLowerCase()
+        : '',
       objects: Array.isArray(raw?.objects) ? raw.objects : [],
       layerState: raw?.layerState || null,
       createdAt: Number(raw?.createdAt) || Date.now(),
@@ -358,6 +361,9 @@
     return {
       background: bg,
       foreground: ms.foreground ? deepCopy(ms.foreground) : null,
+      backgroundColor: /^#[0-9a-fA-F]{6}$/.test(String(ms.backgroundColor || '').trim())
+        ? String(ms.backgroundColor).trim().toLowerCase()
+        : '#272727',
       importedCanvas: ms.importedCanvas ? deepCopy(ms.importedCanvas) : null,
       importedCanvasAspect: Number(ms.importedCanvasAspect || ms.importedCanvas?.aspect || 0) || null,
       importedFieldWidth: Number(ms.importedFieldWidth || 0) || null,
@@ -463,9 +469,15 @@
 
   function applyMapPartToRuntime(scene){
     if (!scene) return;
+    const currentColor = /^#[0-9a-fA-F]{6}$/.test(String(ROOT.St?.mapState?.backgroundColor || '').trim())
+      ? String(ROOT.St.mapState.backgroundColor).trim().toLowerCase()
+      : '#272727';
     const nextMapState = {
       background: scene.background ? deepCopy(scene.background) : null,
       foreground: scene.foreground ? deepCopy(scene.foreground) : null,
+      backgroundColor: /^#[0-9a-fA-F]{6}$/.test(String(scene.backgroundColor || '').trim())
+        ? String(scene.backgroundColor).trim().toLowerCase()
+        : currentColor,
       importedCanvas: scene.importedCanvas ? deepCopy(scene.importedCanvas) : null,
       importedCanvasAspect: Number(scene.importedCanvasAspect || scene.importedCanvas?.aspect || 0) || null,
       importedFieldWidth: Number(scene.importedFieldWidth || 0) || null,
@@ -502,6 +514,9 @@
       mapForegroundFit: foreground?.fit || 'cover',
       mapForegroundSourceName: foreground?.sourceName || '',
       mapForegroundImportedAt: foreground?.url ? (foreground?.importedAt || Date.now()) : 0,
+      mapBackgroundColor: /^#[0-9a-fA-F]{6}$/.test(String(scene?.backgroundColor || '').trim())
+        ? String(scene.backgroundColor).trim().toLowerCase()
+        : '#272727',
       mapObjects: objects,
       mapLayerState: scene?.layerState ? deepCopy(scene.layerState) : null,
     };
@@ -512,6 +527,9 @@
     return {
       background: background ? deepCopy(background) : null,
       foreground: scene?.foreground ? deepCopy(scene.foreground) : null,
+      backgroundColor: /^#[0-9a-fA-F]{6}$/.test(String(scene?.backgroundColor || '').trim())
+        ? String(scene.backgroundColor).trim().toLowerCase()
+        : '#272727',
       importedCanvas: scene?.importedCanvas ? deepCopy(scene.importedCanvas) : null,
       importedCanvasAspect: Number(scene?.importedCanvasAspect || scene?.importedCanvas?.aspect || 0) || null,
       importedFieldWidth: Number(scene?.importedFieldWidth || 0) || null,
@@ -950,6 +968,7 @@
     const ms = {
       background: snapshot.background,
       foreground: snapshot.foreground,
+      backgroundColor: snapshot.backgroundColor,
       importedCanvas: snapshot.importedCanvas,
       importedCanvasAspect: snapshot.importedCanvasAspect,
       importedFieldWidth: snapshot.importedFieldWidth,
@@ -975,6 +994,9 @@
       order: getSceneOrderNumber(existing) !== null ? getSceneOrderNumber(existing) : undefined,
       background: ms.background ? { url: ms.background.url || '', fit: ms.background.fit || 'contain', sourceName: ms.background.sourceName || '', importedAt: ms.background.importedAt || 0 } : null,
       foreground: ms.foreground ? deepCopy(ms.foreground) : null,
+      backgroundColor: /^#[0-9a-fA-F]{6}$/.test(String(ms.backgroundColor || '').trim())
+        ? String(ms.backgroundColor).trim().toLowerCase()
+        : '#272727',
       importedCanvas: ms.importedCanvas ? deepCopy(ms.importedCanvas) : null,
       importedCanvasAspect: Number(ms.importedCanvasAspect || ms.importedCanvas?.aspect || 0) || null,
       importedFieldWidth: Number(ms.importedFieldWidth || 0) || null,

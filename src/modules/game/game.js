@@ -1992,9 +1992,13 @@ function normalizeRuntimeMapState(value = {}) {
       importedAt: source.foreground.importedAt || 0,
     }
     : null;
+  const backgroundColor = /^#[0-9a-fA-F]{6}$/.test(String(source.backgroundColor || '').trim())
+    ? String(source.backgroundColor).trim().toLowerCase()
+    : '#272727';
   return {
     background,
     foreground,
+    backgroundColor,
     objects: Array.isArray(source.objects) ? cloneRoomMapValue(source.objects, []) : [],
   };
 }
@@ -2015,6 +2019,9 @@ function buildLegacyRoomMapStateFromBgm(bgm = {}) {
         sourceName: source.mapForegroundSourceName || '',
         importedAt: source.mapForegroundImportedAt || 0,
       } : null,
+      backgroundColor: /^#[0-9a-fA-F]{6}$/.test(String(source.mapBackgroundColor || '').trim())
+        ? String(source.mapBackgroundColor).trim().toLowerCase()
+        : '#272727',
       objects: Array.isArray(source.mapObjects) ? cloneRoomMapValue(source.mapObjects, []) : [],
     },
     layerState: source.mapLayerState && typeof source.mapLayerState === 'object'
@@ -2193,7 +2200,7 @@ try {
 function resetRoomScopedUiState() {
   if (window.St) {
     St.tokens = {};
-    St.mapState = { background: null, foreground: null, objects: [] };
+    St.mapState = { background: null, foreground: null, backgroundColor: '#272727', objects: [] };
     St.mapLayerState = null;
   }
   try {
@@ -2203,7 +2210,7 @@ function resetRoomScopedUiState() {
   }
   try {
     if (typeof applyImportedMapState === 'function') {
-      applyImportedMapState({ background: null, foreground: null, objects: [] });
+      applyImportedMapState({ background: null, foreground: null, backgroundColor: '#272727', objects: [] });
     }
   } catch (e) {
     console.warn('[game] applyImportedMapState reset failed', e);

@@ -293,6 +293,13 @@
   }
 
   function applyImportedMapState(mapState) {
+    const mapArea = document.getElementById('map-area');
+    const solidColor = /^#[0-9a-fA-F]{6}$/.test(String(mapState?.backgroundColor || '').trim())
+      ? String(mapState.backgroundColor).trim().toLowerCase()
+      : '#272727';
+    if (mapArea) mapArea.style.backgroundColor = solidColor;
+    try { window.syncMapSolidColorControl?.(mapState || {}); } catch (e) {}
+
     const bgLayer = getMapBackgroundLayer();
     const blurLayer = document.getElementById('map-bg-blur-layer');
     const fgLayer = getMapForegroundLayer();
