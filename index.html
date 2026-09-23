@@ -375,12 +375,50 @@ window._FB = {
         </div>
         <div class="map-status-panel" id="map-status-panel" style="display:none"></div>
 
-        <div class="map-solid-color-control gm-only" id="map-solid-color-control" style="display:none" title="맵 이미지가 없을 때 사용할 단색 배경">
-          <button type="button" class="map-solid-color-btn" id="map-solid-color-btn" onclick="document.getElementById('map-solid-color-input')?.click()" aria-label="맵 바탕색 변경">
+        <div class="map-solid-color-control gm-only" id="map-solid-color-control" style="display:none">
+          <button type="button" class="map-solid-color-btn" id="map-solid-color-btn" onclick="toggleMapBackdropEditor(event)" aria-label="맵 바탕 수정" aria-expanded="false">
             <span class="map-solid-color-swatch" id="map-solid-color-swatch" aria-hidden="true"></span>
+            <span class="map-solid-image-mark" aria-hidden="true"></span>
           </button>
-          <input type="color" id="map-solid-color-input" value="#272727" onchange="applyMapSolidColor(this.value)" aria-label="맵 바탕색 선택">
-          <span class="map-control-tooltip map-solid-color-tooltip" aria-hidden="true">맵 바탕색</span>
+          <span class="map-solid-color-tooltip" aria-hidden="true">맵 바탕 수정</span>
+
+          <div class="map-backdrop-editor" id="map-backdrop-editor" style="display:none" onclick="event.stopPropagation()">
+            <div class="map-backdrop-editor-head">
+              <div>
+                <div class="map-backdrop-editor-title">맵 바탕 수정</div>
+                <div class="map-backdrop-editor-sub">단색 또는 이미지를 직접 적용할 수 있습니다.</div>
+              </div>
+              <button type="button" class="map-backdrop-editor-close" onclick="closeMapBackdropEditor()" aria-label="닫기">✕</button>
+            </div>
+
+            <div class="map-backdrop-editor-section">
+              <div class="map-backdrop-editor-label">바탕 색상</div>
+              <div class="map-backdrop-color-row">
+                <label class="map-backdrop-color-picker" for="map-solid-color-input" title="색상 선택">
+                  <span class="map-backdrop-color-preview" id="map-backdrop-color-preview"></span>
+                  <input type="color" id="map-solid-color-input" value="#272727" onchange="previewMapSolidColor(this.value)" aria-label="맵 바탕색 선택">
+                </label>
+                <input type="text" class="map-backdrop-hex" id="map-solid-color-hex" value="#272727" maxlength="7" spellcheck="false" aria-label="맵 바탕색 코드">
+                <button type="button" class="map-backdrop-primary-btn" onclick="applyMapSolidColorFromEditor()">적용</button>
+              </div>
+            </div>
+
+            <div class="map-backdrop-editor-section">
+              <div class="map-backdrop-editor-label">맵 이미지</div>
+              <div class="map-backdrop-image-card" id="map-backdrop-image-card">
+                <div class="map-backdrop-image-preview" id="map-backdrop-image-preview">
+                  <span id="map-backdrop-image-empty">이미지 없음</span>
+                </div>
+                <div class="map-backdrop-image-actions">
+                  <button type="button" class="map-backdrop-secondary-btn" onclick="document.getElementById('map-backdrop-image-input')?.click()">이미지 선택</button>
+                  <button type="button" class="map-backdrop-danger-btn" id="map-backdrop-image-remove" onclick="removeMapBackdropImage()" style="display:none">이미지 제거</button>
+                  <input type="file" id="map-backdrop-image-input" accept="image/*" style="display:none" onchange="applyMapBackdropImageFile(this)">
+                </div>
+              </div>
+            </div>
+
+            <button type="button" class="map-backdrop-detail-btn" onclick="closeMapBackdropEditor(); openMapBgFgModal();">전경·배경 상세 설정</button>
+          </div>
         </div>
 
         <button type="button" class="map-add-token map-control-btn gm-only" id="map-add-token" onclick="addBlankCharacterToken()" style="display:none" aria-label="캐릭터 토큰">
@@ -1888,13 +1926,38 @@ window._FB = {
 
   window.syncMapSolidColorControl = function(mapState = window.St?.mapState || {}) {
     const color = normalizeMapSolidColor(mapState?.backgroundColor || '#272727');
-    const hasMapImage = !!(mapState?.background?.url || mapState?.foreground?.url);
+    const backgroundUrl = String(mapState?.background?.url || '').trim();
     const control = document.getElementById('map-solid-color-control');
     const input = document.getElementById('map-solid-color-input');
+    const hex = document.getElementById('map-solid-color-hex');
     const swatch = document.getElementById('map-solid-color-swatch');
+    const colorPreview = document.getElementById('map-backdrop-color-preview');
+    const imagePreview = document.getElementById('map-backdrop-image-preview');
+    const imageEmpty = document.getElementById('map-backdrop-image-empty');
+    const imageRemove = document.getElementById('map-backdrop-image-remove');
+
     if (input && input.value !== color) input.value = color;
+    if (hex && document.activeElement !== hex) hex.value = color;
     if (swatch) swatch.style.background = color;
-    if (control) control.style.display = (!hasMapImage && window.St?.isGM) ? 'flex' : 'none';
+    if (colorPreview) colorPreview.style.background = color;
+
+    if (imagePreview) {
+      imagePreview.style.backgroundImage = backgroundUrl ? `url("${backgroundUrl.replace(/"/g, '%22')}")` : '';
+      imagePreview.classList.toggle('has-image', !!backgroundUrl);
+    }
+    if (imageEmpty) imageEmpty.style.display = backgroundUrl ? 'none' : 'inline';
+    if (imageRemove) imageRemove.style.display = backgroundUrl ? 'inline-flex' : 'none';
+
+    // 이제 이미지가 있어도 교체할 수 있어야 하므로 GM에게는 항상 표시한다.
+    if (control) control.style.display = window.St?.isGM ? 'flex' : 'none';
+  };
+
+  window.previewMapSolidColor = function(value) {
+    const color = normalizeMapSolidColor(value);
+    const hex = document.getElementById('map-solid-color-hex');
+    const preview = document.getElementById('map-backdrop-color-preview');
+    if (hex) hex.value = color;
+    if (preview) preview.style.background = color;
   };
 
   window.applyMapSolidColor = async function(value) {
@@ -1905,6 +1968,116 @@ window._FB = {
     window.syncMapSolidColorControl?.(nextMapState);
     if (typeof showToast === 'function') showToast(`맵 바탕색을 ${color}로 변경했어요.`);
   };
+
+  window.applyMapSolidColorFromEditor = async function() {
+    const raw = document.getElementById('map-solid-color-hex')?.value
+      || document.getElementById('map-solid-color-input')?.value
+      || '#272727';
+    const color = normalizeMapSolidColor(raw);
+    const input = document.getElementById('map-solid-color-input');
+    if (input) input.value = color;
+    await window.applyMapSolidColor(color);
+  };
+
+  window.openMapBackdropEditor = function() {
+    const panel = document.getElementById('map-backdrop-editor');
+    const button = document.getElementById('map-solid-color-btn');
+    if (!panel) return;
+    window.syncMapSolidColorControl?.(window.St?.mapState || {});
+    panel.style.display = 'block';
+    button?.setAttribute('aria-expanded', 'true');
+  };
+
+  window.closeMapBackdropEditor = function() {
+    const panel = document.getElementById('map-backdrop-editor');
+    const button = document.getElementById('map-solid-color-btn');
+    if (panel) panel.style.display = 'none';
+    button?.setAttribute('aria-expanded', 'false');
+  };
+
+  window.toggleMapBackdropEditor = function(event) {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    const panel = document.getElementById('map-backdrop-editor');
+    if (!panel) return;
+    if (panel.style.display === 'block') window.closeMapBackdropEditor();
+    else window.openMapBackdropEditor();
+  };
+
+  window.applyMapBackdropImageFile = async function(input) {
+    const file = input?.files?.[0];
+    if (!file) return;
+    if (!String(file.type || '').startsWith('image/')) {
+      if (typeof showToast === 'function') showToast('이미지 파일을 선택해주세요.');
+      input.value = '';
+      return;
+    }
+
+    const preview = document.getElementById('map-backdrop-image-preview');
+    const localUrl = URL.createObjectURL(file);
+    if (preview) {
+      preview.style.backgroundImage = `url("${localUrl}")`;
+      preview.classList.add('has-image');
+    }
+
+    try {
+      if (typeof uploadMapLayerBlob !== 'function' || !window.St?.roomCode) {
+        throw new Error('맵 이미지 업로드 기능을 사용할 수 없습니다.');
+      }
+      if (typeof showToast === 'function') showToast('맵 이미지를 업로드하는 중이에요.');
+      const ext = (file.name.split('.').pop() || 'png').replace(/[^a-zA-Z0-9]/g, '') || 'png';
+      const uploaded = await uploadMapLayerBlob(file, window.St.roomCode, `map-bg-manual-${Date.now()}.${ext}`);
+      if (!uploaded) throw new Error('맵 이미지 업로드에 실패했습니다.');
+
+      const mapState = window.St?.mapState || {};
+      const previousBg = mapState.background || {};
+      const nextMapState = {
+        ...mapState,
+        background: {
+          url: uploaded,
+          fit: previousBg.fit || 'cover',
+          blur: previousBg.blur !== false,
+          sourceName: file.name || '',
+          importedAt: Date.now(),
+        },
+      };
+      await _saveAndApplyMapState(nextMapState);
+      window.syncMapSolidColorControl?.(nextMapState);
+      if (typeof showToast === 'function') showToast('맵 이미지가 적용됐어요.');
+    } catch (error) {
+      console.warn('map backdrop image upload failed', error);
+      if (typeof showToast === 'function') showToast(error?.message || '맵 이미지 적용에 실패했어요.');
+      window.syncMapSolidColorControl?.(window.St?.mapState || {});
+    } finally {
+      URL.revokeObjectURL(localUrl);
+      input.value = '';
+    }
+  };
+
+  window.removeMapBackdropImage = async function() {
+    const mapState = window.St?.mapState || {};
+    if (!mapState.background?.url) return;
+    const nextMapState = { ...mapState, background: null };
+    await _saveAndApplyMapState(nextMapState);
+    window.syncMapSolidColorControl?.(nextMapState);
+    if (typeof showToast === 'function') showToast('맵 이미지를 제거했어요.');
+  };
+
+  document.addEventListener('click', (event) => {
+    const control = document.getElementById('map-solid-color-control');
+    const panel = document.getElementById('map-backdrop-editor');
+    if (!control || !panel || panel.style.display !== 'block') return;
+    if (!control.contains(event.target)) window.closeMapBackdropEditor();
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') window.closeMapBackdropEditor();
+  });
+
+  document.addEventListener('change', (event) => {
+    if (event.target?.id !== 'map-solid-color-hex') return;
+    window.previewMapSolidColor(event.target.value);
+  });
 
   async function _saveAndApplyMapState(nextMapState) {
     if (window.St) window.St.mapState = nextMapState;
