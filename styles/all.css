@@ -1301,6 +1301,7 @@ body.chat-input-is-resizing,body.chat-input-is-resizing *{cursor:ns-resize!impor
 
 
 /* Quickview tooltips open below the top quickview buttons. */
+.map-quick-handout-btn .map-quickview-tooltip,
 .map-quick-journal-btn .map-quickview-tooltip,
 .map-quick-standing-btn .map-quickview-tooltip{
   right:auto;
@@ -1309,6 +1310,8 @@ body.chat-input-is-resizing,body.chat-input-is-resizing *{cursor:ns-resize!impor
   transform:translate(-50%,-4px);
   z-index:90;
 }
+.map-quick-handout-btn:hover .map-quickview-tooltip,
+.map-quick-handout-btn:focus-visible .map-quickview-tooltip,
 .map-quick-journal-btn:hover .map-quickview-tooltip,
 .map-quick-journal-btn:focus-visible .map-quickview-tooltip,
 .map-quick-standing-btn:hover .map-quickview-tooltip,
