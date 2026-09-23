@@ -340,6 +340,7 @@ function showDialogueBox(journal, text) {
   const cleanText = cleanDialogueText(text);
 
   nameEl.textContent = name;
+  nameEl.style.color = saGetJournalNameColor(journal?.id, journal) || '';
   textEl.innerHTML = formatDialogueText(cleanText);
   renderDialoguePortrait(dialog, journal);
 
@@ -364,7 +365,7 @@ function hideDialogueBox() {
   if (_vnTimer) { clearTimeout(_vnTimer); _vnTimer = null; }
 }
 
-function showDialogueBoxFromMsg(name, text, journalId, standingImg, tokenId, standingLabel, dialoguePortrait = '', showPortraitInDialogue = null) {
+function showDialogueBoxFromMsg(name, text, journalId, standingImg, tokenId, standingLabel, dialoguePortrait = '', showPortraitInDialogue = null, nameColor = '') {
   const journal = journalId ? _allJournals.find(x => x.id === journalId) : null;
   const dialog = document.getElementById('vn-dialog');
   const nameEl = document.getElementById('vn-name');
@@ -374,6 +375,8 @@ function showDialogueBoxFromMsg(name, text, journalId, standingImg, tokenId, sta
   if (_vnTimer) { clearTimeout(_vnTimer); _vnTimer = null; }
 
   nameEl.textContent = (journal?.title || name || '???');
+  const dialogueNameColor = saNormalizeNameColor(nameColor) || saGetJournalNameColor(journalId, journal) || '';
+  nameEl.style.color = dialogueNameColor;
   const cleanText = cleanDialogueText(text);
   textEl.innerHTML = formatDialogueText(cleanText);
   renderDialoguePortrait(dialog, journal, dialoguePortrait, showPortraitInDialogue);
@@ -543,16 +546,68 @@ const SA_COLORS = [
   '#2ecc71','#27ae60','#f39c12','#e67e22','#95a5a6','#ecf0f1',
 ];
 
-function renderColorPalettePopup(popup, title, currentColor, onPick) {
+function normalizeNameColorHexInput(value) {
+  let raw = String(value || '').trim();
+  if (!raw) return '';
+  if (!raw.startsWith('#')) raw = '#' + raw;
+  return /^#[0-9a-fA-F]{6}$/.test(raw) ? raw.toLowerCase() : '';
+}
+
+function renderColorPalettePopup(popup, title, currentColor, onPick, options = {}) {
   popup.innerHTML = '<div class="sa-color-popup-title">' + title + '</div><div class="sa-color-grid"></div>';
   const grid = popup.querySelector('.sa-color-grid');
   SA_COLORS.forEach(color => {
     const swatch = document.createElement('div');
-    swatch.className = 'sa-color-swatch' + (currentColor === color ? ' active' : '');
+    swatch.className = 'sa-color-swatch' + (String(currentColor || '').toLowerCase() === color.toLowerCase() ? ' active' : '');
     swatch.style.background = color;
     swatch.onclick = (ev) => { ev.stopPropagation(); onPick(color); popup.classList.remove('open'); };
     grid.appendChild(swatch);
   });
+
+  if (options.allowHexInput === true) {
+    const custom = document.createElement('div');
+    custom.className = 'sa-color-custom';
+    const normalizedCurrent = normalizeNameColorHexInput(currentColor) || '#b89a60';
+    custom.innerHTML = `
+      <div class="sa-color-custom-label">컬러코드</div>
+      <div class="sa-color-custom-row">
+        <span class="sa-color-custom-preview" style="background:${normalizedCurrent}"></span>
+        <input class="sa-color-custom-input" type="text" value="${normalizedCurrent}" maxlength="7"
+          spellcheck="false" autocomplete="off" aria-label="닉네임 컬러코드" placeholder="#RRGGBB">
+        <button type="button" class="sa-color-custom-apply">적용</button>
+      </div>`;
+
+    const input = custom.querySelector('.sa-color-custom-input');
+    const preview = custom.querySelector('.sa-color-custom-preview');
+    const apply = custom.querySelector('.sa-color-custom-apply');
+
+    const syncPreview = () => {
+      const color = normalizeNameColorHexInput(input?.value);
+      if (preview) preview.style.background = color || 'transparent';
+      input?.classList.toggle('invalid', !!input?.value?.trim() && !color);
+      return color;
+    };
+    const commit = (ev) => {
+      ev?.preventDefault?.();
+      ev?.stopPropagation?.();
+      const color = syncPreview();
+      if (!color) {
+        showToast('컬러코드는 #RRGGBB 형식으로 입력해주세요.');
+        input?.focus();
+        return;
+      }
+      onPick(color);
+      popup.classList.remove('open');
+    };
+
+    input?.addEventListener('input', syncPreview);
+    input?.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter') commit(ev);
+    });
+    apply?.addEventListener('click', commit);
+    custom.addEventListener('click', (ev) => ev.stopPropagation());
+    popup.appendChild(custom);
+  }
 }
 
 function toggleColorPalette(e) {
@@ -564,7 +619,7 @@ function toggleColorPalette(e) {
   const jId = St.speakAsJournalId;
   const j = jId ? loadJournals().find(x => x.id === jId) : null;
   const currentColor = j ? (saGetJournalNameColor(j.id, j) || '#b89a60') : (St.myNameColor || '#b89a60');
-  renderColorPalettePopup(popup, '채팅 이름 색상', currentColor, setNameColor);
+  renderColorPalettePopup(popup, '채팅 이름 색상', currentColor, setNameColor, { allowHexInput: true });
   popup.classList.add('open');
 }
 

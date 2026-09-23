@@ -3514,7 +3514,7 @@ function appendChatMsg(msg = {}) {
   queueMessageRender(actualChannel, div, safeKey, true);
   if ((msg.type === 'speak-as' || (msg.type === 'dice' && msg.speakAsJournalId)) && (!msg.timestamp || Date.now() - msg.timestamp < 5000)) {
     const dialogueText = msg.type === 'dice' ? formatDiceDialogueText(msg.text) : msg.text;
-    showDialogueBoxFromMsg(msg.name, dialogueText, msg.speakAsJournalId, msg.standingImg, msg.tokenId, msg.standingLabel, msg.dialoguePortrait, msg.showPortraitInDialogue);
+    showDialogueBoxFromMsg(msg.name, dialogueText, msg.speakAsJournalId, msg.standingImg, msg.tokenId, msg.standingLabel, msg.dialoguePortrait, msg.showPortraitInDialogue, msg.nameColor || '');
   }
 }
 
