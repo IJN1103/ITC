@@ -223,7 +223,7 @@ to{opacity:1;transform:translateY(0);}
 .map-inner.cocofolia-source-field-active>.map-bg-layer{display:none!important;}
 .map-layer-runtime-hidden{display:none!important;visibility:hidden!important;opacity:0!important;}
 
-.map-solid-color-control{position:absolute;left:12px;top:12px;z-index:46;align-items:center;justify-content:center;width:38px;height:38px;overflow:visible;}
+.map-solid-color-control{position:absolute;right:14px;bottom:146px;left:auto;top:auto;z-index:46;align-items:center;justify-content:center;width:38px;height:38px;overflow:visible;}
 .map-solid-color-btn{position:relative;width:38px;height:38px;padding:0;border:1px solid var(--border2);border-radius:10px;background:var(--s1);box-shadow:0 2px 8px rgba(0,0,0,.12);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:var(--t);}
 .map-solid-color-btn:hover,.map-solid-color-btn:focus-visible,.map-solid-color-btn[aria-expanded="true"]{border-color:var(--accent);background:var(--a-dim);outline:none;}
 .map-backdrop-control-icon{width:20px;height:20px;display:block;object-fit:contain;opacity:.78;filter:invert(25%) sepia(10%) saturate(400%) hue-rotate(190deg) brightness(90%) contrast(90%);transition:var(--t);}
@@ -231,24 +231,24 @@ to{opacity:1;transform:translateY(0);}
 
 /* 스탠딩 퀵뷰와 동일한 map-control-tooltip + map-quickview-tooltip 양식을 사용한다. */
 .map-solid-color-control > .map-solid-color-btn .map-solid-color-tooltip{
-  right:auto!important;
-  left:50%!important;
-  top:calc(100% + 8px)!important;
+  right:48px!important;
+  left:auto!important;
+  top:50%!important;
   bottom:auto!important;
-  transform:translate(-50%,-4px)!important;
+  transform:translateY(-50%) translateX(4px)!important;
   z-index:90;
 }
 .map-solid-color-control > .map-solid-color-btn:hover .map-solid-color-tooltip,
 .map-solid-color-control > .map-solid-color-btn:focus-visible .map-solid-color-tooltip{
   opacity:1;
-  transform:translate(-50%,0)!important;
+  transform:translateY(-50%) translateX(0)!important;
 }
 .map-solid-color-control > .map-solid-color-btn[aria-expanded="true"] .map-solid-color-tooltip{
   opacity:0;
   pointer-events:none;
 }
 
-.map-backdrop-editor{position:absolute;left:48px;top:0;width:292px;padding:14px;border:1px solid var(--border2);border-radius:14px;background:var(--s1);color:var(--text);box-shadow:0 16px 40px rgba(0,0,0,.28);z-index:50;}
+.map-backdrop-editor{position:absolute;right:48px;bottom:0;left:auto;top:auto;width:292px;padding:14px;border:1px solid var(--border2);border-radius:14px;background:var(--s1);color:var(--text);box-shadow:0 16px 40px rgba(0,0,0,.28);z-index:50;}
 .map-backdrop-editor-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding-bottom:11px;border-bottom:1px solid var(--border);}
 .map-backdrop-editor-title{font-size:13px;font-weight:800;line-height:1.25;color:var(--text);}
 .map-backdrop-editor-sub{margin-top:3px;font-size:10px;line-height:1.45;color:var(--muted);}
@@ -1469,8 +1469,8 @@ body.chat-input-is-resizing,body.chat-input-is-resizing *{cursor:ns-resize!impor
   .map-quick-standing-grid{grid-template-columns:repeat(2,minmax(0,1fr));max-height:min(312px,calc(100dvh - 226px));}
   .map-control-tooltip,.map-quickview-tooltip,.map-solid-color-tooltip{display:none!important;}
   .map-quick-handout-menu{right:10px;width:min(310px,calc(100vw - 20px));}
-  .map-solid-color-control{left:10px;top:10px;}
-  .map-backdrop-editor{left:0;top:46px;width:min(292px,calc(100vw - 20px));}
+  .map-solid-color-control{right:10px;bottom:142px;left:auto;top:auto;}
+  .map-backdrop-editor{right:0;bottom:46px;left:auto;top:auto;width:min(292px,calc(100vw - 20px));}
   .map-zoom{right:10px;bottom:10px;}
   .map-grid-toggle-btn{right:10px;bottom:98px;width:38px;height:38px;}
   .map-zoom-btn{min-width:40px;min-height:40px;}
