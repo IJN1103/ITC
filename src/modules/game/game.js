@@ -803,6 +803,7 @@ function buildChatMessageSignature(message = {}) {
     !!message?.imageWide,
     !!message?.hideImageMeta,
     JSON.stringify(message?.imageMeta || null),
+    JSON.stringify(message?.macroStyle || null),
     message?.dmChannelKey || 'global',
   ]);
 }
@@ -992,6 +993,7 @@ function normalizeChatRecordForRender(key, m = {}) {
     imageWide: !!m.imageWide,
     hideImageMeta: !!m.hideImageMeta,
     imageMeta: m.imageMeta || null,
+    macroStyle: m.macroStyle || null,
     dmChannelKey: m.dmChannelKey || 'global',
   };
 }
@@ -1019,6 +1021,7 @@ function makeChatRenderPayloadFromRecord(record = {}) {
     imageWide: !!record.imageWide,
     imageMeta: record.imageMeta,
     hideImageMeta: !!record.hideImageMeta,
+    macroStyle: record.macroStyle || null,
   };
 }
 
@@ -1558,7 +1561,7 @@ function switchActiveChatChannel(channelKey = 'global') {
     standingLabel: m.standingLabel,
     dialoguePortrait: m.dialoguePortrait || '', showPortraitInDialogue: m.showPortraitInDialogue === true,
     imageWide: !!m.imageWide, imageMeta: m.imageMeta,
-    hideImageMeta: !!m.hideImageMeta,
+    hideImageMeta: !!m.hideImageMeta, macroStyle: m.macroStyle || null,
   });
 
   // OPT-1B — 공개 일반 채팅은 최근 120개만 개별 child 이벤트로 수신한다.

@@ -59,6 +59,17 @@ function fmtText(value) {
   s = s.replace(/\*(.+?)\*/g, '<i>$1</i>');
   return s.replace(/\n/g, '<br>');
 }
+
+function normalizeHistoryMacroColor(value, fallback) {
+  const raw = String(value || '').trim();
+  return /^#[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$/.test(raw) ? raw : fallback;
+}
+function macroBodyHtml(record) {
+  const style = record?.macroStyle && typeof record.macroStyle === 'object' ? record.macroStyle : {};
+  const backgroundColor = normalizeHistoryMacroColor(style.backgroundColor, '#f9f7f6');
+  const borderColor = normalizeHistoryMacroColor(style.borderColor, '#8b93a1');
+  return `<div class="history-text history-macro-box" style="background-color:${esc(backgroundColor)};border-left-color:${esc(borderColor)}">${fmtText(record?.text || '')}</div>`;
+}
 function messageTime(record) {
   const value = Number(record?.time || record?.timestamp || 0);
   const date = value ? new Date(value) : null;
@@ -98,7 +109,9 @@ function createMessage(record, key) {
   const isImage = type === 'image' || type === 'speak-as-image';
   const body = isImage
     ? `<img class="history-image" src="${esc(record?.text || '')}" alt="채팅 이미지" loading="lazy">`
-    : `<div class="history-text">${fmtText(record?.text || '')}</div>`;
+    : (type === 'macro'
+      ? macroBodyHtml(record)
+      : `<div class="history-text">${fmtText(record?.text || '')}</div>`);
   article.innerHTML = `${avatarHtml}<div class="history-body"><div class="history-meta"><strong style="${record?.nameColor ? `color:${esc(record.nameColor)}` : ''}">${esc(name)}</strong>${tag ? `<span class="history-tag">${tag}</span>` : ''}<time>${esc(messageTime(record))}</time></div>${body}</div>`;
   return article;
 }

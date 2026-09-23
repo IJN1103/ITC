@@ -994,6 +994,7 @@ function coerceHistoryRecordForStore(record = {}) {
     imageWide: !!record.imageWide,
     hideImageMeta: !!record.hideImageMeta,
     imageMeta: normalizeChatImageMeta(record.imageMeta),
+    macroStyle: normalizeChatMacroStyle(record.macroStyle || {}),
   };
 }
 
@@ -1063,6 +1064,7 @@ function normalizeStoredRecordForSnapshot(channel = 'chat', key = '', record = {
     imageWide: !!record.imageWide,
     hideImageMeta: !!record.hideImageMeta,
     imageMeta: normalizeChatImageMeta(record.imageMeta),
+    macroStyle: normalizeChatMacroStyle(record.macroStyle || {}),
     channel: safeChannel,
   };
 }
@@ -2277,6 +2279,67 @@ function initChatImageComposer() {
  * 입력값/이미지/desc/귓말/주사위/저널 speak-as 분기 처리
  * ========================================================================== */
 
+
+function normalizeChatMacroHex(value, fallback = '') {
+  const raw = String(value || '').trim();
+  const match = raw.match(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/);
+  if (!match) return fallback;
+  let hex = match[1].toLowerCase();
+  if (hex.length === 3) hex = hex.split('').map(ch => ch + ch).join('');
+  return '#' + hex;
+}
+
+function normalizeChatMacroStyle(style = {}) {
+  const backgroundColor = normalizeChatMacroHex(style?.backgroundColor || '', '#f9f7f6');
+  const borderColor = normalizeChatMacroHex(style?.borderColor || '', '#8b93a1');
+  return { backgroundColor, borderColor };
+}
+
+function parseSafeChatMacro(raw = '') {
+  const source = String(raw || '').trim();
+  if (!/^\/m(?:\s|$)/i.test(source)) return null;
+
+  const body = source.replace(/^\/m(?:\s+|$)/i, '').trim();
+  if (!body) return { error: '매크로 내용을 입력해주세요.' };
+
+  let resolvedText = '';
+  const queryMatch = body.match(/\[\?\{([^|}\]]+)(?:\|([^}]*))?\}\]/);
+  if (queryMatch) {
+    const label = String(queryMatch[1] || '할말').trim() || '할말';
+    const defaultValue = String(queryMatch[2] || '');
+    const answer = window.prompt(label, defaultValue);
+    if (answer === null) return { cancelled: true };
+    resolvedText = String(answer).trim();
+  } else {
+    const literalMatch = body.match(/\[([^\]]+)\]/);
+    if (literalMatch) resolvedText = String(literalMatch[1] || '').trim();
+  }
+
+  if (!resolvedText) {
+    const shorthandText = body
+      .replace(/\bbg\s*=\s*#[0-9a-fA-F]{3,6}\b/ig, '')
+      .replace(/\bborder\s*=\s*#[0-9a-fA-F]{3,6}\b/ig, '')
+      .replace(/\(\s*#?["']?\s*style\s*=\s*["'][\s\S]*$/i, '')
+      .trim();
+    if (shorthandText && !/^\[/.test(shorthandText)) resolvedText = shorthandText;
+  }
+
+  if (!resolvedText) return { error: '매크로로 표시할 내용을 입력해주세요.' };
+
+  const bgMatch = body.match(/(?:background|background-color)\s*:\s*(#[0-9a-fA-F]{3}|#[0-9a-fA-F]{6})/i)
+    || body.match(/\bbg\s*=\s*(#[0-9a-fA-F]{3}|#[0-9a-fA-F]{6})\b/i);
+  const borderMatch = body.match(/border-left\s*:\s*(?:\d+(?:\.\d+)?px\s+)?(?:solid\s+)?(#[0-9a-fA-F]{3}|#[0-9a-fA-F]{6})/i)
+    || body.match(/\bborder\s*=\s*(#[0-9a-fA-F]{3}|#[0-9a-fA-F]{6})\b/i);
+
+  return {
+    text: resolvedText.slice(0, 4000),
+    macroStyle: normalizeChatMacroStyle({
+      backgroundColor: bgMatch?.[1] || '#f9f7f6',
+      borderColor: borderMatch?.[1] || '#8b93a1',
+    }),
+  };
+}
+
 async function sendChat() {
   const inp = document.getElementById('chat-input');
   if (!inp) return;
@@ -2316,6 +2379,44 @@ async function sendChat() {
       }
       inp.value = '';
       await sendMessage(St.myName, raw, 'desc');
+      return;
+    }
+
+    if (/^\/m(?:\s|$)/i.test(raw)) {
+      if (hasImages) {
+        showToast('채팅 매크로와 이미지는 함께 보낼 수 없어요.');
+        return;
+      }
+      if (_activeRightTab === 'casual') {
+        showToast('/m 채팅 매크로는 일반 채팅과 DM에서 사용할 수 있어요.');
+        return;
+      }
+
+      const macro = parseSafeChatMacro(raw);
+      if (macro?.cancelled) return;
+      if (!macro || macro.error) {
+        showToast(macro?.error || '매크로 형식을 확인해주세요.');
+        return;
+      }
+
+      inp.value = '';
+      if (St.speakAsJournalId) {
+        const j = loadJournals().find(x => x.id === St.speakAsJournalId)
+          || (_allJournals || []).find(x => x.id === St.speakAsJournalId);
+        if (j && typeof saBuildMessageContext === 'function') {
+          const context = saBuildMessageContext(j, macro.text) || {};
+          const { _standingCommand, ...safeContext } = context;
+          await sendMessage(
+            safeContext.name || j.title || St.myName,
+            macro.text,
+            'macro',
+            { ...safeContext, macroStyle: macro.macroStyle }
+          );
+          return;
+        }
+      }
+
+      await sendMessage(St.myName, macro.text, 'macro', { macroStyle: macro.macroStyle });
       return;
     }
 
@@ -3341,7 +3442,8 @@ function buildChatMsgElement(msg = {}) {
           whisperTo, whisperToName, whisperToJournal, nameColor, msgKey, channel,
           standingImg, tokenId, standingLabel,
           dialoguePortrait = '', showPortraitInDialogue = false,
-          imageWide = false, imageMeta = null, hideImageMeta = false } = msg;
+          imageWide = false, imageMeta = null, hideImageMeta = false,
+          macroStyle = null } = msg;
   const d = timestamp ? new Date(timestamp) : new Date();
   const time = `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
 
@@ -3356,6 +3458,30 @@ function buildChatMsgElement(msg = {}) {
     const div = document.createElement('div');
     div.className = 'chat-msg msg-dsec';
     div.innerHTML = `<div class="msg-body"><div class="msg-text">${fmtText(text)}</div></div>`;
+    addMsgActions(div, uid, msgKey, channel || 'chat', text, type);
+    return div;
+  }
+
+  if (type === 'macro') {
+    const r = St.avatarShape === 'circle' ? '50%' : '6px';
+    const sc = St.avatarShape === 'circle' ? 'shape-circle' : 'shape-rounded';
+    const finalAvatar = speakAsAvatar || (speakAsJournalId && typeof saGetAvatar === 'function' ? saGetAvatar(speakAsJournalId) : null);
+    const avatarHtml = finalAvatar
+      ? `<div class="msg-avatar ${sc} sa-avatar"><img src="${esc(finalAvatar)}" alt="" style="width:38px;height:38px;object-fit:cover;border-radius:${r};display:block"></div>`
+      : getAvatarHtml(name, uid || (name === St.myName ? St.myId : null));
+    const div = document.createElement('div');
+    div.className = 'chat-msg msg-macro';
+    div.dataset.avatarUid = uid || '';
+    div.dataset.avatarName = name || '';
+    const finalNameColor = nameColor || (speakAsJournalId && typeof saGetJournalNameColor === 'function' ? saGetJournalNameColor(speakAsJournalId) : '');
+    const nameStyle = finalNameColor ? ` style="color:${esc(finalNameColor)}"` : '';
+    const safeMacroStyle = normalizeChatMacroStyle(macroStyle || {});
+    div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name"${nameStyle}>${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-text chat-macro-box">${fmtText(text)}</div></div>`;
+    const box = div.querySelector('.chat-macro-box');
+    if (box) {
+      box.style.backgroundColor = safeMacroStyle.backgroundColor;
+      box.style.borderLeftColor = safeMacroStyle.borderColor;
+    }
     addMsgActions(div, uid, msgKey, channel || 'chat', text, type);
     return div;
   }
@@ -3507,7 +3633,8 @@ function appendChatMsg(msg = {}) {
     standingImg: msg.standingImg, tokenId: msg.tokenId, standingLabel: msg.standingLabel,
     dialoguePortrait: msg.dialoguePortrait, showPortraitInDialogue: msg.showPortraitInDialogue,
     imageWide: msg.imageWide, hideImageMeta: msg.hideImageMeta,
-    imageMeta: normalizeChatImageMeta(msg.imageMeta)
+    imageMeta: normalizeChatImageMeta(msg.imageMeta),
+    macroStyle: normalizeChatMacroStyle(msg.macroStyle || {})
   });
   bindMessageViewport(actualChannel);
   const div = buildChatMsgElement({ ...msg, msgKey: safeKey, channel: actualChannel });
@@ -3528,7 +3655,8 @@ function replaceChatMsg(msg = {}) {
     standingImg: msg.standingImg, tokenId: msg.tokenId, standingLabel: msg.standingLabel,
     dialoguePortrait: msg.dialoguePortrait, showPortraitInDialogue: msg.showPortraitInDialogue,
     imageWide: msg.imageWide, hideImageMeta: msg.hideImageMeta,
-    imageMeta: normalizeChatImageMeta(msg.imageMeta)
+    imageMeta: normalizeChatImageMeta(msg.imageMeta),
+    macroStyle: normalizeChatMacroStyle(msg.macroStyle || {})
   });
   bindMessageViewport(actualChannel);
   const div = buildChatMsgElement({ ...msg, msgKey: safeKey, channel: actualChannel });

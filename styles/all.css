@@ -2208,3 +2208,20 @@ html:not([data-theme="dark"]) .hd-pop-item:hover{
 
 .map-cutin-icon{width:20px;height:20px;display:block;background:var(--dim);opacity:.88;-webkit-mask:url("../assets/map-controls/icon-cutin.png") center/contain no-repeat;mask:url("../assets/map-controls/icon-cutin.png") center/contain no-repeat;transition:var(--t);}
 #map-cutin-trigger:hover .map-cutin-icon,#map-cutin-trigger:focus-visible .map-cutin-icon{background:var(--accent-text);opacity:1;}
+
+
+/* PHASE CHAT-MACRO-1 — safe /m macro result */
+.chat-msg.msg-macro .chat-macro-box{
+  box-sizing:border-box;
+  width:100%;
+  margin-top:2px;
+  padding:3px 7px;
+  border-left:7px solid #8b93a1;
+  border-radius:2px 7px 7px 2px;
+  color:#2b2d31;
+  font-size:13px;
+  line-height:1.55;
+  text-decoration:none;
+  overflow-wrap:anywhere;
+  white-space:normal;
+}
