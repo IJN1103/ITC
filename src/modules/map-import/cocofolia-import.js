@@ -1005,6 +1005,17 @@
         importedObjects.push(result.importedObject);
       });
 
+      // 장면별 markers는 동일한 marker id를 유지하면서 이미지/위치/크기가 달라질 수 있다.
+      // 최초 room markers 업로드 결과를 파일명 기준으로 재사용하고, 장면에만 등장하는
+      // 이미지 변형만 추가 업로드한다.
+      const sceneObjectAssetByName = new Map();
+      importedObjects.forEach((item) => {
+        const imageName = String(item?.imageName || '').trim();
+        const coverName = String(item?.coverImageName || '').trim();
+        if (imageName && item?.url) sceneObjectAssetByName.set(imageName, item.url);
+        if (coverName && item?.coverUrl) sceneObjectAssetByName.set(coverName, item.coverUrl);
+      });
+
       // ── 코코포리아 장면 배경 업로드 ──
       // 장면 카드는 기존 장면 시스템을 그대로 사용하며, 장면 배경만 추가 업로드한다.
       // 장면별 오브젝트 연결 정보가 없는 ZIP은 첫 장면만 공통 오브젝트를 포함한다.
@@ -1051,6 +1062,123 @@
           concurrency: 3,
         });
       }
+
+      // ── 코코포리아 장면별 marker 오브젝트 업로드/스냅샷 ──
+      // CCFOLIA의 scene.markers는 단순 공통 오브젝트 참조가 아니라 장면마다
+      // 같은 marker id의 이미지·좌표·크기·z값을 덮어쓴 실제 장면 상태다.
+      // 기존 구현은 room markers를 모든 장면에 복사해서 이 차이를 잃고 있었다.
+      const globalItems = validated.parsed?.entities?.items || {};
+      const sceneBlueprintsBySourceId = new Map();
+      const sceneMarkerImageNames = new Set();
+      const sceneMarkerCoverNames = new Set();
+
+      sortedSourceScenes.forEach((entry) => {
+        const raw = entry?.raw || {};
+        // markers 필드가 명시된 장면만 source snapshot으로 취급한다.
+        // 필드 자체가 없는 구형 ZIP은 기존 shared-object fallback을 유지한다.
+        if (!Object.prototype.hasOwnProperty.call(raw, 'markers')) return;
+        const blueprints = buildImportedMapObjects(globalItems, raw, importedCanvas);
+        sceneBlueprintsBySourceId.set(String(entry.id || ''), blueprints);
+        blueprints.forEach((blueprint) => {
+          const imageName = String(blueprint?.imageName || '').trim();
+          const coverName = String(blueprint?.coverImageName || '').trim();
+          if (imageName && !sceneObjectAssetByName.has(imageName)) sceneMarkerImageNames.add(imageName);
+          if (coverName && !sceneObjectAssetByName.has(coverName)) sceneMarkerCoverNames.add(coverName);
+        });
+      });
+
+      const missingSceneObjectAssets = Array.from(new Set([
+        ...sceneMarkerImageNames,
+        ...sceneMarkerCoverNames,
+      ]));
+
+      if (missingSceneObjectAssets.length > 0) {
+        setHint(`장면별 오브젝트 이미지 ${missingSceneObjectAssets.length}개를 업로드하는 중이에요…`);
+        const sceneObjectAssetStarted = diagnosticNow();
+        const sceneObjectAssetResults = await runWithConcurrency(
+          missingSceneObjectAssets,
+          3,
+          async (imageName, index) => {
+            const entry = zip.file(imageName);
+            if (!entry) return { imageName, url: '' };
+            const blob = await entry.async('blob');
+            const rawExt = String(imageName.split('.').pop() || 'png').toLowerCase();
+            const ext = rawExt === 'jpeg' ? 'jpg' : rawExt;
+            const mimeMap = {
+              svg: 'image/svg+xml',
+              jpg: 'image/jpeg',
+              jpeg: 'image/jpeg',
+              png: 'image/png',
+              webp: 'image/webp',
+              gif: 'image/gif',
+            };
+            const uploadBlob = blob.type
+              ? blob
+              : new Blob([blob], { type: mimeMap[rawExt] || 'image/png' });
+            const url = await uploadMapLayerBlob(
+              uploadBlob,
+              roomCode,
+              `scene-obj-${index + 1}-${Date.now()}.${ext}`
+            ) || '';
+            return { imageName, url };
+          },
+          (completed, total) => {
+            setHint(`장면별 오브젝트 이미지를 업로드하는 중이에요… (${completed}/${total})`);
+          }
+        );
+        sceneObjectAssetResults.forEach((result) => {
+          if (result?.imageName && result?.url) sceneObjectAssetByName.set(result.imageName, result.url);
+        });
+        markMapImportStage(applyRun, 'scene-object-image-upload-batch', sceneObjectAssetStarted, {
+          requestedCount: missingSceneObjectAssets.length,
+          uploadedCount: sceneObjectAssetResults.filter((result) => !!result?.url).length,
+          concurrency: 3,
+        });
+      }
+
+      // source marker id -> ITC panel token id를 장면 전체에서 고정한다.
+      // 그래야 같은 marker가 장면 전환 시 삭제/재생성되지 않고 이미지·좌표만 교체된다.
+      const sceneTokenIdBySourceId = new Map();
+      importedPanelTokens.forEach((token) => {
+        const sourceId = String(token?.importedMapObjectMeta?.sourceItemId || '').trim();
+        if (sourceId && token?.id) sceneTokenIdBySourceId.set(sourceId, String(token.id));
+      });
+
+      const sceneSnapshotsBySourceId = new Map();
+      sortedSourceScenes.forEach((entry) => {
+        const sourceSceneId = String(entry?.id || '');
+        if (!sceneBlueprintsBySourceId.has(sourceSceneId)) return;
+        const blueprints = sceneBlueprintsBySourceId.get(sourceSceneId) || [];
+        const sceneObjects = [];
+        const sceneTokens = {};
+
+        blueprints.forEach((blueprint, index) => {
+          const imageName = String(blueprint?.imageName || '').trim();
+          const coverName = String(blueprint?.coverImageName || '').trim();
+          const objectUrl = String(sceneObjectAssetByName.get(imageName) || '').trim();
+          if (!imageName || !objectUrl) return;
+          const coverUrl = coverName ? String(sceneObjectAssetByName.get(coverName) || '').trim() : '';
+          const objectWithUrl = { ...blueprint, url: objectUrl, coverUrl };
+          const panelToken = buildImportedPanelToken(objectWithUrl, roomCode, index);
+          const sourceId = String(panelToken?.importedMapObjectMeta?.sourceItemId || blueprint?.id || '').trim();
+          const stableTokenId = sceneTokenIdBySourceId.get(sourceId) || panelToken.id;
+          if (sourceId && stableTokenId) sceneTokenIdBySourceId.set(sourceId, stableTokenId);
+          panelToken.id = stableTokenId;
+          sceneTokens[stableTokenId] = panelToken;
+          sceneObjects.push({
+            ...objectWithUrl,
+            panelTokenId: stableTokenId,
+            targetType: 'panel-token',
+            previewUrl: objectUrl,
+          });
+        });
+
+        sceneSnapshotsBySourceId.set(sourceSceneId, {
+          objects: sceneObjects,
+          tokens: sceneTokens,
+          sourceMarkerCount: Object.keys(entry?.raw?.markers || {}).length,
+        });
+      });
 
       await clearPreviousImportedPanelTokens(roomCode, window.St?.mapState?.objects || []);
       await saveImportedPanelTokens(roomCode, importedPanelTokens);
@@ -1277,6 +1405,7 @@
           firstMapState: nextMapState,
           firstLayerState: nextLayerState,
           firstTokens: sceneTokenSnapshot,
+          sceneSnapshotsBySourceId,
           now: Date.now(),
         });
         if (sceneBuild.records.length > 0) {
@@ -1327,6 +1456,7 @@
           objectUploadsRequested: objectBlueprints.length,
           objectUploadsSucceeded: importedObjects.length,
           sceneBackgroundUploads: Math.max(0, sceneBackgroundByName.size - (uploadedUrl ? 1 : 0)),
+          sceneObjectAssetUploads: missingSceneObjectAssets.length,
           scenesSaved: importedSceneCount,
           cutinsDetected: cutinCount,
         },

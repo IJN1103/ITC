@@ -87,9 +87,10 @@
     const extensionNeeds = new Set();
     scenes.forEach((scene) => scene.extensionFields.forEach((field) => extensionNeeds.add(field)));
 
-    const objectBindingStatus = linkedItems.length > 0
-      ? '장면별 오브젝트 연결 필드 감지'
-      : '장면별 오브젝트 소속 정보 없음';
+    const hasSceneMarkers = scenes.some((scene) => scene.markerCount > 0);
+    const objectBindingStatus = hasSceneMarkers
+      ? '장면별 markers 스냅샷 감지'
+      : (linkedItems.length > 0 ? '장면별 오브젝트 연결 필드 감지' : '장면별 오브젝트 소속 정보 없음');
     const cutinBindingStatus = linkedEffects.length > 0
       ? '장면별 컷인 연결 필드 감지'
       : '장면별 컷인 연결 정보 없음';
@@ -110,9 +111,9 @@
       objectBindingStatus,
       cutinBindingStatus,
       canCreateSceneCards: scenes.length > 0,
-      canBindPerSceneObjects: linkedItems.length > 0 || snapshots.length > 0 || savedatas.length > 0,
+      canBindPerSceneObjects: hasSceneMarkers || linkedItems.length > 0 || snapshots.length > 0 || savedatas.length > 0,
       canBindPerSceneCutins: linkedEffects.length > 0,
-      requiresSharedObjectFallback: scenes.length > 0 && linkedItems.length === 0 && snapshots.length === 0 && savedatas.length === 0,
+      requiresSharedObjectFallback: scenes.length > 0 && !hasSceneMarkers && linkedItems.length === 0 && snapshots.length === 0 && savedatas.length === 0,
       fallbackPolicy: {
         id: FALLBACK_POLICY_ID,
         label: FALLBACK_POLICY_LABEL,

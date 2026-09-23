@@ -81,6 +81,30 @@
     return out;
   }
 
+  function getSceneSnapshot(store, sourceSceneId) {
+    if (!store) return null;
+    if (typeof store.get === 'function') return store.get(String(sourceSceneId || '')) || null;
+    return asObject(store)[String(sourceSceneId || '')] || null;
+  }
+
+  function buildSceneLayerState(background, foreground, objects) {
+    const ids = [];
+    if (background?.url) ids.push('background');
+    const negative = [];
+    const nonNegative = [];
+    (Array.isArray(objects) ? objects : []).forEach(function (item, index) {
+      const id = String(item?.layerId || `object:${item?.id || index + 1}`);
+      (Number(item?.sourceZ || 0) < 0 ? negative : nonNegative).push(id);
+    });
+    ids.push(...negative);
+    if (foreground?.url) ids.push('foreground');
+    ids.push(...nonNegative);
+    return {
+      order: ids,
+      visible: Object.fromEntries(ids.map(function (id) { return [id, true]; })),
+    };
+  }
+
   function buildSceneRecords(options) {
     const opts = options || {};
     const scenes = sortSourceScenes(opts.rawScenes);
@@ -97,6 +121,7 @@
     const firstMapState = asObject(opts.firstMapState);
     const firstLayerState = opts.firstLayerState ? deepCopy(opts.firstLayerState) : null;
     const firstTokens = mapTokensById(opts.firstTokens);
+    const sceneSnapshotsBySourceId = opts.sceneSnapshotsBySourceId || null;
     const now = Number(opts.now) || Date.now();
 
     const records = scenes.map(function (entry, index) {
@@ -114,6 +139,19 @@
         importedAt: now,
       } : (index === 0 && firstMapState.background ? deepCopy(firstMapState.background) : null);
 
+      const sourceSnapshot = getSceneSnapshot(sceneSnapshotsBySourceId, entry.id);
+      const hasSourceMarkerSnapshot = !!sourceSnapshot;
+      const sceneObjects = hasSourceMarkerSnapshot
+        ? (Array.isArray(sourceSnapshot.objects) ? deepCopy(sourceSnapshot.objects) : [])
+        : (Array.isArray(firstMapState.objects) ? deepCopy(firstMapState.objects) : []);
+      const sceneTokens = hasSourceMarkerSnapshot
+        ? deepCopy(asObject(sourceSnapshot.tokens))
+        : deepCopy(firstTokens);
+      const foreground = index === 0 && firstMapState.foreground ? deepCopy(firstMapState.foreground) : null;
+      const layerState = hasSourceMarkerSnapshot
+        ? buildSceneLayerState(background, foreground, sceneObjects)
+        : (firstLayerState ? deepCopy(firstLayerState) : buildSceneLayerState(background, foreground, sceneObjects));
+
       const record = {
         id: sceneId,
         name,
@@ -121,18 +159,19 @@
         createdAt: now,
         updatedAt: now,
         background,
-        foreground: null,
-        objects: Array.isArray(firstMapState.objects) ? deepCopy(firstMapState.objects) : [],
-        layerState: firstLayerState ? deepCopy(firstLayerState) : null,
-        tokens: deepCopy(firstTokens),
-        tokensEmpty: Object.keys(firstTokens).length === 0,
+        foreground,
+        objects: sceneObjects,
+        layerState,
+        tokens: sceneTokens,
+        tokensEmpty: Object.keys(sceneTokens || {}).length === 0,
         importedFrom: 'cocofolia',
         importSourceName: fileName,
         importKey,
         sourceSceneId: entry.id,
         sourceSceneOrder: entry.order,
         sourceSceneName: text(raw.name),
-        cocofoliaScenePolicy: 'shared-objects-all-scenes',
+        sourceSceneMarkerCount: Number(sourceSnapshot?.sourceMarkerCount || 0),
+        cocofoliaScenePolicy: hasSourceMarkerSnapshot ? 'source-markers-per-scene' : 'shared-objects-fallback',
       };
 
       // 공통 오브젝트가 모든 장면에서 동일한 월드 좌표로 보이도록
@@ -143,9 +182,6 @@
       }
       if (Number(firstMapState.importedFieldWidth || 0) > 0) record.importedFieldWidth = Number(firstMapState.importedFieldWidth);
       if (Number(firstMapState.importedFieldHeight || 0) > 0) record.importedFieldHeight = Number(firstMapState.importedFieldHeight);
-
-      // 전경은 기존 동작을 바꾸지 않기 위해 첫 장면에만 유지한다.
-      if (index === 0 && firstMapState.foreground) record.foreground = deepCopy(firstMapState.foreground);
 
       // 공통 캔버스 메타데이터가 없는 예외 상황에서만 장면 고유 배경 크기를 보조값으로 사용한다.
       if (!record.importedCanvas) {
