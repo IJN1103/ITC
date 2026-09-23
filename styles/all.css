@@ -230,19 +230,23 @@ to{opacity:1;transform:translateY(0);}
 .map-solid-color-btn:hover .map-backdrop-control-icon,.map-solid-color-btn:focus-visible .map-backdrop-control-icon,.map-solid-color-btn[aria-expanded="true"] .map-backdrop-control-icon{opacity:1;filter:invert(35%) sepia(80%) saturate(800%) hue-rotate(210deg) brightness(95%) contrast(95%);}
 
 /* 스탠딩 퀵뷰와 동일한 map-control-tooltip + map-quickview-tooltip 양식을 사용한다. */
-.map-solid-color-btn .map-solid-color-tooltip{
-  right:auto;
-  left:50%;
-  top:calc(100% + 8px);
-  transform:translate(-50%,-4px);
+.map-solid-color-control > .map-solid-color-btn .map-solid-color-tooltip{
+  right:auto!important;
+  left:50%!important;
+  top:calc(100% + 8px)!important;
+  bottom:auto!important;
+  transform:translate(-50%,-4px)!important;
   z-index:90;
 }
-.map-solid-color-btn:hover .map-solid-color-tooltip,
-.map-solid-color-btn:focus-visible .map-solid-color-tooltip{
+.map-solid-color-control > .map-solid-color-btn:hover .map-solid-color-tooltip,
+.map-solid-color-control > .map-solid-color-btn:focus-visible .map-solid-color-tooltip{
   opacity:1;
-  transform:translate(-50%,0);
+  transform:translate(-50%,0)!important;
 }
-.map-solid-color-btn[aria-expanded="true"] .map-solid-color-tooltip{opacity:0;pointer-events:none;}
+.map-solid-color-control > .map-solid-color-btn[aria-expanded="true"] .map-solid-color-tooltip{
+  opacity:0;
+  pointer-events:none;
+}
 
 .map-backdrop-editor{position:absolute;left:48px;top:0;width:292px;padding:14px;border:1px solid var(--border2);border-radius:14px;background:var(--s1);color:var(--text);box-shadow:0 16px 40px rgba(0,0,0,.28);z-index:50;}
 .map-backdrop-editor-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding-bottom:11px;border-bottom:1px solid var(--border);}
