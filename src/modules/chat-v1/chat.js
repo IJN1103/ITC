@@ -995,6 +995,8 @@ function coerceHistoryRecordForStore(record = {}) {
     hideImageMeta: !!record.hideImageMeta,
     imageMeta: normalizeChatImageMeta(record.imageMeta),
     macroStyle: normalizeChatMacroStyle(record.macroStyle || {}),
+    macroVersion: Number(record.macroVersion || 1) || 1,
+    macroSegments: Array.isArray(record.macroSegments) ? record.macroSegments : null,
   };
 }
 
@@ -1065,6 +1067,8 @@ function normalizeStoredRecordForSnapshot(channel = 'chat', key = '', record = {
     hideImageMeta: !!record.hideImageMeta,
     imageMeta: normalizeChatImageMeta(record.imageMeta),
     macroStyle: normalizeChatMacroStyle(record.macroStyle || {}),
+    macroVersion: Number(record.macroVersion || 1) || 1,
+    macroSegments: Array.isArray(record.macroSegments) ? record.macroSegments : null,
     channel: safeChannel,
   };
 }
@@ -2295,44 +2299,262 @@ function normalizeChatMacroStyle(style = {}) {
   return { backgroundColor, borderColor };
 }
 
-function parseSafeChatMacro(raw = '') {
+const CHAT_MACRO_V2_ALLOWED_COLOR_NAMES = new Set(['white', 'black', 'transparent']);
+
+function normalizeMacroV2Source(value = '') {
+  return String(value || '')
+    .replace(/\u00a0/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&#41;|&#x29;/gi, ')')
+    .replace(/&#40;|&#x28;/gi, '(')
+    .replace(/\\:/g, ':')
+    .replace(/\*\*(#[0-9a-fA-F]{3,8})\*\*/g, '$1')
+    .replace(/[“”]/g, '"')
+    .replace(/[‘’]/g, "'");
+}
+
+function sanitizeMacroV2Color(value = '') {
+  const raw = String(value || '').trim().toLowerCase();
+  const hex = normalizeChatMacroHex(raw, '');
+  if (hex) return hex;
+  return CHAT_MACRO_V2_ALLOWED_COLOR_NAMES.has(raw) ? raw : '';
+}
+
+function macroV2ClampPx(value, min, max) {
+  const match = String(value || '').trim().match(/^(-?\d+(?:\.\d+)?)px$/i);
+  if (!match) return '';
+  const n = Number(match[1]);
+  if (!Number.isFinite(n) || n < min || n > max) return '';
+  return `${Number(n.toFixed(2))}px`;
+}
+
+function macroV2SplitDeclarations(styleText = '') {
+  const source = String(styleText || '');
+  const out = [];
+  let buffer = '';
+  let depth = 0;
+  for (let i = 0; i < source.length; i += 1) {
+    const ch = source[i];
+    if (ch === '(') depth += 1;
+    else if (ch === ')' && depth > 0) depth -= 1;
+    if (ch === ';' && depth === 0) {
+      if (buffer.trim()) out.push(buffer.trim());
+      buffer = '';
+    } else {
+      buffer += ch;
+    }
+  }
+  if (buffer.trim()) out.push(buffer.trim());
+  return out;
+}
+
+function sanitizeMacroV2BoxValues(value = '', min = 0, max = 50) {
+  const parts = String(value || '').trim().split(/\s+/).filter(Boolean);
+  if (!parts.length || parts.length > 4) return '';
+  const safe = parts.map(part => macroV2ClampPx(part, min, max));
+  return safe.every(Boolean) ? safe.join(' ') : '';
+}
+
+function sanitizeMacroV2Gradient(value = '') {
+  const raw = String(value || '').trim().replace(/!important\s*$/i, '').trim();
+  const match = raw.match(/^linear-gradient\((.*)\)$/i);
+  if (!match) return '';
+  const inner = match[1].trim();
+  if (!inner || /url\s*\(|var\s*\(|expression\s*\(|javascript:/i.test(inner)) return '';
+  const parts = inner.split(',').map(v => v.trim()).filter(Boolean);
+  if (parts.length < 2 || parts.length > 5) return '';
+  let idx = 0;
+  const safe = [];
+  if (/^-?\d+(?:\.\d+)?deg$/i.test(parts[0])) {
+    const angle = Number(parts[0].replace(/deg$/i, ''));
+    if (!Number.isFinite(angle) || angle < -360 || angle > 360) return '';
+    safe.push(`${Number(angle.toFixed(2))}deg`);
+    idx = 1;
+  }
+  for (; idx < parts.length; idx += 1) {
+    const color = sanitizeMacroV2Color(parts[idx]);
+    if (!color) return '';
+    safe.push(color);
+  }
+  if (safe.length < 2) return '';
+  return `linear-gradient(${safe.join(', ')})`;
+}
+
+function sanitizeMacroV2Border(value = '') {
+  const raw = String(value || '').trim().replace(/!important\s*$/i, '').trim();
+  const match = raw.match(/^(\d+(?:\.\d+)?)px\s+(solid|double|dashed|dotted)\s+(.+)$/i);
+  if (!match) return '';
+  const width = Number(match[1]);
+  const color = sanitizeMacroV2Color(match[3]);
+  if (!Number.isFinite(width) || width < 0 || width > 12 || !color) return '';
+  return `${Number(width.toFixed(2))}px ${match[2].toLowerCase()} ${color}`;
+}
+
+function sanitizeMacroV2TextShadow(value = '') {
+  const raw = String(value || '').trim().replace(/!important\s*$/i, '').trim();
+  const match = raw.match(/^(-?\d+(?:\.\d+)?)px\s+(-?\d+(?:\.\d+)?)px\s+(\d+(?:\.\d+)?)px\s+(.+)$/i);
+  if (!match) return '';
+  const x = Number(match[1]);
+  const y = Number(match[2]);
+  const blur = Number(match[3]);
+  const color = sanitizeMacroV2Color(match[4]);
+  if (![x, y, blur].every(Number.isFinite) || Math.abs(x) > 20 || Math.abs(y) > 20 || blur > 30 || !color) return '';
+  return `${Number(x.toFixed(2))}px ${Number(y.toFixed(2))}px ${Number(blur.toFixed(2))}px ${color}`;
+}
+
+function sanitizeMacroV2Style(styleText = '') {
+  const out = {};
+  macroV2SplitDeclarations(normalizeMacroV2Source(styleText)).forEach(decl => {
+    const split = decl.indexOf(':');
+    if (split <= 0) return;
+    const prop = decl.slice(0, split).trim().toLowerCase();
+    const rawValue = decl.slice(split + 1).trim().replace(/!important\s*$/i, '').trim();
+    let safe = '';
+    if (prop === 'color' || prop === 'background' || prop === 'background-color') {
+      safe = sanitizeMacroV2Color(rawValue);
+      if (safe) out[prop === 'background' ? 'backgroundColor' : prop.replace(/-([a-z])/g, (_, c) => c.toUpperCase())] = safe;
+      return;
+    }
+    if (prop === 'background-image') {
+      safe = sanitizeMacroV2Gradient(rawValue);
+      if (safe) out.backgroundImage = safe;
+      return;
+    }
+    if (prop === 'font-size') safe = macroV2ClampPx(rawValue, 8, 40);
+    else if (prop === 'letter-spacing') safe = macroV2ClampPx(rawValue, -10, 20);
+    else if (prop === 'border-radius') safe = macroV2ClampPx(rawValue, 0, 100);
+    else if (['margin-left','margin-right','margin-top','margin-bottom'].includes(prop)) safe = macroV2ClampPx(rawValue, -50, 50);
+    else if (prop === 'padding') safe = sanitizeMacroV2BoxValues(rawValue, 0, 50);
+    else if (prop === 'margin') safe = sanitizeMacroV2BoxValues(rawValue, -50, 50);
+    else if (['border','border-left','border-right','border-top','border-bottom'].includes(prop)) safe = sanitizeMacroV2Border(rawValue);
+    else if (prop === 'text-shadow') safe = sanitizeMacroV2TextShadow(rawValue);
+    else if (prop === 'text-align' && /^(left|right|center|justify)$/i.test(rawValue)) safe = rawValue.toLowerCase();
+    else if (prop === 'display' && /^(inline|inline-block|block)$/i.test(rawValue)) safe = rawValue.toLowerCase();
+    else if (prop === 'font-style' && /^(normal|italic|oblique)$/i.test(rawValue)) safe = rawValue.toLowerCase();
+    else if (prop === 'font-weight' && /^(normal|bold|[1-9]00)$/i.test(rawValue)) safe = rawValue.toLowerCase();
+    else if (prop === 'text-decoration' && /^(none|underline|line-through)$/i.test(rawValue)) safe = rawValue.toLowerCase();
+    else if (prop === 'line-height' && /^(?:\d+(?:\.\d+)?|\d+(?:\.\d+)?px)$/i.test(rawValue)) {
+      const n = Number(rawValue.replace(/px$/i, ''));
+      if (Number.isFinite(n) && n >= 0.5 && n <= 60) safe = rawValue.toLowerCase();
+    }
+    if (!safe) return;
+    const key = prop.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+    out[key] = safe;
+  });
+  return out;
+}
+
+async function resolveMacroV2Queries(source = '') {
+  let text = String(source || '');
+  const pattern = /\?\{([^|}]+)(?:\|([^}]*))?\}/;
+  let guard = 0;
+  while (guard < 20) {
+    const match = text.match(pattern);
+    if (!match) break;
+    const label = String(match[1] || '할말').trim() || '할말';
+    const defaultValue = String(match[2] || '');
+    const answer = window.prompt(label, defaultValue);
+    if (answer === null) return { cancelled: true, text: '' };
+    text = text.slice(0, match.index) + String(answer) + text.slice(match.index + match[0].length);
+    guard += 1;
+  }
+  return { cancelled: false, text };
+}
+
+function findMacroV2LinkEnd(source, openParenIndex) {
+  let depth = 0;
+  let quote = '';
+  for (let i = openParenIndex; i < source.length; i += 1) {
+    const ch = source[i];
+    if (quote) {
+      if (ch === quote && source[i - 1] !== '\\') quote = '';
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      continue;
+    }
+    if (ch === '(') depth += 1;
+    else if (ch === ')') {
+      depth -= 1;
+      if (depth === 0) return i;
+    }
+  }
+  return -1;
+}
+
+function parseMacroV2StyledSegmentsOnly(source = '') {
+  const input = normalizeMacroV2Source(source);
+  const segments = [];
+  let cursor = 0;
+  while (cursor < input.length) {
+    const open = input.indexOf('[', cursor);
+    if (open < 0) {
+      if (input.slice(cursor).trim()) return { error: 'CHAT-MACRO-2A에서는 스타일 블록 사이의 일반 텍스트 혼용은 아직 지원하지 않아요.' };
+      break;
+    }
+    if (input.slice(cursor, open).trim()) return { error: 'CHAT-MACRO-2A에서는 스타일 블록 사이의 일반 텍스트 혼용은 아직 지원하지 않아요.' };
+    const close = input.indexOf('](', open + 1);
+    if (close < 0) return { error: '매크로 스타일 블록 형식을 확인해주세요.' };
+    const linkEnd = findMacroV2LinkEnd(input, close + 1);
+    if (linkEnd < 0) return { error: '매크로 스타일 블록의 닫는 괄호를 확인해주세요.' };
+    const displayText = input.slice(open + 1, close);
+    const linkBody = input.slice(close + 2, linkEnd).trim();
+    const styleMatch = linkBody.match(/style\s*=\s*(["']?)([\s\S]*)$/i);
+    if (!styleMatch) return { error: '매크로 블록에서 style 속성을 찾지 못했어요.' };
+    let styleText = String(styleMatch[2] || '').trim();
+    const q = styleMatch[1] || '';
+    if (q && styleText.endsWith(q)) styleText = styleText.slice(0, -1).trim();
+    const style = sanitizeMacroV2Style(styleText);
+    segments.push({ type: 'styled', text: displayText.slice(0, 4000), style });
+    cursor = linkEnd + 1;
+  }
+  if (!segments.length) return { error: '해석할 매크로 스타일 블록이 없어요.' };
+  return { segments };
+}
+
+async function parseSafeChatMacro(raw = '') {
   const source = String(raw || '').trim();
   if (!/^\/m(?:\s|$)/i.test(source)) return null;
-
   const body = source.replace(/^\/m(?:\s+|$)/i, '').trim();
   if (!body) return { error: '매크로 내용을 입력해주세요.' };
-
-  let resolvedText = '';
-  const queryMatch = body.match(/\[\?\{([^|}\]]+)(?:\|([^}]*))?\}\]/);
-  if (queryMatch) {
-    const label = String(queryMatch[1] || '할말').trim() || '할말';
-    const defaultValue = String(queryMatch[2] || '');
-    const answer = window.prompt(label, defaultValue);
-    if (answer === null) return { cancelled: true };
-    resolvedText = String(answer).trim();
-  } else {
-    const literalMatch = body.match(/\[([^\]]+)\]/);
-    if (literalMatch) resolvedText = String(literalMatch[1] || '').trim();
+  if (/^\/desc(?:\s|$)/i.test(body)) {
+    return { error: '/m /desc 혼용은 다음 단계 CHAT-MACRO-2B에서 적용할 예정이에요.' };
   }
 
+  const resolved = await resolveMacroV2Queries(normalizeMacroV2Source(body));
+  if (resolved.cancelled) return { cancelled: true };
+
+  // 2A: 새 V2 파서는 스타일 블록으로만 구성된 /m 메시지를 우선 지원한다.
+  if (/\]\s*\(/.test(resolved.text) && /style\s*=/i.test(resolved.text)) {
+    const parsed = parseMacroV2StyledSegmentsOnly(resolved.text);
+    if (parsed.error) return parsed;
+    return {
+      text: parsed.segments.map(seg => seg.text).join(' '),
+      macroVersion: 2,
+      macroSegments: parsed.segments,
+    };
+  }
+
+  // 기존 CHAT-MACRO-1 단축 문법은 회귀 방지를 위해 그대로 fallback한다.
+  let resolvedText = '';
+  const literalMatch = resolved.text.match(/\[([^\]]+)\]/);
+  if (literalMatch) resolvedText = String(literalMatch[1] || '').trim();
   if (!resolvedText) {
-    const shorthandText = body
+    const shorthandText = resolved.text
       .replace(/\bbg\s*=\s*#[0-9a-fA-F]{3,6}\b/ig, '')
       .replace(/\bborder\s*=\s*#[0-9a-fA-F]{3,6}\b/ig, '')
-      .replace(/\(\s*#?["']?\s*style\s*=\s*["'][\s\S]*$/i, '')
       .trim();
     if (shorthandText && !/^\[/.test(shorthandText)) resolvedText = shorthandText;
   }
-
   if (!resolvedText) return { error: '매크로로 표시할 내용을 입력해주세요.' };
-
-  const bgMatch = body.match(/(?:background|background-color)\s*:\s*\*{0,2}(#[0-9a-fA-F]{6}|#[0-9a-fA-F]{3})\*{0,2}/i)
-    || body.match(/\bbg\s*=\s*\*{0,2}(#[0-9a-fA-F]{6}|#[0-9a-fA-F]{3})\*{0,2}\b/i);
-  const borderMatch = body.match(/border-left\s*:\s*(?:\d+(?:\.\d+)?px\s+)?(?:solid\s+)?\*{0,2}(#[0-9a-fA-F]{6}|#[0-9a-fA-F]{3})\*{0,2}/i)
-    || body.match(/\bborder\s*=\s*\*{0,2}(#[0-9a-fA-F]{6}|#[0-9a-fA-F]{3})\*{0,2}\b/i);
-
+  const bgMatch = resolved.text.match(/(?:background|background-color)\s*:\s*\*{0,2}(#[0-9a-fA-F]{6}|#[0-9a-fA-F]{3})\*{0,2}/i)
+    || resolved.text.match(/\bbg\s*=\s*\*{0,2}(#[0-9a-fA-F]{6}|#[0-9a-fA-F]{3})\*{0,2}\b/i);
+  const borderMatch = resolved.text.match(/border-left\s*:\s*(?:\d+(?:\.\d+)?px\s+)?(?:solid\s+)?\*{0,2}(#[0-9a-fA-F]{6}|#[0-9a-fA-F]{3})\*{0,2}/i)
+    || resolved.text.match(/\bborder\s*=\s*\*{0,2}(#[0-9a-fA-F]{6}|#[0-9a-fA-F]{3})\*{0,2}\b/i);
   return {
     text: resolvedText.slice(0, 4000),
+    macroVersion: 1,
     macroStyle: normalizeChatMacroStyle({
       backgroundColor: bgMatch?.[1] || '#f9f7f6',
       borderColor: borderMatch?.[1] || '#8b93a1',
@@ -2392,7 +2614,7 @@ async function sendChat() {
         return;
       }
 
-      const macro = parseSafeChatMacro(raw);
+      const macro = await parseSafeChatMacro(raw);
       if (macro?.cancelled) return;
       if (!macro || macro.error) {
         showToast(macro?.error || '매크로 형식을 확인해주세요.');
@@ -2410,13 +2632,13 @@ async function sendChat() {
             safeContext.name || j.title || St.myName,
             macro.text,
             'macro',
-            { ...safeContext, macroStyle: macro.macroStyle }
+            { ...safeContext, macroStyle: macro.macroStyle, macroVersion: macro.macroVersion || 1, macroSegments: macro.macroSegments || null }
           );
           return;
         }
       }
 
-      await sendMessage(St.myName, macro.text, 'macro', { macroStyle: macro.macroStyle });
+      await sendMessage(St.myName, macro.text, 'macro', { macroStyle: macro.macroStyle, macroVersion: macro.macroVersion || 1, macroSegments: macro.macroSegments || null });
       return;
     }
 
@@ -2574,7 +2796,7 @@ function sendMessage(name, text, type = 'normal', extra = null) {
         throw err;
       });
   }
-  appendChatMsg({ ...msg, timestamp: msg.time, nameColor: msg.nameColor || null, channel: 'chat', imageWide: !!msg.imageWide, imageMeta: msg.imageMeta || null, hideImageMeta: !!msg.hideImageMeta });
+  appendChatMsg({ ...msg, timestamp: msg.time, nameColor: msg.nameColor || null, channel: 'chat', imageWide: !!msg.imageWide, imageMeta: msg.imageMeta || null, hideImageMeta: !!msg.hideImageMeta, macroVersion: msg.macroVersion || 1, macroSegments: msg.macroSegments || null });
   recordChatDiagnosticEvent('chat-write-succeeded', { operation: 'send-local', channel: 'chat', messageType: String(type || 'normal') });
   return Promise.resolve();
 }
@@ -3443,7 +3665,7 @@ function buildChatMsgElement(msg = {}) {
           standingImg, tokenId, standingLabel,
           dialoguePortrait = '', showPortraitInDialogue = false,
           imageWide = false, imageMeta = null, hideImageMeta = false,
-          macroStyle = null } = msg;
+          macroStyle = null, macroVersion = 1, macroSegments = null } = msg;
   const d = timestamp ? new Date(timestamp) : new Date();
   const time = `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
 
@@ -3458,6 +3680,36 @@ function buildChatMsgElement(msg = {}) {
     const div = document.createElement('div');
     div.className = 'chat-msg msg-dsec';
     div.innerHTML = `<div class="msg-body"><div class="msg-text">${fmtText(text)}</div></div>`;
+    addMsgActions(div, uid, msgKey, channel || 'chat', text, type);
+    return div;
+  }
+
+  if (type === 'macro' && Number(macroVersion || 1) >= 2 && Array.isArray(macroSegments) && macroSegments.length) {
+    const r = St.avatarShape === 'circle' ? '50%' : '6px';
+    const sc = St.avatarShape === 'circle' ? 'shape-circle' : 'shape-rounded';
+    const finalAvatar = speakAsAvatar || (speakAsJournalId && typeof saGetAvatar === 'function' ? saGetAvatar(speakAsJournalId) : null);
+    const avatarHtml = finalAvatar
+      ? `<div class="msg-avatar ${sc} sa-avatar"><img src="${esc(finalAvatar)}" alt="" style="width:38px;height:38px;object-fit:cover;border-radius:${r};display:block"></div>`
+      : getAvatarHtml(name, uid || (name === St.myName ? St.myId : null));
+    const div = document.createElement('div');
+    div.className = 'chat-msg msg-macro msg-macro-v2';
+    div.dataset.avatarUid = uid || '';
+    div.dataset.avatarName = name || '';
+    const finalNameColor = nameColor || (speakAsJournalId && typeof saGetJournalNameColor === 'function' ? saGetJournalNameColor(speakAsJournalId) : '');
+    const nameStyle = finalNameColor ? ` style="color:${esc(finalNameColor)}"` : '';
+    div.innerHTML = `${avatarHtml}<div class="msg-body"><div class="msg-meta"><span class="msg-name"${nameStyle}>${esc(name)}</span><span class="msg-time">${time}</span></div><div class="msg-text chat-macro-v2-content"></div></div>`;
+    const content = div.querySelector('.chat-macro-v2-content');
+    macroSegments.slice(0, 64).forEach(segment => {
+      if (!segment || segment.type !== 'styled') return;
+      const span = document.createElement('span');
+      span.className = 'chat-macro-v2-segment';
+      span.textContent = String(segment.text || '').slice(0, 4000);
+      const safeStyle = sanitizeMacroV2Style(Object.entries(segment.style || {}).map(([key, value]) => `${key.replace(/[A-Z]/g, m => '-' + m.toLowerCase())}:${value}`).join(';'));
+      Object.entries(safeStyle).forEach(([key, value]) => {
+        try { span.style[key] = value; } catch (e) {}
+      });
+      content?.appendChild(span);
+    });
     addMsgActions(div, uid, msgKey, channel || 'chat', text, type);
     return div;
   }
@@ -3634,7 +3886,9 @@ function appendChatMsg(msg = {}) {
     dialoguePortrait: msg.dialoguePortrait, showPortraitInDialogue: msg.showPortraitInDialogue,
     imageWide: msg.imageWide, hideImageMeta: msg.hideImageMeta,
     imageMeta: normalizeChatImageMeta(msg.imageMeta),
-    macroStyle: normalizeChatMacroStyle(msg.macroStyle || {})
+    macroStyle: normalizeChatMacroStyle(msg.macroStyle || {}),
+    macroVersion: Number(msg.macroVersion || 1) || 1,
+    macroSegments: Array.isArray(msg.macroSegments) ? msg.macroSegments : null
   });
   bindMessageViewport(actualChannel);
   const div = buildChatMsgElement({ ...msg, msgKey: safeKey, channel: actualChannel });
@@ -3656,7 +3910,9 @@ function replaceChatMsg(msg = {}) {
     dialoguePortrait: msg.dialoguePortrait, showPortraitInDialogue: msg.showPortraitInDialogue,
     imageWide: msg.imageWide, hideImageMeta: msg.hideImageMeta,
     imageMeta: normalizeChatImageMeta(msg.imageMeta),
-    macroStyle: normalizeChatMacroStyle(msg.macroStyle || {})
+    macroStyle: normalizeChatMacroStyle(msg.macroStyle || {}),
+    macroVersion: Number(msg.macroVersion || 1) || 1,
+    macroSegments: Array.isArray(msg.macroSegments) ? msg.macroSegments : null
   });
   bindMessageViewport(actualChannel);
   const div = buildChatMsgElement({ ...msg, msgKey: safeKey, channel: actualChannel });

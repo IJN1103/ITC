@@ -2225,3 +2225,18 @@ html:not([data-theme="dark"]) .hd-pop-item:hover{
   overflow-wrap:anywhere;
   white-space:normal;
 }
+
+
+/* PHASE CHAT-MACRO-2A — isolated V2 main-chat renderer */
+.chat-msg.msg-macro-v2 .chat-macro-v2-content{
+  display:block;
+  white-space:pre-wrap;
+  overflow-wrap:anywhere;
+  color:var(--text);
+  line-height:1.55;
+}
+.chat-macro-v2-segment{
+  box-sizing:border-box;
+  max-width:100%;
+  vertical-align:middle;
+}

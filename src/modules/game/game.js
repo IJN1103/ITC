@@ -804,6 +804,8 @@ function buildChatMessageSignature(message = {}) {
     !!message?.hideImageMeta,
     JSON.stringify(message?.imageMeta || null),
     JSON.stringify(message?.macroStyle || null),
+    Number(message?.macroVersion || 1) || 1,
+    JSON.stringify(message?.macroSegments || null),
     message?.dmChannelKey || 'global',
   ]);
 }
@@ -994,6 +996,8 @@ function normalizeChatRecordForRender(key, m = {}) {
     hideImageMeta: !!m.hideImageMeta,
     imageMeta: m.imageMeta || null,
     macroStyle: m.macroStyle || null,
+    macroVersion: Number(m.macroVersion || 1) || 1,
+    macroSegments: Array.isArray(m.macroSegments) ? m.macroSegments : null,
     dmChannelKey: m.dmChannelKey || 'global',
   };
 }
@@ -1022,6 +1026,8 @@ function makeChatRenderPayloadFromRecord(record = {}) {
     imageMeta: record.imageMeta,
     hideImageMeta: !!record.hideImageMeta,
     macroStyle: record.macroStyle || null,
+    macroVersion: Number(record.macroVersion || 1) || 1,
+    macroSegments: Array.isArray(record.macroSegments) ? record.macroSegments : null,
   };
 }
 
@@ -1561,7 +1567,7 @@ function switchActiveChatChannel(channelKey = 'global') {
     standingLabel: m.standingLabel,
     dialoguePortrait: m.dialoguePortrait || '', showPortraitInDialogue: m.showPortraitInDialogue === true,
     imageWide: !!m.imageWide, imageMeta: m.imageMeta,
-    hideImageMeta: !!m.hideImageMeta, macroStyle: m.macroStyle || null,
+    hideImageMeta: !!m.hideImageMeta, macroStyle: m.macroStyle || null, macroVersion: Number(m.macroVersion || 1) || 1, macroSegments: Array.isArray(m.macroSegments) ? m.macroSegments : null,
   });
 
   // OPT-1B — 공개 일반 채팅은 최근 120개만 개별 child 이벤트로 수신한다.
