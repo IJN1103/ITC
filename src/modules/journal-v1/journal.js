@@ -2093,6 +2093,7 @@ function showCustomSkillContextMenu(event, row, index) {
     closeCustomSkillContextMenu();
     row.remove();
     reflowCustomSkillRows();
+    scheduleSheetAutosave(120);
   });
 
   menu.appendChild(editBtn);
@@ -2395,6 +2396,7 @@ function appendCustomSkillAddRow(wrap) {
 }
 
 function initSheetUI() {
+  bindSheetAutosaveInteractions();
   const grid = document.getElementById('sh-stats-grid');
   if (grid && !grid.children.length) {
     COC_STATS.forEach(s => {
@@ -2461,6 +2463,91 @@ function updateStatHalf(key) {
 
 
 let _sheetQuickViewMode = false;
+
+// PHASE JOURNAL-AUTOSAVE-1
+// 기존 저널 시트는 편집 후 잠시 입력이 멈추면 자동 저장한다.
+// 새 저널은 이름 없이 의도치 않게 생성되지 않도록 최초 저장 전까지 기존 저장 버튼 방식을 유지한다.
+let _sheetAutosaveTimer = null;
+let _sheetAutosaveInFlight = false;
+let _sheetAutosaveQueued = false;
+let _sheetAutosaveBound = false;
+
+function cancelSheetAutosaveTimer() {
+  if (_sheetAutosaveTimer) clearTimeout(_sheetAutosaveTimer);
+  _sheetAutosaveTimer = null;
+}
+
+function canAutosaveCurrentSheet() {
+  if (!_sheetJournalId || _sheetIsNew) return false;
+  const modal = getQuickSheetModalEl();
+  if (!modal || modal.dataset.editable === '0') return false;
+  const overlay = document.getElementById('sheet-overlay');
+  if (!overlay?.classList.contains('open')) return false;
+  const current = _allJournals.find(j => j.id === _sheetJournalId) || null;
+  return !!current && canEditJournalEntry(current);
+}
+
+function scheduleSheetAutosave(delay = 550) {
+  if (!canAutosaveCurrentSheet()) return;
+  cancelSheetAutosaveTimer();
+  _sheetAutosaveTimer = setTimeout(() => {
+    _sheetAutosaveTimer = null;
+    runSheetAutosave();
+  }, Math.max(0, Number(delay) || 0));
+}
+
+async function runSheetAutosave() {
+  if (!canAutosaveCurrentSheet()) return;
+  if (_sheetAutosaveInFlight) {
+    _sheetAutosaveQueued = true;
+    return;
+  }
+
+  _sheetAutosaveInFlight = true;
+  try {
+    await saveSheet({ auto: true, close: false, silent: true });
+  } catch (err) {
+    console.error('journal sheet autosave failed', err);
+  } finally {
+    _sheetAutosaveInFlight = false;
+    if (_sheetAutosaveQueued) {
+      _sheetAutosaveQueued = false;
+      scheduleSheetAutosave(120);
+    }
+  }
+}
+
+function flushSheetAutosave() {
+  if (!canAutosaveCurrentSheet()) {
+    cancelSheetAutosaveTimer();
+    return;
+  }
+  cancelSheetAutosaveTimer();
+  runSheetAutosave();
+}
+
+function bindSheetAutosaveInteractions() {
+  if (_sheetAutosaveBound) return;
+  const modal = getQuickSheetModalEl();
+  if (!modal) return;
+  _sheetAutosaveBound = true;
+
+  // 텍스트/숫자 입력은 타이핑마다 Firebase를 쓰지 않도록 짧게 debounce한다.
+  modal.addEventListener('input', (event) => {
+    const target = event.target;
+    if (!target?.matches?.('input, textarea, select')) return;
+    if (String(target.type || '').toLowerCase() === 'file') return;
+    scheduleSheetAutosave(550);
+  });
+
+  // 체크박스/선택값처럼 한 번에 확정되는 변경은 조금 더 빠르게 저장한다.
+  modal.addEventListener('change', (event) => {
+    const target = event.target;
+    if (!target?.matches?.('input, textarea, select')) return;
+    if (String(target.type || '').toLowerCase() === 'file') return;
+    scheduleSheetAutosave(120);
+  });
+}
 
 const _quickSheetState = {
   x: null,
@@ -3660,6 +3747,8 @@ function openSheet(journalId) {
 }
 
 function closeSheet() {
+  // 저장 버튼을 누르지 않고 닫더라도 마지막 입력까지 즉시 반영한다.
+  flushSheetAutosave();
   clearQuickSheetInteractionCleanup();
   const overlay = document.getElementById('sheet-overlay');
   if (overlay) overlay.classList.remove('open', 'quick-view');
@@ -4014,6 +4103,7 @@ function showCombatRowContextMenu(event, row, index) {
     clickEvent.stopPropagation();
     closeCombatRowContextMenu();
     row.remove();
+    scheduleSheetAutosave(120);
   });
 
   menu.appendChild(editBtn);
@@ -4159,7 +4249,12 @@ function addCombatRow(rowData = null) {
   }
 }
 
-async function saveSheet() {
+async function saveSheet(options = {}) {
+  const isAutosave = options?.auto === true;
+  const shouldClose = options?.close !== false && !isAutosave;
+  const silent = options?.silent === true || isAutosave;
+
+  if (!isAutosave) cancelSheetAutosaveTimer();
   if (!_sheetJournalId) return;
   const targetJournalId = _sheetJournalId;
   const existingJournal = _allJournals.find(j => j.id === _sheetJournalId) || null;
@@ -4175,10 +4270,13 @@ async function saveSheet() {
     data[k] = document.getElementById('sh-'+k)?.value || '';
   });
 
-  if (_sheetIsNew && !data.name.trim()) {
-    showToast('저널 이름을 입력해주세요.');
-    document.getElementById('sh-name')?.focus();
-    return;
+  if (_sheetIsNew) {
+    if (isAutosave) return;
+    if (!data.name.trim()) {
+      showToast('저널 이름을 입력해주세요.');
+      document.getElementById('sh-name')?.focus();
+      return;
+    }
   }
 
   COC_STATS.forEach(s => {
@@ -4233,7 +4331,7 @@ async function saveSheet() {
 
   if (_sheetAvatarUploadPromise) {
     const hint = document.getElementById('sheet-hint');
-    if (hint) hint.textContent = '아바타 업로드 완료를 기다리는 중...';
+    if (!silent && hint) hint.textContent = '아바타 업로드 완료를 기다리는 중...';
     await _sheetAvatarUploadPromise;
   }
 
@@ -4299,9 +4397,12 @@ async function saveSheet() {
   }
 
   const hint = document.getElementById('sheet-hint');
-  if (hint) { hint.textContent = '저장됐어요 ✓'; setTimeout(() => { if (hint && hint.isConnected) hint.textContent = ''; }, 2000); }
+  if (!silent && hint) {
+    hint.textContent = '저장됐어요 ✓';
+    setTimeout(() => { if (hint && hint.isConnected) hint.textContent = ''; }, 2000);
+  }
 
-  closeSheet();
+  if (shouldClose) closeSheet();
 }
 
 
