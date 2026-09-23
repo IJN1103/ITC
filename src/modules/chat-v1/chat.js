@@ -2282,7 +2282,7 @@ function initChatImageComposer() {
 
 function normalizeChatMacroHex(value, fallback = '') {
   const raw = String(value || '').trim();
-  const match = raw.match(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/);
+  const match = raw.match(/^#([0-9a-fA-F]{6}|[0-9a-fA-F]{3})$/);
   if (!match) return fallback;
   let hex = match[1].toLowerCase();
   if (hex.length === 3) hex = hex.split('').map(ch => ch + ch).join('');
@@ -2326,10 +2326,10 @@ function parseSafeChatMacro(raw = '') {
 
   if (!resolvedText) return { error: '매크로로 표시할 내용을 입력해주세요.' };
 
-  const bgMatch = body.match(/(?:background|background-color)\s*:\s*(#[0-9a-fA-F]{3}|#[0-9a-fA-F]{6})/i)
-    || body.match(/\bbg\s*=\s*(#[0-9a-fA-F]{3}|#[0-9a-fA-F]{6})\b/i);
-  const borderMatch = body.match(/border-left\s*:\s*(?:\d+(?:\.\d+)?px\s+)?(?:solid\s+)?(#[0-9a-fA-F]{3}|#[0-9a-fA-F]{6})/i)
-    || body.match(/\bborder\s*=\s*(#[0-9a-fA-F]{3}|#[0-9a-fA-F]{6})\b/i);
+  const bgMatch = body.match(/(?:background|background-color)\s*:\s*\*{0,2}(#[0-9a-fA-F]{6}|#[0-9a-fA-F]{3})\*{0,2}/i)
+    || body.match(/\bbg\s*=\s*\*{0,2}(#[0-9a-fA-F]{6}|#[0-9a-fA-F]{3})\*{0,2}\b/i);
+  const borderMatch = body.match(/border-left\s*:\s*(?:\d+(?:\.\d+)?px\s+)?(?:solid\s+)?\*{0,2}(#[0-9a-fA-F]{6}|#[0-9a-fA-F]{3})\*{0,2}/i)
+    || body.match(/\bborder\s*=\s*\*{0,2}(#[0-9a-fA-F]{6}|#[0-9a-fA-F]{3})\*{0,2}\b/i);
 
   return {
     text: resolvedText.slice(0, 4000),
