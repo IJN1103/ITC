@@ -608,6 +608,7 @@ function renderHandoutList() {
   if (!St.roomCode) {
     if (empty) { empty.style.display = 'block'; empty.textContent = '방에 입장하면 핸드아웃을 볼 수 있어요.'; }
     schedulePopoutDocumentSync();
+    refreshQuickHandoutMenuIfOpen();
     return;
   }
   const list = loadHandouts();
@@ -617,6 +618,7 @@ function renderHandoutList() {
       empty.innerHTML = St.isGM ? '핸드아웃이 없어요.<br>위 + 버튼으로 새 핸드아웃을 만들어보세요.' : '아직 열람 가능한 핸드아웃이 없어요.';
     }
     schedulePopoutDocumentSync();
+    refreshQuickHandoutMenuIfOpen();
     return;
   }
   if (empty) empty.style.display = 'none';
@@ -632,6 +634,7 @@ function renderHandoutList() {
     container.appendChild(div);
   });
   schedulePopoutDocumentSync();
+  refreshQuickHandoutMenuIfOpen();
 }
 
 function setHandoutEditorMode(canEdit) {
@@ -2778,6 +2781,102 @@ function initQuickSheetInteractions() {
 }
 
 function getQuickJournalMenuEl() { return document.getElementById('map-quick-journal-menu'); }
+
+function getQuickHandoutButtonEl() { return document.getElementById('map-quick-handout-btn'); }
+function getQuickHandoutMenuEl() { return document.getElementById('map-quick-handout-menu'); }
+
+function closeQuickHandoutMenu() {
+  const menu = getQuickHandoutMenuEl();
+  if (!menu) return;
+  menu.style.display = 'none';
+  menu.innerHTML = '';
+  getQuickHandoutButtonEl()?.classList.remove('is-open');
+}
+
+function isQuickHandoutMenuOpen() {
+  const menu = getQuickHandoutMenuEl();
+  return !!(menu && menu.style.display !== 'none' && menu.innerHTML.trim());
+}
+
+function refreshQuickHandoutMenuIfOpen() {
+  if (!isQuickHandoutMenuOpen()) return;
+  renderQuickHandoutMenu();
+}
+
+function getQuickHandoutIconHtml() {
+  return '<span class="map-quick-handout-item-icon" aria-hidden="true"></span>';
+}
+
+function renderQuickHandoutMenu() {
+  const menu = getQuickHandoutMenuEl();
+  if (!menu) return;
+
+  // 문서 탭과 동일한 접근 규칙 사용:
+  // GM = 모든 핸드아웃, PC = 자신이 소유/열람 권한을 가진 핸드아웃.
+  const list = loadHandouts();
+
+  if (!list.length) {
+    menu.innerHTML = `<div class="map-quick-handout-head"><span>핸드아웃 퀵뷰</span></div>
+      <div class="map-quick-handout-empty">${St.isGM ? '등록된 핸드아웃이 없어요.' : '열람 가능한 핸드아웃이 없어요.'}</div>`;
+    menu.style.display = 'flex';
+    getQuickHandoutButtonEl()?.classList.add('is-open');
+    return;
+  }
+
+  menu.innerHTML = `
+    <div class="map-quick-handout-head">
+      <span>핸드아웃 퀵뷰</span>
+      <em>${list.length}</em>
+    </div>
+    <div class="map-quick-handout-list">
+      ${list.map(h => {
+        const title = String(h?.title || '무제 핸드아웃').trim() || '무제 핸드아웃';
+        const preview = stripHandoutText(h?.contentHtml || '').slice(0, 52) || '내용 없음';
+        return `<button type="button" class="map-quick-handout-item" data-hid="${esc(h.id)}">
+          ${getQuickHandoutIconHtml()}
+          <span class="map-quick-handout-item-body">
+            <strong>${esc(title)}</strong>
+            <small>${esc(preview)}</small>
+          </span>
+        </button>`;
+      }).join('')}
+    </div>
+  `;
+
+  menu.querySelectorAll('.map-quick-handout-item').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const handoutId = btn.dataset.hid || '';
+      closeQuickHandoutMenu();
+      if (handoutId) openHandoutEditor(handoutId);
+    });
+  });
+
+  menu.style.display = 'flex';
+  getQuickHandoutButtonEl()?.classList.add('is-open');
+}
+
+function toggleQuickHandoutView(event) {
+  if (event) { event.preventDefault(); event.stopPropagation(); }
+
+  closeQuickStandingMenu();
+  closeQuickJournalMenu();
+
+  const menu = getQuickHandoutMenuEl();
+  if (menu && menu.style.display !== 'none' && menu.innerHTML.trim()) {
+    closeQuickHandoutMenu();
+    return;
+  }
+
+  renderQuickHandoutMenu();
+}
+
+document.addEventListener('click', (e) => {
+  if (e.target.closest('#map-quick-handout-btn') || e.target.closest('#map-quick-handout-menu')) return;
+  closeQuickHandoutMenu();
+});
+
 function getQuickJournalButtonEl() { return document.getElementById('map-quick-journal-btn'); }
 function getQuickStandingMenuEl() { return document.getElementById('map-quick-standing-menu'); }
 function getQuickStandingButtonEl() { return document.getElementById('map-quick-standing-btn'); }
@@ -3444,6 +3543,7 @@ function openQuickJournalSheet(journalId) {
 function toggleQuickJournalView(event) {
   if (event) { event.preventDefault(); event.stopPropagation(); }
   closeQuickStandingMenu();
+  closeQuickHandoutMenu();
   const overlay = document.getElementById('sheet-overlay');
   const menu = getQuickJournalMenuEl();
   const isQuickOpen = !!(overlay && overlay.classList.contains('open') && overlay.classList.contains('quick-view'));
