@@ -1064,11 +1064,20 @@ function deleteHandoutFromDrawer() {
   closeHandoutDrawer();
 }
 
+let _handoutSelectionRaf = 0;
 document.addEventListener('selectionchange', () => {
   const overlay = document.getElementById('handout-drawer');
   const editor = document.getElementById('hd-body');
   if (!overlay || !editor || !overlay.classList.contains('open') || editor.contentEditable !== 'true') return;
-  captureHandoutSelection();
+  if (_handoutSelectionRaf) return;
+
+  _handoutSelectionRaf = requestAnimationFrame(() => {
+    _handoutSelectionRaf = 0;
+    const activeOverlay = document.getElementById('handout-drawer');
+    const activeEditor = document.getElementById('hd-body');
+    if (!activeOverlay || !activeEditor || !activeOverlay.classList.contains('open') || activeEditor.contentEditable !== 'true') return;
+    captureHandoutSelection();
+  });
 });
 
 document.addEventListener('click', (event) => {

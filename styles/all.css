@@ -1781,7 +1781,8 @@ body{scrollbar-color:var(--accent-green) var(--s3);}
    팝업 메뉴처럼 기존에 다크 색상이 하드코딩된 부분도 테마에 맞게 동기화한다. */
 .hd-overlay{
   background:rgba(26,32,44,.28);
-  backdrop-filter:blur(3px);
+  backdrop-filter:none;
+  -webkit-backdrop-filter:none;
 }
 .hd-modal{
   background:var(--s1);
