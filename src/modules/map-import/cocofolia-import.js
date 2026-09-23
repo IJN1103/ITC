@@ -501,8 +501,8 @@
     return results;
   }
 
-  function buildApplyActions() {
-    return `<div style="display:flex;gap:8px;margin-top:10px"><button class="btn-primary" onclick="applyValidatedMapBackground()" style="flex:1">맵 이미지 적용</button></div>`;
+  function buildApplyActions(label = '맵 이미지 적용') {
+    return `<div style="display:flex;gap:8px;margin-top:10px"><button class="btn-primary" onclick="applyValidatedMapBackground()" style="flex:1">${escapeHtml(label)}</button></div>`;
   }
 
   function buildDefaultImportedMapLayerState(mapState) {
@@ -571,13 +571,17 @@
   const parseCocofoliaZip = PARSER.parseCocofoliaZip;
   const buildCocofoliaDiagnostics = DIAGNOSTICS.buildCocofoliaDiagnostics;
   const logCocofoliaDiagnostics = DIAGNOSTICS.logCocofoliaDiagnostics;
-  const buildValidationSummary = (file, parsed, diagnostics) => DIAGNOSTICS.buildValidationSummary(
-    file,
-    parsed,
-    escapeHtml,
-    buildApplyActions(),
-    DIAGNOSTICS.buildDiagnosticsStatus?.(diagnostics) || ''
-  );
+  const buildValidationSummary = (file, parsed, diagnostics) => {
+    const room = parsed?.entities?.room || {};
+    const hasRoomMapImage = !!String(room.backgroundUrl || room.foregroundUrl || '').trim();
+    return DIAGNOSTICS.buildValidationSummary(
+      file,
+      parsed,
+      escapeHtml,
+      buildApplyActions(hasRoomMapImage ? '맵 이미지 적용' : '맵세팅 적용'),
+      DIAGNOSTICS.buildDiagnosticsStatus?.(diagnostics) || ''
+    );
+  };
   const buildDiagnosticsSummary = (diagnostics) => DIAGNOSTICS.buildDiagnosticsSummary(diagnostics, escapeHtml);
 
   const buildImportedPanelToken = TRANSFORM.buildImportedPanelToken;
@@ -854,14 +858,13 @@
     const bgImageName = String(room.backgroundUrl || '').trim();
     const fgImageName = String(room.foregroundUrl || '').trim();
     const mapImageName = bgImageName || fgImageName;
-    if (!mapImageName) {
-      setError('이 맵세팅에는 맵 이미지가 없습니다.');
-      return;
-    }
+    const hasMapImage = !!mapImageName;
     IMPORT_STATE.isBusy = true;
     const applyRun = beginMapImportDiagnostic('zip-apply', pendingFile);
     try {
-      setHint('세션 상태를 확인한 뒤 맵 이미지를 업로드하는 중이에요…');
+      setHint(hasMapImage
+        ? '세션 상태를 확인한 뒤 맵 이미지를 업로드하는 중이에요…'
+        : '세션 상태를 확인한 뒤 맵세팅 오브젝트를 적용하는 중이에요…');
       const contextStarted = diagnosticNow();
       const { roomCode } = await ensureLiveRoomContext();
       markMapImportStage(applyRun, 'room-context-check', contextStarted);
@@ -873,35 +876,43 @@
       });
 
       // ── 배경 이미지 업로드 ──
-      const backgroundEntry = zip.file(mapImageName);
-      if (!backgroundEntry) throw new Error('ZIP 안에서 맵 이미지 파일을 찾지 못했어요.');
-      const backgroundExtractStarted = diagnosticNow();
-      const blob = await backgroundEntry.async('blob');
-      const backgroundSize = await getImageSizeFromBlob(blob);
-      markMapImportStage(applyRun, 'background-extract-and-probe', backgroundExtractStarted, {
-        bytes: Number(blob?.size || 0),
-        width: Number(backgroundSize?.width || 0),
-        height: Number(backgroundSize?.height || 0),
-      });
-      const ext = mapImageName.split('.').pop() || 'png';
-      const backgroundUploadStarted = diagnosticNow();
-      const uploadedUrl = await uploadMapLayerBlob(blob, roomCode, `map-bg-${Date.now()}.${ext}`);
-      markMapImportStage(applyRun, 'background-upload', backgroundUploadStarted, {
-        bytes: Number(blob?.size || 0),
-      });
-      if (!uploadedUrl) throw new Error('맵 이미지 업로드에 실패했어요.');
-
-      // PHASE D-2: 장면 배경 업로드 결과를 파일명 기준으로 재사용한다.
-      // 현재 방 배경과 같은 파일은 다시 업로드하지 않는다.
+      // 방 자체에 배경/전경 이미지가 없는 ZIP도 정상적인 코코포리아 맵세팅이다.
+      // 이 경우 이미지만 건너뛰고 오브젝트·컷인·장면을 그대로 임포트한다.
+      let uploadedUrl = '';
+      let backgroundSize = null;
       const sceneBackgroundByName = new Map();
       const sceneBackgroundMetaByName = new Map();
-      sceneBackgroundByName.set(mapImageName, uploadedUrl);
-      if (backgroundSize) sceneBackgroundMetaByName.set(mapImageName, backgroundSize);
+
+      if (hasMapImage) {
+        const backgroundEntry = zip.file(mapImageName);
+        if (!backgroundEntry) throw new Error('ZIP 안에서 맵 이미지 파일을 찾지 못했어요.');
+        const backgroundExtractStarted = diagnosticNow();
+        const blob = await backgroundEntry.async('blob');
+        backgroundSize = await getImageSizeFromBlob(blob);
+        markMapImportStage(applyRun, 'background-extract-and-probe', backgroundExtractStarted, {
+          bytes: Number(blob?.size || 0),
+          width: Number(backgroundSize?.width || 0),
+          height: Number(backgroundSize?.height || 0),
+        });
+        const ext = mapImageName.split('.').pop() || 'png';
+        const backgroundUploadStarted = diagnosticNow();
+        uploadedUrl = await uploadMapLayerBlob(blob, roomCode, `map-bg-${Date.now()}.${ext}`) || '';
+        markMapImportStage(applyRun, 'background-upload', backgroundUploadStarted, {
+          bytes: Number(blob?.size || 0),
+        });
+        if (!uploadedUrl) throw new Error('맵 이미지 업로드에 실패했어요.');
+
+        // PHASE D-2: 장면 배경 업로드 결과를 파일명 기준으로 재사용한다.
+        sceneBackgroundByName.set(mapImageName, uploadedUrl);
+        if (backgroundSize) sceneBackgroundMetaByName.set(mapImageName, backgroundSize);
+      }
 
       const dominantSize = backgroundSize || null;
+      const roomWidth = Number(room.fieldWidth || 0);
+      const roomHeight = Number(room.fieldHeight || 0);
       const sceneAspect = dominantSize?.width && dominantSize?.height
         ? (dominantSize.width / dominantSize.height)
-        : 1;
+        : (roomWidth > 0 && roomHeight > 0 ? roomWidth / roomHeight : 1);
 
       // ── 포그라운드 + 오브젝트 제한형 병렬 업로드 (최대 3개) ──
       const importedCanvas = buildImportedCanvasModel(validated.parsed?.entities?.items || {}, room);
@@ -1201,13 +1212,13 @@
         importedCanvas: importedCanvas || null,
         importedFieldWidth: Number(room.fieldWidth || 0) || null,
         importedFieldHeight: Number(room.fieldHeight || 0) || null,
-        background: {
+        background: uploadedUrl ? {
           url: uploadedUrl,
           sourceName: mapImageName,
           fit,
           alignWithGrid,
           importedAt: Date.now(),
-        },
+        } : null,
         foreground: uploadedFgUrl ? {
           url: uploadedFgUrl,
           sourceName: fgImageName,
@@ -1223,10 +1234,10 @@
       await update(ref(db, `rooms/${roomCode}`), {
         mapState: nextMapState,
         mapLayerState: nextLayerState,
-        'bgm/mapBackground': nextMapState.background.url,
-        'bgm/mapBackgroundFit': nextMapState.background.fit,
-        'bgm/mapBackgroundSourceName': nextMapState.background.sourceName || '',
-        'bgm/mapBackgroundImportedAt': nextMapState.background.importedAt || Date.now(),
+        'bgm/mapBackground': nextMapState.background?.url || '',
+        'bgm/mapBackgroundFit': nextMapState.background?.fit || '',
+        'bgm/mapBackgroundSourceName': nextMapState.background?.sourceName || '',
+        'bgm/mapBackgroundImportedAt': nextMapState.background?.importedAt || 0,
         'bgm/mapForeground': nextMapState.foreground?.url || '',
         'bgm/mapForegroundFit': nextMapState.foreground?.fit || '',
         'bgm/mapForegroundSourceName': nextMapState.foreground?.sourceName || '',
@@ -1304,23 +1315,26 @@
       const cutinCount = Object.values(validated.parsed?.entities?.effects || {}).filter((effect) => String(effect?.imageUrl || '').trim() || String(effect?.soundRef || '').trim()).length;
       const cutinNote = cutinCount > 0 ? ` / 컷인 ${cutinCount}개 임포트` : '';
       const sceneNote = importedSceneCount > 0 ? ` / 장면 ${importedSceneCount}개 생성` : '';
-      if (typeof showToast === 'function') showToast(`맵 이미지 + 스크린 패널${cutinNote}${sceneNote} 적용 완료`);
+      if (typeof showToast === 'function') {
+        const baseNote = hasMapImage ? '맵 이미지 + 스크린 패널' : '맵세팅 오브젝트';
+        showToast(`${baseNote}${cutinNote}${sceneNote} 적용 완료`);
+      }
       if (typeof window.hideMapImportPanel === 'function') window.hideMapImportPanel();
       finishMapImportDiagnostic(applyRun, 'completed', {
         counts: {
-          backgroundUploads: 1,
+          backgroundUploads: uploadedUrl ? 1 : 0,
           foregroundUploads: uploadedFgUrl ? 1 : 0,
           objectUploadsRequested: objectBlueprints.length,
           objectUploadsSucceeded: importedObjects.length,
-          sceneBackgroundUploads: Math.max(0, sceneBackgroundByName.size - 1),
+          sceneBackgroundUploads: Math.max(0, sceneBackgroundByName.size - (uploadedUrl ? 1 : 0)),
           scenesSaved: importedSceneCount,
           cutinsDetected: cutinCount,
         },
       });
     } catch (err) {
       finishMapImportDiagnostic(applyRun, 'failed', { error: err?.message || String(err || '') });
-      console.error('map background apply failed', err);
-      setError(err?.message || '맵 이미지 적용 중 오류가 발생했어요.');
+      console.error('map setting apply failed', err);
+      setError(err?.message || '맵세팅 적용 중 오류가 발생했어요.');
     } finally {
       IMPORT_STATE.isBusy = false;
     }
