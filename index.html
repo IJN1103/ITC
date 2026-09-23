@@ -1017,19 +1017,16 @@ window._FB = {
         <input type="color" id="hd-text-color-input" value="#131415" tabindex="-1"
           onchange="applyHandoutTextColor(this.value)" aria-label="글자 색상 선택">
       </div>
-      <div class="hd-toolbar-group hd-font-group" style="position:relative">
-        <button type="button" class="hd-tool-btn hd-font-trigger" onclick="toggleHandoutFontMenu(event)" title="글자 크기" aria-label="글자 크기 메뉴"><span id="hd-font-size-label">글자 크기</span></button>
-        <div class="hd-pop-menu hd-font-menu hd-font-custom-menu" id="hd-font-menu">
-          <label class="hd-font-custom-label" for="hd-font-size-input">글자 크기</label>
-          <div class="hd-font-custom-row">
-            <input type="number" class="hd-font-size-input" id="hd-font-size-input"
-              min="1" max="200" step="1" value="12"
-              onkeydown="handleHandoutFontSizeInputKey(event)"
-              aria-label="글자 크기 pt 직접 입력">
-            <span class="hd-font-unit">pt</span>
-            <button type="button" class="hd-font-apply-btn" onclick="applyHandoutFontSizeFromInput()">적용</button>
-          </div>
-        </div>
+      <div class="hd-toolbar-group hd-font-group">
+        <label class="hd-font-direct-control" title="글자 크기">
+          <input type="number" class="hd-font-direct-input" id="hd-font-size-input"
+            min="1" max="200" step="1" value="12"
+            onmousedown="captureHandoutSelection()"
+            onkeydown="handleHandoutFontSizeInputKey(event)"
+            onblur="applyHandoutFontSizeFromInput(true)"
+            aria-label="글자 크기 pt 직접 입력">
+          <span class="hd-font-direct-unit">pt</span>
+        </label>
       </div>
       <div class="hd-toolbar-group hd-toolbar-group-end">
         <input type="file" id="hd-image-input" accept="image/*" style="display:none" onchange="handleHandoutImage(this)">

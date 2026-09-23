@@ -628,7 +628,7 @@ function renderHandoutList() {
     const preview = stripHandoutText(h.contentHtml || '').slice(0, 80) || '내용 없음';
     const canEdit = !!St.isGM;
     const allowed = (h.allowedTo || []).map(uid => St.players?.[uid]?.name).filter(Boolean);
-    div.innerHTML = `<div class="handout-icon">📄</div><div class="handout-item-body"><div class="handout-item-title">${esc(h.title || '무제 핸드아웃')}${canEdit ? '<span class="handout-item-badge">편집 가능</span>' : ''}</div><div class="handout-item-preview">${esc(preview)}${stripHandoutText(h.contentHtml || '').length > 80 ? '…' : ''}</div><div class="handout-item-meta"><span>${allowed.length ? '열람: ' + esc(allowed.join(', ')) : 'GM 전용'}</span><span>${(d.getMonth()+1)}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}</span></div></div>`;
+    div.innerHTML = `<div class="handout-icon" aria-hidden="true"><span class="handout-icon-doc"></span></div><div class="handout-item-body"><div class="handout-item-title">${esc(h.title || '무제 핸드아웃')}${canEdit ? '<span class="handout-item-badge">편집 가능</span>' : ''}</div><div class="handout-item-preview">${esc(preview)}${stripHandoutText(h.contentHtml || '').length > 80 ? '…' : ''}</div><div class="handout-item-meta"><span>${allowed.length ? '열람: ' + esc(allowed.join(', ')) : 'GM 전용'}</span><span>${(d.getMonth()+1)}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}</span></div></div>`;
     container.appendChild(div);
   });
   schedulePopoutDocumentSync();
@@ -734,35 +734,16 @@ function toggleHandoutAlignMenu(event) {
   menu?.classList.toggle('open');
 }
 
-function toggleHandoutFontMenu(event) {
-  event?.stopPropagation?.();
-  captureHandoutSelection();
-  const menu = document.getElementById('hd-font-menu');
-  const alignMenu = document.getElementById('hd-align-menu');
-  const input = document.getElementById('hd-font-size-input');
-  alignMenu?.classList.remove('open');
-  menu?.classList.toggle('open');
-  if (menu?.classList.contains('open') && input) {
-    input.value = String(_handoutLastFontSize || 12);
-    requestAnimationFrame(() => {
-      try { input.focus(); input.select(); } catch (e) {}
-    });
-  }
-}
-
 function applyHandoutTextAlignFromMenu(align) {
   applyHandoutTextAlign(align);
   closeHandoutMenus();
 }
 
 function updateHandoutFontLabel(sourceHtml = null) {
-  const label = document.getElementById('hd-font-size-label');
-  if (!label) return;
   if (sourceHtml != null) {
     const match = String(sourceHtml || '').match(/font-size\s*:\s*(\d{1,3})pt/i);
     if (match) _handoutLastFontSize = Number(match[1]) || _handoutLastFontSize;
   }
-  label.textContent = `${_handoutLastFontSize}pt`;
   const input = document.getElementById('hd-font-size-input');
   if (input && document.activeElement !== input) input.value = String(_handoutLastFontSize);
 }
@@ -981,23 +962,32 @@ function applyHandoutFontSize(value) {
   captureHandoutSelection();
 }
 
-function applyHandoutFontSizeFromInput() {
+function applyHandoutFontSizeFromInput(fromBlur = false) {
   const input = document.getElementById('hd-font-size-input');
   if (!input) return;
+
   const parsed = Number(input.value);
   if (!Number.isFinite(parsed) || parsed < 1 || parsed > 200) {
-    showToast('글자 크기는 1pt부터 200pt까지 입력할 수 있어요.');
+    if (!fromBlur) showToast('글자 크기는 1pt부터 200pt까지 입력할 수 있어요.');
     input.value = String(_handoutLastFontSize || 12);
     return;
   }
-  applyHandoutFontSize(parsed);
+
+  const nextSize = Math.round(parsed);
+  input.value = String(nextSize);
+
+  // 포커스를 다른 곳으로 옮겼을 때 값이 실제로 바뀐 경우에만 적용한다.
+  if (fromBlur && nextSize === Number(_handoutLastFontSize || 12)) return;
+
+  applyHandoutFontSize(nextSize);
 }
 
 function handleHandoutFontSizeInputKey(event) {
   if (!event) return;
   if (event.key === 'Enter') {
     event.preventDefault();
-    applyHandoutFontSizeFromInput();
+    applyHandoutFontSizeFromInput(false);
+    try { document.getElementById('hd-body')?.focus({ preventScroll: true }); } catch (e) {}
   }
 }
 
