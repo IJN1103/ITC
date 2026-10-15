@@ -1162,6 +1162,28 @@ function saveJournals(list) {
   });
 }
 
+function updateAssignedJournalEditableFields(journalId, patch = {}) {
+  const safeId = String(journalId || '').trim();
+  if (!safeId) return Promise.resolve();
+  if (!window._FB?.CONFIGURED || !St.roomCode) return Promise.resolve();
+
+  const { db, ref, update } = window._FB;
+  const basePath = `rooms/${St.roomCode}/journals/${safeId}`;
+  const writes = [];
+
+  // Write exact child locations instead of updating the whole journal node.
+  // This keeps owner/assignment metadata untouched and lets the dedicated
+  // child-level Firebase Rules authorize assigned editors.
+  Object.entries(patch || {}).forEach(([key, value]) => {
+    if (value === undefined) return;
+    writes.push(update(ref(db, `${basePath}/${key}`), value && typeof value === 'object' && !Array.isArray(value)
+      ? { ...value }
+      : value));
+  });
+
+  return Promise.all(writes);
+}
+
 function saveJournalFB(journal) {
   const normalized = normalizeJournal(journal);
   if (!normalized) return;
@@ -1184,7 +1206,10 @@ function saveJournalFB(journal) {
     if (canManage && !remotePayload.createdAt) remotePayload.createdAt = getJournalServerTimestamp();
     remotePayload.updatedAt = getJournalServerTimestamp();
     upsertLocalJournal({ ...normalized, updatedAt: Date.now() });
-    return update(ref(db, `rooms/${St.roomCode}/journals/${normalized.id}`), remotePayload)
+    const savePromise = canManage
+      ? update(ref(db, `rooms/${St.roomCode}/journals/${normalized.id}`), remotePayload)
+      : updateAssignedJournalEditableFields(normalized.id, remotePayload);
+    return savePromise
       .catch(err => {
         console.error('journal save failed', err);
         showToast('저널 저장에 실패했어요. 권한을 확인해 주세요.');
@@ -1264,7 +1289,10 @@ function saveJournalSheetFB(journalId, sheetData, metaPatch = {}) {
       renderJournalList();
       saRefreshToolbar();
     }
-    return update(ref(db, `rooms/${St.roomCode}/journals/${journalId}`), remotePatch)
+    const savePromise = canManage
+      ? update(ref(db, `rooms/${St.roomCode}/journals/${journalId}`), remotePatch)
+      : updateAssignedJournalEditableFields(journalId, remotePatch);
+    return savePromise
       .catch(err => {
         console.error('journal sheet save failed', err);
         showToast('저널 저장에 실패했어요. 권한을 확인해 주세요.');

@@ -100,7 +100,7 @@ function getBgmUnlockButton() {
     btn.id = 'bgm-mobile-unlock-btn';
     btn.className = 'bgm-mobile-unlock';
     btn.textContent = 'BGM 켜기';
-    btn.title = '모바일 브라우저에서 BGM 재생을 활성화합니다.';
+    btn.title = '브라우저에서 BGM 재생을 활성화합니다.';
     btn.addEventListener('click', event => {
       event.preventDefault();
       event.stopPropagation();
@@ -116,14 +116,17 @@ function getBgmUnlockButton() {
 function setBgmUnlockPromptVisible(visible, reason = '') {
   const btn = getBgmUnlockButton();
   if (!btn) return;
-  const shouldShow = !!visible && isTouchBgmEnvironment() && !!St.isPlaying && !!getCurrentBgmTrack();
+  // Audible autoplay can be blocked on desktop Chromium/Whale as well as mobile.
+  // Show the recovery control only when this client is supposed to be playing
+  // but the local YouTube player is not actually running.
+  const shouldShow = !!visible && !!St.isPlaying && !!getCurrentBgmTrack();
   _bgmMobilePromptReason = shouldShow ? String(reason || '') : '';
   btn.classList.toggle('active', shouldShow);
   btn.hidden = !shouldShow;
   btn.setAttribute('aria-hidden', shouldShow ? 'false' : 'true');
   if (shouldShow) {
     btn.textContent = 'BGM 켜기';
-    btn.title = '이 기기에서 BGM 소리가 나지 않으면 한 번 터치해 주세요.';
+    btn.title = '이 브라우저에서 BGM 소리가 나지 않으면 한 번 눌러 주세요.';
   }
 }
 
@@ -158,14 +161,13 @@ function logBgmBlockedState(reason, err = null) {
 }
 
 function shouldPromptBgmUnlock() {
-  if (!isTouchBgmEnvironment() || !St.isPlaying || !getCurrentBgmTrack()) return false;
+  if (!St.isPlaying || !getCurrentBgmTrack()) return false;
   if (!ytReady || !ytPlayer) return true;
   const state = getBgmPlayerState();
   return state !== YT.PlayerState.PLAYING && state !== YT.PlayerState.BUFFERING;
 }
 
 function scheduleBgmPlaybackStateCheck(reason = 'check', delay = 1200) {
-  if (!isTouchBgmEnvironment()) return;
   setTimeout(() => {
     if (!St.isPlaying || !getCurrentBgmTrack()) {
       setBgmUnlockPromptVisible(false);
